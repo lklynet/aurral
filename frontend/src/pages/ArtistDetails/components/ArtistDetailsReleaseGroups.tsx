@@ -14,7 +14,7 @@ import type { ArtistDetailsLibrary } from "../hooks/useArtistDetailsLibrary";
 import { useArtistReleaseShelf } from "../hooks/useResponsiveReleaseLimit";
 import RouteLink from "../../../components/RouteLink";
 import { albumPath } from "../../../../../lib/albumPath.ts";
-import { matchesReleaseGroupTab } from "../releaseFilters.ts";
+import { preferStudioReleases } from "../releaseFilters.ts";
 import { ArtistReleaseCard } from "./ArtistReleaseCard";
 
 const viewModes = [
@@ -38,10 +38,7 @@ const releasesForMode = (
   viewMode: ReleaseViewMode,
 ) => {
   if (viewMode === "library") return libraryReleaseGroups;
-  if (viewMode === "popular") return releaseGroups;
-  return releaseGroups.filter((releaseGroup) =>
-    matchesReleaseGroupTab(releaseGroup, viewMode, true),
-  );
+  return preferStudioReleases(releaseGroups, viewMode === "popular" ? "all" : viewMode);
 };
 
 export function ArtistDetailsReleaseGroups({

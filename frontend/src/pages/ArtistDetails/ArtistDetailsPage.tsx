@@ -28,7 +28,7 @@ import { ArtistDetailsHero } from "./components/ArtistDetailsHero";
 import { ArtistDetailsActionBar } from "./components/ArtistDetailsActionBar";
 import { ArtistDetailsVideos } from "./components/ArtistDetailsVideos";
 import { useArtistVideos } from "./artistVideosSetting.ts";
-import { matchesReleaseGroupTab } from "./releaseFilters.ts";
+import { preferStudioReleases } from "./releaseFilters.ts";
 import "./ArtistDetailsPage.css";
 import { ArtistDetailsDownloadTargets } from "./components/ArtistDetailsDownloadTargets";
 import { ArtistDetailsReleaseGroups } from "./components/ArtistDetailsReleaseGroups";
@@ -337,9 +337,7 @@ function ArtistDetailsPage() {
   const { getAlbumStatus } = library;
   const librarySummary = useMemo(() => {
     if (!existsInLibrary || !libraryArtistId) return null;
-    const albums = (artist?.["release-groups"] ?? []).filter((releaseGroup) =>
-      matchesReleaseGroupTab(releaseGroup, "albums"),
-    );
+    const albums = preferStudioReleases(artist?.["release-groups"] ?? [], "albums");
     const owned = albums.flatMap((releaseGroup) => {
       const status = releaseGroup.id ? getAlbumStatus(releaseGroup.id) : null;
       return status?.status === "available" ? [status] : [];

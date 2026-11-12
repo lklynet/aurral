@@ -4,13 +4,15 @@ const hasReleaseGroupType = (releaseGroup: ReleaseGroup | null | undefined, type
   releaseGroup?.["primary-type"] === type ||
   (releaseGroup?.["secondary-types"] || []).includes(type);
 
+export const isStudioRelease = (releaseGroup: ReleaseGroup | null | undefined) =>
+  (releaseGroup?.["secondary-types"] || []).every((type) => type === "Compilation");
+
 export const matchesReleaseGroupTab = (
   releaseGroup: ReleaseGroup | null | undefined,
   tab: string,
-  showLiveAlbums = true,
+  includeOtherReleases = true,
 ) => {
-  const isLive = hasReleaseGroupType(releaseGroup, "Live");
-  if (!showLiveAlbums && isLive) return false;
+  if (!includeOtherReleases && !isStudioRelease(releaseGroup)) return false;
   if (tab === "all") return true;
   const isCompilation = hasReleaseGroupType(releaseGroup, "Compilation");
   if (tab === "compilations") return isCompilation;
@@ -20,6 +22,15 @@ export const matchesReleaseGroupTab = (
     return primaryType !== undefined && ["EP", "Single"].includes(primaryType);
   }
   return releaseGroup?.["primary-type"] === "Album";
+};
+
+export const preferStudioReleases = <T extends ReleaseGroup>(releaseGroups: T[], tab: string) => {
+  const studio = releaseGroups.filter((releaseGroup) =>
+    matchesReleaseGroupTab(releaseGroup, tab, false),
+  );
+  return studio.length > 0
+    ? studio
+    : releaseGroups.filter((releaseGroup) => matchesReleaseGroupTab(releaseGroup, tab));
 };
 
 export const matchesReleaseGroupSearch = (
