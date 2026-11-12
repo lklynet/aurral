@@ -35,6 +35,7 @@ const [
     buildNextSourcePayload,
     enqueuePendingJobsWithoutBatch,
     failPipelineJob,
+    pipelinePayloadSchema,
   },
   { prowlarrClient },
   { downloadWorker: workerInstance, DownloadWorker },
@@ -46,7 +47,7 @@ const [
   libraryStore,
   { beginDownloadAttempt, setActiveDownloadAttemptId },
   { processPlaylistOperation },
-  { stopDownloadPipelineWorker, pipelinePayloadSchema },
+  { stopDownloadPipelineWorker },
   { denyBlockedJob },
 ] = await setupIsolatedBackend(
   "release-first-sources",

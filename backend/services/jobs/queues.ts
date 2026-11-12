@@ -3,7 +3,7 @@ import { isOwnKey } from "../../../lib/ownKey.ts";
 import { defineQueue, parseJobPayload } from "./queue.ts";
 import type { WorkerGroup } from "./groups.ts";
 import type { SystemTask } from "./systemTasks.ts";
-import type { pipelinePayloadSchema } from "../downloadPipelineWorker.ts";
+import type { PipelinePayload } from "../downloadPipeline.ts";
 import type { playlistOperationSchema } from "../playlists/playlistOperations.ts";
 import type { playlistMbidEnrichmentSchema } from "../playlistMbidEnrichmentWorker.ts";
 import type { libraryScanSchema } from "../libraryScanWorker.ts";
@@ -93,7 +93,7 @@ export const flowRunQueue = playlistQueue(
 
 const PIPELINE_PHASE_PRIORITY = { search: 0, poll: 10, download: 20, finalize: 30 };
 
-export const downloadPipelineQueue = defineQueue<v.InferOutput<typeof pipelinePayloadSchema>>({
+export const downloadPipelineQueue = defineQueue<PipelinePayload>({
   name: "download-pipeline",
   label: "Download pipeline",
   description: "Searches, downloads, validates, and finalizes playlist tracks.",
