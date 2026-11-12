@@ -5,7 +5,7 @@ import type { toNormalizedAlbum } from "../../../backend/services/providers/brai
 
 type AlbumRating = NonNullable<ReturnType<typeof toNormalizedAlbum>["rating"]>;
 
-type SearchItem = {
+export type SearchItem = {
   type?: string | null;
   key?: string | number | null;
   id?: string | number | null;
@@ -45,6 +45,8 @@ type SearchItem = {
   foreignArtistId?: string | null;
   mbid?: string | null;
   artistId?: string | null;
+  durationMs?: number | null;
+  status?: string | null;
 };
 
 type SearchBuckets<Item extends SearchItem = SearchItem> = {
@@ -306,23 +308,80 @@ function dedupe<Item extends SearchItem>(items: Item[], seen: Set<string>) {
   });
 }
 
-const MIXED_BUCKET_LIMIT = 5;
+const matchText = (...parts: unknown[]) =>
+  parts
+    .map((part) =>
+      String(part ?? "")
+        .toLowerCase()
+        .replace(/[([].*?[)\]]/g, "")
+        .replace(/[^\p{L}\p{N}]+/gu, " ")
+        .trim(),
+    )
+    .join("|");
 
-export function buildMixedSearchPageItems<Item extends SearchItem>(
-  data: CatalogBuckets<Item> | null | undefined,
-  limit = 24,
-) {
-  if (!data) return [];
-  const seen = new Set<string>();
-  if (data.top) dedupe([data.top], seen);
-  return dedupe(
-    [
-      ...(data.artists ?? []).slice(0, MIXED_BUCKET_LIMIT),
-      ...(data.tracks ?? []).slice(0, MIXED_BUCKET_LIMIT),
-      ...(data.albums ?? []),
-    ],
-    seen,
-  ).slice(0, limit);
+function resultIdentities(item: SearchItem) {
+  if (item.type === "track") {
+    return [
+      item.trackMbid ? `mbid:${item.trackMbid}` : null,
+      `text:${matchText(item.artistName, item.title, item.albumTitle)}`,
+    ].filter((key) => key !== null);
+  }
+  if (item.type === "album") {
+    return [item.id ? `id:${item.id}` : `text:${matchText(item.artistName, item.title)}`];
+  }
+  if (item.type === "artist") {
+    return [item.id ? `id:${item.id}` : `text:${matchText(item.name)}`];
+  }
+  return [`key:${item.key ?? item.id}`];
+}
+
+export function isSameSearchResult(left: SearchItem | null | undefined, right: SearchItem) {
+  if (!left || left.type !== right.type) return false;
+  const keys = new Set(resultIdentities(left));
+  return resultIdentities(right).some((key) => keys.has(key));
+}
+
+function mergeLibraryFirst<Item extends SearchItem>(library: Item[], catalog: Item[]) {
+  const merged: Item[] = [];
+  const positions = new Map<string, number>();
+  for (const item of [...library, ...catalog]) {
+    const keys = resultIdentities(item);
+    const position = keys.map((key) => positions.get(key)).find((found) => found !== undefined);
+    if (position === undefined) {
+      for (const key of keys) positions.set(key, merged.length);
+      merged.push(item);
+      continue;
+    }
+    for (const key of keys) positions.set(key, position);
+    merged[position] = { ...item, ...merged[position] };
+  }
+  return merged;
+}
+
+export function buildSearchSections<Item extends SearchItem>({
+  library,
+  catalog,
+  playlists = [],
+}: {
+  library?: SearchBuckets<Item> | null;
+  catalog?: CatalogBuckets<Item> | null;
+  playlists?: Item[];
+}) {
+  const artists = mergeLibraryFirst(library?.artists ?? [], catalog?.artists ?? []);
+  const releases = mergeLibraryFirst(library?.albums ?? [], catalog?.albums ?? []);
+  const songs = mergeLibraryFirst(library?.tracks ?? [], catalog?.tracks ?? []);
+  const catalogTop = catalog?.top ?? null;
+  const owned = catalogTop
+    ? [...artists, ...releases, ...songs].find((item) => isSameSearchResult(catalogTop, item))
+    : undefined;
+  return {
+    top: catalogTop && owned ? { ...catalogTop, ...owned } : catalogTop,
+    artists,
+    albums: releases.filter((album) => getReleaseTypeLabel(album) === "Album"),
+    singles: releases.filter((album) => getReleaseTypeLabel(album) !== "Album"),
+    songs,
+    playlists: mergeLibraryFirst(library?.playlists ?? [], playlists),
+  };
 }
 
 export function buildUnifiedSuggestionSections<Item extends SearchItem>({

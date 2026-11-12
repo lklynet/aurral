@@ -428,6 +428,24 @@ test("unified search folds Deezer songs into the results with their catalog albu
   );
 });
 
+test("unified search marks Deezer songs the Library already has", async () => {
+  seedLibraryAlbum();
+  stubDeezerSongs([
+    { title: "Lantern Song", artist: "Harbor Collective", album: "Quiet Harbor", rank: 2000 },
+    { title: "Lantern Song", artist: "Another Harbor", album: "Elsewhere", rank: 1000 },
+  ]);
+  serveCatalogAlbums([]);
+
+  const body = await unifiedSearch("lantern song");
+  assert.deepEqual(
+    body.tracks.map((track) => [track.artistName, track.inLibrary]),
+    [
+      ["Harbor Collective", true],
+      ["Another Harbor", false],
+    ],
+  );
+});
+
 test("unified search tops an exact album by a famous artist over an obscure exact song", async () => {
   stubDeezerSongs([
     { title: "Ok Computer", artist: "Lemaitre", album: "Ok Computer", rank: 73239 },

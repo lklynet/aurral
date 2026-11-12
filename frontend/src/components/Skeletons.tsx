@@ -5,7 +5,7 @@ import type { DiscoverFeedStyle } from "../../../lib/discoverLayout.ts";
 
 type LibraryCardKind = "album" | "artist" | "playlist";
 type RailKind = "album" | "artist" | "playlist";
-type SearchResultsMode = "all" | "albums" | "artist-list" | "artists" | "round-artists";
+type SearchResultsMode = "all" | "songs" | "albums" | "artist-list" | "artists" | "round-artists";
 
 const range = (count: number) => Array.from({ length: count }, (_, index) => index);
 
@@ -137,19 +137,19 @@ export function SkeletonReleaseCard({
     <SkeletonShape as="div" className="artist-release-card__cover" />
   );
   return (
-    <article className={`artist-release-card${search ? " search-album-results__item" : ""}`}>
+    <article className={`artist-release-card${search ? " search-album-card" : ""}`}>
       {cover}
-      <h2 className="artist-release-card__title artist-truncate">
+      <h2
+        className={
+          search ? "search-album-card__title" : "artist-release-card__title artist-truncate"
+        }
+      >
         <SkeletonText width={textWidth(index)} />
       </h2>
       <p className="artist-release-card__meta artist-truncate">
         <SkeletonText width={textWidth(index, 2)} />
       </p>
-      {search ? (
-        <p className="artist-release-card__meta artist-truncate">
-          <SkeletonText width="40%" />
-        </p>
-      ) : (
+      {search ? null : (
         <p className="artist-release-card__metric">
           <SkeletonText width="2.5em" />
         </p>
@@ -212,55 +212,78 @@ export function SkeletonSearchResults({
       </div>
     );
   }
+  if (mode === "songs") return <SkeletonSongRows count={count} />;
   return (
     <div className="search-page__unified">
-      <article className="search-top-artist">
-        <div className="search-top-artist__main">
-          <span className="search-top-artist__content">
-            <SkeletonShape className="search-top-artist__image-wrap" />
-            <span className="search-top-artist__copy">
-              <span className="search-top-artist__eyebrow">
+      <div className="search-hero">
+        <section>
+          <div className="artist-discover-rail__header">
+            <h2 className="artist-section-title--discover">
+              <SkeletonText width="6em" />
+            </h2>
+          </div>
+          <div className="search-top">
+            <SkeletonShape className="search-top__art" />
+            <div className="search-top__body">
+              <span className="search-top__name">
+                <SkeletonText width="8em" />
+              </span>
+              <p className="search-top__meta">
                 <SkeletonText width="5em" />
-              </span>
-              <span className="search-top-artist__title-row">
-                <span className="search-top-artist__name">
-                  <SkeletonText width="6em" />
-                </span>
-              </span>
-              <span className="search-top-artist__meta-row">
-                <span className="search-top-artist__meta">
-                  <SkeletonText width="4em" />
-                </span>
-              </span>
+              </p>
+            </div>
+          </div>
+        </section>
+        <section>
+          <div className="artist-discover-rail__header">
+            <h2 className="artist-section-title--discover">
+              <SkeletonText width="4em" />
+            </h2>
+          </div>
+          <SkeletonSongRows count={4} />
+        </section>
+      </div>
+      <section className="artist-discover-rail">
+        <div className="artist-discover-rail__header">
+          <h2 className="artist-section-title--discover">
+            <SkeletonText width="5em" />
+          </h2>
+        </div>
+        <div className="artist-discover-rail__content">
+          {range(8).map((index) => (
+            <div key={index} className="artist-discover-shelf-card">
+              <SkeletonReleaseCard index={index} search />
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function SkeletonSongRows({ count }: { count: number }) {
+  return (
+    <div className="search-songs">
+      {range(count).map((index) => (
+        <div key={index} className="search-song">
+          <SkeletonShape className="search-song__cover" />
+          <span className="search-song__copy">
+            <span className="search-song__title">
+              <SkeletonText width={textWidth(index)} />
+            </span>
+            <span className="search-song__artist">
+              <SkeletonText width={textWidth(index, 2)} />
             </span>
           </span>
+          <span className="search-song__album">
+            <SkeletonText width={textWidth(index, 1)} />
+          </span>
+          <span className="search-song__time">
+            <SkeletonText width="2.5em" />
+          </span>
+          <span />
         </div>
-      </article>
-      <ul className="search-mixed-results">
-        {range(8).map((index) => (
-          <li key={index}>
-            <div className="search-mixed-results__row">
-              <div className="search-mixed-results__main">
-                <SkeletonShape className="search-mixed-results__thumb" />
-                <span className="search-mixed-results__copy">
-                  <span className="search-mixed-results__title">
-                    <SkeletonText width={textWidth(index)} />
-                  </span>
-                  <span className="search-mixed-results__subtitle">
-                    <SkeletonText width={textWidth(index, 2)} />
-                  </span>
-                </span>
-              </div>
-              <span className="search-mixed-results__type-col">
-                <span className="search-mixed-results__type">
-                  <SkeletonText width="3em" />
-                </span>
-              </span>
-              <span className="search-mixed-results__actions" />
-            </div>
-          </li>
-        ))}
-      </ul>
+      ))}
     </div>
   );
 }

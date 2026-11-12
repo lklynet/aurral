@@ -20,17 +20,11 @@ import {
   searchCatalog,
   unifiedSearchQuery,
 } from "../utils/api/endpoints/search.ts";
-import SearchAlbumResults, { type SearchAlbum } from "../components/SearchAlbumResults";
+import SearchAlbumResults, { isSearchAlbum } from "../components/SearchAlbumResults";
 import SearchArtistResults from "../components/SearchArtistResults";
-import AddActionButton from "../components/AddActionButton";
-import ReleaseWaitBadge from "../components/ReleaseWaitBadge";
-import { isAwaitingRelease } from "../utils/albumStatus.ts";
-import SearchLibraryCheck from "../components/SearchLibraryCheck";
-import SearchMixedResultList, { type SearchItem } from "../components/SearchMixedResultList";
-import SearchTopResultCard from "../components/SearchTopArtistCard";
-import SearchPlaylistShelf from "../components/SearchPlaylistShelf";
 import { TrackPlaylistMenu } from "../components/TrackPlaylistMenu";
-import { buildMixedSearchPageItems } from "../utils/searchNavigation";
+import { buildSearchSections, type SearchItem } from "../utils/searchNavigation";
+import SearchUnifiedResults, { hasUnifiedResults } from "./SearchUnifiedResults";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { allReleaseTypes } from "./ArtistDetails/constants";
@@ -41,23 +35,19 @@ import type { ArtistFeedbackAction, ArtistFeedbackSource } from "../utils/artist
 import { queryKeys } from "../queryClient.ts";
 import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
 import { getArtistRecordId } from "../utils/artistTaste";
-import {
-  describeAlbumRequestResult,
-  getAlbumAddAction,
-  isAlbumCompleteInLibrary,
-} from "../utils/albumAddAction";
-import { useActiveDownloads } from "../hooks/useActiveDownloads";
+import { describeAlbumRequestResult } from "../utils/albumAddAction";
 import {
   PAGE_SIZE,
   DEFAULT_ALBUM_SORT,
-  ALBUM_PENDING_STATUSES,
   ALBUM_SORT_OPTIONS,
   ALBUM_RELEASE_TABS,
   UNIFIED_FILTER_OPTIONS,
   matchesAlbumReleaseTab,
-  isAlbumSingleOrEp,
   dedupeArtists,
   dedupeAlbums,
+  readUnifiedFilter,
+  searchTrackPayload,
+  type UnifiedFilter,
 } from "./searchPageUtils";
 import { Navigate, useSearchParams } from "react-router";
 import { RECOMMENDED_PATH, recommendedListPath } from "../navigation/recommendedPath.ts";
@@ -79,7 +69,6 @@ import StatePanel from "../components/StatePanel";
 
 type CatalogSearchPage = Awaited<ReturnType<typeof searchCatalog>>;
 type SearchResultItem = SearchItem & {
-  durationMs?: number | null;
   monitored?: boolean;
   trackFileCount?: number;
 };
@@ -87,8 +76,6 @@ type AlbumActionTarget = Pick<
   SearchResultItem,
   "id" | "title" | "artistMbid" | "artistName" | "inLibrary" | "monitored"
 > & { status?: string | null };
-const isAlbumListItem = (item: SearchResultItem): item is SearchResultItem & SearchAlbum =>
-  typeof item.id === "string" && typeof item.title === "string";
 type PlaylistTarget = { mode: "new"; name: string } | { mode: "existing"; playlistId: string };
 type AlbumLibraryState =
   | boolean
@@ -105,7 +92,6 @@ const combineLibraryLookup = (queries: { data?: ArtistsInLibrary }[]): ArtistsIn
   queries.reduce<ArtistsInLibrary>((merged, query) => ({ ...merged, ...query.data }), {});
 const LIBRARY_RESULT_LIMIT = 6;
 const UNIFIED_RESULT_LIMIT = 20;
-const CATALOG_UNAVAILABLE = "The metadata server did not answer. Try again in a moment.";
 const PLAYLISTS_UNAVAILABLE = "Deezer did not answer. Try again in a moment.";
 
 const getArtistName = (artist: SearchResultItem | null | undefined) =>
@@ -115,8 +101,7 @@ function SearchResults() {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
   const type = searchParams.get("type");
-  const rawFilter = searchParams.get("filter") || "all";
-  const activeFilter = rawFilter === "library" || rawFilter === "tracks" ? "all" : rawFilter;
+  const activeFilter = readUnifiedFilter(searchParams.get("filter"));
   const [albumLibraryLookup, setAlbumLibraryLookup] = useState<Record<string, AlbumLibraryState>>(
     {},
   );
@@ -145,7 +130,6 @@ function SearchResults() {
   const albumOptionsMenuRef = useRef<HTMLDivElement>(null);
   const { hasPermission } = useAuth();
   const { showSuccess, showError, showInfo } = useToast();
-  const { isAlbumDownloading } = useActiveDownloads();
 
   const trimmedQuery = useMemo(() => query.trim(), [query]);
   const normalizedType = useMemo(() => {
@@ -188,9 +172,9 @@ function SearchResults() {
   );
 
   const updateUnifiedFilter = useCallback(
-    (nextFilter: string) => {
+    (nextFilter: UnifiedFilter) => {
       const params = new URLSearchParams(searchParams);
-      if (!nextFilter || nextFilter === "all") {
+      if (nextFilter === "all") {
         params.delete("filter");
       } else {
         params.set("filter", nextFilter);
@@ -200,11 +184,14 @@ function SearchResults() {
     [searchParams, setSearchParams],
   );
 
-  const playlistTabPath = useMemo(() => {
-    const params = new URLSearchParams(searchParams);
-    params.set("filter", "playlists");
-    return `/search?${params}`;
-  }, [searchParams]);
+  const filterPath = useCallback(
+    (filter: UnifiedFilter) => {
+      const params = new URLSearchParams(searchParams);
+      params.set("filter", filter);
+      return `/search?${params}`;
+    },
+    [searchParams],
+  );
 
   useEffect(() => {
     if (!isAlbumSearch) return;
@@ -261,7 +248,6 @@ function SearchResults() {
     },
     staleTime: 30_000,
   });
-  const activeQuery = isUnifiedSearch ? unifiedQuery : catalogQuery;
   const searchUpdating = !isUnifiedSearch && catalogQuery.isPlaceholderData;
 
   const searchPages = catalogQuery.data?.pages || EMPTY_SEARCH_PAGES;
@@ -310,47 +296,40 @@ function SearchResults() {
     queries: libraryLookupBatches.map((ids) => libraryLookupBatchQuery(ids)),
     combine: combineLibraryLookup,
   });
-  const libraryLookup = useMemo<ArtistsInLibrary>(
-    () =>
-      rawUnifiedResults
-        ? Object.fromEntries(
-            rawUnifiedResults.artists.map((artist) => [artist.id, artist.inLibrary]),
-          )
-        : catalogLibraryLookup,
-    [catalogLibraryLookup, rawUnifiedResults],
-  );
+  const libraryLookup = catalogLibraryLookup;
   const libraryQuery = useQuery({
     ...librarySearchQuery(trimmedQuery, LIBRARY_RESULT_LIMIT),
     enabled: isUnifiedSearch,
   });
-  const libraryResults = isUnifiedSearch ? libraryQuery.data || null : null;
-  const libraryItems = useMemo(
-    () =>
-      libraryResults
-        ? [...libraryResults.artists, ...libraryResults.albums, ...libraryResults.tracks]
-        : [],
-    [libraryResults],
-  );
   const playlistsQuery = useQuery({
     ...playlistSearchQuery(trimmedQuery),
     enabled: isUnifiedSearch && (activeFilter === "all" || isPlaylistTab),
   });
-  const playlistItems = useMemo(
-    () => [...(libraryResults?.playlists ?? []), ...(playlistsQuery.data?.playlists ?? [])],
-    [libraryResults, playlistsQuery.data],
+  const sections = useMemo(
+    () =>
+      buildSearchSections<SearchResultItem>({
+        library: isUnifiedSearch ? libraryQuery.data : null,
+        catalog: catalogUnavailable ? null : unifiedResults,
+        playlists: playlistsQuery.data?.playlists,
+      }),
+    [catalogUnavailable, isUnifiedSearch, libraryQuery.data, playlistsQuery.data, unifiedResults],
   );
   const loading = isPlaylistTab
     ? libraryQuery.isLoading || playlistsQuery.isLoading
-    : activeQuery.isLoading;
+    : isUnifiedSearch
+      ? unifiedQuery.isLoading || libraryQuery.isLoading
+      : catalogQuery.isLoading;
   const loadingMore = catalogQuery.isFetchingNextPage;
   const { fetchNextPage } = catalogQuery;
+  const catalogFailed =
+    isUnifiedSearch && !isPlaylistTab && (unifiedQuery.isError || catalogUnavailable);
   const error = isPlaylistTab
-    ? playlistsQuery.isError && playlistItems.length === 0
+    ? playlistsQuery.isError && sections.playlists.length === 0
       ? PLAYLISTS_UNAVAILABLE
       : null
-    : getApiErrorText(activeQuery.error, "message") ||
-      activeQuery.error?.message ||
-      (catalogUnavailable ? CATALOG_UNAVAILABLE : null);
+    : isUnifiedSearch
+      ? null
+      : getApiErrorText(catalogQuery.error, "message") || catalogQuery.error?.message || null;
   const hasMore = !searchUpdating && catalogQuery.hasNextPage === true;
 
   const albumResultsForTab = useMemo(() => {
@@ -477,22 +456,8 @@ function SearchResults() {
   );
 
   const handleSearchTrackAdd = useCallback(
-    async (track: SearchResultItem, target: PlaylistTarget) => {
-      const payload = {
-        artistName: track.artistName || "",
-        trackName: track.title || "",
-        albumName: track.albumTitle || "",
-        artistMbid: track.artistMbid || "",
-        albumMbid: track.albumMbid || "",
-        trackMbid: track.trackMbid || "",
-        releaseYear: track.releaseYear ? String(track.releaseYear) : null,
-        durationMs:
-          track.durationMs != null && Number.isFinite(Number(track.durationMs))
-            ? Number(track.durationMs)
-            : null,
-        reason: null,
-        artistAliases: [],
-      };
+    async (track: SearchItem, target: PlaylistTarget) => {
+      const payload = searchTrackPayload(track);
       if (!payload.artistName || !payload.trackName) {
         showError("Track details are incomplete");
         return;
@@ -557,76 +522,29 @@ function SearchResults() {
     [submitFeedback],
   );
 
-  const isSearchResultInLibrary = useCallback(
-    (item: SearchResultItem | null | undefined) => {
-      if (!item) return false;
-      if (item.type === "album") {
-        return isAlbumCompleteInLibrary({ status: item.status });
-      }
-      if (item.inLibrary) return true;
-      if (item.type === "artist") {
-        const artistId = getArtistRecordId(item);
-        return artistId ? !!libraryLookup[artistId] : false;
-      }
-      return false;
-    },
-    [libraryLookup],
-  );
-
-  const renderSearchResultAction = useCallback(
-    (item: SearchResultItem | null | undefined) => {
-      if (!item || item.type === "playlist") return null;
-
-      if (item.type === "track") {
-        const savingKey = String(
-          item.id ?? item.trackMbid ?? `${item.artistName || ""}:${item.title || ""}`,
-        );
-        return (
-          <TrackPlaylistMenu
-            track={item}
-            triggerLabel="Add to playlist"
-            playlists={staticPlaylists}
-            loading={playlistModalLoading}
-            saving={playlistMenuSavingKey === savingKey}
-            error={playlistModalError}
-            defaultNewPlaylistName={`${item.artistName || "Artist"} Picks`}
-            menuVariant="search-suggestion"
-            onLoadPlaylists={loadStaticPlaylists}
-            onSelect={(target: PlaylistTarget) => handleSearchTrackAdd(item, target)}
-          />
-        );
-      }
-
-      if (isSearchResultInLibrary(item)) {
-        return <SearchLibraryCheck action />;
-      }
-
-      if (item.type === "album") {
-        if (isAwaitingRelease(item)) return <ReleaseWaitBadge releaseDate={item.releaseDate} />;
-        if (!canAddAlbum || !item.id) return null;
-        const albumId = String(item.id);
-        const pending = !!pendingAlbumIds[albumId] || isAlbumDownloading(albumId);
-        return (
-          <AddActionButton
-            {...getAlbumAddAction(item)}
-            onAdd={() => handleAlbumAction(item)}
-            isLoading={pending}
-            loadingLabel="Downloading"
-            disabled={pending || ALBUM_PENDING_STATUSES.has(item.status)}
-          />
-        );
-      }
-
-      return null;
+  const renderSongMenu = useCallback(
+    (song: SearchItem) => {
+      const savingKey = String(
+        song.id ?? song.trackMbid ?? `${song.artistName || ""}:${song.title || ""}`,
+      );
+      return (
+        <TrackPlaylistMenu
+          track={song}
+          triggerLabel="Add to playlist"
+          playlists={staticPlaylists}
+          loading={playlistModalLoading}
+          saving={playlistMenuSavingKey === savingKey}
+          error={playlistModalError}
+          defaultNewPlaylistName={`${song.artistName || "Artist"} Picks`}
+          menuVariant="search-suggestion"
+          onLoadPlaylists={loadStaticPlaylists}
+          onSelect={(target: PlaylistTarget) => handleSearchTrackAdd(song, target)}
+        />
+      );
     },
     [
-      canAddAlbum,
-      handleAlbumAction,
-      isAlbumDownloading,
       handleSearchTrackAdd,
-      isSearchResultInLibrary,
       loadStaticPlaylists,
-      pendingAlbumIds,
       playlistMenuSavingKey,
       playlistModalError,
       playlistModalLoading,
@@ -634,44 +552,9 @@ function SearchResults() {
     ],
   );
 
-  const searchListProps = useMemo(
-    () => ({
-      query: trimmedQuery,
-      renderAction: renderSearchResultAction,
-    }),
-    [renderSearchResultAction, trimmedQuery],
-  );
-
-  const unifiedView = useMemo(() => {
-    if (!unifiedResults) {
-      return {
-        artists: [],
-        albums: [],
-        singles: [],
-        topResult: null,
-        mixedItems: [],
-        isEmpty: true,
-      };
-    }
-    const releases = dedupeAlbums(unifiedResults.albums.filter(isAlbumListItem));
-    const artists = activeFilter === "artists" ? unifiedResults.artists : [];
-    const albums =
-      activeFilter === "albums" ? releases.filter((album) => !isAlbumSingleOrEp(album)) : [];
-    const singles = activeFilter === "singles" ? releases.filter(isAlbumSingleOrEp) : [];
-    const topResult = activeFilter === "all" ? unifiedResults.top : null;
-    const mixedItems = activeFilter === "all" ? buildMixedSearchPageItems(unifiedResults, 24) : [];
-    const isEmpty =
-      activeFilter === "all"
-        ? !topResult && mixedItems.length === 0
-        : artists.length === 0 && albums.length === 0 && singles.length === 0;
-    return { artists, albums, singles, topResult, mixedItems, isEmpty };
-  }, [activeFilter, unifiedResults]);
   const showContent = !loading && query;
-  const showLibraryResults = isUnifiedSearch && activeFilter === "all" && libraryItems.length > 0;
-  const showPlaylists =
-    isUnifiedSearch && (activeFilter === "all" || isPlaylistTab) && playlistItems.length > 0;
   const isEmpty = isUnifiedSearch
-    ? unifiedView.isEmpty && !showLibraryResults && !showPlaylists
+    ? !hasUnifiedResults(sections, activeFilter)
     : displayedResults.length === 0;
   const showLoadMore = hasMore && (isTagSearch || displayedResults.length >= PAGE_SIZE);
 
@@ -707,7 +590,7 @@ function SearchResults() {
 
   const pageSubtitle =
     isUnifiedSearch && trimmedQuery
-      ? "Artists, releases, songs, and playlists"
+      ? null
       : isTagSearch && trimmedQuery
         ? `Results for tag "${trimmedQuery.replace(/^#/, "")}"`
         : isAlbumSearch && trimmedQuery
@@ -856,6 +739,20 @@ function SearchResults() {
           </div>
         )}
 
+        {catalogFailed && !loading && (
+          <div className="search-page__notice" role="alert">
+            <AlertCircle aria-hidden="true" />
+            <span>Couldn’t load catalog results.</span>
+            <button
+              type="button"
+              className="search-page__notice-action"
+              onClick={() => void unifiedQuery.refetch()}
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
         {isAlbumSearch && trimmedQuery && (
           <>
             <div className="artist-heading-row">
@@ -942,19 +839,6 @@ function SearchResults() {
         )}
       </header>
 
-      {showLibraryResults && (
-        <section className="search-page__section" aria-labelledby="search-library-heading">
-          <h2 id="search-library-heading" className="search-page__section-title">
-            Your library
-          </h2>
-          <SearchMixedResultList items={libraryItems} {...searchListProps} />
-        </section>
-      )}
-
-      {showLibraryResults && (loading || !unifiedView.isEmpty || error) && (
-        <h2 className="search-page__section-title">Discover</h2>
-      )}
-
       {error && (
         <StatePanel
           role="alert"
@@ -969,9 +853,16 @@ function SearchResults() {
           <SkeletonSearchResults
             mode={
               isUnifiedSearch
-                ? ({ all: "all", artists: "round-artists", playlists: "artist-list" } as const)[
-                    activeFilter
-                  ] || "albums"
+                ? (
+                    {
+                      all: "all",
+                      tracks: "songs",
+                      albums: "albums",
+                      singles: "albums",
+                      artists: "round-artists",
+                      playlists: "albums",
+                    } as const
+                  )[activeFilter]
                 : isAlbumSearch
                   ? "albums"
                   : isTagSearch && tagViewMode === "list"
@@ -989,7 +880,7 @@ function SearchResults() {
           aria-busy={searchUpdating || undefined}
         >
           {isEmpty ? (
-            catalogUnavailable && !isPlaylistTab ? null : (
+            catalogFailed ? null : (
               <StatePanel
                 icon={<Music className="artist-icon-lg" />}
                 title={emptyTitle}
@@ -1000,62 +891,22 @@ function SearchResults() {
             <>
               {isUnifiedSearch ? (
                 <div className="search-page__unified">
-                  {activeFilter === "all" && (
-                    <>
-                      {unifiedView.topResult && (
-                        <SearchTopResultCard
-                          item={unifiedView.topResult}
-                          libraryLookup={libraryLookup}
-                          query={trimmedQuery}
-                        />
-                      )}
-                      {unifiedView.mixedItems.length > 0 && (
-                        <SearchMixedResultList
-                          items={unifiedView.mixedItems}
-                          {...searchListProps}
-                        />
-                      )}
-                      <SearchPlaylistShelf playlists={playlistItems} showAllTo={playlistTabPath} />
-                    </>
-                  )}
-
-                  {isPlaylistTab && (
-                    <SearchMixedResultList items={playlistItems} {...searchListProps} />
-                  )}
-
-                  {activeFilter === "singles" && unifiedView.singles.length > 0 && (
-                    <SearchAlbumResults
-                      albums={unifiedView.singles}
-                      canAddAlbum={canAddAlbum}
-                      pendingAlbumIds={pendingAlbumIds}
-                      onAlbumAction={handleAlbumAction}
-                      viewMode="grid"
-                    />
-                  )}
-
-                  {activeFilter === "artists" && unifiedView.artists.length > 0 && (
-                    <SearchArtistResults
-                      artists={unifiedView.artists}
-                      libraryLookup={libraryLookup}
-                      onArtistFeedback={handleArtistFeedback}
-                      artistFeedbackLookup={artistFeedbackLookup}
-                      variant="round"
-                    />
-                  )}
-
-                  {activeFilter === "albums" && unifiedView.albums.length > 0 && (
-                    <SearchAlbumResults
-                      albums={unifiedView.albums}
-                      canAddAlbum={canAddAlbum}
-                      pendingAlbumIds={pendingAlbumIds}
-                      onAlbumAction={handleAlbumAction}
-                      viewMode="grid"
-                    />
-                  )}
+                  <SearchUnifiedResults
+                    sections={sections}
+                    filter={activeFilter}
+                    query={trimmedQuery}
+                    filterPath={filterPath}
+                    canAddAlbum={canAddAlbum}
+                    pendingAlbumIds={pendingAlbumIds}
+                    onAlbumAction={handleAlbumAction}
+                    renderSongMenu={renderSongMenu}
+                    onArtistFeedback={handleArtistFeedback}
+                    artistFeedbackLookup={artistFeedbackLookup}
+                  />
                 </div>
               ) : isAlbumSearch ? (
                 <SearchAlbumResults
-                  albums={displayedResults.filter(isAlbumListItem)}
+                  albums={displayedResults.filter(isSearchAlbum)}
                   canAddAlbum={canAddAlbum}
                   pendingAlbumIds={pendingAlbumIds}
                   onAlbumAction={handleAlbumAction}
