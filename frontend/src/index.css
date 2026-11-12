@@ -5007,6 +5007,8 @@ textarea:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+  max-height: 2rem;
+  overflow: hidden;
 }
 
 .discover-tag {
@@ -5021,6 +5023,11 @@ textarea:disabled {
   font-weight: 500;
   white-space: nowrap;
   transition: background-color var(--aurral-duration-base) var(--aurral-ease-standard);
+}
+
+.discover-tag:focus-visible {
+  outline: 2px solid var(--aurral-ring);
+  outline-offset: -2px;
 }
 
 @media (hover: hover) and (pointer: fine) {
