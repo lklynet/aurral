@@ -29,6 +29,10 @@ test("artwork from fanart, Deezer, and Aurral covers offers every size its host 
     imageSizes("/api/discover/playlists/mix/m1/cover?v=ab")[0]?.url,
     "/api/discover/playlists/mix/m1/cover?v=ab&w=128",
   );
+  assert.equal(
+    imageSizes("/api/playlists/flow-templates/release-radar/cover?v=b4")[0]?.url,
+    "/api/playlists/flow-templates/release-radar/cover?v=b4&w=128",
+  );
   assert.deepEqual(imageSizes("/api/playlists/artwork/p1/preview?title=x"), []);
   assert.deepEqual(
     imageSizes("https://cdn-images.dzcdn.net/images/artist//1000x1000-000000-80-0-0.jpg"),
