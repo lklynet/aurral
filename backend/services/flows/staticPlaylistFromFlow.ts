@@ -47,7 +47,7 @@ export async function saveFlowAsStaticPlaylist(
 ) {
   const saved = new Map<string, { job: DownloadJob }>();
   for (const job of downloadTracker.getByPlaylistType(flow.id)) {
-    if (job.status !== "done" || typeof job.finalPath !== "string") continue;
+    if (job.status !== "done") continue;
     const identity = buildPlaylistTrackIdentity(job);
     if (saved.has(identity)) continue;
     if (await isFile(job.finalPath)) saved.set(identity, { job });

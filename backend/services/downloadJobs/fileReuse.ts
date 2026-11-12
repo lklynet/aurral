@@ -272,9 +272,7 @@ async function findAurralSource(
 }
 
 export function jobDownloadedItsFile(job: DownloadJob | null | undefined) {
-  return (
-    job?.status === "done" && Boolean(job.finalPath) && !job.externalPath && !job.reusedLibraryFile
-  );
+  return job?.status === "done" && !job.externalPath && !job.reusedLibraryFile;
 }
 
 function noPlaylistDownloadedFile(filePath: string, jobId: string) {
@@ -288,7 +286,7 @@ function retargetJobsToPath(oldPath: string, newPath: string, albumName: string 
   const resolvedNew = path.resolve(newPath);
   if (resolvedOld === resolvedNew) return;
   for (const job of downloadTracker.getAll()) {
-    if (job?.status !== "done" || typeof job.finalPath !== "string") continue;
+    if (job?.status !== "done") continue;
     if (path.resolve(job.finalPath) !== resolvedOld) continue;
     downloadTracker.setDone(
       job.id,
@@ -350,7 +348,7 @@ export async function relocateSharedFilesBeforePlaylistRemoval(
   const removedDir = path.resolve(downloadRoot, AURRAL_FLOWS_DIR, safePlaylistType);
   const byPath = new Map<string, DownloadJob[]>();
   for (const job of downloadTracker.getAll()) {
-    if (job?.status !== "done" || typeof job.finalPath !== "string") continue;
+    if (job?.status !== "done") continue;
     if (String(job.playlistType || "") === safePlaylistType) continue;
     const finalPath = path.resolve(job.finalPath);
     if (!isPathInsideRoot(finalPath, removedDir)) continue;
@@ -591,7 +589,7 @@ export async function resolveRepairTrackSource(
 }
 
 export async function restoreCompletedTrack(job: DownloadJob, options: RestoreOptions = {}) {
-  if (!job || job.status !== "done" || !job.finalPath) {
+  if (job?.status !== "done") {
     return { action: "skipped", reason: "Track is not completed" };
   }
 
@@ -679,7 +677,7 @@ export async function followChangedLibraryFiles(changedPaths: string[]) {
   const playlistTypes = new Set<string>();
   const followed = new Map<string, string[]>();
   for (const job of downloadTracker.getAll()) {
-    if (job.status !== "done" || !job.finalPath || job.upgradeForJobId) continue;
+    if (job.status !== "done" || job.upgradeForJobId) continue;
     if (!changed.has(path.resolve(job.finalPath))) continue;
     if (!indexedFile(path.resolve(job.finalPath))) {
       const result = await restoreCompletedTrack(job, {
@@ -719,7 +717,7 @@ export function requeueJobsUsingRemovedFolders({
   const root = path.resolve(downloadRoot);
   let requeued = 0;
   for (const job of downloadTracker.getAll()) {
-    if (job?.status !== "done" || typeof job.finalPath !== "string") continue;
+    if (job?.status !== "done") continue;
     const finalPath = path.resolve(job.finalPath);
     if (isPathInsideRoot(finalPath, root)) continue;
     if (keptFolders.some((folder) => isWithinFolder(folder, finalPath))) continue;
@@ -746,7 +744,7 @@ export async function repairJobsUnderRemovedPlaylistDir(
   const changedPlaylistTypes = new Set<string>();
 
   for (const job of downloadTracker.getAll()) {
-    if (job?.status !== "done" || typeof job?.finalPath !== "string") continue;
+    if (job?.status !== "done") continue;
     const finalPath = path.resolve(job.finalPath);
     if (!isPathInsideRoot(finalPath, removedDir)) continue;
     if (await fileExists(finalPath)) continue;
@@ -801,7 +799,7 @@ export async function repairOrphanedPlaylistTrackPaths(options: RestoreOptions =
 
   const removedIds = new Set<string>();
   for (const job of downloadTracker.getAll()) {
-    if (job?.status !== "done" || typeof job?.finalPath !== "string") continue;
+    if (job?.status !== "done") continue;
     const finalPath = path.resolve(job.finalPath);
     if (await fileExists(finalPath)) continue;
     const ownerId = parsePlaylistIdFromFinalPath(finalPath);
@@ -831,9 +829,7 @@ export async function repairReusableTrackLinks(
   options: RestoreOptions & { batchSize?: number; cursor?: number } = {},
 ) {
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
-  const jobs = downloadTracker
-    .getAll()
-    .filter((job) => job?.status === "done" && typeof job?.finalPath === "string");
+  const jobs = downloadTracker.getAll().filter((job) => job?.status === "done");
   const batchSize = Math.max(1, Math.floor(Number(options.batchSize) || REUSE_REPAIR_BATCH_SIZE));
   const cursor = Math.max(0, Math.floor(Number(options.cursor) || 0));
   const sortedJobs = [...jobs].sort((left, right) =>

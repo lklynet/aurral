@@ -36,7 +36,7 @@ export default new Hono<AppEnv>()
         .catch(() => null);
       return link ? c.redirect(link, 302) : c.json({ error: "No preview for this track" }, 404);
     }
-    if (job.status !== "done" || !job.finalPath) {
+    if (job.status !== "done") {
       return c.json({ error: "Track is not ready to stream" }, 400);
     }
     const sent = await sendViaNode(c, sendAudioFile, job.finalPath);

@@ -2,7 +2,10 @@ import { Hono } from "hono";
 import { staticPlaylistJobs } from "../../../services/playlists/playlistJobs.ts";
 import * as v from "valibot";
 import path from "path";
-import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.ts";
+import {
+  downloadTracker,
+  jobStatusSchema,
+} from "../../../services/downloadJobs/downloadTracker.ts";
 import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.ts";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
 import { orderJobsByPlaylistTracks } from "../../../services/playlists/playlistTracks.ts";
@@ -274,7 +277,11 @@ export default new Hono<AppEnv>()
       }
       const jobs = filterJobsForUser(
         c.var.user,
-        status ? downloadTracker.getByStatus(status) : downloadTracker.getAll(),
+        !status
+          ? downloadTracker.getAll()
+          : v.is(jobStatusSchema, status)
+            ? downloadTracker.getByStatus(status)
+            : [],
       );
       const profile = getQualityProfile();
       const readOnlyRoots = readOnlyFolderPaths();

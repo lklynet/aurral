@@ -15,7 +15,7 @@ export async function collectPlaylistFileTracks(entityId: string) {
   const playlist = flowPlaylistConfig.getStaticPlaylist(entityId) ?? { id: entityId };
   const tracks = [];
   for (const { job } of playlistJobEntries(playlist)) {
-    if (job.status !== "done" || typeof job.finalPath !== "string") continue;
+    if (job.status !== "done") continue;
     if (!(await isFile(job.finalPath))) continue;
     tracks.push({
       path: path.resolve(job.finalPath),

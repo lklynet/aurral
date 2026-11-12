@@ -608,7 +608,7 @@ test("the web activity cache notices job changes committed by another process", 
     import { createRequire } from 'node:module';
     const Database = createRequire(import.meta.url)('better-sqlite3');
     const db = new Database(process.argv[1]);
-    db.prepare("UPDATE download_jobs SET status = 'done', completed_at = ? WHERE id = ?").run(Date.now(), process.argv[2]);
+    db.prepare("UPDATE download_jobs SET status = 'done', final_path = '/library/Song.flac', completed_at = ? WHERE id = ?").run(Date.now(), process.argv[2]);
     db.close();
   `;
   const previousMode = process.env.NODE_ENV;

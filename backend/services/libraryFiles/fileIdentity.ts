@@ -23,10 +23,7 @@ import {
 function jobMetadata(filePath: string) {
   const job = downloadTracker
     .getAll()
-    .find(
-      (entry) =>
-        entry.status === "done" && entry.finalPath && path.resolve(entry.finalPath) === filePath,
-    );
+    .find((entry) => entry.status === "done" && path.resolve(entry.finalPath) === filePath);
   return job
     ? {
         artistName: job.artistName,

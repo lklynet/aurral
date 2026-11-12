@@ -53,8 +53,21 @@ export type DownloadTrackInput = DownloadTrackFields & {
 
 type RequestKind = "album" | "track";
 type TrackerRelease = ReleaseManifest & { groupReleaseMbids?: string[] };
-type TrackerStats = ReturnType<DownloadTracker["_emptyStats"]>;
-type JobStatus = Exclude<keyof TrackerStats, "total">;
+const JOB_STATUSES = [
+  "pending",
+  "downloading",
+  "blocked",
+  "done",
+  "failed",
+  "cancel_requested",
+  "cancelled",
+  "saved",
+] as const;
+type JobStatus = (typeof JOB_STATUSES)[number];
+type TrackerStats = Record<JobStatus | "total", number>;
+export type DownloadJobState =
+  | { status: "done"; finalPath: string }
+  | { status: Exclude<JobStatus, "done">; finalPath: string | null };
 type DeniedRemoteSource = [source: string, key: string];
 type JobRedirect = { fromJobId: string; toJobId: string; dispatched: boolean };
 type PendingOptions = { asRetryCycle?: boolean };
@@ -205,8 +218,17 @@ const heldForReviewSchema = v.custom<HeldForReview>((input) => v.is(storedHeldFi
 const parseHeldForReview = (value: string | null) =>
   dbHelpers.readJSON(heldForReviewSchema, value, "held download");
 
+export const jobStatusSchema = v.picklist(JOB_STATUSES);
+
+function storedJobState(row: DownloadJobsRow): DownloadJobState {
+  const status = v.is(jobStatusSchema, row.status) ? row.status : "failed";
+  if (status !== "done") return { status, finalPath: row.final_path };
+  if (row.final_path) return { status, finalPath: row.final_path };
+  return { status: "failed", finalPath: null };
+}
+
 function rowToJob(row: DownloadJobsRow) {
-  return {
+  const job = {
     id: row.id!,
     artistName: row.artist_name,
     trackName: row.track_name,
@@ -235,7 +257,7 @@ function rowToJob(row: DownloadJobsRow) {
     quickSearchedSources: parseStringListJson(row.quick_searched_sources),
     heldForReview: parseHeldForReview(row.held_for_review),
     albumGrabFailures: Number(row.album_grab_failures) || 0,
-    status: row.status as JobStatus,
+    status: row.status,
     startedAt: row.started_at,
     completedAt: row.completed_at,
     stagingPath: row.staging_path,
@@ -268,6 +290,7 @@ function rowToJob(row: DownloadJobsRow) {
     manualReplacementSearch: row.manual_replacement_search === 1,
     retryCycle: false,
   };
+  return Object.assign(job, storedJobState(row));
 }
 
 type RowJob = ReturnType<typeof rowToJob>;
@@ -296,7 +319,9 @@ type RowOnlyJobKey =
   | "qualityUpgradeCheckedAt"
   | "upgradeForJobId"
   | "manualReplacementSearch";
-export type DownloadJob = Omit<RowJob, RowOnlyJobKey> & Partial<Pick<RowJob, RowOnlyJobKey>>;
+export type DownloadJob = Omit<RowJob, RowOnlyJobKey | keyof DownloadJobState> &
+  Partial<Pick<RowJob, RowOnlyJobKey>> &
+  DownloadJobState;
 export type JobFields<Key extends keyof DownloadJob> = { [K in Key]?: DownloadJob[K] | null };
 
 const insertStmt = db.prepare(`
@@ -481,7 +506,7 @@ function orderUpgradeAttempt(attemptId: string | null | undefined) {
 }
 
 // A job that ended and is asked for again searches its quick sources again.
-const ENDED_STATUSES = new Set(["done", "failed", "cancelled", "blocked"]);
+const ENDED_STATUSES = new Set<JobStatus>(["done", "failed", "cancelled", "blocked"]);
 const triesRelease = (job: DownloadJob) => !job.manualReplacementSearch && !job.albumGrabAttempted;
 const searchesByRelease = (job: DownloadJob) => Boolean(job?.albumMbid) && triesRelease(job);
 
@@ -1095,7 +1120,7 @@ export class DownloadTracker {
   ) {
     const sourceJob = this.jobs.get(jobId);
     const normalizedSource = String(source || "").trim();
-    if (!sourceJob || sourceJob.status !== "done" || !sourceJob.finalPath) return false;
+    if (sourceJob?.status !== "done") return false;
     if (
       !candidate?.raw ||
       !["slskd", "usenet", "tidarr", "deemix", "ytdlp"].includes(normalizedSource)
@@ -1125,7 +1150,7 @@ export class DownloadTracker {
     }
   }
 
-  _emptyStats() {
+  _emptyStats(): TrackerStats {
     return {
       total: 0,
       pending: 0,
@@ -1462,7 +1487,6 @@ export class DownloadTracker {
       (job) =>
         job.status === "done" &&
         !job.upgradeForJobId &&
-        job.finalPath &&
         path.resolve(job.finalPath) === resolvedPath,
     );
     if (existing) return existing;
@@ -1499,7 +1523,7 @@ export class DownloadTracker {
   }
 
   addUpgradeJob(sourceJob: DownloadJob | null | undefined) {
-    if (!sourceJob?.id || sourceJob.status !== "done" || !sourceJob.finalPath) return null;
+    if (!sourceJob?.id || sourceJob.status !== "done") return null;
     if (this.findActiveUpgradeJob(sourceJob)) return null;
     const playlistId = sourceJob.playlistId || sourceJob.playlistType;
     const id = this.addJob(sourceJob, "quality-upgrade", {
@@ -1518,7 +1542,7 @@ export class DownloadTracker {
   }
 
   addReplacementSearchJob(sourceJob: DownloadJob | null | undefined) {
-    if (!sourceJob?.id || sourceJob.status !== "done" || !sourceJob.finalPath) return null;
+    if (!sourceJob?.id || sourceJob.status !== "done") return null;
     if (this.findActiveUpgradeJob(sourceJob)) return null;
     const playlistId = sourceJob.playlistId || sourceJob.playlistType;
     const id = this.addJob(sourceJob, "quality-upgrade", {
@@ -2002,7 +2026,7 @@ export class DownloadTracker {
     );
   }
 
-  getByStatus(status: string) {
+  getByStatus(status: JobStatus) {
     const jobs = [];
     for (const job of this.jobs.values()) {
       if (job.status === status) {
@@ -2091,20 +2115,14 @@ export class DownloadTracker {
   getDoneByTrackName(trackName: string | null | undefined) {
     const key = trackNameKey(trackName);
     return [...this.jobs.values()].filter(
-      (job) =>
-        job.status === "done" &&
-        typeof job.finalPath === "string" &&
-        trackNameKey(job.trackName) === key,
+      (job) => job.status === "done" && trackNameKey(job.trackName) === key,
     );
   }
 
   getDoneByFinalPath(finalPath: string) {
     const resolved = path.resolve(finalPath);
     return [...this.jobs.values()].filter(
-      (job) =>
-        job.status === "done" &&
-        typeof job.finalPath === "string" &&
-        path.resolve(job.finalPath) === resolved,
+      (job) => job.status === "done" && path.resolve(job.finalPath) === resolved,
     );
   }
 
@@ -2113,7 +2131,7 @@ export class DownloadTracker {
       Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.floor(Number(limit)) : 500;
     const jobs = [];
     for (const job of this.jobs.values()) {
-      if (job?.status !== "done" || typeof job?.finalPath !== "string") {
+      if (job?.status !== "done") {
         continue;
       }
       jobs.push(job);

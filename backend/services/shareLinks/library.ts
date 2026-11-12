@@ -59,8 +59,7 @@ const compareText = (left: string | null | undefined, right: string | null | und
 function playlistFilePaths(playlist: StaticPlaylist) {
   const paths: (string | null)[] = playlist.tracks.map(() => null);
   for (const { job, trackIndex } of playlistJobEntries(playlist)) {
-    if (trackIndex >= 0 && job.status === "done" && job.finalPath)
-      paths[trackIndex] = job.finalPath;
+    if (trackIndex >= 0 && job.status === "done") paths[trackIndex] = job.finalPath;
   }
   return paths;
 }

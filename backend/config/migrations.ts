@@ -73,6 +73,17 @@ const indexPlaysByArtist: Migration = (db) =>
       ON play_events(user_id, artist COLLATE NOCASE);
   `);
 
+// A finished download always has its file, and every status is one Aurral reads.
+const failUnreadableDownloadJobs: Migration = (db) =>
+  db.exec(`
+    UPDATE download_jobs SET status = 'failed'
+    WHERE (status = 'done' AND coalesce(final_path, '') = '')
+      OR status NOT IN (
+        'pending', 'downloading', 'blocked', 'done', 'failed', 'cancel_requested', 'cancelled',
+        'saved'
+      );
+  `);
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -80,6 +91,7 @@ export const migrations: Migration[] = [
   storeListenbrainzReleaseGroups,
   storeListenbrainzArtistTags,
   indexPlaysByArtist,
+  failUnreadableDownloadJobs,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

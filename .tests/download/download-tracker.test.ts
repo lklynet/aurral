@@ -1227,6 +1227,26 @@ test("drops orphaned upgrade jobs on restart and updates every shared file refer
   assert.equal(reloaded.getJob(secondId)?.qualityTier, "flac-standard");
 });
 
+test("a stored job reads as failed when it is done without a file or has an unknown status", () => {
+  const tracker = new DownloadTracker();
+  const [doneId, pathlessId, unknownId] = ["Kept", "Pathless", "Unknown"].map((trackName) =>
+    createTrackedJob(tracker, { artistName: "Artist", trackName }, "static-one"),
+  );
+  assert.ok(doneId && pathlessId && unknownId);
+  tracker.setDone(doneId, "/library/Kept.mp3");
+  const setStored = db.prepare<[string, string | null, string]>(
+    "UPDATE download_jobs SET status = ?, final_path = ? WHERE id = ?",
+  );
+  setStored.run("done", null, pathlessId);
+  setStored.run("finished", null, unknownId);
+
+  const reloaded = new DownloadTracker();
+  assert.equal(reloaded.getJob(doneId)?.status, "done");
+  assert.equal(reloaded.getJob(pathlessId)?.status, "failed");
+  assert.equal(reloaded.getJob(unknownId)?.status, "failed");
+  assert.equal(reloaded.getStats().failed, 2);
+});
+
 test("finalizes an upgrade when optional quality metadata is absent", async () => {
   const tracker = trackerModule.downloadTracker;
   const library = path.join(isolatedState.baseDir, "weekly-flow", "aurral-weekly-flow");
