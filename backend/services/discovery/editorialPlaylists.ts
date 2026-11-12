@@ -92,10 +92,12 @@ export async function resolveEditorialTrackLinks({
   artistName,
   albumName,
   deezerAlbumId,
+  trackName,
 }: {
   artistName: unknown;
   albumName: unknown;
   deezerAlbumId: unknown;
+  trackName?: string;
 }) {
   const artist = String(artistName || "").trim();
   if (!artist) {
@@ -106,6 +108,7 @@ export async function resolveEditorialTrackLinks({
     artistName: artist,
     albumName,
     deezerAlbumId: /^\d+$/.test(albumId) ? albumId : null,
+    trackName,
   });
 }
 

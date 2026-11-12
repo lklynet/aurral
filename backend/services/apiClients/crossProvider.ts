@@ -1,6 +1,7 @@
 import { dbOps } from "../../db/helpers/index.ts";
 import { resolveAlbumByArtistAndTitle } from "../providers/brainzmashProvider.ts";
 import { guessArtistMbid } from "../artistMatch.ts";
+import { musicbrainzFindTrackReleaseGroup } from "./musicbrainz.ts";
 
 function normalizeArtistAlbumKey(
   artistName: string | null | undefined,
@@ -50,18 +51,29 @@ interface ArtistAlbumLookup {
   artistName?: string | null;
   albumName?: unknown;
   deezerAlbumId?: string | number | null;
+  trackName?: string | null;
 }
 
 export async function resolveArtistAndAlbumMbids({
   artistName,
   albumName,
   deezerAlbumId,
+  trackName,
 }: ArtistAlbumLookup) {
   const artist = String(artistName || "").trim();
   const album = String(albumName || "").trim();
+  const track = String(trackName || "").trim();
   const [artistMbid, albumMbid] = await Promise.all([
     guessArtistMbid(artist, { album }),
     album ? resolveDeezerAlbumToMbid(artist, album, deezerAlbumId) : null,
   ]);
-  return { artistMbid: artistMbid || null, albumMbid: albumMbid || null };
+  const trackAlbumMbid =
+    !albumMbid && artistMbid && track
+      ? await musicbrainzFindTrackReleaseGroup({
+          artistMbid,
+          trackName: track,
+          albumName: album,
+        }).catch(() => null)
+      : null;
+  return { artistMbid: artistMbid || null, albumMbid: albumMbid || trackAlbumMbid || null };
 }

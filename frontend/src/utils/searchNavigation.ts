@@ -231,6 +231,7 @@ export function getSearchResultLink(item: SearchItem | null | undefined, { query
             artistName: item.artistName,
             albumName: item.albumTitle,
             deezerAlbumId: item.deezerAlbumId,
+            trackName: item.title,
           })
         : null;
     if (resolved) return { to: resolved };

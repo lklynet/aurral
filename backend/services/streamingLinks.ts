@@ -494,6 +494,7 @@ export async function resolveStreamingLink(value: unknown) {
     artistName,
     albumName: kind === "artist" ? "" : albumTitle,
     deezerAlbumId,
+    trackName: kind === "track" ? trackTitle : null,
   });
   return {
     kind,

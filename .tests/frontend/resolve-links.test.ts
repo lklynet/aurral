@@ -41,6 +41,7 @@ test("an album link opens the release it resolves to, keeping names intact", asy
     artistName: "AC/DC & Friends",
     albumName: "Back in Black?",
     deezerAlbumId: 42,
+    trackName: "Hells Bells",
   });
 
   const target = await open(path);
@@ -54,6 +55,7 @@ test("an album link opens the release it resolves to, keeping names intact", asy
   assert.equal(sent.searchParams.get("artist"), "AC/DC & Friends");
   assert.equal(sent.searchParams.get("album"), "Back in Black?");
   assert.equal(sent.searchParams.get("albumId"), "42");
+  assert.equal(sent.searchParams.get("track"), "Hells Bells");
 });
 
 test("an album that isn't found opens its artist, and an unknown artist explains itself", async (t) => {
