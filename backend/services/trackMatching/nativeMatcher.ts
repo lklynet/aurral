@@ -180,7 +180,7 @@ function coreMatchTitle(title: string | null | undefined) {
         "",
       )
       .replace(
-        /\s+[-–—]\s+(?:(?:radio|extended|club|dance|single|album)\s+)?(?:edit|mix|live|remix|acoustic|instrumental|demo|karaoke|remaster(?:ed)?)\b.*$/iu,
+        /\s+[-–—]\s+(?:(?!\s[-–—]\s).)*?\b(?:edit|mix|live|remix|acoustic|instrumental|demo|karaoke|remaster(?:ed)?)\b.*$/iu,
         "",
       )
       .replace(/\s+[-–—]\s+(?:mono|stereo)(?:\s+(?:version|mix))?\s*$/iu, ""),

@@ -68,6 +68,9 @@ test("script-safe identity preserves canonical equivalents and allowed title suf
     ["Hoppípolla", "Hoppipolla"],
     ["時", "時 - Remastered 2011"],
     ["がみ - Radio Edit", "がみ (Radio Edit)"],
+    ["Razorback - Original Mix", "Razorback"],
+    ["Razorback - Original Mix", "Razorback (Original Mix)"],
+    ["Commies - Avalon & Laughing Buddha Remix", "Commies (Avalon & Laughing Buddha Remix)"],
     ["कि", "कि"],
   ] satisfies [unknown, unknown][]) {
     const wanted = { title: expected, artists: ["X"], durationMs: 200000 };
