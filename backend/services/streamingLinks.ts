@@ -1,7 +1,7 @@
 import { decode } from "html-entities";
 import * as v from "valibot";
 import { isOwnKey } from "../../lib/ownKey.ts";
-import { deezerErrorSchema } from "./apiClients/deezer.ts";
+import { DEEZER_HEADERS, deezerErrorSchema } from "./apiClients/deezer.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import { resolveArtistAndAlbumMbids } from "./apiClients/index.ts";
 import { getAlbumTracksByAlbumMbid } from "./providers/brainzmashProvider.ts";
@@ -264,8 +264,12 @@ async function fetchUpstream(
   }
 }
 
-async function fetchJson(source: Source, url: string | URL): Promise<unknown> {
-  const text = await fetchUpstream(source, url);
+async function fetchJson(
+  source: Source,
+  url: string | URL,
+  headers?: Record<string, string>,
+): Promise<unknown> {
+  const text = await fetchUpstream(source, url, { headers });
   try {
     return JSON.parse(text);
   } catch {
@@ -323,7 +327,11 @@ function readNextData(html: string) {
 }
 
 async function lookupDeezer({ kind, id }: StreamingLink) {
-  const response = await fetchJson("deezer", `https://api.deezer.com/${kind}/${id}`);
+  const response = await fetchJson(
+    "deezer",
+    `https://api.deezer.com/${kind}/${id}`,
+    DEEZER_HEADERS,
+  );
   const failure = v.safeParse(deezerErrorSchema, response);
   if (failure.success) {
     const { code } = failure.output.error;

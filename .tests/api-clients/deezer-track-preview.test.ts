@@ -3,6 +3,7 @@ import { test, vi } from "vite-plus/test";
 
 import {
   getDeezerPreviewLink,
+  searchDeezerTracks,
   selectDeezerTrackPreview,
 } from "../../backend/services/apiClients/deezer.ts";
 
@@ -102,4 +103,15 @@ test("a delisted Deezer track previews a live copy of the same release", async (
   assert.equal(await getDeezerPreviewLink("102"), "live-503.mp3");
   assert.equal(await getDeezerPreviewLink("103"), null);
   assert.equal(await getDeezerPreviewLink("104"), "live-506.mp3");
+});
+
+test("Deezer searches ask for artist names untranslated", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+    const language = new Headers(init?.headers).get("accept-language");
+    const name = language === "en" ? "Tove Lo" : "توفي لو";
+    return Response.json({ data: [{ id: 1, title: "Blood In Your Eyes", artist: { name } }] });
+  });
+
+  const [track] = await searchDeezerTracks("tove lo blood in your eyes");
+  assert.equal(track?.artist?.name, "Tove Lo");
 });
