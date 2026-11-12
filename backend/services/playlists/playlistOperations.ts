@@ -554,7 +554,7 @@ function matchCurrentTracks(
       .filter((track) => downloadTracker.getJob(track.canonicalJobId)?.playlistType === "library")
       .map((track, index) => [index, track] as const),
   );
-  const assigned = new Map<number, string>();
+  const assigned = new Map<number, StaticPlaylist["tracks"][number]>();
   const referencedJob = (track: PlaylistTrackInput) => {
     const job = downloadTracker.getJob(String(track.canonicalJobId || ""));
     return job && tracksShareMembership(job, track) ? job.id : "";
@@ -569,7 +569,7 @@ function matchCurrentTracks(
       if (assigned.has(index)) return;
       const match = byKey.get(key(track))?.find((candidate) => unused.has(candidate));
       if (match === undefined) return;
-      assigned.set(index, unused.get(match)!.canonicalJobId!);
+      assigned.set(index, unused.get(match)!);
       unused.delete(match);
     });
   }
@@ -625,11 +625,21 @@ async function updateStaticPlaylistLocked({
     );
     createdJobIds = linked.createdJobIds;
     const linkedTracks = [...linked.tracks];
-    const nextTracks = normalizedTracks.map((track, index) =>
-      assigned.has(index)
-        ? { ...track, canonicalJobId: assigned.get(index) }
-        : linkedTracks.shift()!,
-    );
+    const nextTracks = normalizedTracks.map((track, index) => {
+      const current = assigned.get(index);
+      if (!current) return linkedTracks.shift()!;
+      const sameTrack = buildImportTrackIdentity(track) === buildImportTrackIdentity(current);
+      return {
+        ...track,
+        ...(sameTrack && {
+          artistMbid: track.artistMbid || current.artistMbid,
+          albumMbid: track.albumMbid || current.albumMbid,
+          trackMbid: track.trackMbid || current.trackMbid,
+          releaseYear: track.releaseYear || current.releaseYear,
+        }),
+        canonicalJobId: current.canonicalJobId,
+      };
+    });
     const keptJobIds = new Set(nextTracks.map((track) => track.canonicalJobId));
     return {
       playlist: flowPlaylistConfig.updateStaticPlaylist(safePlaylistId, {

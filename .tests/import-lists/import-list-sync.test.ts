@@ -352,3 +352,57 @@ test("a synced Aurral share follows the sender's latest snapshot until they stop
     ["New Song"],
   );
 });
+
+test("a sync keeps the IDs Aurral already found for tracks still in the playlist", async () => {
+  const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+  connectSpotify(7, "working-token");
+  let albumName = "New Album";
+  stubSpotify(({ url }) => {
+    const page = playlistPage(playlistItemsId(url));
+    return jsonResponse({
+      ...page,
+      items: page.items.map(({ item }) => ({ item: { ...item, album: { name: albumName } } })),
+    });
+  });
+  const playlist = createSyncedPlaylist("Weekly", 7, "spotify-playlist", "weekly");
+  await syncStaticPlaylistImport({ playlistId: playlist.id, user: { id: 7 }, force: true });
+  const [track] = flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks ?? [];
+  const found = {
+    artistMbid: "a1b2c3d4-0000-4000-8000-000000000001",
+    albumMbid: "a1b2c3d4-0000-4000-8000-000000000002",
+    trackMbid: "a1b2c3d4-0000-4000-8000-000000000003",
+    releaseYear: "2026",
+  };
+  flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
+    tracks: [{ ...requireFixture(track), ...found }],
+  });
+  info.mockClear();
+
+  await syncStaticPlaylistImport({ playlistId: playlist.id, user: { id: 7 }, force: true });
+
+  const [synced] = flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks ?? [];
+  assert.deepEqual(
+    {
+      artistMbid: synced?.artistMbid,
+      albumMbid: synced?.albumMbid,
+      trackMbid: synced?.trackMbid,
+      releaseYear: synced?.releaseYear,
+    },
+    found,
+  );
+  assert.equal(synced?.canonicalJobId, track?.canonicalJobId);
+  const completed = info.mock.calls.find((call) => call[1] === "Playlist import sync completed");
+  assert.partialDeepStrictEqual(completed?.[2], {
+    tracksAdded: 0,
+    tracksRemoved: 0,
+    acceptedNotStoredCount: 0,
+  });
+
+  albumName = "New Album (Live)";
+  spotifyClient.clearPlaylistTrackCache();
+  await syncStaticPlaylistImport({ playlistId: playlist.id, user: { id: 7 }, force: true });
+
+  const [live] = flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks ?? [];
+  assert.equal(live?.albumName, "New Album (Live)");
+  assert.deepEqual([live?.albumMbid, live?.trackMbid, live?.releaseYear], [null, null, null]);
+});
