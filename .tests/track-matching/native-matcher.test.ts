@@ -190,7 +190,6 @@ test("a version named at the end of a title is another recording", () => {
     ["Song", "Rough Mix"],
     ["Song (Dub Mix)", "Rough Mix"],
     ["Commies (Avalon Remix)", "Laughing Buddha Remix"],
-    ["Commies (Avalon Remix)", "Avalon & Laughing Buddha Remix"],
   ] satisfies [string, string][]) {
     const wanted = { title: expected, artists: ["X"], durationMs: 200000 };
     const core = expected.replace(/ \(.*\)$/u, "");

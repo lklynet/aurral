@@ -105,13 +105,17 @@ const MIX_CREDIT_FILLER = new Set([
 ]);
 
 // Who made a remix, so "Avalon Remix" and "Laughing Buddha Remix" are two
-// remixes, while "Avalon & Laughing Buddha" and "Laughing Buddha x Avalon"
-// are one.
+// remixes. A title read with its file name or video title can carry stray
+// words, so credits that share a word name the same remixer.
 function mixCredit(group: string) {
   const words = foldDiacritics(group)
     .split(" ")
     .filter((word) => word && !MIX_CREDIT_FILLER.has(word));
-  return words.length ? [...new Set(words)].sort().join(" ") : null;
+  return words.length ? words : null;
+}
+
+export function sameMixCredit(left: string[] | null, right: string[] | null) {
+  return !left || !right || left.some((word) => right.includes(word));
 }
 
 function normalizeVariantText(value: string | null | undefined) {
@@ -223,7 +227,7 @@ export function compareVariantProfiles(
   if (expected.mixVariant && actual.mixVariant) {
     if (
       expected.mixVariant === actual.mixVariant &&
-      (!expected.mixCredit || !actual.mixCredit || expected.mixCredit === actual.mixCredit)
+      sameMixCredit(expected.mixCredit, actual.mixCredit)
     ) {
       score += 10;
     } else {
