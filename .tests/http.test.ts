@@ -5,6 +5,7 @@ import type { AddressInfo } from "node:net";
 
 import { http, isTransientNetworkError } from "../lib/http.ts";
 import { useFakeClock } from "./helpers/fakeClock.ts";
+import { blockedHosts } from "./offline-guard.ts";
 import { requireFixture } from "./playlists/fixtures.ts";
 
 useFakeClock();
@@ -55,6 +56,17 @@ test("cross-origin redirects drop credential headers but same-origin redirects k
   assert.equal(crossOrigin["x-plex-token"], undefined);
   assert.equal(crossOrigin.authorization, undefined);
   assert.equal(crossOrigin.accept, "text/plain");
+});
+
+test.each([
+  "https://lidarrapi.brainzmash.cc/artist/5b11f4ce-a62d-471e-81fc-a69a8278c7da",
+  "https://musicbrainz.org/ws/2/artist/5b11f4ce-a62d-471e-81fc-a69a8278c7da",
+])("tests never open a connection to the shared %s", async (url) => {
+  const { host } = new URL(url);
+  await assert.rejects(http.get(url), (error: Error) =>
+    error.message.startsWith(`Tests never call ${host},`),
+  );
+  assert.equal(blockedHosts.get(host), undefined);
 });
 
 test("redirects stop with an error after five hops", async () => {

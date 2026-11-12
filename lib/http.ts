@@ -7,6 +7,7 @@ import {
 } from "undici";
 import { resolvePublicUrl } from "./publicUrl.ts";
 import { resolveAppVersion } from "./app-version.ts";
+import { DEFAULT_METADATA_BASE_URL, MUSICBRAINZ_API } from "../backend/config/constants.ts";
 
 type FetchResponse = UndiciResponse | Response;
 
@@ -98,6 +99,19 @@ export function onRequestFailure(listener: (failure: RequestFailure) => void) {
 
 const usesNativeFetch = () =>
   Function.prototype.toString.call(globalThis.fetch).includes("internal/deps/undici");
+
+const SHARED_HOSTS = new Set(
+  [DEFAULT_METADATA_BASE_URL, MUSICBRAINZ_API].map((url) => new URL(url).host),
+);
+
+function refuseSharedHostInTests(url: string) {
+  const { host } = new URL(url);
+  if (process.env.NODE_ENV === "test" && SHARED_HOSTS.has(host)) {
+    throw new Error(
+      `Tests never call ${host}, which every Aurral install shares. Fake it or use Eden.`,
+    );
+  }
+}
 
 function joinUrl(baseUrl: string | undefined, url: string) {
   if (!baseUrl || url.startsWith("http://") || url.startsWith("https://")) return url;
@@ -276,7 +290,9 @@ async function request(inputUrl: string, options: HttpOptions = {}): Promise<Htt
     let response!: FetchResponse;
     let requestMethod = method;
     for (let redirectCount = 0; ; redirectCount += 1) {
-      const requestFetch = (usesNativeFetch() ? undiciFetch : globalThis.fetch) as NodeFetch;
+      const nativeFetch = usesNativeFetch();
+      if (nativeFetch) refuseSharedHostInTests(url);
+      const requestFetch = (nativeFetch ? undiciFetch : globalThis.fetch) as NodeFetch;
       response = await requestFetch(url, { ...init, redirect: "manual" });
       const location = response.headers.get("location");
       if (![301, 302, 303, 307, 308].includes(response.status) || !location) break;
