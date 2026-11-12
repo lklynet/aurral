@@ -382,7 +382,7 @@ button.artist-track__text {
 
 .artist-pick__head {
   display: grid;
-  grid-template-columns: 16.5rem minmax(0, 1fr);
+  grid-template-columns: minmax(8rem, 16.5rem) minmax(11rem, 1fr);
   align-items: end;
   gap: 1.25rem;
   padding-top: 0.5rem;
@@ -433,7 +433,7 @@ button.artist-track__text {
   display: -webkit-box;
   margin: 0;
   overflow: hidden;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   line-clamp: 3;
