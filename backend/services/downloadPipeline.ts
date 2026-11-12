@@ -1,8 +1,8 @@
 import fs from "fs/promises";
+import * as v from "valibot";
 import { asAppError } from "../../lib/errors.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { logger } from "./logger.ts";
-import type { JsonObject } from "./jobs/queue.ts";
 import { downloadPipelineQueue } from "./jobs/queues.ts";
 import {
   downloadTracker,
@@ -87,6 +87,19 @@ export type PipelinePayload = PipelineStep &
     upgradeWaits?: number;
     delaySeconds?: number;
   };
+
+const pipelineStepSchema = v.looseObject({
+  jobId: v.string(),
+  phase: v.string(),
+  downloadAttemptId: v.nullish(v.string()),
+  playlistId: v.nullish(v.string()),
+  albumGroupJobIds: v.nullish(v.array(v.string())),
+});
+
+// Each source writes the rest of its step state and reads it back in its next step.
+export const pipelinePayloadSchema = v.custom<PipelinePayload>((input) =>
+  v.is(pipelineStepSchema, input),
+);
 
 const isNzbStep = (
   payload: PipelinePayload,
@@ -491,16 +504,16 @@ async function discardSourceWork(payload: PipelinePayload) {
 // tracks start again untried, and the source removes the work it started
 // unless a cancellation already did.
 export async function settleDroppedAlbumGrab(
-  dropped: JsonObject | PipelinePayload | null,
+  payload: unknown,
   nextPayload: PipelinePayload | null = null,
   reason = ALBUM_GRAB_ENDED_REASON,
 ) {
   if (
-    dropped?.albumGrab !== true ||
+    !v.is(pipelinePayloadSchema, payload) ||
+    payload.albumGrab !== true ||
     (nextPayload?.albumGrab === true && isPipelinePayloadActive(nextPayload))
   )
     return;
-  const payload = dropped as PipelinePayload;
   const held = heldAlbumGrabJobs(payload).filter((job) => job.id !== nextPayload?.jobId);
   if (held.length === 0) return;
   if (isPipelinePayloadActive(payload)) await discardSourceWork(payload);
