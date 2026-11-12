@@ -390,36 +390,36 @@ function ArtistDetailsPage() {
           : undefined
       }
     >
-      <ArtistDetailsHero artist={artist} coverImages={coverImages} onCoverError={refreshCover}>
-        <ArtistDetailsActionBar
-          library={library}
-          mbid={mbid!}
-          artistName={artist?.name || artistNameFromNav || ""}
-          existsInLibrary={existsInLibrary}
-          librarySummary={librarySummary}
-          loadingLibrary={loadingLibrary}
-          canChangeMonitoring={canChangeMonitoring}
-          canAddArtist={canAddArtist}
-          buildingQueue={buildingQueue}
-          isArtistPlaybackActive={isArtistPlaybackActive}
-          handlePreviewPlayAll={handlePreviewPlayAll}
-          handlePreviewShuffle={handlePreviewShuffle}
-          canPlayPreviews={canPlayPreviews}
-          missingDownloads={
-            canAddAlbum && (library.missingDownloadCount > 0 || library.reSearchingMissingAlbums)
-              ? {
-                  count: library.missingDownloadCount,
-                  pending: library.reSearchingMissingAlbums,
-                  onFind: library.handleReSearchMissingDownloads,
-                }
-              : null
-          }
-          onEditIds={handleOpenEditIds}
-          onTasteFeedback={handleCurrentArtistTasteFeedback}
-          tasteFeedbackUsed={currentArtistFeedback}
-          tasteActionPending={tasteActionPending}
-        />
-      </ArtistDetailsHero>
+      <ArtistDetailsHero artist={artist} coverImages={coverImages} onCoverError={refreshCover} />
+
+      <ArtistDetailsActionBar
+        library={library}
+        mbid={mbid!}
+        artistName={artist?.name || artistNameFromNav || ""}
+        existsInLibrary={existsInLibrary}
+        librarySummary={librarySummary}
+        loadingLibrary={loadingLibrary}
+        canChangeMonitoring={canChangeMonitoring}
+        canAddArtist={canAddArtist}
+        buildingQueue={buildingQueue}
+        isArtistPlaybackActive={isArtistPlaybackActive}
+        handlePreviewPlayAll={handlePreviewPlayAll}
+        handlePreviewShuffle={handlePreviewShuffle}
+        canPlayPreviews={canPlayPreviews}
+        missingDownloads={
+          canAddAlbum && (library.missingDownloadCount > 0 || library.reSearchingMissingAlbums)
+            ? {
+                count: library.missingDownloadCount,
+                pending: library.reSearchingMissingAlbums,
+                onFind: library.handleReSearchMissingDownloads,
+              }
+            : null
+        }
+        onEditIds={handleOpenEditIds}
+        onTasteFeedback={handleCurrentArtistTasteFeedback}
+        tasteFeedbackUsed={currentArtistFeedback}
+        tasteActionPending={tasteActionPending}
+      />
 
       <div className="artist-top">
         <ArtistDetailsPreviewTracks
