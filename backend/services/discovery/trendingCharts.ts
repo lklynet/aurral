@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import { lenient, lenientText } from "../integrationData.ts";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
+import { dbOps } from "../../db/helpers/index.ts";
 import { deezerArtistSchema, deezerPreviewPath, deezerTrackSchema } from "../apiClients/deezer.ts";
 import { guessArtistMbid } from "../artistMatch.ts";
 import {
@@ -14,6 +15,11 @@ import { listOf, orNull } from "../../db/helpers/storedSchemas.ts";
 import { findLibraryPlaylist } from "./editorialPlaylists.ts";
 import { interleaveLists, mapWithConcurrency } from "./helpers.ts";
 import type { TrendingChartDaysRow, TrendingChartsRow } from "../../db/rows.ts";
+import {
+  TRENDING_REGION_CHOICES,
+  WORLDWIDE_REGION,
+  type TrendingRegionChoice,
+} from "../../../lib/trendingRegions.ts";
 
 const DEEZER_CHARTS_USER_ID = 637006841;
 const WORLDWIDE_CHART_TITLE = "Top Worldwide";
@@ -26,6 +32,7 @@ const DEEZER_REGION_NAMES: Record<string, string> = {
 };
 const APPLE_FEED_URL = "https://rss.marketingtools.apple.com/api/v2";
 const FALLBACK_REGION = "US";
+const REGION_SETTING = "trendingRegion";
 const SONG_LIMIT = 100;
 const ALBUM_LIMIT = 100;
 const ALBUM_RAIL_LIMIT = 25;
@@ -157,6 +164,7 @@ type TrendingAlbum = v.InferOutput<typeof trendingAlbumSchema>;
 type ChartDay = { day: string; keys: string[] };
 
 export const chartPlaylistTitle = (region: string) => {
+  if (region === WORLDWIDE_REGION) return WORLDWIDE_CHART_TITLE;
   const code = region.toUpperCase();
   try {
     return `Top ${DEEZER_REGION_NAMES[code] ?? new Intl.DisplayNames(["en"], { type: "region" }).of(code)}`;
@@ -225,12 +233,14 @@ async function fetchAppleAlbums(storefront: string) {
 }
 
 async function fetchAlbums(region: string) {
-  try {
-    return { region, data: await fetchAppleAlbums(region.toLowerCase()) };
-  } catch (error) {
-    if (region === FALLBACK_REGION) throw error;
-    return { region: FALLBACK_REGION, data: await fetchAppleAlbums("us") };
+  if (region !== WORLDWIDE_REGION) {
+    try {
+      return { region, data: await fetchAppleAlbums(region.toLowerCase()) };
+    } catch (error) {
+      if (region === FALLBACK_REGION) throw error;
+    }
   }
+  return { region: FALLBACK_REGION, data: await fetchAppleAlbums("us") };
 }
 
 async function fetchArtists() {
@@ -362,49 +372,46 @@ function summarizeGenres(albums: TrendingAlbum[]) {
   };
 }
 
-const isFresh = (now: number) =>
-  FRESHNESS_CHARTS.every((chart) => {
-    const row = selectChartStmt.get(chart);
-    return row !== undefined && now - row.updated_at < FRESH_FOR_MS;
-  });
+export const getTrendingRegionChoice = (): TrendingRegionChoice =>
+  dbOps.getJSONSetting(REGION_SETTING, v.picklist(TRENDING_REGION_CHOICES)) ?? "auto";
 
-export async function refreshTrendingCharts({
-  now = Date.now(),
-  force = false,
-}: { now?: number; force?: boolean } = {}) {
-  if (!force && isFresh(now)) return false;
-  const region = await fetchRegion().catch(
-    () => selectChartStmt.get("songs")?.region || FALLBACK_REGION,
+async function chartRegion() {
+  const choice = getTrendingRegionChoice();
+  if (choice !== "auto") return choice;
+  return fetchRegion().catch(() => selectChartStmt.get("songs")?.region || FALLBACK_REGION);
+}
+
+const isFresh = (now: number) => {
+  const choice = getTrendingRegionChoice();
+  return (
+    FRESHNESS_CHARTS.every((chart) => {
+      const row = selectChartStmt.get(chart);
+      return row !== undefined && now - row.updated_at < FRESH_FOR_MS;
+    }) &&
+    (choice === "auto" || selectChartStmt.get("songs")?.region === choice)
   );
-  const sections = {
-    songs: async () => {
-      const songs = await fetchSongs(region);
-      db.transaction(() => {
-        saveChart("songs", region, songs, now);
-        upsertDayStmt.run(
-          songHistoryKey(region),
-          dayOf(now),
-          JSON.stringify(songs.items.map((item) => item.key)),
-        );
-        pruneDaysStmt.run(shiftDay(dayOf(now), -HISTORY_DAYS));
-      })();
-    },
-    albums: async () => {
-      const albums = await fetchAlbums(region);
-      saveChart("albums", albums.region, albums.data, now);
-    },
-    artists: async () => {
-      saveChart("artists", region, await fetchArtists(), now);
-    },
-    genres: async () => {
-      const charts = await fetchGenreCharts();
-      db.transaction(() => {
-        for (const chart of charts) {
-          saveChart(`genre:${chart.id}`, region, { name: chart.name, items: chart.items }, now);
-        }
-      })();
-    },
-  };
+};
+
+const regionalSections = (region: string, now: number) => ({
+  songs: async () => {
+    const songs = await fetchSongs(region);
+    db.transaction(() => {
+      saveChart("songs", region, songs, now);
+      upsertDayStmt.run(
+        songHistoryKey(region),
+        dayOf(now),
+        JSON.stringify(songs.items.map((item) => item.key)),
+      );
+      pruneDaysStmt.run(shiftDay(dayOf(now), -HISTORY_DAYS));
+    })();
+  },
+  albums: async () => {
+    const albums = await fetchAlbums(region);
+    saveChart("albums", albums.region, albums.data, now);
+  },
+});
+
+async function refreshSections(sections: Record<string, () => Promise<void>>) {
   const entries = Object.entries(sections);
   const failed = (
     await Promise.all(
@@ -422,7 +429,34 @@ export async function refreshTrendingCharts({
     });
   }
   if (failed.length === entries.length) throw new Error("Trending charts could not be refreshed");
+}
+
+export async function refreshTrendingCharts({
+  now = Date.now(),
+  force = false,
+}: { now?: number; force?: boolean } = {}) {
+  if (!force && isFresh(now)) return false;
+  const region = await chartRegion();
+  await refreshSections({
+    ...regionalSections(region, now),
+    artists: async () => {
+      saveChart("artists", region, await fetchArtists(), now);
+    },
+    genres: async () => {
+      const charts = await fetchGenreCharts();
+      db.transaction(() => {
+        for (const chart of charts) {
+          saveChart(`genre:${chart.id}`, region, { name: chart.name, items: chart.items }, now);
+        }
+      })();
+    },
+  });
   return true;
+}
+
+export async function setTrendingRegion(choice: TrendingRegionChoice, now: number = Date.now()) {
+  dbOps.setJSONSetting(REGION_SETTING, choice);
+  await refreshSections(regionalSections(await chartRegion(), now));
 }
 
 export function getTrendingCharts(userId: number) {
@@ -453,6 +487,7 @@ export function getTrendingCharts(userId: number) {
 
   return {
     region: songsRow?.region || byChart.get("albums")?.region || null,
+    regionChoice: getTrendingRegionChoice(),
     updatedAt: rows.length > 0 ? Math.max(...rows.map((row) => row.updated_at)) : null,
     songs: songs
       ? {

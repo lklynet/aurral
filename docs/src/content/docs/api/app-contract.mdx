@@ -114,7 +114,9 @@ Discovery artist entries contain nullable string `id` and `image`, strings
 `type`, and `status`, and boolean `inLibrary`.
 
 Trending charts are the same for every user, except `libraryPlaylistId`.
-`region` is the country the charts follow. Each chart section is `null` until
+`region` is the region code the charts follow, `001` for worldwide.
+`regionChoice` is `auto` when the charts follow the server's location, or the
+region code an admin picked. Each chart section is `null` until
 Aurral has loaded it, and a section keeps its last loaded chart when a refresh
 fails. `songs` contains strings `playlistId` and `playlistName`, nullable string
 `libraryPlaylistId`, array `items`, and nullable object `spotlight`.

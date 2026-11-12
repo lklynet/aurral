@@ -17,6 +17,26 @@
   font-size: var(--aurral-font-sm);
 }
 
+.trending-page__region {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--aurral-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.trending-page__region .select__value {
+  overflow: visible;
+  text-decoration: underline dotted var(--aurral-text-subtle);
+  text-underline-offset: 3px;
+}
+
+.trending-page__region .select__chevron {
+  display: none;
+}
+
 .trending-spotlight {
   display: grid;
   grid-template-columns: 12.5rem minmax(0, 1fr) 16rem;
