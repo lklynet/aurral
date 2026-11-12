@@ -228,8 +228,7 @@ function storedJobState(row: DownloadJobsRow): DownloadJobState {
 }
 
 function rowToJob(row: DownloadJobsRow) {
-  return {
-    ...storedJobState(row),
+  const job = {
     id: row.id!,
     artistName: row.artist_name,
     trackName: row.track_name,
@@ -258,9 +257,11 @@ function rowToJob(row: DownloadJobsRow) {
     quickSearchedSources: parseStringListJson(row.quick_searched_sources),
     heldForReview: parseHeldForReview(row.held_for_review),
     albumGrabFailures: Number(row.album_grab_failures) || 0,
+    status: row.status,
     startedAt: row.started_at,
     completedAt: row.completed_at,
     stagingPath: row.staging_path,
+    finalPath: row.final_path,
     externalPath: row.external_path || null,
     reusedLibraryFile: row.reused_library_file === 1,
     startedByPlaylist: row.started_by_playlist || null,
@@ -289,6 +290,7 @@ function rowToJob(row: DownloadJobsRow) {
     manualReplacementSearch: row.manual_replacement_search === 1,
     retryCycle: false,
   };
+  return Object.assign(job, storedJobState(row));
 }
 
 type RowJob = ReturnType<typeof rowToJob>;
