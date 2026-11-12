@@ -1,7 +1,6 @@
 import { useCallback, useId, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { createPortal } from "react-dom";
-import type { ReleaseGroupTrack } from "../../utils/api/endpoints/artists.ts";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { getArtistPreview, updateArtistOverrides } from "../../utils/api/endpoints/artists.ts";
 import { useAddTrackToLibrary } from "../../hooks/useAddTrackToLibrary";
@@ -45,8 +44,6 @@ import TooltipButton from "../../components/TooltipButton";
 import RouteLink from "../../components/RouteLink";
 import type { PlaylistSelection, PlaylistTrackIdentity } from "../../components/TrackPlaylistMenu";
 import type { ArtistPreviewTrack } from "./hooks/usePreviewPlayer";
-import type { ReleaseGroup } from "./utils";
-import { releaseTrackPayload } from "../album/releaseTracks.tsx";
 import type { ArtistFeedbackSource } from "../../utils/artistTaste.ts";
 import StatePanel from "../../components/StatePanel";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
@@ -265,11 +262,6 @@ function ArtistDetailsPage() {
       `${artist?.name || artistNameFromNav || track?.artistName || "Artist"} Picks`,
     );
 
-  const buildReleaseTrackPayload = (
-    track: ReleaseGroupTrack,
-    releaseGroup: ReleaseGroup | undefined,
-  ) => releaseTrackPayload(releaseGroup, track, artist?.name || artistNameFromNav || "", mbid);
-
   const buildPreviewTrackPayload = (track: ArtistPreviewTrack) =>
     buildStaticPlaylistTrackPayload({
       artistName: artist?.name || artistNameFromNav || "",
@@ -333,16 +325,6 @@ function ArtistDetailsPage() {
     } finally {
       setPlaylistMenuSavingKey("");
     }
-  };
-
-  const handleReleaseTrackAdd = (
-    track: ReleaseGroupTrack,
-    releaseGroup: ReleaseGroup | undefined,
-    target: PlaylistSelection,
-  ) => {
-    const payload = buildReleaseTrackPayload(track, releaseGroup);
-    const savingKey = String(track?.id ?? track?.mbid ?? "");
-    return saveTrackToPlaylist(payload, target, savingKey);
   };
 
   const handlePreviewTrackAdd = (track: ArtistPreviewTrack, target: PlaylistSelection) => {
@@ -472,18 +454,6 @@ function ArtistDetailsPage() {
           handleRequestAlbum={library.handleRequestAlbum}
           playbackSource={playbackSource}
           artistName={artistDisplayName}
-          onAddTrackToPlaylist={handleReleaseTrackAdd}
-          onAddTrackToLibrary={(track, releaseGroup, trackKey) =>
-            addTrackToLibrary(buildReleaseTrackPayload(track, releaseGroup), trackKey)
-          }
-          libraryTrackSavingKeys={libraryTrackSavingKeys}
-          resolveMembershipTrack={buildReleaseTrackPayload}
-          playlists={staticPlaylists}
-          playlistsLoading={playlistModalLoading}
-          playlistSavingKey={playlistMenuSavingKey}
-          playlistError={playlistModalError}
-          getDefaultPlaylistName={getDefaultTrackPlaylistName}
-          onLoadPlaylists={loadStaticPlaylists}
         />
       </div>
 

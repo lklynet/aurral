@@ -382,9 +382,9 @@ button.artist-track__text {
 
 .artist-pick__head {
   display: grid;
-  grid-template-columns: 7.5rem minmax(0, 1fr);
-  align-items: start;
-  gap: 1rem;
+  grid-template-columns: 16.5rem minmax(0, 1fr);
+  align-items: end;
+  gap: 1.25rem;
 }
 
 .artist-pick__cover {
@@ -395,11 +395,24 @@ button.artist-track__text {
   background: var(--aurral-surface-raised);
 }
 
+.artist-pick__cover-link {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 .artist-pick__cover img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.artist-pick__play {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  box-shadow: var(--aurral-shadow-artwork);
 }
 
 .artist-pick__placeholder,
@@ -418,7 +431,7 @@ button.artist-track__text {
 .artist-pick__title {
   margin: 0;
   overflow-wrap: anywhere;
-  font-size: var(--aurral-font-lg);
+  font-size: var(--aurral-font-xl);
   font-weight: 600;
   letter-spacing: var(--aurral-tracking-title);
   line-height: 1.25;
@@ -453,28 +466,6 @@ button.artist-track__text {
 
 .artist-pick__actions > .btn-primary {
   margin-right: 0.25rem;
-}
-
-.artist-pick__tracks {
-  margin-top: 1rem;
-}
-
-.artist-pick__tracks .artist-track {
-  height: 2.25rem;
-  grid-template-columns: 1.5rem minmax(0, 1fr) 2.75rem 2.25rem;
-  font-size: var(--aurral-font-sm);
-}
-
-.artist-pick__tracks .artist-track__title {
-  font-weight: 400;
-}
-
-.artist-pick__more {
-  margin-top: 0.5rem;
-  padding: 0;
-  border: 0;
-  background: none;
-  cursor: pointer;
 }
 
 .artist-filters {
@@ -960,18 +951,6 @@ button.artist-track__text {
     .artist-about {
       gap: 1.5rem;
     }
-
-    .artist-pick__head {
-      grid-template-columns: 10rem minmax(0, 1fr);
-      align-items: end;
-    }
-
-    .artist-pick__tracks:not(.is-expanded) {
-      grid-template-rows: repeat(2, auto);
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      grid-auto-flow: column;
-      column-gap: 2rem;
-    }
   }
 
   @container artist-page (width < 820px) {
@@ -1001,12 +980,6 @@ button.artist-track__text {
 
     .artist-actions__library-short {
       display: inline;
-    }
-
-    .artist-pick__tracks:not(.is-expanded) {
-      grid-template-rows: none;
-      grid-template-columns: minmax(0, 1fr);
-      grid-auto-flow: row;
     }
   }
 }
@@ -1062,7 +1035,8 @@ button.artist-track__text {
   }
 
   .artist-pick__head {
-    grid-template-columns: 6.5rem minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
   }
 
   .artist-filters {
@@ -1108,18 +1082,13 @@ button.artist-track__text {
 
 @media (max-width: 359px) {
   .artist-actions__shuffle,
-  .artist-find-missing,
-  .artist-pick__share {
+  .artist-find-missing {
     display: none;
   }
 
   .artist-similar-rail,
   .artist-playlist-rail {
     grid-auto-columns: 42%;
-  }
-
-  .artist-pick__head {
-    grid-template-columns: 5.5rem minmax(0, 1fr);
   }
 }
 
