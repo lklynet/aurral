@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import * as v from "valibot";
-import { CATALOGUE_ARTISTS, VARIOUS_ARTISTS_ID } from "../catalogue/artists.ts";
+import { VARIOUS_ARTISTS_ID } from "../catalogue/artists.ts";
 import {
   albumEdition,
   type Catalogue,
@@ -9,6 +9,7 @@ import {
   type CatalogueRelease,
   type CatalogueTrack,
 } from "../catalogue/catalogue.ts";
+import { cachedArt } from "./art.ts";
 import { generatedCover } from "./cover.ts";
 import { writeSilentFlac, type CoverImage } from "./flac.ts";
 
@@ -89,17 +90,23 @@ export function planAlbum(album: CatalogueAlbum): PlannedTrack[] {
   }));
 }
 
-export function writeTrack(folder: string, planned: PlannedTrack, cover: CoverImage) {
+export function writeTrack(folder: string, planned: PlannedTrack, cover: CoverImage | null) {
   const file = path.join(folder, trackFileName(planned, "flac"));
-  writeSilentFlac(file, { durationMs: planned.durationMs, tags: trackTags(planned), cover });
+  writeSilentFlac(file, {
+    durationMs: planned.durationMs,
+    tags: trackTags(planned),
+    ...(cover && { cover }),
+  });
   return file;
 }
 
-export function writeAlbum(folder: string, tracks: PlannedTrack[]) {
-  const [first] = tracks;
-  if (!first) return [];
+export function writeAlbum(
+  folder: string,
+  tracks: PlannedTrack[],
+  cover: CoverImage | null = generatedCover(tracks[0]?.album.id ?? folder),
+) {
+  if (tracks.length === 0) return [];
   mkdirSync(folder, { recursive: true });
-  const cover = generatedCover(first.album.id);
   return tracks.map((planned) => writeTrack(folder, planned, cover));
 }
 
@@ -125,9 +132,15 @@ function albumsByArtist(catalogue: Catalogue) {
 // compilations. Every seventh
 // album is missing its last tracks, so there is always something to find and fill.
 export function planLibrary(catalogue: Catalogue) {
+  if (catalogue.library) {
+    return catalogue.library
+      .flatMap((id) => catalogue.albums.get(id) ?? [])
+      .map(planAlbum)
+      .filter((tracks) => tracks.length > 0);
+  }
   const albumsOf = albumsByArtist(catalogue);
   const plan: PlannedTrack[][] = [];
-  CATALOGUE_ARTISTS.forEach(([artistId], index) => {
+  catalogue.order.forEach((artistId, index) => {
     const compilations = artistId === VARIOUS_ARTISTS_ID;
     if (index % LIBRARY_ARTIST_EVERY !== 0 && !compilations) return;
     const albums = albumsOf.get(artistId) ?? [];
@@ -143,11 +156,25 @@ export function planLibrary(catalogue: Catalogue) {
   return plan.filter((tracks) => tracks.length > 0);
 }
 
-export function generateLibrary(catalogue: Catalogue, root: string) {
+// With real covers, each album gets its recorded cover art beside the tracks.
+export async function generateLibrary(
+  catalogue: Catalogue,
+  root: string,
+  { realCovers }: { realCovers: boolean },
+) {
   const plan = planLibrary(catalogue);
   for (const tracks of plan) {
-    const [first] = tracks;
-    if (first) writeAlbum(path.join(root, albumFolder(first.album)), tracks);
+    const album = tracks[0]?.album;
+    if (!album) continue;
+    const folder = path.join(root, albumFolder(album));
+    if (!realCovers) {
+      writeAlbum(folder, tracks);
+      continue;
+    }
+    writeAlbum(folder, tracks, null);
+    const cover = album.images?.find((image) => image.CoverType === "Cover")?.Url;
+    if (!cover) throw new Error(`${album.title} has no recorded cover`);
+    writeFileSync(path.join(folder, "cover.jpg"), await cachedArt(cover));
   }
   return plan;
 }
@@ -161,7 +188,7 @@ export function planWorld(catalogue: Catalogue): WorldRelease[] {
   const owned = new Set(planLibrary(catalogue).map((tracks) => tracks[0]?.album.id));
   const albumsOf = albumsByArtist(catalogue);
   const names = new Set<string>();
-  return CATALOGUE_ARTISTS.flatMap(([artistId]) => {
+  return catalogue.order.flatMap((artistId) => {
     const albums = albumsOf.get(artistId) ?? [];
     const wanted = [...studioAlbums(albums), ...albums.toSorted((a, b) => a.id.localeCompare(b.id))]
       .filter((album, index, all) => all.indexOf(album) === index && !owned.has(album.id))

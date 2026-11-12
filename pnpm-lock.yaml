@@ -225,6 +225,9 @@ importers:
       node-taglib-sharp:
         specifier: ^6.0.3
         version: 6.0.3
+      playwright-core:
+        specifier: 1.64.1
+        version: 1.64.1
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -8090,8 +8093,7 @@ snapshots:
 
   picomatch@4.0.7: {}
 
-  playwright-core@1.64.1:
-    optional: true
+  playwright-core@1.64.1: {}
 
   playwright@1.64.1:
     dependencies:

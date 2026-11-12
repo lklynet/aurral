@@ -34,6 +34,9 @@ const artist = (entry: Artist) => ({
   link: `https://www.deezer.com/artist/${entry.number}`,
   nb_album: entry.albums.length,
   nb_fan: entry.votes * 1000,
+  picture_medium: entry.picture,
+  picture_big: entry.picture,
+  picture_xl: entry.picture,
   type: "artist",
 });
 
@@ -72,7 +75,27 @@ const track = (entry: Track) => ({
   type: "track",
 });
 
+const DEEZER_EDITOR = { id: 2, name: "Deezer" };
+
 function playlists(music: Music) {
+  if (music.playlists.length > 0) {
+    return music.playlists.map(({ title, picture, trackCount, tracks }, index) => ({
+      tracks,
+      playlist: {
+        id: PLAYLIST_BASE + index,
+        title,
+        description: "",
+        nb_tracks: trackCount,
+        picture_medium: picture,
+        picture_big: picture,
+        picture_xl: picture,
+        link: `https://www.deezer.com/playlist/${PLAYLIST_BASE + index}`,
+        user: DEEZER_EDITOR,
+        creator: DEEZER_EDITOR,
+        type: "playlist",
+      },
+    }));
+  }
   const charts = CHART_TITLES.map((title, index) => ({
     tracks: music.hits.slice(index * 10, index * 10 + CHART_TRACKS),
     playlist: {

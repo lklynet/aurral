@@ -23,6 +23,7 @@ Sign in as `test` / `password`. A second account, `listener` / `password`, is a 
 | `pnpm eden dev`    | `up`, then runs Aurral's dev server against the lab                                                            |
 | `pnpm eden status` | Prints every address and login, and what Eden doesn't cover                                                    |
 | `pnpm eden test`   | Builds a new lab with every service and runs the [journeys](#journeys)                                         |
+| `pnpm eden shots`  | Retakes the app screenshots in the [showroom](#the-showroom)                                                   |
 | `pnpm eden down`   | Stops `pnpm eden dev` if it is running, then removes the lab: its containers, volumes, and everything it wrote |
 
 The first `up` takes about a minute once the images are pulled. Services you added stay until `down`, so a later `pnpm eden dev` brings them back without the flag.
@@ -72,6 +73,20 @@ A service that needs another brings it along. `lidarr` starts `nzbget`, `prowlar
 - Playing videos. Eden finds a video for every track, but the browser loads its still and player from YouTube, which has no video with that ID.
 
 `pnpm eden status` prints this list. It comes from `eden/coverage.ts`, which has an entry for every integration Aurral has settings for. A new integration fails the typecheck there until it gets a service or a reason.
+
+## The showroom
+
+The showroom is a second Eden built for Aurral's screenshots. It has emo and punk records with their real covers and artist photos, Deezer's editorial playlists, and an admin who already has a track paused in the player. Its catalogue, in `eden/scenes/showroom/catalogue`, was recorded once from Deezer's public API by `node eden/scenes/showroom/record.ts` from the picks in `picks.ts`. Covers are downloaded on the first `up` and kept in `~/.cache/aurral-eden/art`.
+
+```sh
+pnpm eden dev --scene showroom  # browse it
+pnpm eden shots                 # retake web/screenshots
+pnpm eden shots --only library  # retake some of them
+```
+
+An Eden keeps its scene until `pnpm eden down`. `shots` builds the frontend and takes each shot in `eden/scenes/showroom/shots.ts` at 1920×1080 and 2x, and rewrites a file only when its picture changed. A shot only looks at a page. Whatever it shows, like the paused track or the Release Radar flow, is set up by `eden/scenes/showroom/seed.ts`, so shots don't change each other.
+
+The showroom turns off news, which would put live headlines in the screenshots.
 
 ## Journeys
 

@@ -18,6 +18,7 @@ export const paths = {
   lidarr: path.join(STATE_DIR, "lidarr"),
   downloads: path.join(STATE_DIR, "downloads"),
   selected: path.join(STATE_DIR, "selected.json"),
+  scene: path.join(STATE_DIR, "scene"),
   done: path.join(STATE_DIR, "done.json"),
   devPid: path.join(STATE_DIR, "dev.pid"),
 };

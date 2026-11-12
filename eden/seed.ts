@@ -125,21 +125,15 @@ const OUTSIDE_KEY = "eden";
 
 const lastfmLink = v.object({ authorizeUrl: v.string() });
 
-// The listener links every outside account. The admin stays on Aurral's own history.
-async function linkAccounts(api: AurralApi, ports: Ports) {
-  await api.post("/settings", {
-    integrations: {
-      lastfm: { apiKey: OUTSIDE_KEY, apiSecret: OUTSIDE_KEY },
-      ticketmaster: { apiKey: OUTSIDE_KEY },
-    },
-  });
-  const listener = new AurralApi(ports);
-  await listener.login(LISTENER);
-  await listener.put("/scrobbling/listenbrainz/link", { token: OUTSIDE_KEY });
+// Links a user's Last.fm and ListenBrainz accounts through Eden's stand-ins.
+export async function linkListening(ports: Ports, user: { username: string; password: string }) {
+  const session = new AurralApi(ports);
+  await session.login(user);
+  await session.put("/scrobbling/listenbrainz/link", { token: OUTSIDE_KEY });
 
   // Last.fm sends the browser back to Aurral with a token once the user approves.
-  const started = await fetch(`${listener.base}/api/scrobbling/lastfm/link`, {
-    headers: { authorization: `Bearer ${listener.token}` },
+  const started = await fetch(`${session.base}/api/scrobbling/lastfm/link`, {
+    headers: { authorization: `Bearer ${session.token}` },
   });
   const { authorizeUrl } = v.parse(lastfmLink, await started.json());
   const callback = new URL(new URL(authorizeUrl).searchParams.get("cb") ?? "");
@@ -163,7 +157,14 @@ export async function seedAurral(api: AurralApi, ports: Ports) {
   });
   await api.login(LOGIN);
   await api.post("/users", { ...LISTENER, role: "user" });
-  await linkAccounts(api, ports);
+  await api.post("/settings", {
+    integrations: {
+      lastfm: { apiKey: OUTSIDE_KEY, apiSecret: OUTSIDE_KEY },
+      ticketmaster: { apiKey: OUTSIDE_KEY },
+    },
+  });
+  // The listener links every outside account. The admin stays on Aurral's own history.
+  await linkListening(ports, LISTENER);
   await waitForScan(api);
   const plays =
     (await seedHistory(ports, LOGIN, { seed: 1, sittings: 400 })) +
