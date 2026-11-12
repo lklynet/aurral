@@ -7,6 +7,7 @@ import { createOutagePause } from "./outagePause.ts";
 
 const DEEZER_API_URL = "https://api.deezer.com";
 const DEEZER_NO_DATA_CODE = 800;
+export const DEEZER_HEADERS = { "Accept-Language": "en" };
 
 export const deezerErrorSchema = v.looseObject({
   error: v.looseObject({ code: v.optional(v.number()) }),
@@ -208,7 +209,9 @@ async function deezerGet<Schema extends v.GenericSchema>(
   path: string,
   config: DeezerRequest,
 ) {
-  const { data } = await deezerPause.run(() => http.get(`${DEEZER_API_URL}${path}`, config));
+  const { data } = await deezerPause.run(() =>
+    http.get(`${DEEZER_API_URL}${path}`, { ...config, headers: DEEZER_HEADERS }),
+  );
   const failure = v.safeParse(deezerErrorSchema, data);
   if (!failure.success) return readOne(schema, data, { service: "Deezer", endpoint: path });
   if (failure.output.error.code === DEEZER_NO_DATA_CODE) return null;

@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import { buildPlaylistTrackIdentity, dedupePlaylistTracks } from "../playlists/playlistTracks.ts";
 import {
+  DEEZER_HEADERS,
   deezerErrorSchema,
   deezerLimiter,
   deezerPageSchema,
@@ -128,7 +129,7 @@ export async function deezerRequest<Schema extends v.GenericSchema>(
   try {
     response = await deezerLimiter.schedule(() =>
       fetch(url, {
-        headers: { Accept: "application/json" },
+        headers: { Accept: "application/json", ...DEEZER_HEADERS },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       }),
     );
