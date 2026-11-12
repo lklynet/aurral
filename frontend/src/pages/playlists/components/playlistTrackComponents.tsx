@@ -1,6 +1,7 @@
 import { useEffect, useRef, useMemo, useState, useCallback, type MouseEvent } from "react";
 import type { IconComponent } from "../../../components/icons";
 import {
+  Clock,
   Download,
   Info,
   ImagePlus,
@@ -15,7 +16,7 @@ import {
   Share,
   X,
 } from "../../../components/icons";
-import { DotLoader, DownloadingIcon } from "../../../components/DotLoader";
+import { DownloadingIcon } from "../../../components/DotLoader";
 import { SkeletonStatus, SkeletonTrackList } from "../../../components/Skeletons";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import TooltipButton from "../../../components/TooltipButton";
@@ -39,11 +40,9 @@ import {
   queueTrackOverrides,
   shouldShowAddToLibrary,
 } from "../../../utils/trackAvailability.ts";
-import Tooltip from "../../../components/Tooltip";
 import type { LibraryMenuItem } from "../../../components/LibraryItemMenu";
 import type { PlaybackSource } from "../../../hooks/useAlbumTrackListToolbar";
 import type { PlaylistTrackRow } from "../playlistPageUtils.ts";
-import type { PlaylistTrackStatus } from "../../../utils/trackAvailability.ts";
 import type { StaticPlaylist } from "../../../utils/playlistStats.ts";
 
 export type PlaylistPanelTrack = Pick<
@@ -72,27 +71,6 @@ interface PlaylistTrackMenuProps<T extends PlaylistPanelTrack> {
 }
 
 type PlaylistTrackLink = { to: string | null; state?: unknown };
-
-function getTrackStatusMeta(status: string | null | undefined) {
-  switch (String(status || "").toLowerCase()) {
-    case "done":
-      return { label: "Downloaded", className: "flow-page__track-status-dot--done" };
-    case "downloading":
-      return {
-        label: "Downloading",
-        className: "flow-page__track-status-dot--downloading",
-      };
-    case "failed":
-      return { label: "Failed", className: "flow-page__track-status-dot--failed" };
-    case "saved":
-      return { label: "Not downloaded", className: "flow-page__track-status-dot--pending" };
-    case "blocked":
-      return { label: "Review", className: "flow-page__track-status-dot--blocked" };
-    case "pending":
-    default:
-      return { label: "Queued", className: "flow-page__track-status-dot--pending" };
-  }
-}
 
 function formatTrackDuration(durationMs: number | null | undefined) {
   const seconds = Math.max(0, Math.floor(Number(durationMs || 0) / 1000));
@@ -365,29 +343,36 @@ function PlaylistTrackKebabMenu<T extends PlaylistPanelTrack>({
   );
 }
 
-function TrackStatusDot({ status }: { status: PlaylistTrackStatus }) {
-  const meta = getTrackStatusMeta(status);
-  const normalized = String(status || "").toLowerCase();
-  const isLinkable = normalized !== "done" && normalized !== "saved";
-  if (isLinkable) {
-    const targetPath = "/activity/queue";
-    return (
-      <Link
-        to={targetPath}
-        className={`flow-page__track-status-dot flow-page__track-status-dot--link ${meta.className}`}
-        title={`${meta.label} — view activity`}
-        aria-label={`${meta.label}, view activity`}
-      />
-    );
+const FLOW_EXCEPTIONS = [
+  { status: "downloading", label: "downloading", tone: "subtle" },
+  { status: "pending", label: "queued", tone: "subtle" },
+  { status: "blocked", label: "need review", tone: "review" },
+  { status: "failed", label: "missing", tone: "warning" },
+] as const;
+
+function FlowTrackStatus({ track, searching }: { track: PlaylistPanelTrack; searching: boolean }) {
+  const { status, label } = getTrackAvailability(track);
+  const Icon =
+    searching || status === "downloading" ? Download : status === "pending" ? Clock : null;
+  const tone =
+    status === "blocked" ? "review" : status === "failed" && !searching ? "warning" : "subtle";
+  const content = (
+    <>
+      {Icon ? <Icon aria-hidden="true" /> : null}
+      {searching ? "Searching" : label}
+    </>
+  );
+  if (track.status === "saved") {
+    return <span className={`flow-track-status is-${tone}`}>{content}</span>;
   }
   return (
-    <Tooltip content={meta.label}>
-      <span
-        className={`flow-page__track-status-dot ${meta.className}`}
-        aria-label={meta.label}
-        role="img"
-      />
-    </Tooltip>
+    <Link
+      to="/activity/queue"
+      className={`flow-track-status is-${tone}`}
+      aria-label={`${searching ? "Searching" : label}, view activity`}
+    >
+      {content}
+    </Link>
   );
 }
 
@@ -416,7 +401,6 @@ export interface PlaylistTracksPanelProps<T extends PlaylistPanelTrack> {
   tracks: T[];
   loading: boolean;
   error?: string;
-  activityHint?: string | null;
   emptyMessage?: string;
   deletingTrackId?: string | null;
   reSearchingTrackIds?: Record<string, boolean>;
@@ -464,7 +448,6 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
   tracks,
   loading,
   error,
-  activityHint = null,
   emptyMessage = "No tracks yet.",
   deletingTrackId = null,
   reSearchingTrackIds = {},
@@ -550,6 +533,23 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
     [sortedTracks, normalizedQuery],
   );
   const showYear = useMemo(() => tracks.some((track) => track.releaseYear), [tracks]);
+  const reasonsVary = useMemo(
+    () => showReasons && new Set(tracks.map((track) => track.reason).filter(Boolean)).size > 1,
+    [showReasons, tracks],
+  );
+  const exceptions = useMemo(() => {
+    if (!showTrackStatus) return [];
+    const counts = new Map<string, number>();
+    for (const track of tracks) {
+      if (track.status === "saved") continue;
+      const { status } = getTrackAvailability(track);
+      counts.set(status, (counts.get(status) ?? 0) + 1);
+    }
+    return FLOW_EXCEPTIONS.flatMap((entry) => {
+      const count = counts.get(entry.status) ?? 0;
+      return count > 0 ? [{ ...entry, count }] : [];
+    });
+  }, [showTrackStatus, tracks]);
   const isSearchVisible = searchOpen || Boolean(query);
   const activeReplacementTrackIds = useMemo(
     () =>
@@ -628,6 +628,11 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
     const availability = showTrackAvailability ? getTrackAvailability(track) : null;
     const isReSearching = reSearchingTrackIds[track.id] === true;
     const isCurrent = track.id === currentTrackId;
+    const reason = reasonsVary ? track.reason : null;
+    const flowStatus =
+      showTrackStatus && (isReSearching || !(track.status === "done" && track.streamUrl)) ? (
+        <FlowTrackStatus track={track} searching={isReSearching} />
+      ) : null;
     const trackFavoriteId = getTrackFavoriteId?.(track) || "";
     const hasPlaylistMenu =
       track.artistName && track.trackName && (onAddTrackToPlaylist || onMoveTrackToPlaylist);
@@ -660,8 +665,20 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
       number: trackNumbers.get(track.id),
       title: track.trackName,
       year: track.releaseYear,
-      subtitle: track.artistName,
-      detail: showReasons ? track.reason : null,
+      subtitle: flowStatus ? (
+        <>
+          {track.artistName}
+          <span className="native-library-track__subtitle-status"> · {flowStatus}</span>
+          {reason ? (
+            <span className="native-library-track__subtitle-reason"> · {reason}</span>
+          ) : null}
+        </>
+      ) : reason ? (
+        `${track.artistName} · ${reason}`
+      ) : (
+        track.artistName
+      ),
+      reason,
       artist: {
         label: track.artistName,
         ...artistLink,
@@ -678,13 +695,16 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
         ...albumLink,
         onOpen: canOpenAlbum ? () => onNavigateAlbum!(track) : null,
       },
-      time: formatTrackDuration(track.durationMs),
+      time: flowStatus ?? formatTrackDuration(track.durationMs),
       active: isCurrent,
       playing: isCurrent && isRunning,
       loading: isCurrent && isLoading,
-      missing: showPlaybackControls && (!canPlay || track.status === "saved"),
+      missing: showPlaybackControls && (!canPlay || (!showTrackStatus && track.status === "saved")),
       status:
-        showPlaybackControls && !canPlay && (isReSearching || track.status !== "saved")
+        !showTrackStatus &&
+        showPlaybackControls &&
+        !canPlay &&
+        (isReSearching || track.status !== "saved")
           ? ({
               label: isReSearching ? "Searching" : getTrackAvailability(track).label,
               kind:
@@ -695,7 +715,8 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
                     : "missing",
             } as const)
           : null,
-      onPlay: showPlaybackControls ? () => handlePlayTrack(track) : null,
+      onPlay:
+        showPlaybackControls && (canPlay || !showTrackStatus) ? () => handlePlayTrack(track) : null,
       playDisabled: !canPlay,
       badge: availability ? (
         <TooltipButton
@@ -707,9 +728,18 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
             aria-hidden="true"
           />
         </TooltipButton>
-      ) : showTrackStatus ? (
-        <TrackStatusDot status={track.status} />
       ) : null,
+      trailing:
+        showTrackStatus && track.status === "saved" && canReSearch && !isReSearching ? (
+          <TooltipButton
+            className="native-library-track__download native-library-track__hover-action"
+            onClick={() => onReSearchTrack?.(track)}
+            label="Download"
+            aria-label={`Download ${track.trackName}`}
+          >
+            <Download aria-hidden="true" />
+          </TooltipButton>
+        ) : null,
       favorite:
         trackFavoriteId && onToggleFavorite
           ? {
@@ -757,6 +787,17 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
     <div className="collection-tracks">
       {tracks.length > 0 ? (
         <div className="collection-tracks__toolbar">
+          {exceptions.length > 0 && !normalizedQuery ? (
+            <span className="collection-tracks__exceptions" role="status">
+              {exceptions.map(({ status, label, tone, count }) => (
+                <span key={status} className={`flow-track-status is-${tone}`}>
+                  {status === "downloading" ? <Download aria-hidden="true" /> : null}
+                  {status === "pending" ? <Clock aria-hidden="true" /> : null}
+                  {count} {label}
+                </span>
+              ))}
+            </span>
+          ) : null}
           {normalizedQuery ? (
             <span className="collection-tracks__count" role="status">
               {visibleTracks.length} of {tracks.length}
@@ -878,9 +919,8 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
           <span>{error}</span>
         </div>
       ) : tracks.length === 0 ? (
-        <div className="native-library-state" role={activityHint ? "status" : undefined}>
-          {activityHint ? <DotLoader size="sm" label={null} /> : null}
-          <span>{activityHint || emptyMessage}</span>
+        <div className="native-library-state">
+          <span>{emptyMessage}</span>
         </div>
       ) : visibleTracks.length === 0 ? (
         <div className="native-library-state" role="status">
@@ -891,6 +931,8 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
           label={label}
           rows={rows}
           showYear={showYear}
+          showReason={reasonsVary}
+          wideTime={rows.some((row) => typeof row.time !== "string")}
           sort={{ key: sortKey, direction: sortDirection, onSort: handleSort }}
           selection={
             editMode

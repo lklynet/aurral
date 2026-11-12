@@ -19,7 +19,7 @@ export const DISCOVER_PLAYLIST_PRESETS = [
   {
     id: "library-blend",
     name: "Library Blend",
-    description: "Tracks from artists in your library",
+    description: "Tracks from artists in your Library",
     mix: { mix: 100 },
     size: 20,
   },
@@ -33,7 +33,7 @@ export const DISCOVER_PLAYLIST_PRESETS = [
   {
     id: RELEASE_RADAR_PRESET_ID,
     name: "Release Radar",
-    description: "Up to one track from each recent album missing in your library",
+    description: "Up to one track from each recent album missing in your Library",
     mix: { newReleases: 100 },
     size: 20,
   },

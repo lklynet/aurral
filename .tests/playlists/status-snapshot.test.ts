@@ -1,4 +1,4 @@
-import { test, beforeEach, afterAll } from "vite-plus/test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -122,6 +122,22 @@ test("status snapshot trackCount includes failed download jobs", async () => {
 
   assert.equal(shared.trackCount, 1);
   assert.equal(getStaticPlaylistTrackCount(shared, status.staticPlaylistStats[playlist.id]), 1);
+});
+
+test("a flow run in the worker process reports the operation queue as processing", async () => {
+  const { downloadWorker } = await import("../../backend/services/downloadJobs/downloadWorker.ts");
+  const getStatus = vi.spyOn(downloadWorker, "getStatus").mockReturnValue({
+    ...downloadWorker.getStatus(),
+    operationWorker: { running: true, currentLabel: "enable:flow-1" },
+  });
+  try {
+    const { operationQueue, hint } = getPlaylistStatusSnapshot();
+    assert.equal(operationQueue.processing, true);
+    assert.equal(operationQueue.currentLabel, "enable:flow-1");
+    assert.equal(hint.phase, "preparing");
+  } finally {
+    getStatus.mockRestore();
+  }
 });
 
 test("review count includes Library jobs and respects playlist ownership", async () => {

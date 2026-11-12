@@ -85,6 +85,7 @@ export const MapPin = createIcon(icons.MarkerPin01);
 export const Maximize = createIcon(icons.Maximize01);
 export const Menu = createIcon(icons.Menu01);
 export const Mic = createIcon(icons.Microphone01);
+export const Minus = createIcon(icons.Minus);
 export const Minimize = createIcon(icons.Minimize01);
 export const Monitor = createIcon(icons.Monitor01);
 export const Moon = createIcon(icons.Moon01);

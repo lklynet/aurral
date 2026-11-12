@@ -147,11 +147,9 @@ export function CommaTokenInput({
   onChange,
   fetchSuggestions,
   suggestionLabel = "suggestions",
-  excludable = false,
 }: {
   value?: string | null;
   placeholder?: string;
-  excludable?: boolean;
   onChange: (value: string) => void;
   fetchSuggestions?: (query: string, existingEntries: string[]) => Promise<FocusSuggestion[]>;
   suggestionLabel?: string;
@@ -296,24 +294,15 @@ export function CommaTokenInput({
         />
       ) : (
         <div className="flow-page__token-input-chips">
-          {committed.map((entry) =>
-            excludable && entry.startsWith("-") ? (
-              <span
-                key={`${placeholder}-${entry}`}
-                className="flow-page__token-chip flow-page__token-chip--excluded"
-              >
-                {entry}
-              </span>
-            ) : (
-              <span
-                key={`${placeholder}-${entry}`}
-                className="flow-page__token-chip"
-                style={{ backgroundColor: getTagColor(entry) }}
-              >
-                {entry}
-              </span>
-            ),
-          )}
+          {committed.map((entry) => (
+            <span
+              key={`${placeholder}-${entry}`}
+              className="flow-page__token-chip"
+              style={{ backgroundColor: getTagColor(entry) }}
+            >
+              {entry}
+            </span>
+          ))}
           {committed.length === 0 ? (
             <span className="flow-page__token-placeholder">{placeholder}</span>
           ) : null}
