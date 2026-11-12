@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
+import { parseResponse } from "hono/client";
 import ArtworkImage from "../../components/ArtworkImage";
 import { useWebSocketChannel } from "../../hooks/useWebSocket";
 import { queryClient, queryKeys } from "../../queryClient.ts";
+import { libraryClient } from "../../utils/api/clients/library.ts";
 import { clearLibraryPageCache } from "../../utils/api/endpoints/library.ts";
 import { EMPTY_LIBRARY } from "../../utils/libraryPageData.ts";
 import { libraryPreviewData, libraryPreviewFavorites } from "../../utils/libraryPreviewData";
@@ -160,6 +162,33 @@ export const invalidateLibraryViews = () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix }),
   ]);
 };
+
+const wait = (durationMs: number) => new Promise((resolve) => setTimeout(resolve, durationMs));
+
+const ACTIVE_SCAN: (string | undefined)[] = ["queued", "running"];
+
+// A request made while a scan runs is scanned by the scan that follows it.
+export async function waitForLibraryScan(jobId: number, isCurrent = () => true) {
+  let current = jobId;
+  while (true) {
+    const status = await parseResponse(
+      libraryClient.refresh[":jobId"].$get({ param: { jobId: encodeURIComponent(current) } }),
+    );
+    if (!isCurrent()) return false;
+    if (status.status === "failed") throw new Error(status.error || "Library refresh failed");
+    if (status.status === "completed") {
+      const next = await parseResponse(libraryClient.refresh.$get());
+      if (!isCurrent()) return false;
+      if (!next.jobId || !ACTIVE_SCAN.includes(next.status?.status)) {
+        void invalidateLibraryViews();
+        return true;
+      }
+      current = next.jobId;
+      continue;
+    }
+    await wait(750);
+  }
+}
 
 const handleLibraryScanMessage = (message: WebSocketChannelMessage) => {
   if (message?.type === "library_scan_completed") void invalidateLibraryViews();

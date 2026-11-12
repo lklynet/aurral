@@ -10,6 +10,8 @@ import {
   findLibraryTracksForAlbum,
 } from "../libraryReadModel.ts";
 import { getLibraryForArtistReferences } from "../libraryQueryService.ts";
+import { getLibraryMediaFile } from "../libraryMediaStore.ts";
+import { classifyLibraryFileQuality } from "../qualityProfile.ts";
 import { scheduleLibraryScan as scheduleLibraryScanJob } from "../libraryScanWorker.ts";
 import {
   commitDownloadedFile,
@@ -648,6 +650,59 @@ export async function restoreCompletedTrack(job: DownloadJob, options: RestoreOp
     action: "requeued",
     reason: reason || "No reusable source found",
   };
+}
+
+const indexedFile = (filePath: string) =>
+  ["aurral", "readonly", "flow"]
+    .map((source) => getLibraryMediaFile({ source, path: filePath }))
+    .find(Boolean);
+
+const sameQuality = (job: DownloadJob, quality: ReturnType<typeof classifyLibraryFileQuality>) =>
+  (job.qualityTier ?? null) === quality.tier &&
+  (job.qualityFormat ?? null) === quality.format &&
+  (job.qualityBitrateKbps ?? null) === quality.bitrateKbps &&
+  (job.qualitySampleRate ?? null) === quality.sampleRate &&
+  (job.qualityBitDepth ?? null) === quality.bitDepth;
+
+const resolveReplacedFileSource: typeof resolveRepairTrackSource = async (track, options) => {
+  const source = await findLibraryFolderSource(track, options, "aurral");
+  return source ? { source, reason: null } : resolveRepairTrackSource(track, options);
+};
+
+// Jobs follow the files a scan changed: a job whose file the scan removed
+// moves to the Library's copy of its track, even for an album request, which
+// otherwise never reuses Library files. Every job takes the quality the scan
+// read. A file that is only unavailable, like one on a drive that is not
+// connected, keeps its jobs as they are.
+export async function followChangedLibraryFiles(changedPaths: string[]) {
+  const changed = new Set(changedPaths.map((filePath) => path.resolve(filePath)));
+  const playlistTypes = new Set<string>();
+  const followed = new Map<string, string[]>();
+  for (const job of downloadTracker.getAll()) {
+    if (job.status !== "done" || !job.finalPath || job.upgradeForJobId) continue;
+    if (!changed.has(path.resolve(job.finalPath))) continue;
+    if (!indexedFile(path.resolve(job.finalPath))) {
+      const result = await restoreCompletedTrack(job, {
+        requeueOnMissing: false,
+        resolveSource: resolveReplacedFileSource,
+      });
+      if (result.action === "repaired") playlistTypes.add(job.playlistType);
+    }
+    const finalPath = downloadTracker.getJob(job.id)?.finalPath;
+    if (!finalPath) continue;
+    const filePath = path.resolve(finalPath);
+    followed.set(filePath, [...(followed.get(filePath) || []), job.id]);
+  }
+  for (const [filePath, jobIds] of followed) {
+    const media = indexedFile(filePath);
+    if (media?.available !== 1) continue;
+    const quality = classifyLibraryFileQuality(media);
+    for (const jobId of jobIds) {
+      const job = downloadTracker.getJob(jobId);
+      if (job && !sameQuality(job, quality)) downloadTracker.updateQuality(jobId, quality);
+    }
+  }
+  if (playlistTypes.size > 0) playlistManager.requestPlaylistSync([...playlistTypes]);
 }
 
 const isWithinFolder = (folder: string, filePath: string) =>

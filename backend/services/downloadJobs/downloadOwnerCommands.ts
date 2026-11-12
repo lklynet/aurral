@@ -4,6 +4,7 @@ import { syncStaticPlaylistImportHere } from "../importLists/importListSync.ts";
 import { queueQualityUpgrade, runQualityUpgradeCheck } from "../qualityProfileService.ts";
 import { approveBlockedJob, denyBlockedJob } from "./blockedJobReview.ts";
 import { downloadTracker } from "./downloadTracker.ts";
+import { followChangedLibraryFiles } from "./fileReuse.ts";
 import { DownloadWorker, downloadWorker, startWorkerIfPending } from "./downloadWorker.ts";
 
 type Worker = DownloadWorker;
@@ -55,6 +56,7 @@ export const downloadOwnerCommands = {
   enqueueManualReplacementSelection: (
     ...args: Parameters<typeof downloadTracker.enqueueManualReplacementSelection>
   ) => downloadTracker.enqueueManualReplacementSelection(...args),
+  followChangedLibraryFiles,
   approveBlockedJob,
   denyBlockedJob,
   cancelTrackDownload,

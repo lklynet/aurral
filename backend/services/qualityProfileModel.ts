@@ -98,7 +98,7 @@ function readAudioFamily(parsed: ParsedAudio, filePath: string) {
   const codec = String(parsed?.format?.codec || "").toLowerCase();
   const lossless = parsed?.format?.lossless === true || codec.includes("alac");
   if (ext === ".flac" || container.includes("flac") || codec.includes("flac")) {
-    return lossless === false ? null : "flac";
+    return parsed?.format?.lossless === false ? null : "flac";
   }
   if (lossless) return null;
   if (

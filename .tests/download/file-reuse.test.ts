@@ -40,6 +40,7 @@ const {
   repairOrphanedPlaylistTrackPaths,
   repairReusableTrackLinks,
   restoreCompletedTrack,
+  followChangedLibraryFiles,
   relocateSharedFilesBeforePlaylistRemoval,
   removePlaylistFileIfUnshared,
 } = reuseModule;
@@ -649,4 +650,83 @@ test("playlists use an indexed Library file whose folder and name Aurral did not
   const job = trackedJob(downloadTracker, result.jobId);
   assert.equal(job.externalPath ?? null, null);
   assert.equal(job.reusedLibraryFile, true);
+});
+
+test("jobs follow the Library files a scan changed", async () => {
+  const album = path.join(downloadRoot, "Deftones", "White Pony");
+  const replacedPath = path.join(album, "01 - Feiticeira.mp3");
+  const overwrittenPath = path.join(album, "02 - Digital Bath.mp3");
+  const offlinePath = path.join(album, "03 - Elite.mp3");
+  const flacPath = path.join(album, "Feiticeira [manual].flac");
+  await fs.mkdir(album, { recursive: true });
+  await fs.writeFile(flacPath, "audio");
+  await fs.writeFile(overwrittenPath, "audio");
+  const artist = libraryStore.upsertLibraryArtist({
+    identityKey: "mbid:deftones",
+    mbid: "deftones",
+    name: "Deftones",
+  });
+  const libraryAlbum = libraryStore.upsertLibraryAlbum({
+    identityKey: "release-group:white-pony",
+    releaseGroupMbid: "white-pony",
+    artistId: artist.id,
+    title: "White Pony",
+  });
+  const addTrack = (mbid: string, title: string, filePath: string, quality: object) => {
+    const track = libraryStore.upsertLibraryTrack({
+      identityKey: `recording:${mbid}`,
+      mbid,
+      title,
+      artistName: "Deftones",
+    });
+    libraryStore.linkLibraryAlbumTrack({ albumId: libraryAlbum.id, trackId: track.id });
+    libraryStore.upsertLibraryMediaFile({
+      trackId: track.id,
+      albumId: libraryAlbum.id,
+      source: "aurral",
+      path: filePath,
+      quality,
+    });
+  };
+  const lossless = { format: "FLAC", bitrate: 900_000, sampleRate: 44100, bitsPerSample: 16 };
+  const lossy = { format: "MPEG 1 Layer 3", bitrate: 320_000, sampleRate: 44100 };
+  addTrack("feiticeira", "Feiticeira", flacPath, lossless);
+  addTrack("digital-bath", "Digital Bath", overwrittenPath, lossy);
+  addTrack("elite", "Elite", offlinePath, lossy);
+  libraryStore.markLibraryMediaFilesUnavailable("aurral", [offlinePath]);
+  const doneJob = (trackName: string, trackMbid: string, finalPath: string) => {
+    const jobId = createTrackedJob(
+      downloadTracker,
+      {
+        artistName: "Deftones",
+        trackName,
+        albumName: "White Pony",
+        artistMbid: "deftones",
+        albumMbid: "white-pony",
+        trackMbid,
+        requestGroupId: "white-pony-request",
+      },
+      "library",
+    );
+    downloadTracker.setDone(jobId, finalPath, "White Pony");
+    downloadTracker.updateQuality(jobId, { tier: "mp3-128", format: "mp3", bitrateKbps: 128 });
+    return jobId;
+  };
+  const replaced = doneJob("Feiticeira", "feiticeira", replacedPath);
+  const overwritten = doneJob("Digital Bath", "digital-bath", overwrittenPath);
+  const offline = doneJob("Elite", "elite", offlinePath);
+  const playlistSync = vi
+    .spyOn(playlistManager, "requestPlaylistSync")
+    .mockImplementation(() => null);
+
+  await followChangedLibraryFiles([replacedPath, overwrittenPath, offlinePath]);
+
+  const replacedJob = trackedJob(downloadTracker, replaced);
+  assert.equal(replacedJob.finalPath, flacPath);
+  assert.equal(replacedJob.qualityTier, "flac-standard");
+  assert.equal(trackedJob(downloadTracker, overwritten).qualityTier, "mp3-320");
+  const offlineJob = trackedJob(downloadTracker, offline);
+  assert.equal(offlineJob.finalPath, offlinePath);
+  assert.equal(offlineJob.qualityTier, "mp3-128");
+  assert.deepEqual(playlistSync.mock.calls, [[["library"]]]);
 });

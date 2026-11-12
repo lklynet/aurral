@@ -1,9 +1,7 @@
 import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import path from "path";
 import { parseFile } from "music-metadata";
-import * as v from "valibot";
-import { db, dbHelpers } from "../config/db-sqlite.ts";
-import { lenient } from "../db/helpers/storedSchemas.ts";
+import { db } from "../config/db-sqlite.ts";
 import type { LibraryMediaFilesRow } from "../db/rows.ts";
 import { indexUnmonitoredJobs } from "./unmonitoredJobs.ts";
 import { getEnabledDownloadSources, upgradeSourceIds } from "./downloadSourceService.ts";
@@ -12,6 +10,7 @@ import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
 import { isPlaylistOwnerActive } from "./downloadJobs/playlistOwnerStatus.ts";
 import { isPipelinePayloadActive } from "./downloadJobs/downloadCancellation.ts";
 import {
+  classifyLibraryFileQuality,
   getQualityProfile,
   isAurralOwnedPath,
   type QualityJob,
@@ -24,13 +23,6 @@ import { resolveTrackSearchContext } from "./downloadJobs/trackSearchContext.ts"
 import { resolveAurralOwnedTrackJob } from "./libraryTrackResearchService.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-const storedQualitySchema = v.looseObject({
-  format: lenient(v.nullable(v.string())),
-  bitrate: lenient(v.nullable(v.number())),
-  sampleRate: lenient(v.nullable(v.number())),
-  bitsPerSample: lenient(v.nullable(v.number())),
-});
 
 interface UpgradePlan {
   status?: string;
@@ -174,21 +166,6 @@ export async function queueQualityUpgrade(job: QualityJob | null | undefined) {
   if (prepared.status) return prepared.status;
   const [status] = await addUpgradesAtOnce([prepared], { aheadOfWaiting: true });
   return status;
-}
-
-function classifyLibraryFileQuality(file: Pick<LibraryMediaFilesRow, "path" | "quality_json">) {
-  const stored = dbHelpers.readJSON(storedQualitySchema, file.quality_json, file.path) ?? {};
-  return classifyAudioQuality(
-    {
-      format: {
-        codec: stored.format,
-        bitrate: stored.bitrate,
-        sampleRate: stored.sampleRate,
-        bitsPerSample: stored.bitsPerSample,
-      },
-    },
-    file.path,
-  );
 }
 
 // Monitored Library tracks whose file Aurral did not download have no job

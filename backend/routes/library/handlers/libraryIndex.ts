@@ -24,6 +24,7 @@ import {
 import {
   getLibraryScanStatus,
   getScheduledLibraryScanJobId,
+  scheduleLibraryItemScan,
   scheduleLibraryScan,
 } from "../../../services/libraryScanWorker.ts";
 import { asAppError } from "../../../../lib/errors.ts";
@@ -56,7 +57,12 @@ async function sendLibraryArtwork(c: Context<AppEnv>, kind: LibraryArtworkKind, 
   );
 }
 
-const refreshInput = v.object({ mode: v.optional(v.picklist(["quick", "full"])) });
+const libraryItemId = v.pipe(v.number(), v.integer(), v.minValue(1));
+const refreshInput = v.object({
+  mode: v.optional(v.picklist(["quick", "full"])),
+  albumId: v.optional(libraryItemId),
+  artistId: v.optional(libraryItemId),
+});
 
 const pageQuery = v.object({
   kind: v.optional(v.string()),
@@ -136,7 +142,13 @@ export default new Hono<AppEnv>()
     return c.json({ plays }, 200);
   })
   .post("/refresh", requireAuth, validate("json", refreshInput), (c) => {
-    const jobId = scheduleLibraryScan({ force: c.req.valid("json").mode === "full" });
+    const { mode, albumId, artistId } = c.req.valid("json");
+    const jobId = albumId
+      ? scheduleLibraryItemScan({ albumId })
+      : artistId
+        ? scheduleLibraryItemScan({ artistId })
+        : scheduleLibraryScan({ force: mode === "full" });
+    if (jobId === null) return c.json({ error: "No files to rescan" }, 404);
     return c.json({ queued: true, jobId, status: getLibraryScanStatus(jobId) }, 202);
   })
   .get("/refresh", requireAuth, noCache, (c) => {

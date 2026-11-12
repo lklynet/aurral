@@ -12,6 +12,7 @@ import {
   Play,
   Radio,
   RefreshCw,
+  ScanSearch,
   Search,
   Share,
   Shuffle,
@@ -31,6 +32,7 @@ import { useActiveDownloads } from "../../hooks/useActiveDownloads";
 import { useQueueTrackActions, useStartRadio } from "../../hooks/useQueueTrackActions";
 import type { RadioSeed } from "../../utils/audioQueue";
 import { usePlaylistBulkActions } from "../../contexts/PlaylistBulkActions.ts";
+import { libraryClient } from "../../utils/api/clients/library.ts";
 import { libraryAlbumsClient } from "../../utils/api/clients/libraryAlbums.ts";
 import { libraryArtistsClient } from "../../utils/api/clients/libraryArtists.ts";
 import { libraryArtworkClient } from "../../utils/api/clients/libraryArtwork.ts";
@@ -96,6 +98,7 @@ import {
   TRACK_DOWNLOAD_ACTIVE_STATUSES,
   trackDownloadIdentity,
   trackDurationMs,
+  waitForLibraryScan,
 } from "./libraryShared.tsx";
 import { getApiErrorMessage, getApiErrorText } from "../../utils/api/errors.ts";
 import {
@@ -1008,6 +1011,32 @@ export function useLibraryActions({
     disabled: isPreviewLibrary,
   });
 
+  const rescanMenuItem = (
+    scope: { albumId: number } | { artistId: number },
+    item: { title?: string | null; name?: string | null; sources?: string[] },
+  ): LibraryMenuItem[] => {
+    if (isPreviewLibrary) return [];
+    if (!item.sources?.some((source) => source === "aurral" || source === "readonly")) return [];
+    const label = item.title || item.name || "files";
+    return [
+      {
+        id: "rescan",
+        label: "Rescan files",
+        icon: ScanSearch,
+        closeBeforeSelect: true,
+        onSelect: async () => {
+          try {
+            const queued = await parseResponse(libraryClient.refresh.$post({ json: scope }));
+            showSuccess(`Rescanning ${label}`);
+            if (await waitForLibraryScan(queued.jobId)) showSuccess(`Rescanned ${label}`);
+          } catch (requestError) {
+            showError(getApiErrorMessage(requestError, `Could not rescan ${label}`));
+          }
+        },
+      },
+    ];
+  };
+
   const albumMenuItems = (
     album: LibraryAlbum,
     artist: LibraryArtist | null | undefined,
@@ -1041,6 +1070,7 @@ export function useLibraryActions({
           },
         ]
       : []),
+    ...rescanMenuItem({ albumId: album.id }, album),
     ...extra,
     ...pluginMenuItems("album", { albumId: album.id }),
     ...(canDeleteAlbum && album.managed
@@ -1559,6 +1589,7 @@ export function useLibraryActions({
     libraryAlbumPath,
     shareMenuItem,
     pluginMenuItems,
+    rescanMenuItem,
     albumMenuItems,
     collectionQueueItems,
     collectionPlayItems,
