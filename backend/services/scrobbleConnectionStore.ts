@@ -57,11 +57,14 @@ const decryptToken = (token: string) => decryptWithKey(token, getEncryptionKey()
 
 export const getScrobbleEncryptionKey = getEncryptionKey;
 
+const isWebUrl = (value: string) =>
+  URL.canParse(value) && ["http:", "https:"].includes(new URL(value).protocol);
+
 const normalize = (provider: ScrobbleProvider, raw: unknown) => {
   if (!PROVIDERS.has(provider) || !v.is(storedConnectionSchema, raw)) return null;
   const token = decryptToken(raw.token);
   if (!token) return null;
-  if (provider === "koito" && !normalizeKoitoBaseUrl(raw.baseUrl)) return null;
+  if (provider === "koito" && !isWebUrl(normalizeKoitoBaseUrl(raw.baseUrl))) return null;
   return {
     provider,
     token,

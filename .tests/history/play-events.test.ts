@@ -145,9 +145,19 @@ test("now playing reaches each linked scrobbler without recording a play", async
 
 test("a Koito connection without a server URL is not connected, so its plays never reach the public ListenBrainz", () => {
   const { scrobbleConnectionStore } = scrobbleStore;
-  scrobbleConnectionStore.saveConnection(1, "koito", { token: "koito-token" });
+  for (const baseUrl of [null, "invalid", "ftp://koito.local"]) {
+    scrobbleConnectionStore.saveConnection(1, "koito", { token: "koito-token", baseUrl });
 
-  assert.equal(scrobbleConnectionStore.getConnection(1, "koito"), null);
-  assert.deepEqual(scrobbleConnectionStore.getConnections(1), {});
-  assert.equal(scrobbleConnectionStore.getPublicStatus(1).koito.connected, false);
+    assert.equal(scrobbleConnectionStore.getConnection(1, "koito"), null);
+    assert.deepEqual(scrobbleConnectionStore.getConnections(1), {});
+    assert.equal(scrobbleConnectionStore.getPublicStatus(1).koito.connected, false);
+  }
+  scrobbleConnectionStore.saveConnection(1, "koito", {
+    token: "koito-token",
+    baseUrl: "http://koito.local:4110",
+  });
+  assert.equal(
+    scrobbleConnectionStore.getConnection(1, "koito")?.baseUrl,
+    "http://koito.local:4110",
+  );
 });
