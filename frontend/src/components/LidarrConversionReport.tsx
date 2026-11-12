@@ -6,7 +6,9 @@ import { useToast } from "../contexts/ToastContext";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { useReadOnlyFolders } from "../hooks/useLibraryFileOperation.ts";
 import { useSettingsRoute } from "../navigation/settingsRoute";
+import { apiFetchWithin } from "../utils/api/core.ts";
 import { libraryMonitoringClient } from "../utils/api/clients/libraryMonitoring.ts";
+import { readApiError } from "../utils/api/errors.ts";
 import { DotLoader } from "./DotLoader";
 import { ModalBackdrop } from "./ModalBackdrop";
 
@@ -19,7 +21,7 @@ export default function LidarrConversionReport() {
       .data?.folders.filter((folder) => !folder.readable)
       .map((folder) => folder.path),
   );
-  const { showError } = useToast();
+  const { showError, showSuccess } = useToast();
   const settings = useSettingsRoute();
   const [closed, setClosed] = useState(false);
   const titleId = useId();
@@ -36,15 +38,30 @@ export default function LidarrConversionReport() {
     onError: () => showError("Couldn't close the report. Try again."),
   });
 
+  const setUp = useMutation({
+    mutationFn: () =>
+      parseResponse(
+        libraryMonitoringClient["lidarr-conversion"].plugin.$post(undefined, {
+          fetch: apiFetchWithin(150_000),
+        }),
+      ),
+    onSuccess: () => {
+      setClosed(true);
+      showSuccess("The Lidarr plugin is on");
+    },
+  });
+  const busy = dismiss.isPending || setUp.isPending;
+
   const { dialogRef } = useModalDialog({
     open,
     onClose: () => setClosed(true),
-    closeDisabled: dismiss.isPending,
+    closeDisabled: busy,
     initialFocusRef: doneRef,
   });
 
   if (!report || !open) return null;
-  const { folders } = report;
+  const { folders, connected } = report;
+  const setUpError = setUp.error && (readApiError(setUp.error).error || "Try again.");
 
   return (
     <ModalBackdrop>
@@ -95,20 +112,40 @@ export default function LidarrConversionReport() {
             ))}
           </ul>
         ) : null}
+        {setUpError ? (
+          <p className="artist-modal__subcopy">
+            <span className="lidarr-conversion__warning">
+              Couldn&apos;t set up the Lidarr plugin.
+            </span>{" "}
+            {setUpError}
+          </p>
+        ) : null}
         <div className="artist-modal__actions">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={dismiss.isPending}
-            onClick={() => dismiss.mutate("plugins")}
-          >
-            Add Lidarr plugin
-          </button>
+          {connected ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={busy}
+              onClick={() => setUp.mutate()}
+            >
+              {setUp.isPending ? <DotLoader size="sm" label={null} /> : null}
+              Set up Lidarr plugin
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={busy}
+              onClick={() => dismiss.mutate("plugins")}
+            >
+              Add Lidarr plugin
+            </button>
+          )}
           <button
             ref={doneRef}
             type="button"
             className="btn btn-primary"
-            disabled={dismiss.isPending}
+            disabled={busy}
             onClick={() => dismiss.mutate("done")}
           >
             {dismiss.isPending && dismiss.variables === "done" ? (

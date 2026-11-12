@@ -48,7 +48,7 @@ In Aurral 2, a connected Lidarr managed the artists and albums you added. Aurral
 - Lidarr's root folders become read-only folders, so their music stays in the Library with its favorites, play counts, and playlists.
 - The artists and albums that Lidarr managed become Aurral's, **Not monitored**.
 - Album requests that were waiting on Lidarr show as requested. Lidarr keeps working on them, and Aurral plays what arrives in its folders.
-- Aurral's Lidarr settings, and remote path mappings that applied to Lidarr, are removed. The read-only folders keep the mapped paths.
+- Remote path mappings that applied to Lidarr are removed. The read-only folders keep the mapped paths.
 
 Aurral changes nothing in Lidarr. Before it converts, it saves a copy of its database as `aurral.pre-lidarr-conversion.db` in the data folder. If the conversion fails, Aurral stops before it changes anything and says why in the log.
 
@@ -56,7 +56,7 @@ The first admin to open Aurral sees what changed. Lidarr keeps monitoring the ar
 
 After the upgrade:
 
-- To keep getting albums through Lidarr, install the plugin. See [Download through Lidarr](#download-through-lidarr).
+- To keep getting albums through Lidarr, select **Set up Lidarr plugin** in the report. Aurral installs the official Lidarr plugin with the Lidarr URL, API key, and root folder it had, tests it, and turns it on. If the test fails, the plugin stays off, and you can fix it under **Settings > Plugins > Lidarr**. Aurral forgets its old Lidarr settings when you close the report. See [Download through Lidarr](#download-through-lidarr).
 - If you added an Aurral webhook in **Lidarr > Settings > Connect**, remove it. Aurral no longer has that address.
 - If Aurral cannot read a Lidarr folder, the report and **Settings > Library** say so, and its tracks do not play. Mount the folder at that path, see [Mount a read-only folder](/getting-started/storage/#mount-a-read-only-folder), or remove it from the read-only folders.
 - A root folder that was inside the Library folder is listed as read-only too. When Lidarr no longer uses it, remove it from the read-only folders in **Settings > Library**, and Aurral manages those files like the rest of the Library folder.
