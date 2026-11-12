@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import { http } from "../../lib/http.ts";
 
 import { buildShowsResponseCacheKey } from "../../backend/routes/discovery/handlers/shows.ts";
-import { getNearbyShows } from "../../backend/services/nearbyShowsService.ts";
+import {
+  getArtistShows,
+  getNearbyShows,
+  rememberNearbyLocation,
+} from "../../backend/services/nearbyShowsService.ts";
 
 const withTicketmasterKey = (t: import("vite-plus/test").TestContext) => {
   const original = process.env.TICKETMASTER_API_KEY;
@@ -299,4 +303,65 @@ test("matches shows from every Ticketmaster results page, not just the nearest",
     ["nearby", "far"],
   );
   assert.deepEqual(requestedPages, [0, 1, 2]);
+});
+
+test("lists an artist's own dates and pins the nearest one within the search radius", async (t: import("vite-plus/test").TestContext) => {
+  withTicketmasterKey(t);
+  rememberNearbyLocation(7, { zipCode: "97201", countryCode: "US", ip: "" });
+  const keywords: unknown[] = [];
+  const tourDate = (
+    id: string,
+    date: string,
+    performer: string,
+    [latitude, longitude]: number[],
+  ) => ({
+    ...ticketmasterEvent(id, date, [performer]),
+    _embedded: {
+      venues: [
+        { name: id, location: { latitude: String(latitude), longitude: String(longitude) } },
+      ],
+      attractions: [{ name: performer }],
+    },
+  });
+  vi.spyOn(http, "get").mockImplementation(async (url, options = {}) => {
+    if (url.includes("zippopotam")) {
+      return ok({
+        places: [{ "place name": "Portland", latitude: "45.52", longitude: "-122.68" }],
+      });
+    }
+    if (url.includes("ticketmaster.com")) {
+      keywords.push(options.query?.keyword);
+      const events =
+        options.query?.page === 0
+          ? [
+              tourDate("san-francisco", "2027-03-01", "Radiohead", [37.77, -122.42]),
+              tourDate("tribute", "2027-03-01", "Radiohead Tribute", [45.52, -122.68]),
+              tourDate("seattle", "2027-03-02", "Radiohead", [47.61, -122.33]),
+            ]
+          : [tourDate("portland", "2027-03-05", "Radiohead", [45.52, -122.68])];
+      return ok({ _embedded: { events }, page: { totalPages: 2 } });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  });
+
+  const located = await getArtistShows(7, "Radiohead");
+  const unlocated = await getArtistShows(8, "Radiohead");
+
+  assert.deepEqual(
+    located.map(({ id, distance, near }) => [id, distance, near]),
+    [
+      ["portland", 0, true],
+      ["san-francisco", 536, false],
+      ["seattle", 145, false],
+    ],
+  );
+  assert.deepEqual(
+    unlocated.map(({ id, distance, near }) => [id, distance, near]),
+    [
+      ["san-francisco", null, false],
+      ["seattle", null, false],
+      ["portland", null, false],
+    ],
+  );
+  assert.deepEqual(keywords, ["Radiohead", "Radiohead"]);
 });

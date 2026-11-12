@@ -3,14 +3,20 @@ import type { AppEnv } from "../../middleware/requestUser.ts";
 import appearsOn from "./handlers/appearsOn.ts";
 import cover from "./handlers/cover.ts";
 import details from "./handlers/details.ts";
+import listening from "./handlers/listening.ts";
+import playlists from "./handlers/playlists.ts";
 import preview from "./handlers/preview.ts";
 import releaseGroup from "./handlers/releaseGroup.ts";
+import shows from "./handlers/shows.ts";
 import similar from "./handlers/similar.ts";
 import video from "./handlers/video.ts";
 
 export default new Hono<AppEnv>()
   .route("/", releaseGroup)
   .route("/", preview)
+  .route("/", playlists)
+  .route("/", shows)
+  .route("/", listening)
   .route("/", details)
   .route("/", cover)
   .route("/", similar)

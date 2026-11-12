@@ -29,6 +29,8 @@ services:
   outside:
     <<: *eden-node
     command: ["node", "eden/standins/outside.ts"]
+    environment:
+      EDEN_PORT_OUTSIDE: ${EDEN_PORT_OUTSIDE}
     ports:
       - "127.0.0.1:${EDEN_PORT_OUTSIDE}:8080"
     volumes:

@@ -19,7 +19,7 @@ import {
 import { getUserMix, getUserMixes, type Mix } from "./mixes.ts";
 import { browseCoverTemplate, browseCoverUrl, type BrowseCover } from "./browseCovers.ts";
 import { BROWSE_PROVIDERS, type BrowseProvider } from "../../../lib/browsePlaylists.ts";
-import type { ShelfScope } from "../importLists/deezerPlaylists.ts";
+import { getDeezerArtistPlaylists, type ShelfScope } from "../importLists/deezerPlaylists.ts";
 import type { RequestUser } from "../../middleware/requestUser.ts";
 import type { LibraryArtistsRow, LibraryMediaFilesRow } from "../../db/rows.ts";
 
@@ -146,12 +146,13 @@ export async function getMadeForYou(user: RequestUser) {
   return { discovery, mixes };
 }
 
+const deezer = (playlist: Omit<BrowsePlaylist, "provider">): BrowsePlaylist => ({
+  ...playlist,
+  provider: "deezer",
+});
+
 export async function getPlaylistShelf(user: RequestUser, scope?: ShelfScope) {
   const { forYou, categories } = await getEditorialShelf(user, scope);
-  const deezer = (playlist: Omit<BrowsePlaylist, "provider">): BrowsePlaylist => ({
-    ...playlist,
-    provider: "deezer",
-  });
   return {
     forYou: forYou.map(deezer),
     categories: categories.map((category) => ({
@@ -160,6 +161,9 @@ export async function getPlaylistShelf(user: RequestUser, scope?: ShelfScope) {
     })),
   };
 }
+
+export const getArtistPlaylists = async (deezerArtistId: string) =>
+  (await getDeezerArtistPlaylists(deezerArtistId)).map(deezer);
 
 export async function getBrowsePlaylist(user: RequestUser, provider: BrowseProvider, id: string) {
   if (provider === "deezer") {

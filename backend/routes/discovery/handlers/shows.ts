@@ -4,12 +4,15 @@ import * as v from "valibot";
 import { requireAuth } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
-import { dbOps } from "../../../db/helpers/index.ts";
 import { getTicketmasterApiKey } from "../../../services/apiClients/index.ts";
 import { getLibraryArtistNames } from "../../../services/libraryQueryService.ts";
 import { getLocalDiscoveryPreferences } from "../../../services/discovery/index.ts";
 import { getUserDiscovery } from "../../../services/discovery/userDiscovery.ts";
-import { getNearbyShows, rememberNearbyLocation } from "../../../services/nearbyShowsService.ts";
+import {
+  getNearbyShows,
+  getTicketmasterRadiusMiles,
+  rememberNearbyLocation,
+} from "../../../services/nearbyShowsService.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 
 type NearbyShowsOptions = Parameters<typeof getNearbyShows>[0];
@@ -66,12 +69,8 @@ export default new Hono<AppEnv>().get(
         ip: c.var.clientIp,
       };
       rememberNearbyLocation(userId, location);
-      const settings = dbOps.getSettings();
-      const configuredRadius = Number(settings.integrations?.ticketmaster?.searchRadiusMiles);
       const localDiscoveryPreferences = getLocalDiscoveryPreferences();
-      const radiusMiles = Number.isFinite(configuredRadius)
-        ? Math.max(5, Math.min(250, Math.floor(configuredRadius)))
-        : undefined;
+      const radiusMiles = getTicketmasterRadiusMiles();
       const { body: discovery } = getUserDiscovery(userId, 24);
       const recommendedArtists = localDiscoveryPreferences.includeRecommendations
         ? discovery.recommendations

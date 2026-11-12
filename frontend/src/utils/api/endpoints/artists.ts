@@ -198,6 +198,54 @@ export const artistSimilarQueryOptions = (mbid: string, artistName = "", limit =
     staleTime: 5 * 60 * 1000,
   });
 
+export const artistPlaylistsQueryOptions = (mbid: string, artistName: string) =>
+  queryOptions({
+    queryKey: queryKeys.artistPlaylists(mbid, artistName),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        artistsClient[":mbid"].playlists.$get(
+          {
+            param: { mbid: encodeURIComponent(mbid) },
+            query: { artistName: artistName.trim() || undefined },
+          },
+          { init: { signal } },
+        ),
+      ),
+    staleTime: 60 * 60 * 1000,
+  });
+
+export const artistShowsQueryOptions = (mbid: string, artistName: string) =>
+  queryOptions({
+    queryKey: queryKeys.artistShows(mbid, artistName),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        artistsClient[":mbid"].shows.$get(
+          {
+            param: { mbid: encodeURIComponent(mbid) },
+            query: { artistName: artistName.trim() || undefined },
+          },
+          { init: { signal } },
+        ),
+      ),
+    staleTime: 60 * 60 * 1000,
+  });
+
+export const artistListeningQueryOptions = (mbid: string, artistName: string) =>
+  queryOptions({
+    queryKey: queryKeys.artistListening(mbid, artistName),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        artistsClient[":mbid"].listening.$get(
+          {
+            param: { mbid: encodeURIComponent(mbid) },
+            query: { artistName: artistName.trim() || undefined },
+          },
+          { init: { signal } },
+        ),
+      ),
+    staleTime: 5 * 60 * 1000,
+  });
+
 export async function getArtistVideos(
   mbid: string,
   artistName: string,
@@ -259,5 +307,6 @@ export const updateArtistOverrides = async (
   await queryClient.invalidateQueries({ queryKey: queryKeys.artistDetailsPrefix });
   await queryClient.invalidateQueries({ queryKey: queryKeys.artistSimilarPrefix });
   await queryClient.invalidateQueries({ queryKey: queryKeys.artistAppearsOn(mbid) });
+  await queryClient.invalidateQueries({ queryKey: queryKeys.artistPlaylistsPrefix });
   return result;
 };

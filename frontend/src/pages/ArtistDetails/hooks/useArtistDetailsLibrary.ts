@@ -192,6 +192,8 @@ export function useArtistDetailsLibrary({
         status: "available",
         label: "Complete",
         partial: (album.statistics?.percentOfTracks ?? 0) < 100,
+        trackCount: album.statistics?.trackCount ?? 0,
+        trackFileCount: album.statistics?.trackFileCount ?? 0,
       };
     }
     if (owned) return { status: "available", label: "Complete", partial: owned.partial };

@@ -1,79 +1,47 @@
 import { useMemo, useState } from "react";
-import { Music, RefreshCw } from "../../../components/icons";
-import { ReleaseMetric } from "./ReleaseMetric";
+import { RefreshCw } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
-import ReleaseStatusCheck from "./ReleaseStatusCheck";
-import AddActionButton from "../../../components/AddActionButton";
-import ReleaseWaitBadge from "../../../components/ReleaseWaitBadge";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { getReleaseGroupLink } from "../../../utils/searchNavigation";
 import {
   getPopularReleaseGroups,
   getReleaseGroupCoverUrl,
-  getReleaseMetric,
-  getReleaseYear,
   type LibraryReleaseGroup,
   type ReleaseGroup,
 } from "../utils";
 import type { ArtistDetailsResponse } from "../../../utils/api/endpoints/artists.ts";
-import type { useArtistDetailsLibrary } from "../hooks/useArtistDetailsLibrary";
-import { getAlbumAddAction } from "../../../utils/albumAddAction";
-import { useResponsiveReleaseLimit } from "../hooks/useResponsiveReleaseLimit";
-import Tooltip from "../../../components/Tooltip";
-import RouteLink, { OptionalLink } from "../../../components/RouteLink";
-import { artworkHoverTint } from "../../../utils/imageColors.ts";
-import TooltipButton from "../../../components/TooltipButton";
+import type { ArtistDetailsLibrary } from "../hooks/useArtistDetailsLibrary";
+import { useArtistReleaseShelf } from "../hooks/useResponsiveReleaseLimit";
+import RouteLink from "../../../components/RouteLink";
 import { albumPath } from "../../../../../lib/albumPath.ts";
-import { ReleaseCoverImage } from "../../../components/ReleaseCoverImage";
+import { matchesReleaseGroupTab } from "../releaseFilters.ts";
+import { ArtistReleaseCard } from "./ArtistReleaseCard";
 
 const viewModes = [
-  { value: "popular", label: "Popular releases" },
+  { value: "popular", label: "Popular" },
   { value: "albums", label: "Albums" },
-  { value: "singles", label: "Singles & EPs" },
+  { value: "singles", label: "Singles and EPs" },
   { value: "compilations", label: "Compilations" },
   { value: "library", label: "In Library" },
 ] as const;
 
 type ReleaseViewMode = (typeof viewModes)[number]["value"];
 
-const isCompilation = (releaseGroup: ReleaseGroup | null | undefined) =>
-  releaseGroup?.["primary-type"] === "Compilation" ||
-  (releaseGroup?.["secondary-types"] || []).includes("Compilation");
-
-const isSingleOrEp = (releaseGroup: ReleaseGroup | null | undefined) =>
-  releaseGroup?.["primary-type"] === "Single" || releaseGroup?.["primary-type"] === "EP";
-
 const sortLatest = <T extends ReleaseGroup>(items: T[]): T[] =>
   [...items].sort((a, b) =>
     String(b["first-release-date"] || "").localeCompare(String(a["first-release-date"] || "")),
   );
 
-const getVisibleReleases = (
+const releasesForMode = (
   releaseGroups: LibraryReleaseGroup[],
   libraryReleaseGroups: LibraryReleaseGroup[],
   viewMode: ReleaseViewMode,
-  limit: number,
 ) => {
-  if (viewMode === "library") return sortLatest(libraryReleaseGroups).slice(0, limit);
-  if (viewMode === "popular") {
-    return getPopularReleaseGroups(releaseGroups, limit);
-  }
-  if (viewMode === "albums") {
-    return sortLatest(
-      releaseGroups.filter(
-        (releaseGroup) =>
-          releaseGroup?.["primary-type"] === "Album" && !isCompilation(releaseGroup),
-      ),
-    ).slice(0, limit);
-  }
-  if (viewMode === "singles") {
-    return sortLatest(
-      releaseGroups.filter(
-        (releaseGroup) => isSingleOrEp(releaseGroup) && !isCompilation(releaseGroup),
-      ),
-    ).slice(0, limit);
-  }
-  return sortLatest(releaseGroups.filter(isCompilation)).slice(0, limit);
+  if (viewMode === "library") return libraryReleaseGroups;
+  if (viewMode === "popular") return releaseGroups;
+  return releaseGroups.filter((releaseGroup) =>
+    matchesReleaseGroupTab(releaseGroup, viewMode, true),
+  );
 };
 
 export function ArtistDetailsReleaseGroups({
@@ -94,20 +62,20 @@ export function ArtistDetailsReleaseGroups({
   artist: Partial<ArtistDetailsResponse>;
   loadingReleases?: boolean;
   artistCoverImage: string | null | undefined;
-  getAlbumStatus: ReturnType<typeof useArtistDetailsLibrary>["getAlbumStatus"];
+  getAlbumStatus: ArtistDetailsLibrary["getAlbumStatus"];
   libraryReleaseGroups: LibraryReleaseGroup[];
   missingDownloadCount: number;
   reSearchingMissingAlbums: boolean;
   onReSearchMissingDownloads: (() => void) | null;
   canAddAlbum: boolean;
-  handleRequestAlbum: ReturnType<typeof useArtistDetailsLibrary>["handleRequestAlbum"];
+  handleRequestAlbum: ArtistDetailsLibrary["handleRequestAlbum"];
   requestingAlbum: string | null;
   artistName: string;
   viewAllLink: { to: string; state?: object };
 }) {
   const { isAlbumDownloading } = useActiveDownloads();
   const [selectedViewMode, setViewMode] = useState<ReleaseViewMode>("popular");
-  const [releaseGridRef, previewLimit] = useResponsiveReleaseLimit();
+  const [releaseGridRef, previewLimit] = useArtistReleaseShelf();
   const releaseGroups = useMemo(() => artist["release-groups"] || [], [artist]);
   const hasLibrary = libraryReleaseGroups.length > 0;
   const viewMode: ReleaseViewMode =
@@ -116,147 +84,114 @@ export function ArtistDetailsReleaseGroups({
       : hasLibrary && !loadingReleases && releaseGroups.length === 0
         ? "library"
         : selectedViewMode;
-  const visibleReleaseGroups = useMemo(
-    () => getVisibleReleases(releaseGroups, libraryReleaseGroups, viewMode, previewLimit),
-    [libraryReleaseGroups, previewLimit, releaseGroups, viewMode],
+  const counts = useMemo(
+    () =>
+      Object.fromEntries(
+        viewModes.map(({ value }) => [
+          value,
+          releasesForMode(releaseGroups, libraryReleaseGroups, value).length,
+        ]),
+      ) as Record<ReleaseViewMode, number>,
+    [libraryReleaseGroups, releaseGroups],
   );
-
-  const releaseLink = (releaseGroup: ReleaseGroup, coverUrl: string) =>
-    releaseGroup.libraryAlbumId
-      ? { to: albumPath(releaseGroup.libraryAlbumId) }
-      : getReleaseGroupLink(releaseGroup, {
-          artistMbid: artist?.id,
-          artistName: artistName || artist?.name || "",
-          coverUrl,
-        });
+  const visibleReleaseGroups = useMemo(() => {
+    const releases = releasesForMode(releaseGroups, libraryReleaseGroups, viewMode);
+    return viewMode === "popular"
+      ? getPopularReleaseGroups(releases, previewLimit)
+      : sortLatest(releases).slice(0, previewLimit);
+  }, [libraryReleaseGroups, previewLimit, releaseGroups, viewMode]);
 
   if (releaseGroups.length === 0 && !hasLibrary && !loadingReleases) return null;
 
+  const showFindMissing =
+    onReSearchMissingDownloads && (missingDownloadCount > 0 || reSearchingMissingAlbums);
+  const missingLabel = `Find ${missingDownloadCount} missing album${missingDownloadCount === 1 ? "" : "s"}`;
+
   return (
     <section className="artist-section">
-      <div className="artist-heading-row">
-        <div className="artist-min-0">
-          <div className="artist-controls-row">
-            <h2 className="artist-section-title">Discography</h2>
-            {loadingReleases && <DotLoader size="sm" label={null} />}
-            {viewMode === "library" &&
-              onReSearchMissingDownloads &&
-              (missingDownloadCount > 0 || reSearchingMissingAlbums) && (
-                <TooltipButton
-                  type="button"
-                  onClick={onReSearchMissingDownloads}
-                  className="btn btn-surface btn-icon-square"
-                  aria-label="Re-search missing downloads"
-                  title={`Re-search ${missingDownloadCount} missing download${
-                    missingDownloadCount === 1 ? "" : "s"
-                  }`}
-                  disabled={reSearchingMissingAlbums}
-                >
-                  {reSearchingMissingAlbums ? (
-                    <DotLoader size="sm" label={null} />
-                  ) : (
-                    <RefreshCw className="artist-icon-sm" />
-                  )}
-                </TooltipButton>
+      <div className="artist-section-head">
+        <h2 className="artist-section-title">
+          Discography
+          {loadingReleases && <DotLoader size="sm" label={null} />}
+        </h2>
+        <div className="artist-section-head__tools">
+          {showFindMissing ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm artist-find-missing"
+              onClick={onReSearchMissingDownloads}
+              disabled={reSearchingMissingAlbums}
+              aria-label={missingLabel}
+            >
+              {reSearchingMissingAlbums ? (
+                <DotLoader size="sm" label={null} />
+              ) : (
+                <RefreshCw aria-hidden="true" />
               )}
-          </div>
-          <div className="artist-tabs">
-            {viewModes.map((mode) =>
-              mode.value === "library" && !hasLibrary ? null : (
-                <button
-                  key={mode.value}
-                  type="button"
-                  onClick={() => setViewMode(mode.value)}
-                  className={`artist-tab${viewMode === mode.value ? " is-active" : ""}`}
-                >
-                  {mode.label}
-                  {mode.value === "library" && (
-                    <span className="artist-tab__count">{libraryReleaseGroups.length}</span>
-                  )}
-                </button>
-              ),
-            )}
-          </div>
+              <span className="artist-find-missing__long">{missingLabel}</span>
+              <span className="artist-find-missing__short">Find missing</span>
+            </button>
+          ) : null}
+          <RouteLink
+            to={viewMode === "library" ? `${viewAllLink.to}?tab=library` : viewAllLink.to}
+            state={viewAllLink.state}
+            className="section-show-all"
+          >
+            Show all
+          </RouteLink>
         </div>
-        <RouteLink
-          to={viewMode === "library" ? `${viewAllLink.to}?tab=library` : viewAllLink.to}
-          state={viewAllLink.state}
-          className="section-show-all"
-        >
-          Show all
-        </RouteLink>
       </div>
 
-      <div ref={releaseGridRef} className="artist-release-grid">
+      <div className="artist-filters" role="group" aria-label="Release types">
+        {viewModes.map((mode) =>
+          mode.value !== "popular" && counts[mode.value] === 0 ? null : (
+            <button
+              key={mode.value}
+              type="button"
+              onClick={() => setViewMode(mode.value)}
+              className="artist-filter"
+              aria-pressed={viewMode === mode.value}
+            >
+              {mode.label}
+              {mode.value === "popular" ? null : (
+                <span className="artist-filter__count">{counts[mode.value]}</span>
+              )}
+            </button>
+          ),
+        )}
+      </div>
+
+      <div
+        ref={releaseGridRef}
+        className="artist-release-row"
+        style={{ "--artist-release-columns": previewLimit }}
+      >
         {visibleReleaseGroups.map((releaseGroup) => {
-          const status = getAlbumStatus(releaseGroup.id);
-          const metric = getReleaseMetric(releaseGroup);
           const coverUrl = getReleaseGroupCoverUrl(releaseGroup);
           return (
-            <article
+            <ArtistReleaseCard
               key={releaseGroup.id}
-              className="artist-release-card"
-              data-artwork-scope
-              {...artworkHoverTint}
-            >
-              <div className="artist-release-card__cover" data-artwork>
-                <ReleaseCoverImage
-                  src={coverUrl}
-                  fallback={artistCoverImage}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  placeholder={
-                    <div className="artist-release-card__placeholder">
-                      <Music className="artist-icon-lg" />
-                    </div>
-                  }
-                />
-                <div className="artist-release-card__action">
-                  {status?.status === "available" || status?.status === "added" ? (
-                    <ReleaseStatusCheck partial={status?.partial} />
-                  ) : status?.status === "waiting" ? (
-                    <ReleaseWaitBadge releaseDate={releaseGroup["first-release-date"]} />
-                  ) : canAddAlbum ? (
-                    <div>
-                      <AddActionButton
-                        {...getAlbumAddAction({
-                          releaseDate: releaseGroup["first-release-date"],
-                        })}
-                        onAdd={() => handleRequestAlbum(releaseGroup.id, releaseGroup.title ?? "")}
-                        isLoading={
-                          requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id)
-                        }
-                        loadingLabel="Downloading"
-                        disabled={
-                          requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id)
-                        }
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-              <h3 className="artist-release-card__title artist-clamp-2">
-                <OptionalLink
-                  link={releaseLink(releaseGroup, coverUrl || artistCoverImage || "")}
-                  className="card-link"
-                >
-                  {releaseGroup.title}
-                </OptionalLink>
-              </h3>
-              <p className="artist-release-card__meta artist-truncate">
-                {[getReleaseYear(releaseGroup), releaseGroup["primary-type"]]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-              {metric.label && (
-                <Tooltip content={metric.title}>
-                  <p className="artist-release-card__metric">
-                    <ReleaseMetric metric={metric} />
-                  </p>
-                </Tooltip>
-              )}
-            </article>
+              releaseGroup={releaseGroup}
+              coverUrl={coverUrl}
+              fallbackCoverUrl={artistCoverImage}
+              link={
+                releaseGroup.libraryAlbumId
+                  ? { to: albumPath(releaseGroup.libraryAlbumId) }
+                  : getReleaseGroupLink(releaseGroup, {
+                      artistMbid: artist?.id,
+                      artistName: artistName || artist?.name || "",
+                      coverUrl: coverUrl || artistCoverImage || "",
+                    })
+              }
+              detail={releaseGroup["primary-type"]}
+              status={getAlbumStatus(releaseGroup.id)}
+              busy={requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id)}
+              onDownload={
+                canAddAlbum
+                  ? () => handleRequestAlbum(releaseGroup.id, releaseGroup.title ?? "")
+                  : null
+              }
+            />
           );
         })}
       </div>

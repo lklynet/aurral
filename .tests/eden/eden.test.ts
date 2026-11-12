@@ -3,7 +3,7 @@ import { X509Certificate } from "node:crypto";
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { parseFile } from "music-metadata";
+import { parseBuffer, parseFile } from "music-metadata";
 import * as v from "valibot";
 import { afterAll, test } from "vite-plus/test";
 import { deezerArtistSchema, deezerTrackSchema } from "../../backend/services/apiClients/deezer.ts";
@@ -13,6 +13,7 @@ import { loadCatalogue } from "../../eden/catalogue/catalogue.ts";
 import { writeSilentFlac } from "../../eden/library/flac.ts";
 import { planLibrary, planWorld } from "../../eden/library/generate.ts";
 import { createAuthority, hostIssuer } from "../../eden/outside/certificates.ts";
+import { previewClip } from "../../eden/outside/deezer.ts";
 import { outsideByHost } from "../../eden/outside/index.ts";
 import { indexMusic } from "../../eden/outside/music.ts";
 
@@ -76,18 +77,30 @@ test("the certificate authority issues a certificate for the host a client asks 
   assert.equal(issued.checkHost("api.listenbrainz.org"), undefined);
 });
 
-test("the outside stand-ins answer in the shapes Aurral's clients read", () => {
+test("the outside stand-ins answer in the shapes Aurral's clients read", async () => {
   const artists = v.parse(
     v.object({ data: v.array(deezerArtistSchema) }),
     ask("https://api.deezer.com/search/artist?q=radiohead"),
   ).data;
   assert.equal(artists[0]?.name, "Radiohead");
+  assert.equal(artists[0]?.id, 399);
   const top = v.parse(
     v.object({ data: v.array(deezerTrackSchema) }),
     ask(`https://api.deezer.com/artist/${artists[0]?.id}/top?limit=6`),
   ).data;
   assert.equal(top.length, 6);
   assert.ok(top.every((track) => track.artist?.name === "Radiohead" && (track.duration ?? 0) > 0));
+  assert.ok(top.every((track) => track.preview?.endsWith(`/deezer/preview/${track.id}.mp3`)));
+  const { format } = await parseBuffer(previewClip, "audio/mpeg");
+  assert.equal(Math.round(format.duration ?? 0), 30);
+
+  const [fresh] = music.fresh;
+  assert.ok(fresh);
+  const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
+  assert.deepEqual(
+    ask(`https://api.listenbrainz.org/1/metadata/release_group?release_group_mbids=${fresh.id}`),
+    { [fresh.id]: { release_group: { name: fresh.title, date: twoDaysAgo, type: fresh.type } } },
+  );
 
   const trending = v.parse(
     listenbrainzTopArtistsSchema,

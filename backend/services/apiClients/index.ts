@@ -28,7 +28,6 @@ export {
 
 export {
   getDeezerArtistById,
-  deezerGetArtistTopTracks,
   deezerGetArtistTopTracksById,
   deezerGetArtistTopTrackList,
   deezerGetRelatedArtists,

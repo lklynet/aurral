@@ -1,4 +1,12 @@
-import { pageOf, type Album, type Artist, type Music, type Outside, type Track } from "./music.ts";
+import {
+  pageOf,
+  releaseDate,
+  type Album,
+  type Artist,
+  type Music,
+  type Outside,
+  type Track,
+} from "./music.ts";
 
 const NO_DATA = { error: { type: "DataException", message: "no data", code: 800 } };
 const PLAYLIST_BASE = 9000;
@@ -8,6 +16,17 @@ const PLAYLISTS = 12;
 const CHARTS_USER = { id: 637006841, name: "Deezer Charts" };
 const CHART_TITLES = ["Top USA", "Top Worldwide"];
 const CHART_TRACKS = 100;
+const PREVIEW_SECONDS = 30;
+const PREVIEW_FRAME = Buffer.concat([Buffer.from([0xff, 0xfb, 0x90, 0xc4]), Buffer.alloc(413)]);
+// Aurral sends the browser straight to a preview, so it has to be an address the
+// browser can reach: the proxy's own port on this machine.
+const PREVIEW_ORIGIN = `http://127.0.0.1:${process.env.EDEN_PORT_OUTSIDE || 8080}`;
+export const PREVIEW_PATH = /^\/deezer\/preview\/\d+\.mp3$/;
+
+// Thirty seconds of silent MP3: 128 kbps mono frames whose audio is all zeros.
+export const previewClip = Buffer.concat(
+  Array.from({ length: Math.ceil((PREVIEW_SECONDS * 44_100) / 1152) }, () => PREVIEW_FRAME),
+);
 
 const artist = (entry: Artist) => ({
   id: entry.number,
@@ -23,7 +42,10 @@ const album = (entry: Album) => ({
   title: entry.title,
   link: `https://www.deezer.com/album/${entry.number}`,
   record_type: entry.type.toLowerCase(),
-  release_date: entry.date,
+  release_date: releaseDate(entry),
+  cover_medium: entry.cover,
+  cover_big: entry.cover,
+  cover_xl: entry.cover,
   fans: entry.votes * 100,
   nb_tracks: entry.tracks.length,
   artist: { id: entry.artist.number, name: entry.artist.name },
@@ -35,12 +57,18 @@ const track = (entry: Track) => ({
   title: entry.title,
   title_short: entry.title,
   link: `https://www.deezer.com/track/${entry.number}`,
+  preview: `${PREVIEW_ORIGIN}/deezer/preview/${entry.number}.mp3`,
   duration: Math.round(entry.durationMs / 1000),
   rank: entry.album.votes * 1000 - entry.position,
   track_position: entry.position,
   disk_number: entry.disc,
   artist: { id: entry.artist.number, name: entry.artist.name },
-  album: { id: entry.album.number, title: entry.album.title },
+  album: {
+    id: entry.album.number,
+    title: entry.album.title,
+    cover_medium: entry.album.cover,
+    cover_xl: entry.album.cover,
+  },
   type: "track",
 });
 
@@ -114,6 +142,13 @@ export const deezer: Outside = {
         return list(found.albums.flatMap((entry) => entry.tracks.slice(0, 3)).map(track));
       if (part === "related") return list(music.related(found).map(artist));
       if (part === "albums") return list(found.albums.map(album));
+      if (part === "playlists") {
+        return list(
+          playlists(music)
+            .filter((entry) => entry.tracks.some((item) => item.artist.number === number))
+            .map((entry) => entry.playlist),
+        );
+      }
     }
     if (kind === "album") {
       const found = music.albumByNumber.get(number);

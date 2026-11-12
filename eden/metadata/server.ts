@@ -1,8 +1,21 @@
 import { createServer, type ServerResponse } from "node:http";
-import { loadCatalogue } from "../catalogue/catalogue.ts";
+import { loadCatalogue, type CatalogueAlbum } from "../catalogue/catalogue.ts";
+import { indexMusic, releaseDate } from "../outside/music.ts";
 import { searchAlbums, searchArtists } from "./search.ts";
 
 const catalogue = loadCatalogue();
+const fresh = new Map(indexMusic(catalogue).fresh.map((album) => [album.id, album]));
+
+const withFreshDate = (album: CatalogueAlbum) => {
+  const entry = fresh.get(album.id);
+  if (!entry) return album;
+  const date = releaseDate(entry);
+  return {
+    ...album,
+    releasedate: date,
+    releases: album.releases?.map((release) => ({ ...release, releasedate: date })),
+  };
+};
 const port = Number(process.env.PORT || 5002);
 
 function send(response: ServerResponse, status: number, body: unknown) {
@@ -18,8 +31,9 @@ const limitOf = (params: URLSearchParams, fallback: number) => {
 createServer((request, response) => {
   const url = new URL(request.url ?? "/", "http://eden");
   const [, kind, id] = /^.*\/(artist|album)\/([0-9a-f-]{36})$/.exec(url.pathname) ?? [];
+  const album = kind === "album" ? catalogue.albums.get(id ?? "") : undefined;
   const entity =
-    kind === "artist" ? catalogue.artists.get(id ?? "") : catalogue.albums.get(id ?? "");
+    kind === "artist" ? catalogue.artists.get(id ?? "") : album && withFreshDate(album);
   if (entity) return send(response, 200, entity);
   if (kind) {
     console.log(`not in the Eden catalogue: ${kind} ${id}`);

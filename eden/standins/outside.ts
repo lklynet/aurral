@@ -6,6 +6,7 @@ import { text } from "node:stream/consumers";
 import tls from "node:tls";
 import { loadCatalogue } from "../catalogue/catalogue.ts";
 import { hostIssuer } from "../outside/certificates.ts";
+import { PREVIEW_PATH, previewClip } from "../outside/deezer.ts";
 import { outsideByHost } from "../outside/index.ts";
 import { indexMusic } from "../outside/music.ts";
 
@@ -74,6 +75,15 @@ const proxy = http.createServer(
     if (!target.startsWith("/")) return answer(new URL(target), request, response);
     if (target === "/health") return send(response, 200, { hosts: outsideByHost.size });
     if (target === "/requests") return send(response, 200, requests);
+    if (PREVIEW_PATH.test(target)) {
+      response.writeHead(200, {
+        "content-type": "audio/mpeg",
+        "content-length": previewClip.length,
+        "access-control-allow-origin": "*",
+      });
+      response.end(previewClip);
+      return;
+    }
     send(response, 404, { error: "Not found" });
   }),
 );

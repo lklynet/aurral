@@ -1,12 +1,10 @@
-import { pageOf, type Music, type Outside, type Track } from "./music.ts";
+import { pageOf, releaseDate, type Music, type Outside, type Track } from "./music.ts";
 
 const PLAYLIST_EXTENSION = "https://musicbrainz.org/doc/jspf#playlist";
 const WEEKLY_JAMS = "ede00000-0000-4000-8000-0000000000a1";
 const ROAD_TRIP = "ede00000-0000-4000-8000-0000000000a2";
 const LISTENS = 600;
 const LISTEN_GAP_SECONDS = 3 * 3600;
-const FRESH_RELEASE_EVERY = 16;
-const DAY_MS = 86_400_000;
 
 const mbids = (value: string | null) => (value ?? "").split(",").filter(Boolean);
 
@@ -82,7 +80,18 @@ export const listenbrainz: Outside = {
         mbids(param("release_group_mbids")).flatMap((id) => {
           const album = music.albumById.get(id);
           return album
-            ? [[id, { release_group: { name: album.title, date: album.date, type: album.type } }]]
+            ? [
+                [
+                  id,
+                  {
+                    release_group: {
+                      name: album.title,
+                      date: releaseDate(album),
+                      type: album.type,
+                    },
+                  },
+                ],
+              ]
             : [];
         }),
       );
@@ -123,24 +132,14 @@ export const listenbrainz: Outside = {
       return { payload: { recordings, range: param("range"), count: recordings.length } };
     }
     if (path === "/1/explore/fresh-releases") {
-      const releases = music.artists
-        .filter((_, index) => index % FRESH_RELEASE_EVERY === 1)
-        .flatMap((artist, index) => {
-          const album = artist.albums.at(-1);
-          if (!album) return [];
-          return [
-            {
-              artist_credit_name: artist.name,
-              artist_mbids: [artist.id],
-              release_date: new Date(Date.now() - (index + 1) * 2 * DAY_MS)
-                .toISOString()
-                .slice(0, 10),
-              release_group_mbid: album.id,
-              release_group_primary_type: album.type,
-              release_name: album.title,
-            },
-          ];
-        });
+      const releases = music.fresh.map((album) => ({
+        artist_credit_name: album.artist.name,
+        artist_mbids: [album.artist.id],
+        release_date: releaseDate(album),
+        release_group_mbid: album.id,
+        release_group_primary_type: album.type,
+        release_name: album.title,
+      }));
       return { payload: { releases } };
     }
     const [, user, part, kind] =

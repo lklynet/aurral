@@ -121,10 +121,10 @@
   },
   "discover artist": {
     "queries": {
-      "cold": 61,
-      "warm": 29
+      "cold": 92,
+      "warm": 58
     },
-    "bytes": 542,
+    "bytes": 2040,
     "scans": [],
     "calls": {
       "api.deezer.com": {

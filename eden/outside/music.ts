@@ -1,9 +1,11 @@
+import { getLinkedDeezerArtistId } from "../../backend/services/providers/brainzmashMappers.ts";
 import { CATALOGUE_ARTISTS, VARIOUS_ARTISTS_ID } from "../catalogue/artists.ts";
-import { albumEdition, type Catalogue } from "../catalogue/catalogue.ts";
+import { albumEdition, type Catalogue, type CatalogueArtist } from "../catalogue/catalogue.ts";
 import { searchKey } from "../metadata/search.ts";
 
 // The catalogue as the outside services see it: every artist, album, and track with
-// a stable number, because Deezer and Ticketmaster name things by number.
+// a stable number, because Deezer and Ticketmaster name things by number. An artist's
+// number is the Deezer ID its MusicBrainz links give, so Aurral's linked lookups land.
 
 export type Artist = {
   number: number;
@@ -19,6 +21,8 @@ export type Album = {
   title: string;
   type: string;
   date: string;
+  freshDays: number | null;
+  cover: string | null;
   votes: number;
   artist: Artist;
   tracks: Track[];
@@ -37,14 +41,32 @@ export type Track = {
 
 const ALBUM_SLOTS = 100;
 const TRACK_SLOTS = 1000;
+const UNLINKED_ARTIST_BASE = 10_000_000_000;
+const FRESH_RELEASE_EVERY = 16;
+const DAY_MS = 86_400_000;
+
+// A fresh album came out a few days ago, whatever its recorded date.
+export const releaseDate = (album: Album, now = Date.now()) =>
+  album.freshDays === null
+    ? album.date
+    : new Date(now - album.freshDays * DAY_MS).toISOString().slice(0, 10);
 
 export function indexMusic(catalogue: Catalogue) {
+  const numbers = new Set<number>();
+  const numberOf = (links: CatalogueArtist["links"], index: number) => {
+    const linked = Number(
+      getLinkedDeezerArtistId(links?.flatMap(({ target }) => (target ? [{ target }] : []))),
+    );
+    const number = linked && !numbers.has(linked) ? linked : UNLINKED_ARTIST_BASE + index;
+    numbers.add(number);
+    return number;
+  };
   const artists: Artist[] = CATALOGUE_ARTISTS.flatMap(([id], index) => {
     const artist = catalogue.artists.get(id);
     if (!artist || id === VARIOUS_ARTISTS_ID) return [];
     return [
       {
-        number: index + 1,
+        number: numberOf(artist.links, index),
         id,
         name: artist.artistname,
         genres: artist.genres ?? [],
@@ -67,6 +89,8 @@ export function indexMusic(catalogue: Catalogue) {
       title: album.title,
       type: album.type ?? "Album",
       date: album.releasedate ?? "",
+      freshDays: null,
+      cover: album.images?.find((image) => image.CoverType === "Cover")?.Url ?? null,
       votes: album.rating?.Count ?? 0,
       artist,
       tracks: [],
@@ -99,6 +123,13 @@ export function indexMusic(catalogue: Catalogue) {
       );
     }
   }
+  // One artist in sixteen has just put out its least-known album.
+  const fresh = artists
+    .filter((_, index) => index % FRESH_RELEASE_EVERY === 1)
+    .flatMap((artist) => artist.albums.at(-1) ?? []);
+  fresh.forEach((album, index) => {
+    album.freshDays = (index + 1) * 2;
+  });
   const allAlbums = artists.flatMap((artist) => artist.albums);
   const allTracks = allAlbums.flatMap((album) => album.tracks);
   const popular = artists.toSorted((left, right) => right.votes - left.votes);
@@ -107,6 +138,7 @@ export function indexMusic(catalogue: Catalogue) {
   return {
     artists,
     popular,
+    fresh,
     albums: allAlbums,
     artistById,
     artistByNumber: new Map(artists.map((artist) => [artist.number, artist])),

@@ -1,15 +1,10 @@
 import { getAlbumAddAction } from "../../../utils/albumAddAction";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Share } from "../../../components/icons";
+import { Download, Music, Pause, Play, Share } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 import AddActionButton from "../../../components/AddActionButton";
 import ReleaseWaitBadge from "../../../components/ReleaseWaitBadge";
-import {
-  CollectionHeader,
-  CollectionPlayButtons,
-  useCollectionTint,
-} from "../../../components/CollectionHeader";
 import { OptionalLink } from "../../../components/RouteLink";
 import TooltipButton from "../../../components/TooltipButton";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
@@ -23,23 +18,13 @@ import {
   getReleaseGroupCoverUrl,
   mergeReleaseDetails,
 } from "../utils";
-import { TrackPlaylistMenu } from "../../../components/TrackPlaylistMenu";
-import { TrackPlayButton } from "./TrackPlayButton";
 import { useReleasePreviewQueue } from "../../album/releaseTracks.tsx";
-import { useAudioQueue } from "../../../contexts/audioQueueContext";
-import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
 import { releaseGroupDetailsQueryOptions } from "../../../queryOptions.ts";
-import type { ReleaseGroupTrack } from "../../../utils/api/endpoints/artists.ts";
 import type { ArtistDetailsLibrary } from "../hooks/useArtistDetailsLibrary.ts";
 import type { ArtistDetails } from "../hooks/useArtistDetails.ts";
-import type { PlaybackSource } from "../../../hooks/useAlbumTrackListToolbar.ts";
-import type {
-  PlaylistSelection,
-  PlaylistTrackIdentity,
-  SharedPlaylist,
-} from "../../../components/TrackPlaylistMenu";
-import type { ReleaseGroup } from "../utils";
 import { ReleaseCoverImage } from "../../../components/ReleaseCoverImage";
+import type { PlaybackSource } from "../../../hooks/useAlbumTrackListToolbar.ts";
+import type { ReleaseGroup } from "../utils";
 
 type ArtistDetailsDownloadTargetsProps = {
   releaseGroups?: ReleaseGroup[];
@@ -51,40 +36,7 @@ type ArtistDetailsDownloadTargetsProps = {
   handleRequestAlbum: ArtistDetailsLibrary["handleRequestAlbum"];
   artistName?: string;
   playbackSource?: PlaybackSource | null;
-  onAddTrackToPlaylist?: (
-    track: ReleaseGroupTrack,
-    releaseGroup: ReleaseGroup | undefined,
-    target: PlaylistSelection,
-  ) => void | Promise<void>;
-  onAddTrackToLibrary?: (
-    track: ReleaseGroupTrack,
-    releaseGroup: ReleaseGroup | undefined,
-    key: string,
-  ) => unknown;
-  libraryTrackSavingKeys?: Set<string>;
-  resolveMembershipTrack?: (
-    track: ReleaseGroupTrack,
-    releaseGroup: ReleaseGroup | undefined,
-  ) => PlaylistTrackIdentity;
-  playlists?: SharedPlaylist[];
-  playlistsLoading?: boolean;
-  playlistSavingKey?: string;
-  playlistError?: string;
-  getDefaultPlaylistName?: (
-    track: ReleaseGroupTrack,
-    releaseGroup: ReleaseGroup | undefined,
-  ) => string;
-  onLoadPlaylists?: () => Promise<unknown>;
 };
-
-const formatDuration = (track: Pick<ReleaseGroupTrack, "length"> & { duration_ms?: number }) => {
-  const duration = Number(track?.length || track?.duration_ms || 0);
-  if (!Number.isFinite(duration) || duration <= 0) return "";
-  const seconds = Math.floor(duration / 1000);
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-};
-
-const TRACK_PREVIEW_LIMIT = 6;
 
 export function ArtistDetailsDownloadTargets({
   releaseGroups = [],
@@ -96,16 +48,6 @@ export function ArtistDetailsDownloadTargets({
   handleRequestAlbum,
   artistName = "",
   playbackSource = null,
-  onAddTrackToPlaylist,
-  onAddTrackToLibrary,
-  libraryTrackSavingKeys,
-  resolveMembershipTrack,
-  playlists,
-  playlistsLoading,
-  playlistSavingKey,
-  playlistError,
-  getDefaultPlaylistName,
-  onLoadPlaylists,
 }: ArtistDetailsDownloadTargetsProps) {
   const [requestedPick, setRequestedPick] = useState<{
     artistId: string | undefined;
@@ -117,7 +59,6 @@ export function ArtistDetailsDownloadTargets({
     () => buildPick({ releaseGroups, getAlbumStatus, requestedReleaseGroupId }),
     [releaseGroups, getAlbumStatus, requestedReleaseGroupId],
   );
-  const [showAllTracks, setShowAllTracks] = useState(false);
   const { isAlbumDownloading } = useActiveDownloads();
   const share = useShareAction();
   const releaseGroup = missingReleasePick?.releaseGroup;
@@ -128,26 +69,13 @@ export function ArtistDetailsDownloadTargets({
     () => mergeReleaseDetails(releaseGroup, releaseDetailsQuery.data),
     [releaseGroup, releaseDetailsQuery.data],
   );
-  const { tracks, isPending: loadingTracks } = useReleaseGroupTracks(
-    missingReleasePick?.releaseGroupId,
-    {
-      artistMbid: artist?.id || undefined,
-      deezerAlbumId: releaseGroup?._deezerAlbumId ? String(releaseGroup._deezerAlbumId) : undefined,
-    },
-  );
+  const { tracks } = useReleaseGroupTracks(missingReleasePick?.releaseGroupId, {
+    artistMbid: artist?.id || undefined,
+    deezerAlbumId: releaseGroup?._deezerAlbumId ? String(releaseGroup._deezerAlbumId) : undefined,
+  });
 
-  useEffect(() => {
-    setShowAllTracks(false);
-  }, [missingReleasePick?.releaseGroupId]);
-
-  const visibleTracks =
-    showAllTracks || tracks.length <= TRACK_PREVIEW_LIMIT
-      ? tracks
-      : tracks.slice(0, TRACK_PREVIEW_LIMIT);
-  const hasHiddenTracks = tracks.length > TRACK_PREVIEW_LIMIT;
   const pickCover = getReleaseGroupCoverUrl(releaseGroup);
   const coverUrl = pickCover || artistCoverImage || "";
-  const tint = useCollectionTint(coverUrl);
 
   const pickRelease = useMemo(
     () => ({
@@ -158,13 +86,9 @@ export function ArtistDetailsDownloadTargets({
     [missingReleasePick?.releaseGroupId, missingReleasePick?.title, release],
   );
   const {
-    normalizeTrack,
-    previewTrack,
     disabled: toolbarDisabled,
     isListPlaying,
-    isShuffleEnabled,
     handlePlayAll,
-    handleShufflePlay,
   } = useReleasePreviewQueue({
     release: pickRelease,
     trackKey: "pick",
@@ -174,30 +98,6 @@ export function ArtistDetailsDownloadTargets({
     artwork: pickCover,
     playbackSource,
   });
-
-  const { currentTrack, isPlaying, isLoading } = useAudioQueue();
-  const getQueueItems = useQueueTrackActions();
-
-  const isTrackPlaying = useCallback(
-    (trackId: string) =>
-      !!trackId && currentTrack?.id === String(trackId) && (isPlaying || isLoading),
-    [currentTrack?.id, isLoading, isPlaying],
-  );
-
-  const isTrackLoading = useCallback(
-    (trackId: string) => !!trackId && currentTrack?.id === String(trackId) && isLoading,
-    [currentTrack?.id, isLoading],
-  );
-
-  const handleTrackPreviewPlay = (
-    track: ReleaseGroupTrack,
-    index: number,
-    event: React.MouseEvent<HTMLButtonElement>,
-  ) => {
-    event.stopPropagation();
-    if (!track?.preview_url) return;
-    previewTrack(track, index);
-  };
 
   if (!missingReleasePick) return null;
 
@@ -219,186 +119,100 @@ export function ArtistDetailsDownloadTargets({
   const albumStatus = getAlbumStatus(releaseGroupId);
   const albumBusy = requestingAlbum === releaseGroupId || isAlbumDownloading(releaseGroupId);
 
+  const kind = (missingReleasePick.type || "release").toLowerCase();
+  const shareAlbum = () =>
+    share(
+      {
+        kind: "album",
+        albumMbid: releaseGroupId,
+        artistMbid: artist?.id,
+        title,
+        artistName: displayArtistName,
+        tracks: tracks.map((track) => ({
+          title: track.title,
+          artistName: displayArtistName,
+          albumTitle: title,
+          artistMbid: artist?.id,
+          albumMbid: releaseGroupId,
+          trackMbid: track.mbid,
+          releaseMbid: track.releaseMbid,
+          durationMs: track.length,
+          trackNumber: track.trackNumber,
+          discNumber: track.discNumber,
+        })),
+      },
+      title,
+    );
+
   return (
-    <section className="artist-section">
-      <div className="artist-pick-panel" style={tint ? { "--collection-tint": tint } : undefined}>
-        <div className="artist-pick-panel__grid">
-          <CollectionHeader
-            embedded
-            cover={
-              <ReleaseCoverImage
-                src={pickCover}
-                fallback={artistCoverImage}
-                alt=""
-                sizes="17rem"
-                loading="lazy"
-                decoding="async"
-                placeholder={
-                  <span className="native-library-cover-fallback" aria-hidden="true">
-                    {title.trim().charAt(0).toUpperCase() || "—"}
-                  </span>
-                }
-              />
-            }
-            title={<OptionalLink link={titleLink}>{title}</OptionalLink>}
-            meta={meta}
-            actions={
-              <>
-                <CollectionPlayButtons
-                  label={`${title} previews`}
-                  disabled={toolbarDisabled}
-                  isPlaying={isListPlaying}
-                  isShuffleEnabled={isShuffleEnabled}
-                  onPlay={handlePlayAll}
-                  onShuffle={handleShufflePlay}
-                />
-                {albumStatus?.status === "waiting" ? (
-                  <ReleaseWaitBadge releaseDate={release!["first-release-date"]} />
-                ) : canAddAlbum && releaseGroupId ? (
-                  <AddActionButton
-                    {...getAlbumAddAction({ releaseDate: release?.["first-release-date"] })}
-                    onAdd={() => {
-                      setRequestedPick({ artistId: artist?.id, releaseGroupId });
-                      handleRequestAlbum(releaseGroupId, title);
-                    }}
-                    isLoading={albumBusy}
-                    loadingLabel="Downloading"
-                    disabled={albumBusy}
-                  />
-                ) : null}
-                <TooltipButton
-                  className="native-library-favorite"
-                  onClick={() =>
-                    share(
-                      {
-                        kind: "album",
-                        albumMbid: releaseGroupId,
-                        artistMbid: artist?.id,
-                        title,
-                        artistName: displayArtistName,
-                        tracks: tracks.map((track) => ({
-                          title: track.title,
-                          artistName: displayArtistName,
-                          albumTitle: title,
-                          artistMbid: artist?.id,
-                          albumMbid: releaseGroupId,
-                          trackMbid: track.mbid,
-                          releaseMbid: track.releaseMbid,
-                          durationMs: track.length,
-                          trackNumber: track.trackNumber,
-                          discNumber: track.discNumber,
-                        })),
-                      },
-                      title,
-                    )
-                  }
-                  disabled={!displayArtistName || !releaseGroup?.title}
-                  label="Share album"
-                >
-                  <Share aria-hidden="true" />
-                </TooltipButton>
-              </>
-            }
-          />
-          {loadingTracks || tracks.length ? (
-            <div className="artist-min-0">
-              {loadingTracks ? (
-                <div className="artist-loading">
-                  <DotLoader size="xl" label={null} />
-                </div>
-              ) : (
-                <>
-                  <div className="artist-pick-panel__track-grid">
-                    {visibleTracks.map((track, index) => {
-                      const currentTrackId = String(track.id ?? track.mbid ?? `pick-${index}`);
-                      const isPlaying = isTrackPlaying(currentTrackId);
-                      const isLoadingPreview = isTrackLoading(currentTrackId);
-                      return (
-                        <div
-                          key={currentTrackId}
-                          className="artist-track-row artist-track-row--compact"
-                        >
-                          <span className="artist-track-number">
-                            {track.trackNumber || track.position || index + 1}
-                          </span>
-                          {track.preview_url ? (
-                            <TrackPlayButton
-                              track={track}
-                              isPlaying={isPlaying}
-                              isLoading={isLoadingPreview}
-                              onClick={(event) => handleTrackPreviewPlay(track, index, event)}
-                            />
-                          ) : (
-                            <span />
-                          )}
-                          <span className="artist-track-title">
-                            {track.title || track.trackName || "Unknown Track"}
-                          </span>
-                          {onAddTrackToPlaylist || track.preview_url ? (
-                            <TrackPlaylistMenu
-                              queueItems={
-                                track.preview_url
-                                  ? getQueueItems(normalizeTrack(track, index), {
-                                      source: playbackSource,
-                                    })
-                                  : []
-                              }
-                              track={
-                                resolveMembershipTrack
-                                  ? resolveMembershipTrack(track, missingReleasePick.releaseGroup)
-                                  : track
-                              }
-                              triggerVariant="kebab"
-                              playlists={playlists}
-                              loading={playlistsLoading}
-                              saving={playlistSavingKey === currentTrackId}
-                              librarySaving={libraryTrackSavingKeys?.has(currentTrackId)}
-                              error={playlistError}
-                              defaultNewPlaylistName={getDefaultPlaylistName?.(
-                                track,
-                                missingReleasePick.releaseGroup,
-                              )}
-                              onLoadPlaylists={onLoadPlaylists}
-                              onAddToLibrary={
-                                onAddTrackToLibrary
-                                  ? () =>
-                                      onAddTrackToLibrary(
-                                        track,
-                                        missingReleasePick.releaseGroup,
-                                        currentTrackId,
-                                      )
-                                  : null
-                              }
-                              onSelect={
-                                onAddTrackToPlaylist
-                                  ? (target) =>
-                                      onAddTrackToPlaylist(
-                                        track,
-                                        missingReleasePick.releaseGroup,
-                                        target,
-                                      )
-                                  : undefined
-                              }
-                            />
-                          ) : null}
-                          <span className="artist-track-duration">{formatDuration(track)}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {hasHiddenTracks ? (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm artist-pick-panel__show-all"
-                      onClick={() => setShowAllTracks((current) => !current)}
-                    >
-                      {showAllTracks ? "Show fewer tracks" : `Show all ${tracks.length} tracks`}
-                    </button>
-                  ) : null}
-                </>
-              )}
-            </div>
-          ) : null}
+    <section className="artist-section artist-pick" data-artwork-scope>
+      <h2 className="artist-section-title">Featured</h2>
+      <div className="artist-pick__head">
+        <div className="artist-pick__cover" data-artwork>
+          <OptionalLink
+            className="artist-pick__cover-link"
+            link={titleLink}
+            tabIndex={-1}
+            aria-hidden="true"
+          >
+            <ReleaseCoverImage
+              src={pickCover}
+              fallback={artistCoverImage}
+              alt=""
+              sizes="(max-width: 767px) 100vw, 17rem"
+              loading="lazy"
+              decoding="async"
+              placeholder={
+                <span className="artist-pick__placeholder" aria-hidden="true">
+                  <Music />
+                </span>
+              }
+            />
+          </OptionalLink>
+          {toolbarDisabled ? null : (
+            <TooltipButton
+              className="btn btn-primary btn-round-lg artist-pick__play"
+              onClick={handlePlayAll}
+              label={isListPlaying ? `Pause ${title} previews` : `Play ${title} previews`}
+            >
+              {isListPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+            </TooltipButton>
+          )}
+        </div>
+        <div className="artist-pick__details">
+          <h3 className="artist-pick__title">
+            <OptionalLink link={titleLink}>{title}</OptionalLink>
+          </h3>
+          {meta ? <p className="artist-pick__meta">{meta}</p> : null}
+          <p className="artist-pick__why">Most popular {kind}</p>
+          <div className="artist-pick__actions">
+            {albumStatus?.status === "waiting" ? (
+              <ReleaseWaitBadge releaseDate={release!["first-release-date"]} />
+            ) : canAddAlbum && releaseGroupId ? (
+              <AddActionButton
+                {...getAlbumAddAction({ releaseDate: release?.["first-release-date"] })}
+                className="btn-primary"
+                onAdd={() => {
+                  setRequestedPick({ artistId: artist?.id, releaseGroupId });
+                  handleRequestAlbum(releaseGroupId, title);
+                }}
+                isLoading={albumBusy}
+                loadingLabel="Downloading"
+                disabled={albumBusy}
+              >
+                {albumBusy ? <DotLoader size="sm" label={null} /> : <Download aria-hidden="true" />}
+                {albumBusy ? "Downloading" : "Download"}
+              </AddActionButton>
+            ) : null}
+            <TooltipButton
+              className="btn btn-ghost btn-icon-square artist-pick__share"
+              onClick={shareAlbum}
+              disabled={!displayArtistName || !releaseGroup?.title}
+              label="Share album"
+            >
+              <Share aria-hidden="true" />
+            </TooltipButton>
+          </div>
         </div>
       </div>
     </section>

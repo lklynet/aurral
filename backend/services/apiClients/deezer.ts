@@ -404,16 +404,6 @@ export async function deezerGetArtistTopTrackList(
   });
 }
 
-export async function deezerGetArtistTopTracks(artistName: string) {
-  try {
-    const artist = await getDeezerArtist(artistName);
-    if (!artist) return [];
-    return await getDeezerArtistTopTracksById(artist.id);
-  } catch (e) {
-    return [];
-  }
-}
-
 export async function deezerGetArtistTopTracksById(artistId: DeezerArtistId) {
   try {
     return await getDeezerArtistTopTracksById(artistId);

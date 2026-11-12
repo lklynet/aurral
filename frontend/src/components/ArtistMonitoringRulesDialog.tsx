@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import PillToggle from "./PillToggle";
@@ -397,5 +398,5 @@ interface ArtistMonitoringRulesDialogProps extends RulesDialogProps {
 }
 
 export function ArtistMonitoringRulesDialog({ open, ...props }: ArtistMonitoringRulesDialogProps) {
-  return open ? <RulesDialog {...props} /> : null;
+  return open ? createPortal(<RulesDialog {...props} />, document.body) : null;
 }
