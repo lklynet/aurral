@@ -15,6 +15,7 @@ import { resolveYtdlpStagingRoot, validateDownloadFolderPath } from "./downloadF
 import { normalizePathMappings } from "./pathMappings.ts";
 import { isUsenetClientKey, type UsenetClientKey } from "./usenetClientCommon.ts";
 import { readOnlyFolderOverlapping } from "./libraryFolders.ts";
+import { scheduleLibraryScan } from "./libraryScanWorker.ts";
 import { logger } from "./logger.ts";
 import { getNewsSettings, normalizeNewsFeeds, normalizeNewsGroups } from "./apiClients/config.ts";
 import { normalizeQualityProfile } from "./qualityProfileModel.ts";
@@ -413,9 +414,10 @@ export async function saveAppSettings(input: v.InferOutput<typeof appSettingsPat
     };
   }
 
+  const libraryFolder = path.resolve(resolveDownloadRoot());
   const requestedFolder = typeof downloadFolderPath === "string" ? downloadFolderPath.trim() : "";
   const readOnlyOverlap =
-    requestedFolder && path.resolve(requestedFolder) !== path.resolve(resolveDownloadRoot())
+    requestedFolder && path.resolve(requestedFolder) !== libraryFolder
       ? readOnlyFolderOverlapping(requestedFolder)
       : null;
   if (readOnlyOverlap) {
@@ -531,6 +533,7 @@ export async function saveAppSettings(input: v.InferOutput<typeof appSettingsPat
     enqueueDiscoveryRefresh({ reason: "music_data_source_changed", force: true });
   }
   downloadClientRegistry.updateConfig(updatedSettings.integrations);
+  if (path.resolve(resolveDownloadRoot()) !== libraryFolder) scheduleLibraryScan();
   try {
     const { refreshLibraryFileWatcher } = await import("./libraryFileWatcher.ts");
     await refreshLibraryFileWatcher();

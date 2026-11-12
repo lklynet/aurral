@@ -138,10 +138,15 @@ export const dbHelpers = {
   },
 };
 
-const existingDownloadFolder = db
-  .prepare<[string], { value: string }>("SELECT value FROM settings WHERE key = ?")
-  .get("downloadFolderPath");
-syncDownloadFolderPath(existingDownloadFolder?.value || null);
+const downloadFolderStmt = db.prepare<[], { value: string }>(
+  "SELECT value FROM settings WHERE key = 'downloadFolderPath'",
+);
+
+export function loadDownloadFolderPath() {
+  syncDownloadFolderPath(downloadFolderStmt.get()?.value || null);
+}
+
+loadDownloadFolderPath();
 
 const databaseRevisionStmt = db.prepare<[], { data_version: number; changes: number }>(
   "SELECT data_version, total_changes() AS changes FROM pragma_data_version",
