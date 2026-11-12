@@ -3,7 +3,7 @@ import * as v from "valibot";
 import { requireAuth, requireUserAccount } from "../middleware/guards.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { validate } from "../middleware/validate.ts";
-import { getPlayHistory, recordPlayEvent } from "../services/playEventService.ts";
+import { getPlayHistory, recordPlayEvent, sendNowPlaying } from "../services/playEventService.ts";
 import { asAppError } from "../../lib/errors.ts";
 
 const value = v.nullish(v.union([v.string(), v.number()]));
@@ -36,5 +36,13 @@ export default new Hono<AppEnv>()
       return c.json({ event: recordPlayEvent(c.var.user.id, c.req.valid("json")) }, 201);
     } catch (error) {
       return c.json({ error: asAppError(error)?.message || "Could not record play event" }, 400);
+    }
+  })
+  .post("/now-playing", requireUserAccount, validate("json", playEventInput), (c) => {
+    try {
+      void sendNowPlaying(c.var.user.id, c.req.valid("json"));
+      return c.body(null, 202);
+    } catch (error) {
+      return c.json({ error: asAppError(error)?.message || "Could not send now playing" }, 400);
     }
   });

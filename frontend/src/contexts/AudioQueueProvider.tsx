@@ -180,6 +180,32 @@ async function fetchRadio(seed: RadioSeed, queue: QueueEntry[] = []) {
   return tracks.map(normalizeStreamQueueTrack);
 }
 
+const playEventFields = (track: QueueEntry) => ({
+  trackId: track.id,
+  title: track.title,
+  artist: track.artist,
+  album: track.album,
+  albumId: track.libraryAlbumId,
+  artistMbid: track.artistMbid,
+  albumMbid: track.albumMbid,
+  trackMbid: track.trackMbid,
+  durationMs: track.durationMs,
+});
+
+function sendNowPlaying(track: QueueEntry) {
+  if (!track.recordHistory) return;
+  playEventsClient["now-playing"].$post({ json: playEventFields(track) }).catch(() => {});
+}
+
+function recordPlay(track: QueueEntry) {
+  if (!track.recordHistory) return;
+  parseResponse(
+    playEventsClient.$post({
+      json: { ...playEventFields(track), playedAt: Date.now(), source: "native-player" },
+    }),
+  ).catch(() => {});
+}
+
 function trackAt(state: QueueState, playbackIndex: number) {
   const queueIndex = state.playbackOrder[playbackIndex];
   return queueIndex == null ? null : (state.queue[queueIndex] ?? null);
@@ -261,27 +287,6 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     (s: QueueState, playbackIndex: number, options?: LoadTrackOptions) => void
   >(() => {});
 
-  const recordPlay = useCallback((track: QueueEntry) => {
-    if (!track.recordHistory) return;
-    parseResponse(
-      playEventsClient.$post({
-        json: {
-          trackId: track.id,
-          title: track.title,
-          artist: track.artist,
-          album: track.album,
-          albumId: track.libraryAlbumId,
-          artistMbid: track.artistMbid,
-          albumMbid: track.albumMbid,
-          trackMbid: track.trackMbid,
-          durationMs: track.durationMs,
-          playedAt: Date.now(),
-          source: "native-player",
-        },
-      }),
-    ).catch(() => {});
-  }, []);
-
   const loadTrack = useCallback(
     (
       s: QueueState,
@@ -330,6 +335,7 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
             autoplay,
           });
         },
+        onStart: () => sendNowPlaying(track),
         onPlayed: () => recordPlay(track),
         onEnd: () => {
           const cur = stateRef.current;
@@ -341,7 +347,7 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
         },
       });
     },
-    [dispatch, engine, recordPlay, showInfo],
+    [dispatch, engine, showInfo],
   );
 
   const loadTrackAtIndex = useCallback(

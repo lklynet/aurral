@@ -14,8 +14,7 @@ import { asAppError } from "../../../lib/errors.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { APP_NAME, APP_VERSION, LISTENBRAINZ_API } from "../../config/constants.ts";
 
-interface ListenbrainzSubmitEvent {
-  playedAt: number | string;
+type ListenbrainzSubmitEvent = {
   artist: string;
   title: string;
   album?: string | null;
@@ -23,7 +22,7 @@ interface ListenbrainzSubmitEvent {
   trackMbid?: string | null;
   albumMbid?: string | null;
   artistMbid?: string | null;
-}
+} & ({ listenType?: "single"; playedAt: number | string } | { listenType: "playing_now" });
 
 interface ListenbrainzErrorDetails {
   path: string;
@@ -137,12 +136,13 @@ export const listenbrainzSubmit = async ({
   event: ListenbrainzSubmitEvent;
 }) => {
   const root = normalizeListenbrainzBaseUrl(baseUrl);
-  const listenedAt = Math.floor(Number(event?.playedAt) / 1000);
-  if (!Number.isFinite(listenedAt) || listenedAt <= 0) {
+  const listenedAt =
+    event.listenType === "playing_now" ? undefined : Math.floor(Number(event.playedAt) / 1000);
+  if (listenedAt !== undefined && !(Number.isFinite(listenedAt) && listenedAt > 0)) {
     throw new Error("listenbrainzSubmit requires a numeric playedAt timestamp");
   }
   const payload = {
-    listen_type: "single",
+    listen_type: event.listenType ?? "single",
     payload: [
       {
         listened_at: listenedAt,

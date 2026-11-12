@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { test, beforeEach, afterAll } from "vite-plus/test";
+import * as v from "valibot";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 
 import {
   cleanupIsolatedState,
@@ -105,4 +106,39 @@ test("one unreadable user entry keeps every other user's scrobble connections", 
   scrobbleConnectionStore.saveConnection(3, "listenbrainz", { token: "third-token" });
   assert.equal(scrobbleConnectionStore.getConnection(1, "lastfm")?.token, "first-token");
   assert.equal(scrobbleConnectionStore.getConnection(3, "listenbrainz")?.token, "third-token");
+});
+
+test("now playing reaches each linked scrobbler without recording a play", async (t: import("vite-plus/test").TestContext) => {
+  const originalFetch = globalThis.fetch;
+  vi.stubEnv("LASTFM_API_KEY", "test-key");
+  vi.stubEnv("LASTFM_API_SECRET", "test-secret");
+  const bodies = new Map<string, string>();
+  globalThis.fetch = async (url, options) => {
+    bodies.set(new URL(String(url)).host, String(options?.body));
+    return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+  };
+  t.onTestFinished(() => {
+    globalThis.fetch = originalFetch;
+    vi.unstubAllEnvs();
+  });
+  const { scrobbleConnectionStore } = scrobbleStore;
+  scrobbleConnectionStore.saveConnection(1, "lastfm", { token: "session-token" });
+  scrobbleConnectionStore.saveConnection(1, "listenbrainz", { token: "listenbrainz-token" });
+
+  await playEvents.sendNowPlaying(1, { trackId: "song:one", title: "One", artist: "Artist A" });
+
+  const lastfm = new URLSearchParams(requireFixture(bodies.get("ws.audioscrobbler.com")));
+  assert.equal(lastfm.get("method"), "track.updateNowPlaying");
+  assert.equal(lastfm.get("timestamp"), null);
+  const listenbrainz = v.parse(
+    v.object({ listen_type: v.string(), payload: v.array(v.looseObject({})) }),
+    JSON.parse(requireFixture(bodies.get("api.listenbrainz.org"))),
+  );
+  assert.equal(listenbrainz.listen_type, "playing_now");
+  assert.equal("listened_at" in requireFixture(listenbrainz.payload[0]), false);
+  assert.equal(playEvents.getPlayHistory(1).length, 0);
+  assert.equal(
+    db.prepare<[], { count: number }>("SELECT COUNT(*) AS count FROM jobs").get()?.count,
+    0,
+  );
 });

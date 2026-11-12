@@ -16,6 +16,7 @@ type AudioSnapshot = {
 
 type AudioHandlers = {
   onEnd?: () => void;
+  onStart?: () => void;
   onPlayed?: () => void;
   onLoadError?: (...args: unknown[]) => void;
 };
@@ -156,6 +157,9 @@ export function createAudioEngine() {
     entry.howl.on("playerror", () => {
       entry.wantsPlay = false;
     });
+    entry.howl.once("play", () => {
+      if (entry === current) entry.handlers?.onStart?.();
+    });
     for (const event of HOWL_EVENTS) {
       entry.howl.on(event, (...args: unknown[]) => {
         if (entry !== current) return;
@@ -217,6 +221,7 @@ export function createAudioEngine() {
       autoplay = true,
       startAt = 0,
       onEnd,
+      onStart,
       onPlayed,
       onLoadError,
     }: AudioHandlers & {
@@ -230,7 +235,7 @@ export function createAudioEngine() {
       else if (sameSource(preloaded, src, format)) discardPreload();
       const previous = current;
       current = reusable ?? createEntry({ src, format });
-      current.handlers = { onEnd, onPlayed, onLoadError };
+      current.handlers = { onEnd, onStart, onPlayed, onLoadError };
       release(previous);
       if (startAt > 0) {
         current.startAt = startAt;
