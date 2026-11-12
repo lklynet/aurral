@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { buildArtistTags, getCoverImage, getArtistType, type ArtistCoverImage } from "../utils";
 import type { ArtistDetailsResponse } from "../../../utils/api/endpoints/artists.ts";
 import { withImageCacheBust } from "../../../utils/normalizeMediaUrl";
@@ -23,10 +23,12 @@ export function ArtistDetailsHero({
   artist,
   coverImages,
   onCoverError,
+  children,
 }: {
   artist: Partial<ArtistDetailsResponse>;
   coverImages: readonly ArtistCoverImage[] | null | undefined;
   onCoverError?: () => void;
+  children: ReactNode;
 }) {
   const heroImage = getCoverImage(coverImages);
   const [imageFailed, setImageFailed] = useState(false);
@@ -43,13 +45,19 @@ export function ArtistDetailsHero({
 
   return (
     <section className={`artist-hero${showImage ? "" : " artist-hero--plain"}`}>
-      <div className="artist-hero__inner" style={artworkStyle}>
+      {showImage ? (
+        <div className="artist-hero__backdrop" aria-hidden="true">
+          <img src={displayedImage} alt="" className="artist-hero__blur" decoding="async" />
+        </div>
+      ) : null}
+      <div className="artist-hero__inner">
         {showImage ? (
           <>
             <img
               src={displayedImage}
               alt=""
               className="artist-hero__image"
+              style={artworkStyle}
               loading="eager"
               decoding="async"
               onError={() => {
@@ -79,6 +87,7 @@ export function ArtistDetailsHero({
           ) : null}
         </div>
       </div>
+      {children}
     </section>
   );
 }
