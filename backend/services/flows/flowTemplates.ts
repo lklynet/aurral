@@ -28,6 +28,7 @@ export function listFlowTemplates(user: RequestUser) {
     id: template.id,
     name: template.name,
     description: template.description,
+    artworkUrl: `/api/playlists/flow-templates/${template.id}/cover?v=${template.cover}`,
     available: template.id !== LISTENING_HISTORY_PRESET_ID || hasHistory,
   }));
 }

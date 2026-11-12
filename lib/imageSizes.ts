@@ -12,7 +12,7 @@ const DEEZER =
   /^(https?:\/\/[\w-]+\.dzcdn\.net\/images\/[a-z]+\/[0-9a-f]+\/)\d+x\d+(-[^/?#]*\.(?:jpg|png))$/i;
 const DEEZER_WIDTHS = [120, 250, 500, 1000];
 const AURRAL_COVER =
-  /\/api\/(?:playlists\/artwork\/[^/?#]+|discover\/playlists\/[^/?#]+\/[^/?#]+\/cover)(?:\?|$)/;
+  /\/api\/(?:playlists\/(?:artwork\/[^/?#]+|flow-templates\/[^/?#]+\/cover)|discover\/playlists\/[^/?#]+\/[^/?#]+\/cover)(?:\?|$)/;
 const AURRAL_COVER_WIDTH = 1000;
 
 export function imageSizes(url: string): ImageSize[] {

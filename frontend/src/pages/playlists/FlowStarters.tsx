@@ -11,6 +11,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { queryKeys } from "../../queryClient.ts";
 import { flowsClient } from "../../utils/api/clients/flows.ts";
+import { resolveAuthenticatedApiAssetUrl } from "../../utils/api/core.ts";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
 import { flowPath } from "../../navigation/playlistPaths";
 import { getNextFlowName, newBlankFlow } from "./flowPageUtils";
@@ -124,6 +125,7 @@ export function FlowStarters({ onCreated }: { onCreated?: () => void }) {
             ? template.description
             : "Needs listening history. Play some music first.",
           <PlaylistArtworkThumb
+            artworkUrl={resolveAuthenticatedApiAssetUrl(template.artworkUrl)}
             sizes="3.5rem"
             name={template.name}
             className="flow-starters__art"
