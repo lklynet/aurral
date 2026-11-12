@@ -124,7 +124,7 @@ test("playlist changes wait for another process's write instead of failing as lo
   );
 });
 
-test("creates flows with normalized scheduling and enforces unique names", () => {
+test("creates flows with normalized scheduling", () => {
   const flow = flowPlaylistConfig.createFlow({
     name: "Late Night",
     size: 25,
@@ -140,14 +140,6 @@ test("creates flows with normalized scheduling and enforces unique names", () =>
   assert.equal(flow.lastRunAt, null);
   assert.equal(flow.yearFrom, null);
   assert.equal(flow.yearTo, null);
-
-  assert.throws(
-    () =>
-      flowPlaylistConfig.createFlow({
-        name: "late night",
-      }),
-    /already exists/,
-  );
 });
 
 test("normalizes invalid playlist owners to null", () => {
@@ -164,9 +156,13 @@ test("normalizes invalid playlist owners to null", () => {
     name: "Unsafe Owner",
     ownerUserId: Number.MAX_SAFE_INTEGER + 1,
   });
-  const unowned = flowPlaylistConfig.createFlow({ name: "Invalid Owner Conflict" });
+  const unowned = flowPlaylistConfig.createFlow({
+    name: "Invalid Owner",
+    ownerUserId: "not-a-user",
+  });
   const unownedPlaylist = flowPlaylistConfig.createStaticPlaylist({
-    name: "Invalid Playlist Owner Conflict",
+    name: "Invalid Playlist Owner",
+    ownerUserId: "not-a-user",
   });
   const owned = flowPlaylistConfig.createFlow({ name: "Owned Flow", ownerUserId: 7 });
 
@@ -175,22 +171,8 @@ test("normalizes invalid playlist owners to null", () => {
   assert.equal(fractional.ownerUserId, null);
   assert.equal(unsafe.ownerUserId, null);
   assert.equal(owned.ownerUserId, 7);
-  assert.throws(
-    () =>
-      flowPlaylistConfig.createFlow({
-        name: "Invalid Owner Conflict",
-        ownerUserId: "not-a-user",
-      }),
-    /already exists/,
-  );
-  assert.throws(
-    () =>
-      flowPlaylistConfig.createStaticPlaylist({
-        name: "Invalid Playlist Owner Conflict",
-        ownerUserId: "not-a-user",
-      }),
-    /already exists/,
-  );
+  assert.equal(unowned.ownerUserId, null);
+  assert.equal(unownedPlaylist.ownerUserId, null);
 
   flowPlaylistConfig.deleteFlow(flow.id);
   flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
@@ -427,14 +409,18 @@ test("partial year updates do not silently swap the untouched bound", () => {
   assert.equal(earlyTo?.yearTo, 1970);
 });
 
-test("rejects flow and static playlist names that collide across types", () => {
-  const flow = flowPlaylistConfig.createFlow({ name: "Rock" });
-  assert.throws(() => flowPlaylistConfig.createStaticPlaylist({ name: "rock" }), /already exists/);
+test("allows flows and static playlists to share a name", () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Discover Weekly" });
+  const flow = flowPlaylistConfig.createFlow({ name: "discover weekly" });
+  const twin = flowPlaylistConfig.createFlow({ name: "Discover Weekly" });
+  const renamed = flowPlaylistConfig.updateStaticPlaylist(playlist.id, { name: "Discover Weekly" });
 
-  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Jazz" });
-  assert.throws(() => flowPlaylistConfig.createFlow({ name: "Jazz" }), /already exists/);
+  assert.equal(flow.name, "discover weekly");
+  assert.equal(twin.name, "Discover Weekly");
+  assert.equal(renamed?.name, "Discover Weekly");
 
   flowPlaylistConfig.deleteFlow(flow.id);
+  flowPlaylistConfig.deleteFlow(twin.id);
   flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
 });
 

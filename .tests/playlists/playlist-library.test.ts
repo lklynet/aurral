@@ -220,18 +220,19 @@ test("a playlist edit that cannot be saved leaves no new downloads behind", asyn
   const kept = { artistName: "Band", albumName: "Record", trackName: "Kept" };
   const added = { artistName: "Band", albumName: "Record", trackName: "Added" };
   const { playlist } = await createPlaylist([kept]);
-  await createPlaylist([], { name: "Taken" });
   const before = downloadTracker.getAll().length;
+  vi.spyOn(config.flowPlaylistConfig, "updateStaticPlaylist").mockImplementation(() => {
+    throw new Error("Settings are read-only");
+  });
 
   await assert.rejects(
     operations.processPlaylistOperation({
       kind: "static-playlist-update",
       playlistId: playlist.id,
-      name: "Taken",
-      hasNameUpdate: true,
       tracks: [kept, added],
       hasTracksUpdate: true,
     }),
+    /Settings are read-only/,
   );
 
   assert.equal(downloadTracker.getAll().length, before);

@@ -33,7 +33,6 @@ import {
   PluginImportError,
 } from "../services/plugins/pluginImportList.ts";
 import { enqueueImportedPlaylist } from "../services/importLists/importPlaylist.ts";
-import { asAppError } from "../../lib/errors.ts";
 import { importSettings, requirePlaylistAccess } from "./playlists/handlers/utils.ts";
 
 const pluginParam = v.object({ id: v.string() });
@@ -49,8 +48,6 @@ async function importAnswer<Env extends AppEnv, Path extends string, In extends 
   } catch (error) {
     if (error instanceof PluginImportError)
       return c.json({ error: error.message }, error.statusCode);
-    if (asAppError(error)?.code === "STATIC_PLAYLIST_NAME_CONFLICT")
-      return c.json({ error: "Playlist name already exists" }, 409);
     throw error;
   }
 }

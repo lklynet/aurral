@@ -129,14 +129,6 @@ async function createStaticPlaylist<E extends AppEnv>(
   return c.json({ success: true, playlistId, queued: true, operationId: result.operationId }, 200);
 }
 
-const nameConflict = <E extends AppEnv>(c: Context<E>, error: unknown, fallback: string) => {
-  const failure = asAppError(error);
-  if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
-    return c.json({ error: "Playlist name already exists", message: failure.message }, 400);
-  }
-  return c.json({ error: fallback, message: failure?.message }, 500);
-};
-
 async function enqueueBulkAction<E extends AppEnv>(
   c: Context<E>,
   user: RequestUser,
@@ -261,7 +253,10 @@ const staticPlaylistRoutes = new Hono<AppEnv>()
     try {
       return await createStaticPlaylist(c, c.var.user, c.req.valid("json"));
     } catch (error) {
-      return nameConflict(c, error, "Failed to create playlist");
+      return c.json(
+        { error: "Failed to create playlist", message: asAppError(error)?.message },
+        500,
+      );
     }
   })
   .post(
@@ -400,7 +395,10 @@ const staticPlaylistRoutes = new Hono<AppEnv>()
         200,
       );
     } catch (error) {
-      return nameConflict(c, error, "Failed to update playlist");
+      return c.json(
+        { error: "Failed to update playlist", message: asAppError(error)?.message },
+        500,
+      );
     }
   })
   .delete("/:playlistId/tracks/:jobId", requirePlaylistAccess, async (c) => {
