@@ -207,10 +207,18 @@ export async function prepareWrappedCard(summary: WrappedRecap, field: string, u
 
     y += 6 * u;
     let x = left;
-    const statTop = y + font(14 * u, WRAPPED_DISPLAY, 900, "0").actualBoundingBoxAscent;
+    context.font = `900 ${14 * u}px ${WRAPPED_DISPLAY}`;
+    const statsWidth = stats.reduce(
+      (total, stat) => total + context.measureText(stat.value.toLocaleString()).width,
+      0,
+    );
+    const statSize = Math.floor(
+      14 * u * Math.min(1, (room - (stats.length - 1) * 6 * u) / statsWidth),
+    );
+    const statTop = y + font(statSize, WRAPPED_DISPLAY, 900, "0").actualBoundingBoxAscent;
     stats.forEach((stat, index) => {
       const final = stat.value.toLocaleString();
-      const valueWidth = font(14 * u, WRAPPED_DISPLAY, 900, final).width;
+      const valueWidth = font(statSize, WRAPPED_DISPLAY, 900, final).width;
       const counted = 1 - (1 - Math.min(1, Math.max(0, (time - 0.3 - index * 0.1) / 1.6))) ** 4;
       const offset = rise(0.25 + index * 0.1, 0.7, 3 * u);
       context.fillText(Math.round(stat.value * counted).toLocaleString(), x, statTop + offset);
