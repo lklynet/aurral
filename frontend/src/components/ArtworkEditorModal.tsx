@@ -8,6 +8,7 @@ import { getApiErrorMessage, getApiErrorText } from "../utils/api/errors.ts";
 import { asApiError } from "../utils/api/core.ts";
 import { cacheImageLocally } from "../utils/api/endpoints/images.ts";
 import type { CustomArtworkResult } from "../utils/api/endpoints/library.ts";
+import { ModalBackdrop } from "./ModalBackdrop";
 
 const isWebUrl = (value: string) => {
   try {
@@ -164,7 +165,7 @@ export default function ArtworkEditorModal({
   })();
 
   return (
-    <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
+    <ModalBackdrop onClick={handleBackdropClick}>
       <div
         ref={dialogRef}
         className="settings-page__modal settings-page__modal--integration artwork-editor"
@@ -298,6 +299,6 @@ export default function ArtworkEditorModal({
           </div>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

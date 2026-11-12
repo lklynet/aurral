@@ -1,6 +1,7 @@
 import { useId, useRef } from "react";
 import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
+import { ModalBackdrop } from "../../../components/ModalBackdrop";
 
 interface DeleteAlbumModalProps {
   show: boolean;
@@ -32,7 +33,7 @@ export function DeleteAlbumModal({
 
   if (!show) return null;
   return (
-    <div className="artist-modal-backdrop">
+    <ModalBackdrop>
       <div
         ref={dialogRef}
         className="artist-modal"
@@ -87,6 +88,6 @@ export function DeleteAlbumModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

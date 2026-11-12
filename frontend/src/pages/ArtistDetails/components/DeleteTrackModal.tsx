@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
+import { ModalBackdrop } from "../../../components/ModalBackdrop";
 
 interface DeleteTrackModalProps {
   show: boolean;
@@ -28,7 +29,7 @@ export function DeleteTrackModal({
 
   if (!show) return null;
   return (
-    <div className="artist-modal-backdrop">
+    <ModalBackdrop>
       <div
         ref={dialogRef}
         className="artist-modal"
@@ -70,6 +71,6 @@ export function DeleteTrackModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

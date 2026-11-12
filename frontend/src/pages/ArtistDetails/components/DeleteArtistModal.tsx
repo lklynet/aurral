@@ -1,6 +1,7 @@
 import { useId, useRef } from "react";
 import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
+import { ModalBackdrop } from "../../../components/ModalBackdrop";
 
 interface DeleteArtistModalProps {
   show: boolean;
@@ -39,7 +40,7 @@ export function DeleteArtistModal({
   const hasLibraryFolderFiles = sources.includes("aurral");
   const readOnlyOnly = !hasLibraryFolderFiles && sources.includes("readonly");
   return (
-    <div className="artist-modal-backdrop">
+    <ModalBackdrop>
       <div
         ref={dialogRef}
         className="artist-modal"
@@ -100,6 +101,6 @@ export function DeleteArtistModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

@@ -9,6 +9,7 @@ import { libraryTracksClient } from "../utils/api/clients/libraryTracks.ts";
 import { playlistJobsClient } from "../utils/api/clients/playlistJobs.ts";
 import type { LibraryAlbum, LibraryArtist, LibraryTrack } from "../utils/libraryPageData.ts";
 import { formatDuration } from "./library/libraryShared.tsx";
+import { ModalBackdrop } from "../components/ModalBackdrop";
 
 type LibraryQuality = NonNullable<LibraryTrack["files"][number]["quality"]>;
 type LibraryMetadata = {
@@ -221,7 +222,7 @@ export default function LibraryInfoModal({
   }
 
   return (
-    <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
+    <ModalBackdrop onClick={handleBackdropClick}>
       <section
         ref={dialogRef}
         className="artist-modal activity-info-modal library-info-modal"
@@ -262,6 +263,6 @@ export default function LibraryInfoModal({
           ))}
         </dl>
       </section>
-    </div>
+    </ModalBackdrop>
   );
 }

@@ -4,6 +4,7 @@ import TooltipButton from "../../components/TooltipButton";
 import { useModalDialog } from "../../hooks/useModalDialog.ts";
 import { formatDateTime } from "../../utils/dateTime.ts";
 import { lookupLabel, type ActivityRequest } from "../../../../lib/activity.ts";
+import { ModalBackdrop } from "../../components/ModalBackdrop";
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -112,7 +113,7 @@ export default function ActivityInfoModal({
   const rows = getRows(item);
 
   return (
-    <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
+    <ModalBackdrop onClick={handleBackdropClick}>
       <section
         ref={dialogRef}
         className="artist-modal activity-info-modal"
@@ -142,6 +143,6 @@ export default function ActivityInfoModal({
           ))}
         </dl>
       </section>
-    </div>
+    </ModalBackdrop>
   );
 }

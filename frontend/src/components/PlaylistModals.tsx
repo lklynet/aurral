@@ -3,6 +3,7 @@ import { Plus, X } from "./icons";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { DotLoader } from "./DotLoader";
 import TooltipButton from "./TooltipButton";
+import { ModalBackdrop } from "./ModalBackdrop";
 
 interface ModalShellProps {
   open: boolean;
@@ -35,7 +36,7 @@ export function ModalShell({
 
   if (!open) return null;
   return (
-    <div className="playlist-modal-backdrop" onClick={handleBackdropClick}>
+    <ModalBackdrop className="playlist-modal-backdrop" onClick={handleBackdropClick}>
       <div
         ref={dialogRef}
         className={`playlist-modal${className ? ` ${className}` : ""}`}
@@ -70,7 +71,7 @@ export function ModalShell({
         <div className="playlist-modal__body">{children}</div>
         {footer ? <div className="playlist-modal__footer">{footer}</div> : null}
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }
 

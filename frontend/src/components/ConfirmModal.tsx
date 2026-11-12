@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { DotLoader } from "./DotLoader";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
+import { ModalBackdrop } from "./ModalBackdrop";
 
 interface ConfirmModalProps {
   open: boolean;
@@ -38,7 +39,7 @@ export function ConfirmModal({
   if (!open) return null;
 
   return (
-    <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
+    <ModalBackdrop onClick={handleBackdropClick}>
       <div
         ref={dialogRef}
         className="artist-modal"
@@ -64,6 +65,6 @@ export function ConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

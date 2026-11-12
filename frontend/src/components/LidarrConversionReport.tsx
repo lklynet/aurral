@@ -8,6 +8,7 @@ import { useReadOnlyFolders } from "../hooks/useLibraryFileOperation.ts";
 import { useSettingsRoute } from "../navigation/settingsRoute";
 import { libraryMonitoringClient } from "../utils/api/clients/libraryMonitoring.ts";
 import { DotLoader } from "./DotLoader";
+import { ModalBackdrop } from "./ModalBackdrop";
 
 const MOUNT_DOCS = "https://docs.aurral.org/getting-started/storage/#mount-a-read-only-folder";
 
@@ -46,7 +47,7 @@ export default function LidarrConversionReport() {
   const { folders } = report;
 
   return (
-    <div className="artist-modal-backdrop">
+    <ModalBackdrop>
       <div
         ref={dialogRef}
         className="artist-modal"
@@ -117,6 +118,6 @@ export default function LidarrConversionReport() {
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

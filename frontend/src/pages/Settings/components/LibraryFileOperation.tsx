@@ -15,6 +15,7 @@ import {
 } from "../../../hooks/useLibraryFileOperation.ts";
 import { SettingsActions, SettingsRow } from "../SettingsLayout";
 import "./LibraryFileOperation.css";
+import { ModalBackdrop } from "../../../components/ModalBackdrop";
 
 const PAGE_SIZE = 50;
 const TAG_IT_YOURSELF = "https://docs.aurral.org/using/library/#tag-a-file-yourself";
@@ -242,7 +243,7 @@ function ReviewDialog({
   const shown = items.data?.items || [];
 
   return (
-    <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
+    <ModalBackdrop onClick={handleBackdropClick}>
       <div
         ref={dialogRef}
         className="artist-modal library-file-op__dialog"
@@ -301,7 +302,7 @@ function ReviewDialog({
           </div>
         ) : null}
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }
 
