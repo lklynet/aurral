@@ -405,6 +405,55 @@ test("removing and reordering up next keeps the current track playing", () => {
   ]);
 });
 
+test("a missing track leaves the queue and the next one takes its place", () => {
+  const playing = startQueue({ startTrackId: "t4" });
+  const skipped = queueReducer(playing, {
+    type: "REMOVE_MISSING",
+    entryId: entryOf(playing, "t4"),
+    autoplay: true,
+  });
+  assert.equal(currentId(skipped), "t5");
+  assert.equal(skipped.autoplay, true);
+  assert.ok(skipped.queueRevision > playing.queueRevision);
+  assert.equal(skipped.queue.length, queueTracks.length - 1);
+  const paused = queueReducer(playing, {
+    type: "REMOVE_MISSING",
+    entryId: entryOf(playing, "t4"),
+    autoplay: false,
+  });
+  assert.equal(currentId(paused), "t5");
+  assert.equal(paused.autoplay, false);
+
+  const upcoming = queueReducer(playing, {
+    type: "REMOVE_MISSING",
+    entryId: entryOf(playing, "t6"),
+    autoplay: true,
+  });
+  assert.equal(currentId(upcoming), "t4");
+  assert.deepEqual(upcomingIds(upcoming), ["t5", "t7"]);
+
+  const last = startQueue({ startTrackId: "t7" });
+  const ended = queueReducer(last, {
+    type: "REMOVE_MISSING",
+    entryId: entryOf(last, "t7"),
+    autoplay: true,
+  });
+  assert.equal(currentId(ended), "t0");
+  assert.equal(ended.autoplay, false);
+
+  const alone = queueReducer(initialQueueState, {
+    type: "PLAY_QUEUE",
+    tracks: [requireFixture(queueTracks[0])],
+  });
+  const empty = queueReducer(alone, {
+    type: "REMOVE_MISSING",
+    entryId: entryOf(alone, "t0"),
+    autoplay: true,
+  });
+  assert.equal(empty.currentIndex, -1);
+  assert.equal(empty.queue.length, 0);
+});
+
 test("clearing up next keeps the current track and undo brings the cleared tracks back", () => {
   const playing = startQueue({ startTrackId: "t3" });
   const cleared = queueReducer(playing, { type: "CLEAR_UPCOMING" });

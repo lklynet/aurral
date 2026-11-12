@@ -32,6 +32,7 @@ import type {
 } from "../utils/audioQueue";
 import { AudioQueueContext } from "./audioQueueContext";
 import { useAuth } from "./AuthContext";
+import { useToast } from "./ToastContext";
 import { getRequestToken } from "../utils/api/core";
 import {
   QUEUE_STORAGE_KEY,
@@ -193,6 +194,11 @@ function trackSignature(
   return `${state.queueRevision}:${track.entryId ?? state.playbackOrder[playbackIndex]}:${track.src}:${formatKey}`;
 }
 
+const isMissing = (src: string) =>
+  fetch(src, { method: "HEAD", credentials: "same-origin" })
+    .then((response) => response.status === 404)
+    .catch(() => false);
+
 function readStoredQueue(owner: string | null) {
   try {
     return parseStoredQueue(window.localStorage.getItem(QUEUE_STORAGE_KEY), {
@@ -219,6 +225,7 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
   const [engine] = useState(createAudioEngine);
   const playback = useSyncExternalStore(engine.subscribe, engine.getSnapshot, engine.getSnapshot);
   const { user } = useAuth() ?? {};
+  const { showInfo } = useToast();
   const owner = user ? String(user.id ?? user.username ?? "local") : null;
   const ownsQueueRef = useRef(false);
   const restoredOwnerRef = useRef<string | null>(null);
@@ -282,7 +289,8 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
       { formatAttemptIndex = 0, autoplay = true }: LoadTrackOptions = {},
     ) => {
       const track = trackAt(s, playbackIndex);
-      if (!track?.src) return;
+      const src = track?.src;
+      if (!src) return;
       const formatAttempts = getFormatLoadAttempts(track);
       const formatKey = formatAttempts[formatAttemptIndex];
       if (!formatKey) return;
@@ -293,12 +301,21 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
       if (resumeAt?.entryId !== track.entryId) resumeAtRef.current = null;
 
       engine.load({
-        src: track.src,
+        src,
         format: getHowlerFormat(formatKey),
         autoplay,
         startAt: resumeAt?.entryId === track.entryId ? resumeAt.position : 0,
-        onLoadError: () => {
+        onLoadError: async () => {
           loadedSignatureRef.current = null;
+          const missing = formatAttemptIndex === 0 && (await isMissing(src));
+          const cur = stateRef.current;
+          if (trackAt(cur, cur.currentIndex)?.entryId !== track.entryId) return;
+          if (missing) {
+            resumeAtRef.current = null;
+            dispatch({ type: "REMOVE_MISSING", entryId: track.entryId, autoplay });
+            showInfo(`Removed ${track.title} from the queue because its file is missing`);
+            return;
+          }
           if (formatAttemptIndex + 1 >= formatAttempts.length) {
             resumeAtRef.current = null;
             dispatch({
@@ -324,7 +341,7 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
         },
       });
     },
-    [dispatch, engine, recordPlay],
+    [dispatch, engine, recordPlay, showInfo],
   );
 
   const loadTrackAtIndex = useCallback(
