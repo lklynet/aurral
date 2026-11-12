@@ -398,5 +398,5 @@ interface ArtistMonitoringRulesDialogProps extends RulesDialogProps {
 }
 
 export function ArtistMonitoringRulesDialog({ open, ...props }: ArtistMonitoringRulesDialogProps) {
-  return open ? createPortal(<RulesDialog {...props} />, document.body) : null;
+  return open ? <RulesDialog {...props} /> : null;
 }
