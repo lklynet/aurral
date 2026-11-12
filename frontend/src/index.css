@@ -9395,6 +9395,15 @@ button.native-library-genre-row:focus-visible {
   height: 1.375rem;
 }
 
+.library-artist__discover {
+  min-height: var(--native-library-detail-action-size);
+  padding-inline: 0.85rem 1rem;
+  border-radius: var(--aurral-radius-round);
+  font-size: var(--aurral-font-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .library-artist__section {
   min-width: 0;
 }
@@ -9436,6 +9445,21 @@ button.native-library-genre-row:focus-visible {
 
   .library-artist__grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 359px) {
+  .library-artist__discover {
+    width: var(--native-library-detail-action-size);
+    padding: 0;
+  }
+
+  .library-artist__discover span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
   }
 }
 
