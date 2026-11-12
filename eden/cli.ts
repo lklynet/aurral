@@ -4,10 +4,9 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import * as v from "valibot";
 import { AurralApi, aurralEnv, withAurral, writeAurralEnv, writeAuthority } from "./aurral.ts";
+import { loadCatalogue } from "./catalogue/catalogue.ts";
 import { notCovered } from "./coverage.ts";
 import { generateLibrary, generateWorld } from "./library/generate.ts";
-import { isScene, loadSceneCatalogue, sceneNames, scenes, type SceneName } from "./scenes/index.ts";
-import { captureShots } from "./scenes/showroom/capture.ts";
 import { seedAurral } from "./seed.ts";
 import { isOwnKey } from "../lib/ownKey.ts";
 import { isService, serviceNames, services, withNeeds } from "./services/index.ts";
@@ -16,7 +15,6 @@ import { LISTENER, LOGIN, paths, PROJECT, REPO_ROOT, resolvePorts, STATE_DIR } f
 import type { Ports } from "./state.ts";
 
 const COMPOSE_FILE = path.join(REPO_ROOT, "eden", "compose.yml");
-const SCREENSHOTS_DIR = path.join(REPO_ROOT, "web", "screenshots");
 const CORE_CONTAINERS = ["metadata", "outside"];
 const AURRAL = "aurral";
 const WORLD = "world";
@@ -26,7 +24,6 @@ const DOWNLOAD_FOLDERS = ["nzbget", "sabnzbd", "qbittorrent", "slskd/complete", 
 function composeEnv(ports: Ports) {
   return {
     ...process.env,
-    EDEN_SCENE: storedScene() ?? "lab",
     EDEN_REPO: REPO_ROOT,
     EDEN_LIBRARY: paths.library,
     EDEN_WORLD: paths.world,
@@ -88,38 +85,11 @@ ${notCovered.map((line) => `  ${line}`).join("\n")}
 `);
 }
 
-const { values } = parseArgs({
-  args: process.argv.slice(3),
-  options: {
-    with: { type: "string", multiple: true },
-    all: { type: "boolean" },
-    scene: { type: "string" },
-    only: { type: "string", multiple: true },
-  },
-});
-
-function storedScene() {
-  if (!existsSync(paths.scene)) return null;
-  const name = readFileSync(paths.scene, "utf8").trim();
-  return isScene(name) ? name : null;
-}
-
-// An Eden keeps the scene it was built with, until `down` clears it.
-function chooseScene(asked: string | null): SceneName {
-  if (asked !== null && !isScene(asked)) {
-    throw new Error(`Unknown scene ${asked}. Eden has ${sceneNames.join(", ")}.`);
-  }
-  const stored = storedScene();
-  if (stored && asked && stored !== asked) {
-    throw new Error(`This Eden is the ${stored} scene. Run \`pnpm eden down\` to build another.`);
-  }
-  const scene = stored ?? asked ?? "lab";
-  mkdirSync(STATE_DIR, { recursive: true });
-  writeFileSync(paths.scene, scene);
-  return scene;
-}
-
 function requestedServices(everything = false) {
+  const { values } = parseArgs({
+    args: process.argv.slice(3),
+    options: { with: { type: "string", multiple: true }, all: { type: "boolean" } },
+  });
   const asked = (values.with ?? []).length > 0;
   if (values.all || (everything && !asked)) return serviceNames;
   const names = (values.with ?? []).flatMap((entry) => entry.split(",")).filter(Boolean);
@@ -130,10 +100,8 @@ function requestedServices(everything = false) {
   return names.filter(isService);
 }
 
-async function up(everything = false, sceneAsked = values.scene ?? null) {
+async function up(everything = false) {
   const ports = await resolvePorts();
-  const scene = chooseScene(sceneAsked);
-  const catalogue = loadSceneCatalogue(scene);
   const done = readDone();
   const selected = withNeeds([
     ...readNames(paths.selected).filter(isService),
@@ -142,14 +110,14 @@ async function up(everything = false, sceneAsked = values.scene ?? null) {
   writeFileSync(paths.selected, JSON.stringify(selected) + "\n");
   const fresh = !done.includes(AURRAL);
   if (fresh) {
-    const albums = await generateLibrary(catalogue, paths.library, scenes[scene]);
+    const albums = generateLibrary(loadCatalogue(), paths.library);
     const tracks = albums.reduce((total, album) => total + album.length, 0);
     console.log(`Library: ${albums.length} albums, ${tracks} tracks`);
   }
   const chosen: Service[] = selected.map((name) => services[name]);
   if (!done.includes(WORLD)) {
     rmSync(paths.world, { recursive: true, force: true });
-    const world = generateWorld(catalogue, paths.world);
+    const world = generateWorld(loadCatalogue(), paths.world);
     console.log(`World: ${world.length} releases to download`);
     markDone(WORLD);
   }
@@ -176,7 +144,6 @@ async function up(everything = false, sceneAsked = values.scene ?? null) {
       const api = new AurralApi(ports);
       if (fresh) {
         const seeded = await seedAurral(api, ports);
-        await scenes[scene].seed?.(api, ports);
         console.log(`History: ${seeded.plays} plays`);
         markDone(AURRAL);
       }
@@ -263,30 +230,17 @@ async function test() {
   });
 }
 
-// Screenshots are taken in the showroom against a production build of the frontend.
-// An Eden that is already the showroom is reused; `pnpm eden down` first for a fresh one.
-async function shots() {
-  if (storedScene() !== "showroom") await down();
-  const env = await up(false, "showroom");
-  const build = spawnSync("pnpm", ["run", "build"], { cwd: REPO_ROOT, stdio: "inherit" });
-  if (build.status !== 0) throw new Error("The frontend did not build");
-  const ports = await resolvePorts();
-  const only = new Set((values.only ?? []).flatMap((entry) => entry.split(",")));
-  await withAurral(ports, env, () => captureShots(ports, SCREENSHOTS_DIR, only));
-}
-
 const commands = {
   up: () => up(),
   down,
   dev,
   test,
-  shots,
   status: async () => summary(await resolvePorts()),
 };
 const command = process.argv[2] ?? "";
 if (!isOwnKey(commands, command)) {
   console.error(
-    `Usage: pnpm eden <${Object.keys(commands).join("|")}> [--with ${serviceNames.join(",")}] [--all] [--scene ${sceneNames.join("|")}]`,
+    `Usage: pnpm eden <${Object.keys(commands).join("|")}> [--with ${serviceNames.join(",")}] [--all]`,
   );
   process.exit(1);
 }
