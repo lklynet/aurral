@@ -66,6 +66,54 @@ const NOISE_PATTERNS = [
   { value: "loop", pattern: /\b(?:10\s*hour|10hr|hours?\s+long|1\s*hour\s+version)\b/i },
 ];
 
+// "Dub Mix" or "Larry Levan Mix" is another mix of the song, while
+// "Original Mix" and "Album Mix" are the song itself.
+const ORIGINAL_MIX_WORDS = new Set(["original", "album", "main", "mono", "stereo"]);
+
+function isNamedMix(group: string) {
+  const words = group.split(" ");
+  return (
+    words.length > 1 &&
+    words.at(-1) === "mix" &&
+    words.slice(0, -1).some((word) => !ORIGINAL_MIX_WORDS.has(word))
+  );
+}
+
+function readMix(groups: string[], versionGroups: string[]) {
+  for (const { value, pattern } of MIX_VARIANT_PATTERNS) {
+    const group = groups.find((entry) => pattern.test(entry));
+    if (group) return { value, group };
+  }
+  const group = versionGroups.find(isNamedMix);
+  return group ? { value: "remix", group } : null;
+}
+
+const MIX_CREDIT_FILLER = new Set([
+  "mix",
+  "remix",
+  "rework",
+  "reworked",
+  "bootleg",
+  "mashup",
+  "vip",
+  "edit",
+  "by",
+  "and",
+  "x",
+  "vs",
+  "s",
+]);
+
+// Who made a remix, so "Avalon Remix" and "Laughing Buddha Remix" are two
+// remixes, while "Avalon & Laughing Buddha" and "Laughing Buddha x Avalon"
+// are one.
+function mixCredit(group: string) {
+  const words = foldDiacritics(group)
+    .split(" ")
+    .filter((word) => word && !MIX_CREDIT_FILLER.has(word));
+  return words.length ? [...new Set(words)].sort().join(" ") : null;
+}
+
 function normalizeVariantText(value: string | null | undefined) {
   return String(value || "")
     .toLowerCase()
@@ -95,12 +143,13 @@ export function extractVariants(value: string | null | undefined) {
   for (const { value: name, pattern } of VARIANT_PATTERNS) {
     if (pattern.test(rawText) || pattern.test(text)) variants[name] = true;
   }
-  // "(Original Mix) [2013]" is not a "Mix 2013".
-  const groups = rawText.split(/[()[\]{}]/u).map(normalizeVariantText);
-  const mixVariant =
-    MIX_VARIANT_PATTERNS.find((entry) => groups.some((group) => entry.pattern.test(group)))
-      ?.value || null;
-  if (mixVariant === "remix") variants.remix = true;
+  // "(Original Mix) [2013]" is not a "Mix 2013". The first group is the
+  // song's own name, so only the groups after it can end in a version.
+  const groups = rawText.split(/[()[\]{}]|\s[-–—]+\s/u).map(normalizeVariantText);
+  const versionGroups = groups.slice(1);
+  if (versionGroups.some((group) => /(?:^| )live$/u.test(group))) variants.live = true;
+  const mix = readMix(groups, versionGroups);
+  if (mix?.value === "remix") variants.remix = true;
   const monoStereo = /\bmono\b/.test(text) ? "mono" : /\bstereo\b/.test(text) ? "stereo" : null;
   const contentRating = /\b(?:clean|edited|censored)\b/.test(text)
     ? "clean"
@@ -109,7 +158,8 @@ export function extractVariants(value: string | null | undefined) {
       : null;
   return {
     ...variants,
-    mixVariant,
+    mixVariant: mix?.value ?? null,
+    mixCredit: mix?.value === "remix" ? mixCredit(mix.group) : null,
     monoStereo,
     contentRating,
   };
@@ -171,7 +221,10 @@ export function compareVariantProfiles(
   }
 
   if (expected.mixVariant && actual.mixVariant) {
-    if (expected.mixVariant === actual.mixVariant) {
+    if (
+      expected.mixVariant === actual.mixVariant &&
+      (!expected.mixCredit || !actual.mixCredit || expected.mixCredit === actual.mixCredit)
+    ) {
       score += 10;
     } else {
       contradictions.push(actual.mixVariant);
@@ -226,6 +279,7 @@ const MERGEABLE_VARIANT_KEYS: (keyof VariantProfile)[] = [
   ...CONTRADICTION_VARIANTS,
   "remaster",
   "mixVariant",
+  "mixCredit",
   "monoStereo",
   "contentRating",
 ];

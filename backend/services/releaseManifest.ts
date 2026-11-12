@@ -77,7 +77,8 @@ export function sameVersion(left: string | null | undefined, right: string | nul
   const b = extractVariants(right);
   return (
     VERSION_KEYS.every((key) => Boolean(a[key]) === Boolean(b[key])) &&
-    a.mixVariant === b.mixVariant
+    a.mixVariant === b.mixVariant &&
+    a.mixCredit === b.mixCredit
   );
 }
 
