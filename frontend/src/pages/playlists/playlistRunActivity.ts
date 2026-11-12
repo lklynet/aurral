@@ -82,36 +82,19 @@ export function getPlaylistRunActivity({
   }
 
   if (rerunning || isGeneratingThisPlaylist) {
-    return { message: "Generating playlist…", phase: "generating" };
-  }
-
-  if (isCurrentJobForPlaylist) {
-    const progressPct = Math.max(
-      0,
-      Math.min(100, Math.round(Number(currentJob?.progressPct || 0))),
-    );
-    return {
-      message: `Downloading: ${currentJob.trackName} (${progressPct}%)`,
-      phase: "downloading",
-    };
+    return { message: "Picking new tracks…", phase: "generating" };
   }
 
   if (isQueueCleanupThisPlaylist) {
-    return { message: "Cleaning flow files…", phase: "cleaning" };
+    return { message: "Removing tracks…", phase: "cleaning" };
   }
 
-  if (pendingCount > 0 || downloadingCount > 0) {
+  if (pendingCount > 0 || downloadingCount > 0 || isCurrentJobForPlaylist) {
     const total = pendingCount + downloadingCount + doneCount;
-    if (downloadingCount > 0) {
-      return {
-        message: `Downloading tracks (${doneCount} of ${total})`,
-        phase: "downloading",
-      };
+    if (downloadingCount > 0 || isCurrentJobForPlaylist) {
+      return { message: `Downloading ${doneCount} of ${total}`, phase: "downloading" };
     }
-    return {
-      message: "Tracks queued and waiting…",
-      phase: "queued",
-    };
+    return { message: "Queued", phase: "queued" };
   }
 
   if (queueProcessing && queueTargetsThisPlaylist && hintMessage && hintPhase !== "completed") {
