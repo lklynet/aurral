@@ -367,6 +367,13 @@ const trackPerformerStmt = db.prepare<
    LIMIT 1`,
 );
 
+const editionTitleStmt = db.prepare<[string | null], Pick<LibraryAlbumsRow, "title">>(
+  `SELECT title FROM library_albums
+   WHERE identity_key = ? AND identity_key LIKE 'release-group:%' AND json_valid(metadata_json)
+     AND COALESCE(json_extract(metadata_json, '$.trackList.release'),
+       json_extract(metadata_json, '$.requestedRelease')) IS NOT NULL`,
+);
+
 const trackCreditedStmt = db.prepare(
   "SELECT 1 FROM library_tracks WHERE identity_key = ? AND artist_name IS NOT NULL",
 );
@@ -511,7 +518,7 @@ export async function scanMusicRoot({
             mbid: releaseAlbum?.mbid || record.albumMbid,
             releaseGroupMbid: releaseAlbum?.release_group_mbid || record.releaseGroupMbid,
             artistId: matchedAlbum?.artist_id ?? artist.id,
-            title: namedAlbum?.title || record.albumName,
+            title: namedAlbum?.title || editionTitleStmt.get(albumKey)?.title || record.albumName,
             albumArtist: record.albumArtist,
             releaseDate: record.releaseDate,
             metadata: record.albumMetadata,

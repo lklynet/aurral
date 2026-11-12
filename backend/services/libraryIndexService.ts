@@ -22,7 +22,11 @@ import {
   upsertLibraryArtist,
   type UntaggedLibraryAlbum,
 } from "./libraryMediaStore.ts";
-import { getAlbumByMbid, resolveAlbumByArtistAndTitle } from "./providers/brainzmashProvider.ts";
+import {
+  getAlbumByMbid,
+  getCachedAlbumByMbid,
+  resolveAlbumByArtistAndTitle,
+} from "./providers/brainzmashProvider.ts";
 import { selectAlbumRelease } from "./providers/brainzmashRanking.ts";
 import type { NormalizedAlbum } from "./providers/brainzmashMappers.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
@@ -237,7 +241,8 @@ async function matchUntaggedLibraryAlbums(retry: boolean) {
 }
 
 // Each album with a MusicBrainz release group lists the tracks of the release
-// its files come from, again whenever its files change. A release group
+// its files come from, again whenever its files change, and from cached
+// metadata when only the listing rules changed. A release group
 // MusicBrainz does not have, or one that is not the album's, as files tagged
 // by a wrong guess carry, lists only the album's files.
 async function completeLibraryTrackLists() {
@@ -247,7 +252,10 @@ async function completeLibraryTrackLists() {
     if (unavailable) return;
     let metadata = null;
     try {
-      metadata = await getAlbumByMbid(album.releaseGroupMbid);
+      metadata = album.filesChanged
+        ? await getAlbumByMbid(album.releaseGroupMbid)
+        : await getCachedAlbumByMbid(album.releaseGroupMbid);
+      if (!metadata && !album.filesChanged) return;
     } catch (error) {
       const failure = asAppError(error);
       if (failure?.code === "ERR_METADATA_COOLDOWN") return;
@@ -256,10 +264,11 @@ async function completeLibraryTrackLists() {
         return;
       }
     }
-    const release =
+    const chosen =
       metadata && isLibraryAlbumReleaseGroup(album, metadata)
         ? chooseLibraryAlbumRelease(album, metadata.releases, selectAlbumRelease(metadata))
         : null;
+    const release = chosen && { ...chosen, title: chosen.title || metadata?.title };
     const artists = new Map<string | null | undefined, string>(
       (metadata?.artists || []).map((artist) => [artist.id, artist.name]),
     );

@@ -654,6 +654,14 @@ export async function getAlbumByMbid(
   return toNormalizedAlbum(data);
 }
 
+export async function getCachedAlbumByMbid(albumMbid: string) {
+  const cached = await readCachedMetadata(
+    `${getMetadataBaseUrl()}/album/${albumMbid}:{}`,
+    albumSchema,
+  );
+  return cached ? toNormalizedAlbum(cached.value) : null;
+}
+
 export async function getAlbumTracksByAlbumMbid(
   albumMbid: string,
   {
