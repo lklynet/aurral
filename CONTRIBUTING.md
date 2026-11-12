@@ -74,7 +74,7 @@ Agents are welcome. [AGENTS.md](AGENTS.md) holds the rules an agent follows in t
 
 ## Screenshots
 
-Store app screenshots in `web/screenshots/`. The README, docs, and marketing site share these files. Replace the file there to update all three.
+The README, docs, and marketing site share the screenshots in `web/screenshots/`. Don't edit them by hand. `pnpm eden shots` retakes them in Eden's [showroom](docs/src/content/docs/development/eden.mdx#the-showroom), and the Screenshots workflow does the same once a day and opens a pull request when any changed. To add one, add an entry to `eden/scenes/showroom/shots.ts`.
 
 ## Run the checks
 

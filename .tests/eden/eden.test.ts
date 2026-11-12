@@ -17,6 +17,7 @@ import { createAuthority, hostIssuer } from "../../eden/outside/certificates.ts"
 import { previewClip } from "../../eden/outside/deezer.ts";
 import { outsideByHost } from "../../eden/outside/index.ts";
 import { indexMusic } from "../../eden/outside/music.ts";
+import { loadSceneCatalogue } from "../../eden/scenes/index.ts";
 
 const folder = mkdtempSync(path.join(tmpdir(), "aurral-eden-"));
 afterAll(() => rmSync(folder, { recursive: true, force: true }));
@@ -64,6 +65,31 @@ test("the world offers only albums the Library lacks, the same ones on every run
   assert.deepEqual(
     planWorld(catalogue).map((release) => release.name),
     world.map((release) => release.name),
+  );
+});
+
+test("the showroom's Library is the albums it lists, and Deezer offers its recorded playlists", () => {
+  const showroom = loadSceneCatalogue("showroom");
+  const library = planLibrary(showroom);
+  assert.deepEqual(
+    library.map((tracks) => tracks[0]?.album.id),
+    showroom.library,
+  );
+  assert.ok(
+    library.every((tracks) =>
+      tracks[0]?.album.images?.some((image) => image.CoverType === "Cover" && image.Url),
+    ),
+  );
+  const url = new URL("https://api.deezer.com/chart/0/playlists?limit=50");
+  const { data } = v.parse(
+    v.object({ data: v.array(v.looseObject({ id: v.number(), title: v.string() })) }),
+    outsideByHost
+      .get(url.hostname)
+      ?.respond({ url, method: "GET", body: "" }, indexMusic(showroom)),
+  );
+  assert.deepEqual(
+    data.map((playlist) => playlist.title),
+    showroom.playlists.map((playlist) => playlist.title),
   );
 });
 

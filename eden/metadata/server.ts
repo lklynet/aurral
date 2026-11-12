@@ -1,9 +1,10 @@
 import { createServer, type ServerResponse } from "node:http";
-import { loadCatalogue, type CatalogueAlbum } from "../catalogue/catalogue.ts";
+import type { CatalogueAlbum } from "../catalogue/catalogue.ts";
+import { loadSceneCatalogue } from "../scenes/index.ts";
 import { indexMusic, releaseDate } from "../outside/music.ts";
 import { searchAlbums, searchArtists } from "./search.ts";
 
-const catalogue = loadCatalogue();
+const catalogue = loadSceneCatalogue();
 const fresh = new Map(indexMusic(catalogue).fresh.map((album) => [album.id, album]));
 
 const withFreshDate = (album: CatalogueAlbum) => {

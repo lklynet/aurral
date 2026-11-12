@@ -4,7 +4,7 @@ import https from "node:https";
 import path from "node:path";
 import { text } from "node:stream/consumers";
 import tls from "node:tls";
-import { loadCatalogue } from "../catalogue/catalogue.ts";
+import { loadSceneCatalogue } from "../scenes/index.ts";
 import { hostIssuer } from "../outside/certificates.ts";
 import { PREVIEW_PATH, previewClip } from "../outside/deezer.ts";
 import { outsideByHost } from "../outside/index.ts";
@@ -24,7 +24,7 @@ const issue = hostIssuer({
   key: readFileSync(path.join(AUTHORITY_DIR, "ca-key.pem"), "utf8"),
 });
 const contexts = new Map<string, tls.SecureContext>();
-const music = indexMusic(loadCatalogue());
+const music = indexMusic(loadSceneCatalogue());
 const requests: { host: string; method: string; path: string; body: string }[] = [];
 const refused = new Set<string>();
 
