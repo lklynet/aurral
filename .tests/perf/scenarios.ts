@@ -108,6 +108,7 @@ export const scenarios: Scenario[] = [
       `/api/artists/${DISCOVER_ARTIST}?${new URLSearchParams({ mode: "core", releaseTypes: allReleaseTypes.join(",") })}`,
       `/api/artists/${DISCOVER_ARTIST}/cover`,
       `/api/artists/${DISCOVER_ARTIST}/similar?limit=10`,
+      `/api/artists/${DISCOVER_ARTIST}/playlists`,
       `/api/library/lookup/${DISCOVER_ARTIST}`,
     ],
   },

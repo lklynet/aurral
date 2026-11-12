@@ -114,6 +114,13 @@ export const deezer: Outside = {
         return list(found.albums.flatMap((entry) => entry.tracks.slice(0, 3)).map(track));
       if (part === "related") return list(music.related(found).map(artist));
       if (part === "albums") return list(found.albums.map(album));
+      if (part === "playlists") {
+        return list(
+          playlists(music)
+            .filter((entry) => entry.tracks.some((item) => item.artist.number === number))
+            .map((entry) => entry.playlist),
+        );
+      }
     }
     if (kind === "album") {
       const found = music.albumByNumber.get(number);

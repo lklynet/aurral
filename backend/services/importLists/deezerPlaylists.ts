@@ -9,6 +9,8 @@ import {
 } from "../apiClients/deezer.ts";
 import { readMany, readOne } from "../integrationData.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
+import createCache from "../apiClients/simpleCache.ts";
+import { asAppError } from "../../../lib/errors.ts";
 
 const DEEZER_API_URL = "https://api.deezer.com";
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -20,6 +22,7 @@ const SHELF_CONCURRENCY = 6;
 const SHELF_TTL_MS = 24 * 60 * 60 * 1000;
 const SEARCH_RESULTS_PER_TAG = 25;
 const MAX_CACHED_SEARCHES = 200;
+const ARTIST_PLAYLISTS = 20;
 const FAILED_SOURCE_RETRY_MS = 15 * 60 * 1000;
 const FEATURED_SOURCE_ID = "genre-0";
 const PLAYLIST_ID_PATTERN = /^\d{1,20}$/;
@@ -99,6 +102,7 @@ type CachedSource = { playlists: PlaylistSummary[] | null; error: unknown; expir
 const sourceCache = new Map<string, CachedSource>();
 const sourceRequests = new Map<string, Promise<PlaylistSummary[]>>();
 const tagSearchCache = new Map<string, SearchedPlaylists & { expiresAt: number }>();
+const artistPlaylistCache = createCache<PlaylistSummary[]>(SHELF_TTL_MS / 1000, 500);
 
 const providerError = (message: string, statusCode: number, code: string) => {
   const error: Error & { statusCode?: number; code?: string } = new Error(message);
@@ -390,8 +394,30 @@ export async function getEditorialShelf(scope: ShelfScope = "all") {
   return categories;
 }
 
-const isEditorPlaylist = (playlist: DeezerPlaylist) =>
-  /deezer/i.test(String(playlist.user?.name || playlist.creator?.name || ""));
+const curatorName = (playlist: DeezerPlaylist) =>
+  String(playlist.user?.name || playlist.creator?.name || "");
+
+const isEditorPlaylist = (playlist: DeezerPlaylist) => /deezer/i.test(curatorName(playlist));
+
+const artistPlaylistRank = (playlist: DeezerPlaylist) =>
+  /deezer artist editor/i.test(curatorName(playlist)) ? 0 : isEditorPlaylist(playlist) ? 1 : 2;
+
+export async function getDeezerArtistPlaylists(artistId: string) {
+  const cached = artistPlaylistCache.get(artistId);
+  if (cached) return cached;
+  const { items } = await deezerList(deezerPlaylistSchema, `/artist/${artistId}/playlists`, {
+    limit: ARTIST_PLAYLISTS,
+  }).catch((error: unknown) => {
+    if (asAppError(error)?.code === "DEEZER_PLAYLIST_NOT_FOUND") return { items: [] };
+    throw error;
+  });
+  const playlists = items
+    .toSorted((left, right) => artistPlaylistRank(left) - artistPlaylistRank(right))
+    .map(normalizePlaylistSummary)
+    .filter((playlist) => playlist !== null);
+  artistPlaylistCache.set(artistId, playlists);
+  return playlists;
+}
 
 export async function searchDeezerPlaylists(term: unknown): Promise<SearchedPlaylists> {
   const key = String(term || "")

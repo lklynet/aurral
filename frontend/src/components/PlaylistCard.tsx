@@ -5,7 +5,7 @@ import RouteLink from "./RouteLink";
 import Tooltip from "./Tooltip";
 import { artworkHoverTint } from "../utils/imageColors.ts";
 
-function ClaimBadge({ claim }: { claim: "synced" | "saved" }) {
+export function ClaimBadge({ claim }: { claim: "synced" | "saved" }) {
   const label = claim === "synced" ? "Synced to your playlists" : "In your playlists";
   const Icon = claim === "synced" ? RefreshCw : Check;
   return (

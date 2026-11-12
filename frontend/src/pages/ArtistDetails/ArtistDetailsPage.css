@@ -632,7 +632,8 @@ button.artist-track__text {
 }
 
 .artist-videos,
-.artist-similar-rail {
+.artist-similar-rail,
+.artist-playlist-rail {
   --artist-shelf-count: 3;
 
   display: grid;
@@ -648,6 +649,7 @@ button.artist-track__text {
 
 .artist-videos::-webkit-scrollbar,
 .artist-similar-rail::-webkit-scrollbar,
+.artist-playlist-rail::-webkit-scrollbar,
 .artist-filters::-webkit-scrollbar,
 .artist-release-row::-webkit-scrollbar {
   display: none;
@@ -1073,7 +1075,8 @@ button.artist-track__text {
 
   .artist-release-row,
   .artist-videos,
-  .artist-similar-rail {
+  .artist-similar-rail,
+  .artist-playlist-rail {
     grid-template-columns: none;
     grid-auto-flow: column;
     margin-inline: calc(-1 * var(--artist-gutter));
@@ -1085,7 +1088,8 @@ button.artist-track__text {
   }
 
   .artist-release-row,
-  .artist-similar-rail {
+  .artist-similar-rail,
+  .artist-playlist-rail {
     grid-auto-columns: 38%;
   }
 
@@ -1109,7 +1113,8 @@ button.artist-track__text {
     display: none;
   }
 
-  .artist-similar-rail {
+  .artist-similar-rail,
+  .artist-playlist-rail {
     grid-auto-columns: 42%;
   }
 

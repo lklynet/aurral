@@ -210,6 +210,13 @@ export const queryKeys = {
   ],
   artistSimilarPrefix: ["artists", "similar"],
   artistAppearsOn: (mbid: MaybeText): QueryKey => ["artists", "appears-on", mbid || null],
+  artistPlaylists: (mbid: MaybeText, artistName: MaybeText): QueryKey => [
+    "artists",
+    "playlists",
+    mbid || null,
+    artistName || "",
+  ],
+  artistPlaylistsPrefix: ["artists", "playlists"],
   activeDownloads: ["downloads", "active"],
   downloadStatus: (ids: MaybeId[]): QueryKey => ["library", "download-status", [...ids].sort()],
   albumStatus: (albumId: MaybeId): QueryKey => ["library", "aurral-album-status", String(albumId)],

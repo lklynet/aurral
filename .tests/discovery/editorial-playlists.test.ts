@@ -33,7 +33,7 @@ const [
   flowTemplatesModule,
   { FlowTrackSource },
   libraryStore,
-  { getBrowsePlaylist },
+  { getArtistPlaylists, getBrowsePlaylist },
 ] = await setupIsolatedBackend(
   "editorial-playlists",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -496,6 +496,36 @@ test("For you matches Deezer editor playlists to the user's top genres and tags"
     ],
   );
   assert.ok(categories.length > 0);
+});
+
+test("an artist's playlists put the artist's own first, then Deezer editors, then everyone else", async (t: import("vite-plus/test").TestContext) => {
+  const requests = stubDeezer(t, {
+    "/artist/399/playlists": {
+      body: {
+        data: [
+          summary(20, "my radiohead mix", "someone"),
+          summary(21, "90s Alternative", "Georges - Deezer Alternative Editor"),
+          summary(22, "100% Radiohead", "Deezer Artist Editor"),
+          summary(23, "Rock Essentials"),
+        ],
+      },
+    },
+  });
+
+  const playlists = await getArtistPlaylists("399");
+
+  assert.deepEqual(
+    playlists.map((playlist) => [playlist.provider, playlist.name]),
+    [
+      ["deezer", "100% Radiohead"],
+      ["deezer", "90s Alternative"],
+      ["deezer", "Rock Essentials"],
+      ["deezer", "my radiohead mix"],
+    ],
+  );
+  await getArtistPlaylists("399");
+  assert.deepEqual(requests, ["/artist/399/playlists?limit=20"]);
+  assert.deepEqual(await getArtistPlaylists("400"), []);
 });
 
 test("an album link without a Deezer album ID still finds the album", async () => {

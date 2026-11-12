@@ -37,6 +37,7 @@ import { ArtistDetailsAppearsOn } from "./components/ArtistDetailsAppearsOn";
 import { ArtistDetailsPreviewTracks } from "./components/ArtistDetailsPreviewTracks";
 import { ArtistDetailsAbout } from "./components/ArtistDetailsAbout";
 import { ArtistDetailsSimilar } from "./components/ArtistDetailsSimilar";
+import { ArtistDetailsPlaylists } from "./components/ArtistDetailsPlaylists";
 import { queryKeys } from "../../queryClient.ts";
 import TooltipButton from "../../components/TooltipButton";
 import RouteLink from "../../components/RouteLink";
@@ -538,6 +539,8 @@ function ArtistDetailsPage() {
           artistFeedbackLookup={artistFeedbackLookup}
         />
       )}
+
+      <ArtistDetailsPlaylists mbid={mbid!} artistName={artistDisplayName} />
 
       <ArtistDetailsAbout artist={artist} />
 
