@@ -1,0 +1,3 @@
+[[IgnoredVulns]]
+id = "GHSA-gcqx-w48m-w2h4"
+reason = "deepmerge has no patched release. It only runs at build time inside @rollup/plugin-node-resolve (via vite-plugin-pwa), merging Aurral's own static config, never untrusted input."

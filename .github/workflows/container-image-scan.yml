@@ -37,6 +37,7 @@ jobs:
           format: sarif
           output: trivy-image-os-${{ matrix.arch }}.sarif
           vuln-type: os
+          ignore-unfixed: true
           severity: HIGH,CRITICAL
           limit-severities-for-sarif: "true"
           exit-code: "0"

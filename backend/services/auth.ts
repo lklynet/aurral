@@ -37,8 +37,6 @@ const safeCompare = (a: unknown, b: unknown) => {
 
 function createSubsonicToken(password: string, salt: unknown) {
   // Subsonic requires MD5(password + salt) for token authentication; this digest is never stored.
-  //
-  // codeql[js/insufficient-password-hash]
   return crypto.createHash("md5").update(`${password}${salt}`).digest("hex");
 }
 
