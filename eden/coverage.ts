@@ -27,11 +27,9 @@ export const integrationCoverage = {
 } satisfies Record<keyof (typeof integrationSettingsSchema)["entries"], Coverage>;
 
 // Plex has no settings key of its own: it is a history server and a playlist target.
-// Artist videos come from YouTube's own search API and play from YouTube.
 export const notCovered = [
   ...Object.entries(integrationCoverage).flatMap(([name, coverage]) =>
     "missing" in coverage ? [`${name}: ${coverage.missing}`] : [],
   ),
   "plex: Plex needs a plex.tv account",
-  "videos: artist videos come from YouTube's search, which Eden has no stand-in for",
 ];

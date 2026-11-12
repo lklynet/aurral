@@ -5,9 +5,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseBuffer, parseFile } from "music-metadata";
 import * as v from "valibot";
-import { afterAll, test } from "vite-plus/test";
+import { afterAll, test, vi } from "vite-plus/test";
 import { deezerArtistSchema, deezerTrackSchema } from "../../backend/services/apiClients/deezer.ts";
 import { listenbrainzTopArtistsSchema } from "../../backend/services/apiClients/listenbrainz.ts";
+import { youtubeFindTopSongVideo } from "../../backend/services/apiClients/youtube.ts";
 import { implausibleBitrateKbps } from "../../backend/services/trackMatching/candidateNormalizer.ts";
 import { loadCatalogue } from "../../eden/catalogue/catalogue.ts";
 import { writeSilentFlac } from "../../eden/library/flac.ts";
@@ -111,4 +112,22 @@ test("the outside stand-ins answer in the shapes Aurral's clients read", async (
     error: { type: "DataException", message: "no data", code: 800 },
   });
   assert.equal(ask("https://lrclib.net/api/get?artist_name=Nobody&track_name=Nothing"), undefined);
+});
+
+test("Aurral's video lookup finds the artist's own video in the YouTube stand-in", async () => {
+  vi.stubGlobal("fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    const request = new Request(input, init);
+    const url = new URL(request.url);
+    const answer = outsideByHost
+      .get(url.hostname)
+      ?.respond({ url, method: request.method, body: await request.text() }, music);
+    return Response.json(answer ?? {}, { status: answer === undefined ? 404 : 200 });
+  });
+  try {
+    const video = await youtubeFindTopSongVideo("Radiohead", "Creep");
+    assert.match(video?.videoId ?? "", /^[0-9a-z]{11}$/);
+    assert.equal(await youtubeFindTopSongVideo("Radiohead", "Not a Radiohead Song"), null);
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
