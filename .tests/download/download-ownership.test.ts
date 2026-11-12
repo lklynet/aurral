@@ -229,7 +229,7 @@ test("recording a handoff prunes handoff history for settled downloads only", ()
   assert.deepEqual(transferKeys(), [active.leader, next.leader].sort());
 });
 
-test("downloads never name a folder or file with a leading dot", () => {
+test("downloads never name a folder or file with a leading or trailing dot", () => {
   assert.equal(
     ownership.downloadDestinationForJob({
       artistName: ".wav_909 & 7thRaw",
@@ -237,5 +237,13 @@ test("downloads never name a folder or file with a leading dot", () => {
       playlistType: "library",
     }),
     "wav_909 & 7thRaw/Unknown Album",
+  );
+  assert.equal(
+    ownership.downloadDestinationForJob({
+      artistName: "N.E.R.D.",
+      albumName: "Fly or Die. ",
+      playlistType: "library",
+    }),
+    "N.E.R.D/Fly or Die",
   );
 });
