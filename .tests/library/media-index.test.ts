@@ -447,7 +447,7 @@ function deleteIndexedFile(source: string, filePath: string) {
   }
 }
 
-test("scanMusicRoot indexes tagged media and ignores Flow output", async () => {
+test("scanMusicRoot indexes tagged media, dated by the original release, and ignores Flow output", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-scan-"));
   const source = `test-aurral-${process.pid}`;
   let filePath: string | undefined;
@@ -463,7 +463,10 @@ test("scanMusicRoot indexes tagged media and ignores Flow output", async () => {
     const result = await scanMusicRoot({
       rootPath: root,
       source,
-      metadataReader: async () => metadata,
+      metadataReader: async () => ({
+        ...metadata,
+        common: { ...metadata.common, date: "2016-02-12", originaldate: "2004-09-07" },
+      }),
     });
     const snapshot = getLibrarySnapshot();
     const files = snapshot.files.filter((file) => file.source === source);
@@ -477,8 +480,8 @@ test("scanMusicRoot indexes tagged media and ignores Flow output", async () => {
       true,
     );
     assert.equal(
-      snapshot.albums.some((album) => album.title === "Playback Roadmap"),
-      true,
+      snapshot.albums.find((album) => album.title === "Playback Roadmap")?.release_date,
+      "2004-09-07",
     );
     assert.equal(
       snapshot.tracks.some((track) => track.title === "First Step"),

@@ -215,7 +215,8 @@ function buildMetadataRecord(metadata: ScannedMetadata, filePath: string, rootPa
     trackNumber,
     discNumber,
     albumArtist: text(common.albumartist) || artistName,
-    releaseDate: text(common.releasedate || common.date) || null,
+    releaseDate:
+      text(common.originaldate || common.originalyear || common.releasedate || common.date) || null,
     artistMetadata: { tags: common },
     albumMetadata: { tags: common },
     trackMetadata: { tags: common },

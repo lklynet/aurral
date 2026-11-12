@@ -499,6 +499,7 @@ recording require a user's login session.
 | `DELETE` | `/api/scrobbling/koito/link`           | Unlink Koito                                           |
 | `GET`    | `/api/play-events`                     | Read local play history                                |
 | `POST`   | `/api/play-events`                     | Record a local play event. Requires a user session     |
+| `POST`   | `/api/play-events/now-playing`         | Send now playing to linked scrobblers. Not recorded    |
 | `GET`    | `/api/history-servers`                 | List the current user's media server history imports   |
 | `PUT`    | `/api/history-servers/:provider`       | Connect Navidrome or Jellyfin. Admins only             |
 | `POST`   | `/api/history-servers/:provider/sync`  | Import new plays now                                   |

@@ -53,7 +53,7 @@ When a Subsonic client favorites a flow track, Aurral also adds it to the Librar
 
 ### Play history
 
-Aurral records each `scrobble.view` call from a Subsonic client as a play. The endpoint accepts repeated `id` and `time` parameters and honors the `submission` flag. Aurral records the play in its own history first, then sends it to the scrobbling services that the user connected.
+Aurral records each `scrobble.view` call from a Subsonic client as a play. The endpoint accepts repeated `id` and `time` parameters. Aurral records the play in its own history first, then sends it to the scrobbling services that the user connected. A call with `submission=false` only sends the track as now playing to those services.
 
 `getUser.view` reports `scrobblingEnabled=true`. This means that the server accepts scrobbles. It does not mean that the user connected a scrobbling service.
 
