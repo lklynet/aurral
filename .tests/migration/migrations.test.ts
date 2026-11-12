@@ -105,3 +105,28 @@ test("upgrading drops what only Lidarr mode read and keeps the rest", () => {
     ],
   );
 });
+
+test("upgrading fails finished downloads without a file and statuses Aurral does not read", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, -1));
+  const insert = db.prepare<[string, string, string | null]>(
+    `INSERT INTO download_jobs (id, artist_name, track_name, owner_id, status, final_path, created_at)
+     VALUES (?, 'Artist', 'Song', 'library', ?, ?, 1)`,
+  );
+  insert.run("kept", "done", "/library/Song.flac");
+  insert.run("pending", "pending", null);
+  insert.run("null-path", "done", null);
+  insert.run("empty-path", "done", "");
+  insert.run("unknown", "finished", "/library/Other.flac");
+
+  migrate(db);
+
+  assert.deepEqual(db.prepare("SELECT id, status FROM download_jobs ORDER BY id").all(), [
+    { id: "empty-path", status: "failed" },
+    { id: "kept", status: "done" },
+    { id: "null-path", status: "failed" },
+    { id: "pending", status: "pending" },
+    { id: "unknown", status: "failed" },
+  ]);
+});
