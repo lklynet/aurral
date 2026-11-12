@@ -102,6 +102,8 @@ Icons come from `frontend/src/components/icons.tsx`, which wraps Untitled UI ico
 
 Use `.search-empty-panel` for empty and error states: an icon in `.search-empty-panel__icon`, a title, one short message, and at most one action. Errors use `AlertCircle`, `role="alert"`, a title that starts with "Couldn't load", and a "Try again" button when retrying can help.
 
+When one source fails but other results still render, keep the results and show a one-line inline notice above them instead of a panel: `AlertCircle`, a sentence that starts with "Couldn't load", and a "Try again" text button.
+
 Loading states use skeletons shaped like the ready state. Use `DotLoader` only where content cannot be predicted.
 
 ## Settings

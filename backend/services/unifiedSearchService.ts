@@ -7,7 +7,11 @@ import { flowPlaylistConfig, type StaticPlaylist } from "./playlists/flowPlaylis
 import { buildCustomArtworkUrl, getCustomArtworkMap } from "./customArtworkService.ts";
 import { selectBestArtistImage } from "./imageRanking.ts";
 import { buildLibraryArtworkUrl, getLibraryArtworkVersions } from "./libraryArtwork.ts";
-import { getLibraryArtistMbids, getLibrarySearchPage } from "./libraryQueryService.ts";
+import {
+  getLibraryArtistMbids,
+  getLibrarySearchPage,
+  getLibraryTrackOwnershipBatch,
+} from "./libraryQueryService.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { searchAlbums, searchArtists } from "./providers/brainzmashProvider.ts";
 import { parsePositiveInt } from "./searchService.ts";
@@ -323,21 +327,34 @@ async function searchCatalog(text: string, signal: AbortSignal | undefined) {
   };
 }
 
-function withLibraryArtists(catalog: Catalog, limit: number): Catalog {
+function withLibraryState(catalog: Catalog, limit: number): Catalog {
   const artists = catalog.artists.slice(0, limit);
-  const owned = getLibraryArtistMbids({
+  const tracks = catalog.tracks.slice(0, limit);
+  const ownedArtists = getLibraryArtistMbids({
     source: "all",
     availableOnly: false,
     mbids: [...artists, catalog.top].flatMap((item) => (item?.type === "artist" ? [item.id] : [])),
   });
+  const songs = catalog.top?.type === "track" ? [...tracks, catalog.top] : tracks;
+  const ownedSongs = getLibraryTrackOwnershipBatch(
+    songs.map((song) => ({
+      trackMbid: song.trackMbid,
+      artistName: song.artistName,
+      trackName: song.title,
+    })),
+  );
+  const ownedSongKeys = new Set(songs.filter((_, index) => ownedSongs[index]).map((s) => s.key));
   const mark = <T extends UnifiedSearchItem | null>(item: T): T =>
-    item?.type === "artist" && owned.has(item.id) ? { ...item, inLibrary: true } : item;
+    (item?.type === "artist" && ownedArtists.has(item.id)) ||
+    (item?.type === "track" && ownedSongKeys.has(item.key))
+      ? { ...item, inLibrary: true }
+      : item;
   const [top = null] = catalog.top?.type === "album" ? withCoverUrls([catalog.top]) : [catalog.top];
   return {
     top: mark(top),
     artists: artists.map(mark),
     albums: withCoverUrls(catalog.albums.slice(0, limit)),
-    tracks: catalog.tracks.slice(0, limit),
+    tracks: tracks.map(mark),
   };
 }
 
@@ -350,7 +367,7 @@ export async function searchUnified(
   const respond = (catalog: Catalog, status: "ok" | "unavailable" = "ok") => ({
     query,
     status,
-    ...withLibraryArtists(catalog, perBucket),
+    ...withLibraryState(catalog, perBucket),
   });
   const cached = catalogCache.get(query);
   if (cached) return respond(cached);
