@@ -577,7 +577,15 @@ function AlbumPage() {
                   "The server didn’t respond. Try again in a moment.",
                 )
         }
-        onRetry={notFound ? undefined : () => void failed?.refetch()}
+        onRetry={
+          notFound
+            ? undefined
+            : () =>
+                void queryClient.refetchQueries({
+                  type: "active",
+                  predicate: (query) => query.state.status === "error",
+                })
+        }
         retrying={failed?.isFetching}
       />
     );
