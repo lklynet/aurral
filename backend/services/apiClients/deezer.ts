@@ -59,6 +59,11 @@ const deezerAlbumSchema = v.looseObject({
   fans: v.optional(v.number()),
 });
 
+const deezerAlbumSearchSchema = v.looseObject({
+  ...deezerAlbumSchema.entries,
+  artist: v.optional(v.looseObject({ name: v.optional(v.string()) })),
+});
+
 type NumericField = string | number | null | undefined;
 
 interface TrackLike {
@@ -599,6 +604,33 @@ export function selectBestDeezerAlbumMatch(
     .sort((left, right) => right.score - left.score);
 
   return ranked[0]?.album || null;
+}
+
+const withoutTrailingEdition = (title: string) =>
+  title.replace(/\s*[([][^()[\]]*[)\]]\s*$/, "").trim();
+
+export async function findDeezerAlbumCover(artistName: string, albumTitle: string) {
+  const artist = artistNameKey(artistName);
+  if (!artist) return null;
+  for (const title of new Set([albumTitle.trim(), withoutTrailingEdition(albumTitle)])) {
+    if (!title) continue;
+    const wanted = normalizeTitle(title);
+    const albums = await deezerList(deezerAlbumSearchSchema, "/search/album", {
+      query: {
+        q: `artist:"${artistName.replaceAll('"', "")}" album:"${title.replaceAll('"', "")}"`,
+      },
+      timeoutMs: 5000,
+    });
+    const cover = albums
+      .filter(
+        (album) =>
+          artistNameKey(album.artist?.name) === artist && normalizeTitle(album.title) === wanted,
+      )
+      .map((album) => album.cover_xl || album.cover_big || album.cover_medium)
+      .find(Boolean);
+    if (cover) return cover;
+  }
+  return null;
 }
 
 export async function resolveDeezerAlbumForPreview({

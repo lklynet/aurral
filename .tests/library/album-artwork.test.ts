@@ -72,11 +72,18 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-function stubDeezer(artistName?: string, albums: object[] = []) {
+function stubDeezer(
+  albums: { title: string; artist: { name: string }; cover_xl: string | null }[] = [],
+) {
   vi.spyOn(http, "get").mockImplementation(async (url, options) => {
     if (!url.startsWith("https://api.deezer.com/")) return realGet(url, options);
-    const artists = artistName ? [{ id: 7, name: artistName }] : [];
-    const data = url.endsWith("/search/artist") ? artists : albums;
+    const title =
+      String(options?.query?.q)
+        .match(/album:"([^"]*)"/)?.[1]
+        ?.toLowerCase() ?? "";
+    const data = albums
+      .map((album, index) => ({ id: index + 1, ...album }))
+      .filter((album) => album.title.toLowerCase().includes(title));
     return { status: 200, statusText: "", headers: {}, data: { data } };
   });
 }
@@ -510,31 +517,34 @@ describe("with sign-in required", () => {
 
   test("an album MusicBrainz has no cover for, or whose cover link is gone, gets Deezer's", async (t) => {
     const gone = "https://images.example/gone.png";
-    const newSingle = "https://deezer.example/new-single.png";
-    const deadLinkCover = "https://deezer.example/dead-link.png";
+    const cover = (name: string) => `https://deezer.example/${name}.png`;
     const requests = stubImageHost(t, blue, [gone]);
-    stubDeezer("Deezer Artist", [
-      { id: 1, title: "New Single", record_type: "single", cover_xl: newSingle },
-      { id: 2, title: "Dead Link", record_type: "album", cover_xl: deadLinkCover },
+    const deezerArtist = { name: "DEEZER ARTIST!" };
+    stubDeezer([
+      { title: "New Single", artist: { name: "Other Artist" }, cover_xl: cover("other") },
+      { title: "New Single", artist: deezerArtist, cover_xl: cover("new-single") },
+      { title: "Dead Link", artist: deezerArtist, cover_xl: cover("dead-link") },
+      { title: "Encore (Extended Version)", artist: deezerArtist, cover_xl: null },
+      { title: "Encore", artist: deezerArtist, cover_xl: cover("encore") },
     ]);
-    const deezerArtist = libraryStore.upsertLibraryArtist({
+    const libraryArtist = libraryStore.upsertLibraryArtist({
       identityKey: "deezer-artist",
       name: "Deezer Artist",
     });
     const releaseGroupMbid = "7d3e2f1a-5b4c-4d6e-8f9a-0b1c2d3e4f5a";
     dbOps.setImage(`rg:${releaseGroupMbid}`, gone);
-    const single = await albumFixture("New Single", [null], { artistId: deezerArtist.id });
-    const deadLink = await albumFixture("Dead Link", [null], {
-      artistId: deezerArtist.id,
-      releaseGroupMbid,
-    });
+    const albums = [
+      await albumFixture("New Single", [null], { artistId: libraryArtist.id }),
+      await albumFixture("Dead Link", [null], { artistId: libraryArtist.id, releaseGroupMbid }),
+      await albumFixture("Encore (Extended Version)", [null], { artistId: libraryArtist.id }),
+    ];
 
-    for (const album of [single, deadLink]) {
+    for (const album of albums) {
       const result = await requestCover(album.id);
       assert.equal(result.status, 200, album.title);
       assert.equal(await isBlue(result.body), true, album.title);
     }
-    assert.deepEqual(requests, [newSingle, gone, deadLinkCover]);
+    assert.deepEqual(requests, [cover("new-single"), gone, cover("dead-link"), cover("encore")]);
   });
 
   test("a changed album file replaces the cached art", async () => {
