@@ -1,4 +1,4 @@
-import type { SyntheticEvent } from "react";
+import { useState, type SyntheticEvent } from "react";
 import { useLocation } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
@@ -19,7 +19,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 
 type SidebarPlaylistsProps = {
-  status: PlaylistStatus;
+  status: PlaylistStatus | undefined;
   iconsOnly: boolean;
   onTooltip?: (event: SyntheticEvent<HTMLElement>) => void;
 };
@@ -31,18 +31,25 @@ function usePlaylistOrder() {
   const { showError } = useToast();
   const queryClient = useQueryClient();
   const options = playlistOrderQueryOptions(user?.id);
-  const { data } = useQuery(options);
+  const { data, isLoading } = useQuery(options);
+  const [dropped, setDropped] = useState<string[]>();
   const { mutate } = useMutation({
+    scope: { id: "playlist-order" },
     mutationFn: (ids: string[]) =>
       parseResponse(usersClient.me["playlist-order"].$put({ json: { ids } })),
-    onMutate: (ids) => queryClient.setQueryData(options.queryKey, { ids }),
     onSuccess: (saved) => queryClient.setQueryData(options.queryKey, saved),
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: options.queryKey });
       showError("Couldn't save playlist order");
     },
+    onSettled: (_saved, _error, ids) =>
+      setDropped((current) => (current === ids ? undefined : current)),
   });
-  return { order: data?.ids ?? [], saveOrder: mutate };
+  const saveOrder = (ids: string[]) => {
+    setDropped(ids);
+    mutate(ids);
+  };
+  return { order: dropped ?? data?.ids ?? [], isLoading, saveOrder };
 }
 
 function SidebarPlaylistRow({
@@ -95,7 +102,8 @@ function SidebarPlaylistRow({
 }
 
 function SidebarPlaylists({ status, iconsOnly, onTooltip }: SidebarPlaylistsProps) {
-  const { order, saveOrder } = usePlaylistOrder();
+  const { order, isLoading, saveOrder } = usePlaylistOrder();
+  if (!status || isLoading) return null;
   const entries = applyCustomOrder(
     [
       ...status.staticPlaylists.map(({ id, name }) => ({

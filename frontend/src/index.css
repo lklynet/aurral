@@ -2307,6 +2307,7 @@ textarea:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 1.75rem;
   padding-right: 0.25rem;
 }
 
@@ -2330,6 +2331,10 @@ textarea:disabled {
   .sidebar-playlists__head-row:hover .sidebar-playlists__menu {
     opacity: 1;
   }
+}
+
+.sidebar-playlist {
+  transition-property: color, background-color, scale;
 }
 
 .sidebar-playlist.is-dragging {
