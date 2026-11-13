@@ -1,6 +1,7 @@
 import type * as Rows from "../../backend/db/rows.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
+import Database from "better-sqlite3";
 import { execFile } from "node:child_process";
 import {
   chmod,
@@ -1244,6 +1245,36 @@ test("an ingest whose saved options Aurral can't read stops without filing anyth
     false,
   );
   assert.ok(await operations.startCleanup());
+});
+
+test("an ingest that hits a locked database keeps going once the lock clears", async () => {
+  const source = newSource();
+  await makeTrack(path.join(source, "a.flac"), {
+    artist: "Locked Artist",
+    album: "Locked Album",
+    title: "Waited",
+    track: "1",
+  });
+  const operation = requireValue(
+    await operations.startIngest({ sourcePath: source, mode: "copy" }),
+  );
+  const other = new Database(db.name);
+  db.pragma("busy_timeout = 0");
+  try {
+    other.exec("BEGIN IMMEDIATE");
+    assert.deepEqual(await operations.runLibraryFileOperation(operation.id), { done: false });
+    assert.equal(requireValue(getLibraryFileOperation(operation.id)).status, "planning");
+  } finally {
+    other.exec("ROLLBACK");
+    other.close();
+    db.pragma("busy_timeout = 5000");
+  }
+
+  assert.equal(requireValue(await runUntilSettled(operation.id)).status, "complete");
+  assert.equal(
+    await exists(path.join(root, "Locked Artist", "Locked Album", "01 - Waited.flac")),
+    true,
+  );
 });
 
 test("the source check rejects the Library folder and unreadable folders", async () => {

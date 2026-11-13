@@ -1,4 +1,5 @@
 import path from "node:path";
+import { isDatabaseBusy } from "../../config/db-sqlite.ts";
 import { resolveDownloadRoot } from "../downloadPaths.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import type { LibraryScanRequest } from "../libraryScanRequest.ts";
@@ -161,6 +162,7 @@ async function applyBatch(operation: LibraryFileOperation, deadline: number) {
       try {
         result = item.readable ? await apply(item) : { status: "failed", reason: UNREADABLE_ITEM };
       } catch (error) {
+        if (isDatabaseBusy(error)) throw error;
         result = { status: "failed", reason: safeLogDiagnostic(error) };
       }
       updateLibraryFileOperationItem(operation.id, item.position, result);
@@ -208,6 +210,12 @@ export async function runLibraryFileOperation(
     await finish(operation, "complete");
     return { done: true };
   } catch (error) {
+    if (isDatabaseBusy(error)) {
+      logger.info("library-files", "The database was busy, so the operation will continue", {
+        operationId: id,
+      });
+      return { done: false };
+    }
     logger.warn("library-files", "Library file operation failed", {
       operationId: id,
       reason: safeLogDiagnostic(error),
