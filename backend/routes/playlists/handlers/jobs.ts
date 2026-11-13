@@ -3,9 +3,11 @@ import { staticPlaylistJobs } from "../../../services/playlists/playlistJobs.ts"
 import * as v from "valibot";
 import path from "path";
 import {
+  downloadCause,
   downloadTracker,
   jobStatusSchema,
 } from "../../../services/downloadJobs/downloadTracker.ts";
+import { activityCauseKey } from "../../../../lib/activity.ts";
 import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.ts";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
 import { orderJobsByPlaylistTracks } from "../../../services/playlists/playlistTracks.ts";
@@ -131,6 +133,7 @@ function toPublicJob(
     heldForReview: _heldForReview,
     finalPath,
     externalPath: _externalPath,
+    cause: _cause,
     ...publicJob
   } = decorateJobQuality(job, profile, readOnlyRoots);
   const streamFormat = finalPath ? path.extname(finalPath).slice(1).toLowerCase() : "";
@@ -474,27 +477,38 @@ export default new Hono<AppEnv>()
   .post("/jobs/:jobId/deny", requirePlaylistAccess, (c) =>
     reviewBlockedJob(c, "denyBlockedJob", c.req.param("jobId")),
   )
-  .post("/jobs/cancel", requireAuth, async (c) => {
-    const user = c.var.user;
-    const jobIds = downloadTracker
-      .getAll()
-      .filter((job) => ACTIVE_JOB_STATUSES.has(job.status) && canControlJob(user, job))
-      .map((job) => job.id);
-    try {
-      const result = isDownloadOwnerProcess()
-        ? await cancelTrackDownloads(jobIds)
-        : await requestDownloadOwner("cancelTrackDownloads", [jobIds], {
-            timeoutMs: 2 * 60 * 1000,
-          });
-      invalidateRequestsCache();
-      return c.json(result, 200);
-    } catch (error) {
-      return c.json(
-        { error: "Failed to cancel downloads", message: asAppError(error)?.message },
-        500,
-      );
-    }
-  })
+  .post(
+    "/jobs/cancel",
+    requireAuth,
+    validate("query", v.object({ cause: v.optional(v.string()) })),
+    async (c) => {
+      const user = c.var.user;
+      const { cause } = c.req.valid("query");
+      const jobIds = downloadTracker
+        .getAll()
+        .filter(
+          (job) =>
+            ACTIVE_JOB_STATUSES.has(job.status) &&
+            canControlJob(user, job) &&
+            (!cause || activityCauseKey(downloadCause(job)) === cause),
+        )
+        .map((job) => job.id);
+      try {
+        const result = isDownloadOwnerProcess()
+          ? await cancelTrackDownloads(jobIds)
+          : await requestDownloadOwner("cancelTrackDownloads", [jobIds], {
+              timeoutMs: 2 * 60 * 1000,
+            });
+        invalidateRequestsCache();
+        return c.json(result, 200);
+      } catch (error) {
+        return c.json(
+          { error: "Failed to cancel downloads", message: asAppError(error)?.message },
+          500,
+        );
+      }
+    },
+  )
   .post("/jobs/:jobId/cancel", requireAuth, async (c) => {
     const access = getControllableJob(c, c.var.user, c.req.param("jobId"));
     if (access.failure) return access.failure;

@@ -8,13 +8,13 @@ import {
   Play,
   RotateCcw,
   X,
-  TrendUp,
   XCircle,
 } from "../../components/icons";
 import TooltipButton from "../../components/TooltipButton";
 import { DotLoader } from "../../components/DotLoader";
 import { isCancelableDownload, type ActivityRequest } from "../../../../lib/activity.ts";
 import {
+  describeRequestCause,
   downloadClientLabel,
   formatReviewReasonSummary,
   formatTimelineTime,
@@ -72,7 +72,10 @@ function getRequestMeta(request: ActivityRequest, title: string) {
   const artist = String(request.artistName || "").trim();
   const album = String(request.albumName || "").trim();
   const isTrack = Boolean(request.trackName);
-  const values = [artist, isTrack && album !== title ? album : null].filter(Boolean);
+  const values = [
+    artist,
+    describeRequestCause(request) ?? (isTrack && album !== title ? album : null),
+  ].filter(Boolean);
   return values.join(" · ") || String(request.subtitle || "").trim() || "Aurral activity";
 }
 
@@ -220,11 +223,6 @@ export default function ActivityRequestRow({
   const reviewReasonSummary = blocked ? formatReviewReasonSummary(request.subtitle) : null;
   const rowLabel = `${displayTitle}${displayMeta ? `, ${displayMeta}` : ""}`;
   const client = downloadClientLabel(request);
-  const upgradeLabel = request.upgrade
-    ? request.upgrade.fromQuality
-      ? `Upgrade from ${request.upgrade.fromQuality}`
-      : "Quality upgrade"
-    : null;
 
   return (
     <article className="activity-row">
@@ -264,13 +262,6 @@ export default function ActivityRequestRow({
           </span>
         ) : null}
       </div>
-      {upgradeLabel ? (
-        <Tooltip content={upgradeLabel}>
-          <span className="activity-row__kind" role="img" aria-label={upgradeLabel}>
-            <TrendUp aria-hidden="true" />
-          </span>
-        </Tooltip>
-      ) : null}
       {client ? (
         <Tooltip content={client}>
           <span className="activity-row__client">{client}</span>

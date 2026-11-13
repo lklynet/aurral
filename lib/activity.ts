@@ -1,4 +1,8 @@
-import type { AlbumGrab, RequestItem } from "../backend/services/aurralHistoryRequests.ts";
+import type {
+  ActivityCause,
+  AlbumGrab,
+  RequestItem,
+} from "../backend/services/aurralHistoryRequests.ts";
 
 export type ActivityRequest = RequestItem & {
   children?: ActivityRequest[];
@@ -281,6 +285,45 @@ export function groupAlbumGrabRequests(requests: ActivityRequest[]) {
   );
 }
 
+export const activityCauseKey = (
+  cause: Pick<ActivityCause, "kind" | "playlistId"> | null | undefined,
+) => (cause ? (cause.playlistId ? `${cause.kind}:${cause.playlistId}` : cause.kind) : null);
+
+const causeSubject = ({ cause, artistName, albumName }: ActivityRequest) =>
+  cause?.kind === "monitoring" ? artistName : cause?.kind === "missing" ? albumName : null;
+
+function summarizeActivityCauses(requests: ActivityRequest[]) {
+  const groups = new Map<
+    string,
+    ActivityCause & { key: string; count: number; since: string; subjects: Set<string> }
+  >();
+  for (const request of requests) {
+    const key = activityCauseKey(request.cause);
+    if (!key || !request.cause) continue;
+    const group = groups.get(key) ?? {
+      ...request.cause,
+      key,
+      count: 0,
+      since: request.requestedAt,
+      subjects: new Set<string>(),
+    };
+    groups.set(key, group);
+    group.count += 1;
+    if (request.requestedAt < group.since) group.since = request.requestedAt;
+    const subject = causeSubject(request);
+    if (subject) group.subjects.add(subject);
+  }
+  return [...groups.values()]
+    .toSorted((a, b) => b.count - a.count || a.key.localeCompare(b.key))
+    .map(({ subjects, ...group }) => ({
+      ...group,
+      subjects: subjects.size,
+      subject: subjects.size === 1 ? [...subjects][0]! : null,
+    }));
+}
+
+export type ActivityCauseGroup = ReturnType<typeof summarizeActivityCauses>[number];
+
 const activityTime = (request: ActivityRequest) =>
   new Date((request.completedAt || request.requestedAt) ?? 0).getTime();
 
@@ -289,16 +332,36 @@ export function buildActivityPage(
   {
     view,
     status,
+    cause: causeFilter = null,
     offset = 0,
     limit,
-  }: { view: ActivityView; status: ActivityStatus | null; offset?: number; limit: number },
+  }: {
+    view: ActivityView;
+    status: ActivityStatus | null;
+    cause?: string | null;
+    offset?: number;
+    limit: number;
+  },
 ) {
   const viewRequests = groupAlbumGrabRequests(requests).filter((request) =>
     matchesActivityView(request, view),
   );
-  const matching = status
-    ? viewRequests.filter((request) => getActivityStatus(request) === status)
+  const causes =
+    view === "queue"
+      ? summarizeActivityCauses(requests.filter((request) => matchesActivityView(request, view)))
+      : [];
+  const cause = causes.some((group) => group.key === causeFilter) ? causeFilter : null;
+  const causeRequests = cause
+    ? viewRequests.filter((row) =>
+        (row.children ?? [row]).some(
+          (request) =>
+            matchesActivityView(request, view) && activityCauseKey(request.cause) === cause,
+        ),
+      )
     : viewRequests;
+  const matching = status
+    ? causeRequests.filter((request) => getActivityStatus(request) === status)
+    : causeRequests;
   const times = new Map(matching.map((request) => [request, activityTime(request)]));
   const items = matching
     .toSorted(
@@ -309,8 +372,10 @@ export function buildActivityPage(
   return {
     view,
     items,
-    total: viewRequests.length,
+    causes,
+    cause,
+    total: causeRequests.length,
     matching: matching.length,
-    filters: getActivityStatusFilters(view, viewRequests, status),
+    filters: getActivityStatusFilters(view, causeRequests, status),
   };
 }

@@ -92,9 +92,10 @@ export async function requestLibraryTrack(
     };
   }
 
+  const cause = { kind: automatic ? "monitoring" : "request", playlistId: null } as const;
   const existingJob = findQueuedLibraryTrackJob(track);
   if (existingJob?.status === "saved") {
-    downloadTracker.setPending(existingJob.id);
+    downloadTracker.setPending(existingJob.id, null, { cause });
     recordTrackJobQueued(downloadTracker.getJob(existingJob.id), user);
     return { queued: true, jobId: existingJob.id };
   }
@@ -103,7 +104,7 @@ export async function requestLibraryTrack(
     return { queued: true, jobId: existingJob.id, alreadyQueued: true };
   }
 
-  const jobId = downloadTracker.addJob(track, "library", { saved: true });
+  const jobId = downloadTracker.addJob(track, "library", { saved: true, cause });
   if (!jobId) return { error: "Track details are incomplete", statusCode: 400 };
 
   try {

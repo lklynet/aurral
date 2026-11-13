@@ -265,6 +265,10 @@ test("a due album gets its failed and missing tracks queued and an Activity entr
     albumJobs(albumMbid).some((job) => job.trackMbid === requireFixture(tracks[2]).mbid),
     false,
   );
+  assert.deepEqual(
+    albumJobs(albumMbid).map((job) => job.cause?.kind),
+    ["missing", "missing"],
+  );
   const searchedAt = searchTime(album.id);
   assert.ok(searchedAt !== null && searchedAt >= startedAt);
   assert.equal(albumActivity(album.id).length, 1);

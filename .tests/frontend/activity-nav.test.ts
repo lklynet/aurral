@@ -158,3 +158,112 @@ test("activity pages count the whole view but return only the requested slice", 
   assert.equal(reviews.total, 3);
   assert.equal(reviews.matching, 2);
 });
+
+test("queue pages say why downloads are queued and filter to one cause", () => {
+  const cause = (kind: "upgrade" | "flow" | "missing", playlistId: string | null = null) => ({
+    kind,
+    playlistId,
+    name: playlistId ? "Weekly Jams" : null,
+    syncedFrom: null,
+  });
+  const queued = (id: string, requestedAt: string, overrides = {}) =>
+    activityRequest({ id, status: "pending", inQueue: true, requestedAt, ...overrides });
+  const requests = [
+    queued("upgrade-1", "2026-01-02T00:00:00Z", { cause: cause("upgrade") }),
+    queued("upgrade-2", "2026-01-01T00:00:00Z", { cause: cause("upgrade") }),
+    queued("upgrade-3", "2026-01-03T00:00:00Z", { cause: cause("upgrade") }),
+    queued("flow", "2026-01-04T00:00:00Z", { cause: cause("flow", "f1") }),
+    queued("missing-1", "2026-01-05T00:00:00Z", { cause: cause("missing"), albumName: "A" }),
+    queued("missing-2", "2026-01-05T00:00:00Z", { cause: cause("missing"), albumName: "B" }),
+    queued("unknown", "2026-01-06T00:00:00Z"),
+  ];
+
+  const page = buildActivityPage(requests, { view: "queue", status: null, limit: 25 });
+  assert.deepEqual(
+    page.causes.map(({ key, count, since, subjects }) => [key, count, since, subjects]),
+    [
+      ["upgrade", 3, "2026-01-01T00:00:00Z", 0],
+      ["missing", 2, "2026-01-05T00:00:00Z", 2],
+      ["flow:f1", 1, "2026-01-04T00:00:00Z", 0],
+    ],
+  );
+  assert.equal(page.total, 7);
+
+  const flow = buildActivityPage(requests, {
+    view: "queue",
+    status: null,
+    cause: "flow:f1",
+    limit: 25,
+  });
+  assert.equal(flow.cause, "flow:f1");
+  assert.deepEqual(
+    flow.items.map(({ id }) => id),
+    ["flow"],
+  );
+  assert.equal(flow.causes.length, 3);
+  assert.equal(flow.total, 1);
+
+  const finished = buildActivityPage(requests, {
+    view: "queue",
+    status: null,
+    cause: "share",
+    limit: 25,
+  });
+  assert.equal(finished.cause, null);
+  assert.equal(finished.matching, 7);
+});
+
+test("an album's cause groups count and filter its queued tracks one by one", () => {
+  const albumGrab = { id: "grab", memberJobIds: ["a", "b", "c"], phase: "tracks", source: null };
+  const track = (jobId: string, kind: "request" | "missing", status: string) =>
+    activityRequest({
+      id: `track-${jobId}`,
+      jobId,
+      status,
+      inQueue: status !== "completed",
+      albumName: "Album",
+      albumGrab: { ...albumGrab, fallbackReason: null, requestedAt: "2026-01-01T00:00:00Z" },
+      cause: { kind, playlistId: null, name: null, syncedFrom: null },
+    });
+  const requests = [
+    track("a", "request", "completed"),
+    track("b", "missing", "pending"),
+    track("c", "missing", "pending"),
+    activityRequest({
+      id: "solo",
+      status: "pending",
+      inQueue: true,
+      cause: { kind: "request", playlistId: null, name: null, syncedFrom: null },
+    }),
+  ];
+
+  const page = buildActivityPage(requests, { view: "queue", status: null, limit: 25 });
+  assert.deepEqual(
+    page.causes.map(({ key, count }) => [key, count]),
+    [
+      ["missing", 2],
+      ["request", 1],
+    ],
+  );
+  const requested = buildActivityPage(requests, {
+    view: "queue",
+    status: null,
+    cause: "request",
+    limit: 25,
+  });
+  assert.deepEqual(
+    requested.items.map(({ id }) => id),
+    ["solo"],
+  );
+  const missing = buildActivityPage(requests, {
+    view: "queue",
+    status: null,
+    cause: "missing",
+    limit: 25,
+  });
+  assert.equal(missing.cause, "missing");
+  assert.deepEqual(
+    missing.items.map(({ id }) => id),
+    ["grab"],
+  );
+});

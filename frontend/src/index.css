@@ -10081,6 +10081,120 @@ button.native-library-genre-row:focus-visible {
   color: var(--aurral-text-muted);
 }
 
+.activity-causes {
+  display: grid;
+  gap: 0.125rem;
+  margin: 0 -0.25rem 0.75rem;
+}
+
+.activity-cause {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-radius: var(--aurral-radius-sm);
+  transition: background-color var(--aurral-duration-fast) var(--aurral-ease-standard);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .activity-cause:hover {
+    background: var(--aurral-surface-hover);
+  }
+}
+
+.activity-cause.is-active {
+  background: var(--aurral-surface-selected);
+}
+
+.activity-cause__filter {
+  display: grid;
+  flex: 1;
+  grid-template-columns: var(--aurral-icon-sm) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.625rem;
+  min-width: 0;
+  min-height: 2.25rem;
+  padding: 0.375rem 0.5rem;
+  border: 0;
+  border-radius: var(--aurral-radius-sm);
+  background: transparent;
+  color: var(--aurral-text);
+  font: inherit;
+  font-size: var(--aurral-font-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.activity-cause__filter:focus-visible {
+  outline: 2px solid var(--aurral-ring);
+  outline-offset: -2px;
+}
+
+.activity-cause__icon {
+  width: var(--aurral-icon-sm);
+  height: var(--aurral-icon-sm);
+  color: var(--aurral-text-muted);
+}
+
+.activity-cause__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-cause__title {
+  font-weight: 600;
+}
+
+.activity-cause__why {
+  margin-left: 0.375rem;
+  color: var(--aurral-text-subtle);
+}
+
+.activity-cause__count {
+  color: var(--aurral-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.activity-cause__link {
+  flex: none;
+  padding: 0.375rem 0.5rem 0.375rem 0.25rem;
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-xs);
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.activity-cause__link:focus-visible {
+  color: var(--aurral-text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .activity-cause__link:hover {
+    color: var(--aurral-text);
+  }
+}
+
+@media (max-width: 767px) {
+  .activity-cause__text {
+    white-space: normal;
+  }
+
+  .activity-cause__why {
+    display: block;
+    margin-left: 0;
+    overflow: hidden;
+    font-size: var(--aurral-font-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .activity-cause__link {
+    display: none;
+  }
+}
+
 .activity-list {
   min-width: 0;
   margin-top: 0.25rem;
@@ -10101,7 +10215,7 @@ button.native-library-genre-row:focus-visible {
 .activity-row {
   display: grid;
   grid-template-columns:
-    1.75rem minmax(0, 1fr) 1rem fit-content(8rem) minmax(6.5rem, auto) minmax(4.5rem, auto)
+    1.75rem minmax(0, 1fr) fit-content(8rem) minmax(6.5rem, auto) minmax(4.5rem, auto)
     max-content;
   align-items: center;
   gap: 0.75rem;
@@ -10118,7 +10232,7 @@ button.native-library-genre-row:focus-visible {
   .activity-list {
     display: grid;
     grid-template-columns:
-      [icon] auto [details] minmax(0, 1fr) [kind] auto [client] fit-content(8rem)
+      [icon] auto [details] minmax(0, 1fr) [client] fit-content(8rem)
       [status] fit-content(10rem) [time] auto [actions] auto [end];
     column-gap: 0.75rem;
   }
@@ -10341,19 +10455,8 @@ button.native-library-genre-row:focus-visible {
   color: var(--aurral-text-subtle);
 }
 
-.activity-row__kind {
-  display: inline-flex;
-  color: var(--aurral-text-muted);
-}
-
-.activity-row__kind svg {
-  display: block;
-  width: 1rem;
-  height: 1rem;
-}
-
 .activity-row__client {
-  grid-column: 4;
+  grid-column: 3;
   overflow: hidden;
   color: var(--aurral-text-muted);
   font-size: var(--aurral-font-xs);
@@ -10369,7 +10472,7 @@ button.native-library-genre-row:focus-visible {
 }
 
 .activity-row__status-label {
-  grid-column: 5;
+  grid-column: 4;
 }
 
 .activity-row__status-label--success {
@@ -10732,12 +10835,6 @@ button.native-library-genre-row:focus-visible {
   .activity-row__status {
     grid-area: status;
     margin-top: 0.05rem;
-  }
-
-  .activity-row__kind {
-    grid-area: status;
-    align-self: end;
-    justify-self: center;
   }
 
   .activity-row__details {

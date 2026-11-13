@@ -62,6 +62,7 @@ export const activityRequest = (overrides: Partial<ActivityRequest> = {}): Activ
   sourceFilename: null,
   releaseTitle: null,
   upgrade: null,
+  cause: null,
   inQueue: false,
   ...overrides,
 });
