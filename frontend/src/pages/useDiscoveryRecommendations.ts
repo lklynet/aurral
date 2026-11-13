@@ -11,19 +11,9 @@ import {
   readStoredDiscoveryData,
   writeStoredDiscoveryData,
   type DiscoverArtist,
-  type normalizeDiscoveryData,
+  type DiscoverData,
 } from "../utils/discoverUtils";
 import { getApiErrorText } from "../utils/api/errors.ts";
-
-export type DiscoverData = Omit<
-  NonNullable<ReturnType<typeof normalizeDiscoveryData>>,
-  "recommendations" | "globalTop" | "topGenres" | "topTags"
-> & {
-  recommendations: DiscoverArtist[];
-  globalTop: DiscoverArtist[];
-  topGenres: string[];
-  topTags: string[];
-};
 
 type SubmitFeedback = ReturnType<typeof useArtistTasteFeedback>["submitFeedback"];
 
@@ -32,7 +22,7 @@ export function useDiscoveryRecommendations() {
   const options = discoveryQueryOptions(user?.id);
   const initialData = useMemo(() => readStoredDiscoveryData(user?.id) || undefined, [user?.id]);
   const discoveryQuery = useQuery({ ...options, initialData, initialDataUpdatedAt: 0 });
-  const data = (discoveryQuery.data || null) as DiscoverData | null;
+  const data = discoveryQuery.data || null;
   const { queryKey } = options;
   const setData = useCallback(
     (updater: (current: DiscoverData) => DiscoverData) => {
