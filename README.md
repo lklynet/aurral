@@ -73,6 +73,7 @@ Built on [BrainzMash](https://github.com/statichum/brainzmash-hearring-aid) and 
   <a href="https://github.com/zachgonser"><img src="https://github.com/zachgonser.png?size=120" width="60" alt="@zachgonser" /></a>
   <a href="https://github.com/erleijen"><img src="https://github.com/erleijen.png?size=120" width="60" alt="@erleijen" /></a>
   <a href="https://github.com/bahraoui"><img src="https://github.com/bahraoui.png?size=120" width="60" alt="@bahraoui" /></a>
+  <a href="https://github.com/nosooqua"><img src="https://github.com/nosooqua.png?size=120" width="60" alt="@nosooqua" /></a>
 </p>
 
 <p align="center">
