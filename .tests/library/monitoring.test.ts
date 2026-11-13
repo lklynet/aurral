@@ -121,7 +121,9 @@ const metadataState: {
   otherReleases: ReleaseFixture[];
   albumGate: MetadataGate | null;
   artistGate: MetadataGate | null;
+  albumRequests: string[];
 } = {
+  albumRequests: [],
   artistFails: false,
   extraReleases: [],
   otherReleases: [],
@@ -224,6 +226,7 @@ const metadataServer = await createMockHttpServer(async (request, response) => {
     ...metadataState.otherReleases,
   ].find((entry) => pathname === `/album/${entry.id}`);
   if (release) {
+    metadataState.albumRequests.push(release.id);
     if (metadataState.albumGate) {
       metadataState.albumGate.started();
       await metadataState.albumGate.release;
@@ -352,6 +355,7 @@ beforeEach(() => {
   metadataState.otherReleases = [];
   metadataState.albumGate = null;
   metadataState.artistGate = null;
+  metadataState.albumRequests = [];
   clearMetadataProviderCaches();
   clearMonitoringTasks();
   downloadTracker.clearAll();
@@ -399,6 +403,7 @@ test("monitoring an Aurral artist with the default rules queues its studio album
   assert.equal(added.body.artist.monitored, true);
   assert.equal(added.body.artist.useDefault, true);
   assert.deepEqual(added.body.artist.monitoring.releaseGroupIds, defaultIds);
+  assert.deepEqual([...new Set(metadataState.albumRequests)].sort(), [...defaultIds].sort());
 
   const tasks = await runQueuedMonitoringTasks();
   assert.equal(tasks.length, 1);

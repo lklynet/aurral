@@ -98,6 +98,7 @@ test("reuseTrackForPlaylist references a completed Aurral track path", async () 
   const sourceJobId = createTrackedJob(downloadTracker, track, "source-flow");
   assert.ok(sourceJobId != null);
   downloadTracker.setDone(sourceJobId, sourcePath, track.albumName);
+  downloadTracker.updateMetadata(sourceJobId, { albumMbid: "toxicity" });
 
   const result = await reuseTrackForPlaylist(track, "target-flow", {
     downloadRoot,
@@ -108,6 +109,7 @@ test("reuseTrackForPlaylist references a completed Aurral track path", async () 
   assert.equal(result.finalPath, sourcePath);
   assert.equal(downloadTracker.getJob(result.jobId)?.status, "done");
   assert.equal(downloadTracker.getJob(result.jobId)?.finalPath, sourcePath);
+  assert.equal(downloadTracker.getJob(result.jobId)?.albumMbid, "toxicity");
 });
 
 test("adding a flow track to the Library moves its file into the Library folder", async () => {
@@ -637,8 +639,6 @@ test("playlists use an indexed Library file whose folder and name Aurral did not
       artistName: "Hellyeah",
       trackName: "!",
       albumName: "Unden!able",
-      artistMbid: "hellyeah",
-      albumMbid: "undeniable",
       trackMbid: "bang",
     },
     "static-playlist",
@@ -650,6 +650,7 @@ test("playlists use an indexed Library file whose folder and name Aurral did not
   const job = trackedJob(downloadTracker, result.jobId);
   assert.equal(job.externalPath ?? null, null);
   assert.equal(job.reusedLibraryFile, true);
+  assert.deepEqual([job.artistMbid, job.albumMbid], ["hellyeah", "undeniable"]);
 });
 
 test("jobs follow the Library files a scan changed", async () => {

@@ -6,9 +6,9 @@ import * as v from "valibot";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { listOf } from "../../db/helpers/storedSchemas.ts";
 import type { DownloadJobsRevisionRow, DownloadJobsRow } from "../../db/rows.ts";
-import type { NzbSourceId } from "../usenetClientCommon.ts";
 import { downloadPipelineQueue } from "../jobs/queues.ts";
 import type { PipelinePayload } from "../downloadPipeline.ts";
+import type { DownloadSource } from "../download/downloadSource.ts";
 import {
   getQuickSearchSources,
   isAlbumGrabSourceConfigured,
@@ -92,12 +92,9 @@ type SourceCandidate<Source extends PipelinePayload["source"]> =
   Extract<PipelinePayload, { source: Source }> extends { candidates?: (infer Candidate)[] | null }
     ? Candidate
     : never;
-type ManualSelection = { downloadClient?: string | null } & (
+type ManualSelection =
   | { source: "slskd"; candidate: SourceCandidate<"slskd"> }
-  | { source: "deemix"; candidate: SourceCandidate<"deemix"> }
-  | { source: "ytdlp"; candidate: SourceCandidate<"ytdlp"> }
-  | { source: NzbSourceId; candidate: SourceCandidate<NzbSourceId> }
-);
+  | { source: DownloadSource["id"]; candidate: SourceCandidate<DownloadSource["id"]> };
 const queuedStepSchema = v.object({
   jobId: v.string(),
   downloadAttemptId: v.string(),
@@ -573,13 +570,8 @@ function buildManualPayload(job: DownloadJob, selection: ManualSelection): Pipel
     allowedSources: [selection.source],
     candidateIndex: 0,
     manualSelection: true,
-    manualDownloadClient: selection.downloadClient || null,
   };
   if (selection.source === "slskd")
-    return { ...step, source: selection.source, candidates: [selection.candidate] };
-  if (selection.source === "deemix")
-    return { ...step, source: selection.source, candidates: [selection.candidate] };
-  if (selection.source === "ytdlp")
     return { ...step, source: selection.source, candidates: [selection.candidate] };
   return { ...step, source: selection.source, candidates: [selection.candidate] };
 }
@@ -602,7 +594,6 @@ export type PipelineStep = Partial<{
     albumGroupJobIds?: string[] | null;
     candidateIndex?: number;
     manualSelection?: boolean;
-    manualDownloadClient?: string | null;
   };
 
 // The files these jobs hold for review: a blocked job's file, unless only
@@ -853,6 +844,15 @@ export class DownloadTracker {
     updateDownloadMetaStmt.run(...DOWNLOAD_METADATA_KEYS.map((key) => job[key] ?? null), id);
     recordAlbumTrackState(job);
     return true;
+  }
+
+  // A job done with a shared download no longer counts as one taking a
+  // track from it.
+  releaseDownloadClient(id: string) {
+    const job = this.jobs.get(id);
+    if (!job?.downloadClientId) return;
+    job.downloadClientId = null;
+    updateDownloadMetaStmt.run(...DOWNLOAD_METADATA_KEYS.map((key) => job[key] ?? null), id);
   }
 
   // The queued album attempt this job is still part of. A job released from

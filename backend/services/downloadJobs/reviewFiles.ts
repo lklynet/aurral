@@ -3,7 +3,6 @@ import fs from "fs/promises";
 import { isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.ts";
 import { readOnlyFolderPaths } from "../libraryFolders.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
-import { isNzbSource } from "../usenetClientCommon.ts";
 import type { DownloadJob, HeldForReviewDraft } from "./downloadTracker.ts";
 
 type ReviewFileJob = Pick<
@@ -11,7 +10,7 @@ type ReviewFileJob = Pick<
   "id" | "stagingPath" | "downloadSource" | "downloadClient" | "remoteUsername"
 > & { downloadClientId?: DownloadJob["downloadClientId"] | number };
 
-function isInLibraryFolder(filePath: string) {
+export function isInLibraryFolder(filePath: string) {
   return [resolveDownloadRoot(), ...readOnlyFolderPaths()]
     .filter(Boolean)
     .some((root) => isPathInsideRoot(filePath, path.resolve(root)));
@@ -25,7 +24,6 @@ export async function discardReviewFile(job: ReviewFileJob) {
   const filePath = path.resolve(stagingPath);
   try {
     if (isInLibraryFolder(filePath)) return;
-    let preserveSource = false;
     if (job.downloadSource === "slskd") {
       const { discardSlskdDownload } = await import("../slskdOrchestrator.ts");
       await discardSlskdDownload({
@@ -38,11 +36,8 @@ export async function discardReviewFile(job: ReviewFileJob) {
           reason: safeLogDiagnostic(error),
         });
       });
-    } else if (isNzbSource(job.downloadSource)) {
-      const { removeReviewedUsenetDownload } = await import("../usenetOrchestrator.ts");
-      preserveSource = (await removeReviewedUsenetDownload(job)) === false;
     }
-    if (!preserveSource) await fs.rm(filePath, { force: true });
+    await fs.rm(filePath, { force: true });
     if (path.basename(path.dirname(filePath)) === String(job.id)) {
       await fs.rmdir(path.dirname(filePath)).catch(() => {});
     }

@@ -59,33 +59,29 @@ export function audioMetadata({
   };
 }
 
-type UsenetCandidate = NonNullable<
-  Parameters<
-    typeof import("../../backend/services/usenetOrchestrator.ts").processUsenetPipelinePayload
-  >[0]["candidates"]
->[number];
-
+// A Usenet release as the Usenet source lists it, chosen for a step.
 export function usenetCandidate({
-  raw,
-  ...overrides
-}: Partial<Omit<UsenetCandidate, "raw">> & {
-  raw: Pick<UsenetCandidate["raw"], "release"> & Partial<Omit<UsenetCandidate["raw"], "release">>;
-}): UsenetCandidate {
+  guid,
+  title,
+  album = title,
+  downloadUrl = `https://indexer.test/${guid}.nzb`,
+  indexerId = null,
+}: {
+  guid: string;
+  title: string;
+  album?: string;
+  downloadUrl?: string;
+  indexerId?: number | null;
+}) {
   return {
-    score: 0,
-    resolvedAlbumName: null,
-    releaseAdmissible: true,
-    scores: { artist: 100, track: 100, album: 100, year: 0, format: 0, size: 0 },
-    ...overrides,
     raw: {
-      file: raw.release.title ?? "",
-      size: raw.release.size ?? 0,
-      downloadUrl: raw.release.downloadUrl ?? "",
-      indexerId: raw.release.indexerId,
-      indexer: raw.release.indexer,
-      guid: raw.release.guid,
-      ...raw,
+      id: guid.toLowerCase(),
+      title: album,
+      artist: "Artist",
+      data: { guid, title, downloadUrl, indexerId, indexer: null, score: 0 },
     },
+    resolvedAlbumName: album,
+    releaseVerified: false,
   };
 }
 
@@ -94,13 +90,14 @@ type YtdlpResult = Awaited<
 >[number];
 
 export function ytdlpResult(overrides: Partial<YtdlpResult> & Pick<YtdlpResult, "id" | "title">) {
-  return {
+  const result = {
     url: `https://example.test/${overrides.id}`,
     channel: "Artist Name",
     durationSec: 1,
     liveStatus: "not_live",
     ...overrides,
   } satisfies YtdlpResult;
+  return { ...result, artist: result.channel };
 }
 
 export function recordSourceFailures() {

@@ -1,4 +1,4 @@
-import { createTrackedJob, localDownloadWorker, trackedJob } from "./fixtures.ts";
+import { createTrackedJob, localDownloadWorker, trackedJob, ytdlpResult } from "./fixtures.ts";
 import { insertJob } from "../helpers/jobs.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
@@ -28,6 +28,9 @@ const [
   sabnzbdModule,
   tidarrModule,
   nzbgetModule,
+  { processSourcePipelinePayload, stagingDir },
+  { ytdlpSource },
+  { getDownloadClient },
 ] = await setupIsolatedBackend(
   "download-cancellation",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -44,6 +47,9 @@ const [
   () => import("../../backend/services/sabnzbdClient.ts"),
   () => import("../../backend/services/tidarrClient.ts"),
   () => import("../../backend/services/nzbgetClient.ts"),
+  () => import("../../backend/services/download/sourcePipeline.ts"),
+  () => import("../../backend/services/ytdlpSource.ts"),
+  () => import("../../backend/services/download/downloadClientSettings.ts"),
 );
 
 const {
@@ -87,8 +93,14 @@ test("provider cancellation retry retains IDs from pipeline rows removed on the 
     await import("../../backend/services/download/downloadClientSettings.ts");
   const client = getDownloadClient("deemix");
   vi.spyOn(client, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(client, "getQueue").mockImplementation(async () => ({
+    "provider-id-only-in-payload": { status: "downloading" },
+  }));
   let succeeds = false;
-  const remove = vi.spyOn(client, "removeFromQueue").mockImplementation(async () => succeeds);
+  const remove = vi.spyOn(client, "removeFromQueue").mockImplementation(async () => {
+    if (!succeeds) throw new Error("deemix refused");
+    return true;
+  });
   const jobId = createTrackedJob(
     downloadTracker,
     { artistName: "Artist", trackName: "Track" },
@@ -100,7 +112,7 @@ test("provider cancellation retry retains IDs from pipeline rows removed on the 
     playlistGeneration: 0,
     source: "deemix",
     phase: "poll",
-    queueUuid: "provider-id-only-in-payload",
+    pendingId: "provider-id-only-in-payload",
   });
   await assert.rejects(
     cancellationServiceModule.cancelDownloadWorkForJobs([trackedJob(downloadTracker, jobId)]),
@@ -116,6 +128,9 @@ test("provider cancellation keeps saved queue IDs when a saved job can't be read
     await import("../../backend/services/download/downloadClientSettings.ts");
   const client = getDownloadClient("deemix");
   vi.spyOn(client, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(client, "getQueue").mockImplementation(async () => ({
+    "queue-id-only-in-snapshot": { status: "downloading" },
+  }));
   const remove = vi.spyOn(client, "removeFromQueue").mockImplementation(async () => true);
   const jobId = createTrackedJob(
     downloadTracker,
@@ -124,7 +139,7 @@ test("provider cancellation keeps saved queue IDs when a saved job can't be read
   );
   dbOps.setJSONSetting(`downloadCancellationWork:${jobId}`, {
     jobs: [{ id: jobId, downloadClientId: 42 }, null],
-    payloads: [{ jobId, source: "deemix", queueUuid: "queue-id-only-in-snapshot" }],
+    payloads: [{ jobId, source: "deemix", pendingId: "queue-id-only-in-snapshot" }],
   });
 
   await cancellationServiceModule.cancelDownloadWorkForJobs([trackedJob(downloadTracker, jobId)]);
@@ -544,8 +559,8 @@ test("SABnzbd cancellation retains a job when a refused queue deletion leaves it
   );
   assert.ok(jobId != null);
   downloadTracker.updateDownloadMetadata(jobId, {
-    downloadClient: "sabnzbd",
-    downloadClientId: "SABnzbd_nzo_refused",
+    downloadSource: "usenet",
+    downloadClientId: "sabnzbd:SABnzbd_nzo_refused",
   });
   vi.spyOn(sabnzbdClient, "isConfigured").mockImplementation(() => true);
   vi.spyOn(sabnzbdClient, "deleteQueueItem").mockImplementation(async () => false);
@@ -562,7 +577,7 @@ test("SABnzbd cancellation retains a job when a refused queue deletion leaves it
     ),
     /Could not cancel download provider work/,
   );
-  assert.equal(downloadTracker.getJob(jobId)?.downloadClientId, "SABnzbd_nzo_refused");
+  assert.equal(downloadTracker.getJob(jobId)?.downloadClientId, "sabnzbd:SABnzbd_nzo_refused");
 });
 
 test("SABnzbd cancellation accepts already absent queue and history items", async () => {
@@ -574,8 +589,8 @@ test("SABnzbd cancellation accepts already absent queue and history items", asyn
   );
   assert.ok(jobId != null);
   downloadTracker.updateDownloadMetadata(jobId, {
-    downloadClient: "sabnzbd",
-    downloadClientId: "SABnzbd_nzo_absent",
+    downloadSource: "usenet",
+    downloadClientId: "sabnzbd:SABnzbd_nzo_absent",
   });
   vi.spyOn(sabnzbdClient, "isConfigured").mockImplementation(() => true);
   vi.spyOn(sabnzbdClient, "deleteQueueItem").mockImplementation(async () => false);
@@ -600,8 +615,8 @@ test("NZBGet cancellation deletes the tracked queue and history items", async ()
   );
   assert.ok(jobId != null);
   downloadTracker.updateDownloadMetadata(jobId, {
-    downloadClient: "nzbget",
-    downloadClientId: 42,
+    downloadSource: "usenet",
+    downloadClientId: "nzbget:42",
   });
   const calls: (string | unknown[] | undefined)[][] = [];
   vi.spyOn(nzbgetClient, "isConfigured").mockImplementation(() => true);
@@ -633,8 +648,8 @@ test("Tidarr cancellation deletes the tracked download", async () => {
   );
   assert.ok(jobId != null);
   downloadTracker.updateDownloadMetadata(jobId, {
-    downloadClient: "tidarr",
-    downloadClientId: "tidarr_nzo_77777",
+    downloadSource: "tidarr",
+    downloadClientId: "tidarr:tidarr_nzo_77777",
   });
   const deleted: string[] = [];
   vi.spyOn(tidarrClient, "isConfigured").mockImplementation(() => true);
@@ -807,4 +822,43 @@ test("rotating a flow shown in the library rescans the library", async () => {
 
   assert.equal(result.empty, true);
   assert.equal(scans.mock.calls.length, 1);
+});
+
+test("cancelling a track stops its download running in Aurral and removes the download folder", async () => {
+  const jobId = createTrackedJob(
+    downloadTracker,
+    { artistName: "Artist", trackName: "Song" },
+    "library",
+  );
+  assert.ok(jobId != null);
+  const started = Promise.withResolvers<void>();
+  vi.spyOn(getDownloadClient("ytdlp"), "downloadAudio").mockImplementation(
+    (_url, { signal }) =>
+      new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(signal.reason));
+        started.resolve();
+      }),
+  );
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    const step = processSourcePipelinePayload(
+      {
+        jobId,
+        phase: "download",
+        source: "ytdlp",
+        candidateIndex: 0,
+        candidates: [{ raw: ytdlpResult({ id: "video", title: "Artist - Song" }) }],
+      },
+      ytdlpSource,
+      { failOrTryNextSource: async (_payload, _job, reason) => assert.fail(reason) },
+    );
+    await started.promise;
+    cancelDownloadJob(jobId);
+    await vi.advanceTimersByTimeAsync(1000);
+    assert.equal(await step, null);
+    await assert.rejects(fs.access(stagingDir(ytdlpSource, jobId)));
+  } finally {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  }
 });

@@ -54,9 +54,14 @@ test("hovering a playlist link fetches it once and the page reuses the result", 
 test("hovering an album never fetches metadata from BrainzMash", async (t) => {
   const { requests, prefetchRoute } = await setup(t, () => ({ body: {} }));
 
-  await prefetchRoute("/album/98c84b94-3445-4dcc-ad01-9e5e3e1271e2");
+  await prefetchRoute("/discover/playlists/deezer/42", { userId: 1 });
+  await prefetchRoute("/discover/playlists/deezer/42", { userId: 1 });
+  assert.equal(apiRequests(requests, "/discover/playlists/deezer/42").length, 1);
 
-  assert.equal(apiRequests(requests, "/artists/release-group/").length, 0);
+  await assert.rejects(
+    queryClient.fetchQuery(queryOptions.browsePlaylistQueryOptions(1, "deezer", "42")),
+  );
+  assert.equal(apiRequests(requests, "/discover/playlists/deezer/42").length, 2);
 });
 
 test("no prefetch runs while the tab is hidden or for links outside the app", async (t) => {

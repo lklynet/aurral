@@ -119,7 +119,14 @@ test("manual selection queues only the exact selected candidate", async () => {
   );
   assert.ok(jobId != null);
   tracker.setFailed(jobId, "Automatic search found nothing");
-  const candidate = { raw: { id: "chosen", url: "https://provider.invalid/chosen" } };
+  const candidate = {
+    raw: {
+      id: "chosen",
+      title: "A Song",
+      artist: "An Artist",
+      url: "https://provider.invalid/chosen",
+    },
+  };
 
   assert.equal(tracker.enqueueManualSelection(jobId, { source: "deemix", candidate }), true);
   const { downloadPipelineQueue } = await import("../../backend/services/jobs/queues.ts");
@@ -154,7 +161,7 @@ test("failed manual queue handoff keeps the job failed and available to retry", 
 
   const queued = tracker.enqueueManualSelection(jobId, {
     source: "deemix" as const,
-    candidate: { raw: { id: "chosen" } },
+    candidate: { raw: { id: "chosen", title: "A Song", artist: "An Artist" } },
   });
 
   assert.equal(queued, false);
@@ -175,7 +182,9 @@ test("manual replacement queues the exact candidate without changing the current
   );
   assert.ok(sourceJobId != null);
   tracker.setDone(sourceJobId, "C:/aurral/current-song.flac", "Current Album");
-  const candidate = { raw: { id: "chosen-replacement" } };
+  const candidate = {
+    raw: { id: "chosen-replacement", title: "Current Song", artist: "An Artist" },
+  };
 
   assert.equal(
     tracker.enqueueManualReplacementSelection(sourceJobId, {
@@ -224,7 +233,7 @@ test("failed manual replacement handoff leaves the current track intact", () => 
   assert.equal(
     tracker.enqueueManualReplacementSelection(sourceJobId, {
       source: "deemix" as const,
-      candidate: { raw: { id: "chosen-replacement" } },
+      candidate: { raw: { id: "chosen-replacement", title: "Current Song", artist: "An Artist" } },
     }),
     false,
   );

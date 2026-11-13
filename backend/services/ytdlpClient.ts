@@ -21,7 +21,6 @@ const TEST_VIDEO_URL = "https://www.youtube.com/watch?v=jNQXAC9IVRw";
 const DROPPED_TAGS = ["description", "synopsis", "comment", "purl", "genre", "date"];
 
 type YtdlpSettings = NonNullable<StoredIntegrations["ytdlp"]>;
-type JobId = string | number | null | undefined;
 type ProcessError = Error & { code?: string };
 type YtdlpJsonEntry = {
   id?: unknown;
@@ -42,8 +41,6 @@ type SongEntry = { id: string; title: string };
 type YtdlpSong = NonNullable<ReturnType<typeof readSong>>;
 type SongFilter = (entry: SongEntry) => boolean;
 type SongDecider = (songs: YtdlpSong[]) => boolean | Promise<boolean>;
-
-const activeDownloads = new Map<string, ReturnType<typeof downloadAudioFor>>();
 
 export const ytdlpSettings = Object.freeze({
   key: "ytdlp",
@@ -126,7 +123,6 @@ function isConfiguredFor(config: YtdlpSettings | null = null) {
 type RunOptions = {
   timeoutMs?: number;
   cwd?: string;
-  shouldCancel?: () => boolean;
   signal?: AbortSignal;
 };
 
@@ -164,10 +160,7 @@ async function spawnWithCookies(source: string, args: string[], options: RunOpti
   }
 }
 
-function spawnYtdlp(
-  args: string[],
-  { timeoutMs = 120000, cwd, shouldCancel, signal }: RunOptions = {},
-) {
+function spawnYtdlp(args: string[], { timeoutMs = 120000, cwd, signal }: RunOptions = {}) {
   return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
     const isolatedProcessGroup = process.platform !== "win32";
     const child = spawn(getBinaryPath(), buildYtdlpInvocationArgs(args), {
@@ -189,30 +182,12 @@ function spawnYtdlp(
     let stderr = "";
     let settled = false;
     let terminationError: ProcessError | null = null;
-    let forcedKillTimer: NodeJS.Timeout | null = null;
     const timer = setTimeout(() => {
       const error: ProcessError = new Error(`yt-dlp timed out after ${timeoutMs}ms`);
       error.code = "DOWNLOAD_TIMEOUT";
       terminationError = error;
       signalProcess("SIGKILL");
     }, timeoutMs);
-    const cancellationTimer =
-      typeof shouldCancel === "function"
-        ? setInterval(() => {
-            let cancelled = false;
-            try {
-              cancelled = shouldCancel() === true;
-            } catch {}
-            if (!cancelled || terminationError) return;
-            const error: ProcessError = new Error("yt-dlp download cancelled");
-            error.code = "DOWNLOAD_CANCELLED";
-            terminationError = error;
-            clearTimeout(timer);
-            signalProcess("SIGTERM");
-            forcedKillTimer = setTimeout(() => signalProcess("SIGKILL"), 1000);
-          }, 250)
-        : null;
-    if (typeof cancellationTimer?.unref === "function") cancellationTimer.unref();
     const abort = () => {
       if (terminationError) return;
       terminationError =
@@ -224,8 +199,6 @@ function spawnYtdlp(
     if (signal?.aborted) abort();
     function clearTimers() {
       clearTimeout(timer);
-      if (forcedKillTimer) clearTimeout(forcedKillTimer);
-      if (cancellationTimer) clearInterval(cancellationTimer);
       signal?.removeEventListener("abort", abort);
     }
     function settleReject(error: Error) {
@@ -464,14 +437,6 @@ async function searchFor(
   });
 }
 
-function resolveStagingDir(config: YtdlpSettings | null, jobId: JobId) {
-  return path.join(
-    resolveYtdlpStagingRoot(getSettings(config).stagingPath),
-    "ytdlp",
-    String(jobId || "unknown"),
-  );
-}
-
 async function findDownloadedAudio(dir: string) {
   const entries = await fsPromises.readdir(dir).catch(() => []);
   const audioExt = new Set([".m4a", ".mp3", ".opus", ".flac", ".ogg", ".webm", ".wav"]);
@@ -485,16 +450,13 @@ async function findDownloadedAudio(dir: string) {
 }
 
 async function downloadAudioFor(
-  config: YtdlpSettings | null = null,
-  videoUrl: string | null | undefined,
-  { jobId, shouldCancel }: { jobId?: JobId; shouldCancel?: () => boolean } = {},
+  config: YtdlpSettings | null,
+  videoUrl: string,
+  { directory, signal }: { directory: string; signal?: AbortSignal },
 ) {
-  const url = String(videoUrl || "").trim();
+  const url = videoUrl.trim();
   if (!url) throw new Error("Missing yt-dlp download URL");
-  const stagingDir = resolveStagingDir(config, jobId);
-  await fsPromises.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
-  await fsPromises.mkdir(stagingDir, { recursive: true });
-  const outTemplate = path.join(stagingDir, "%(id)s.%(ext)s");
+  const outTemplate = path.join(directory, "%(id)s.%(ext)s");
   // A YouTube Music song carries its own track and artist tags, and a dash in
   // "Hey Jude - Remastered 2015" is not an "Artist - Title" separator. The AAC
   // stream is copied as it is, where Opus would be re-encoded. Aurral's tags
@@ -520,42 +482,18 @@ async function downloadAudioFor(
     "--",
     url,
   ];
+  const options = { config, timeoutMs: DOWNLOAD_TIMEOUT_MS, cwd: directory, signal };
   try {
-    try {
-      await runYtdlp(args, {
-        config,
-        timeoutMs: DOWNLOAD_TIMEOUT_MS,
-        cwd: stagingDir,
-        shouldCancel,
-      });
-    } catch (error) {
-      // YouTube often refuses one signed media URL with 403; a new run
-      // extracts fresh URLs and usually succeeds.
-      if (!/HTTP Error 403/u.test(asAppError(error)?.message || "")) throw error;
-      await runYtdlp(args, {
-        config,
-        timeoutMs: DOWNLOAD_TIMEOUT_MS,
-        cwd: stagingDir,
-        shouldCancel,
-      });
-    }
+    await runYtdlp(args, options);
   } catch (error) {
-    await fsPromises.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
-    throw error;
+    // YouTube often refuses one signed media URL with 403; a new run
+    // extracts fresh URLs and usually succeeds.
+    if (!/HTTP Error 403/u.test(asAppError(error)?.message || "")) throw error;
+    await runYtdlp(args, options);
   }
-  const filePath = await findDownloadedAudio(stagingDir);
-  if (!filePath) {
-    await fsPromises.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
-    throw new Error("yt-dlp finished without an audio file");
-  }
-  return { filePath, stagingDir };
-}
-
-async function cleanupStagingFor(config: YtdlpSettings | null = null, jobId: JobId) {
-  await activeDownloads.get(String(jobId || ""))?.catch(() => {});
-  await fsPromises
-    .rm(resolveStagingDir(config, jobId), { recursive: true, force: true })
-    .catch(() => {});
+  const filePath = await findDownloadedAudio(directory);
+  if (!filePath) throw new Error("yt-dlp finished without an audio file");
+  return filePath;
 }
 
 export class YtdlpClient {
@@ -596,24 +534,12 @@ export class YtdlpClient {
     return searchFor(this._config, query, options);
   }
 
-  downloadAudio(
-    videoUrl: string | null | undefined,
-    options?: Parameters<typeof downloadAudioFor>[2],
-  ) {
-    const download = downloadAudioFor(this._config, videoUrl, options);
-    const jobId = String(options?.jobId || "");
-    if (jobId) {
-      activeDownloads.set(jobId, download);
-      const forget = () => {
-        if (activeDownloads.get(jobId) === download) activeDownloads.delete(jobId);
-      };
-      void download.then(forget, forget);
-    }
-    return download;
+  stagingRoot() {
+    return path.join(resolveYtdlpStagingRoot(getSettings(this._config).stagingPath), "ytdlp");
   }
 
-  cleanupStaging(jobId: JobId) {
-    return cleanupStagingFor(this._config, jobId);
+  downloadAudio(videoUrl: string, options: Parameters<typeof downloadAudioFor>[2]) {
+    return downloadAudioFor(this._config, videoUrl, options);
   }
 }
 

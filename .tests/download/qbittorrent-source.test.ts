@@ -229,8 +229,15 @@ test("an album search keeps seeded torrents of the album, best quality first", a
     release("other", "Glass Coast - Highlands (2022) [FLAC]", 90),
   ];
 
-  const results = await qbittorrentSource.albums!.search(ALBUM, null);
-  const upgrades = await qbittorrentSource.albums!.search(ALBUM, { currentTier: "mp3-320" });
+  const search = (upgrade: { currentTier: string } | null) =>
+    qbittorrentSource.albums!.search(ALBUM, {
+      upgrade,
+      track: null,
+      denied: new Set(),
+      release: null,
+    });
+  const results = await search(null);
+  const upgrades = await search({ currentTier: "mp3-320" });
 
   assert.deepEqual(
     results.map((result) => [result.id, result.title]),
@@ -245,7 +252,7 @@ test("an album search keeps seeded torrents of the album, best quality first", a
   );
 
   fake.musicReleases = [release("mp3", "Glass Coast - Lowlands (2020) [MP3 320]", 40)];
-  const broader = await qbittorrentSource.albums!.search(ALBUM, { currentTier: "mp3-320" });
+  const broader = await search({ currentTier: "mp3-320" });
   assert.deepEqual(
     broader.map((result) => result.id),
     ["flac"],
@@ -257,15 +264,27 @@ test("a download hands qBittorrent the torrent file, or the magnet Prowlarr's li
     release("file", "Glass Coast - Lowlands [FLAC]", 5),
     release("magnet", "Glass Coast - Lowlands [MP3]", 5, "/magnet-only", "magnetUrl"),
   ];
-  const [file, magnet] = await qbittorrentSource.albums!.search(ALBUM, null);
+  const [file, magnet] = await qbittorrentSource.albums!.search(ALBUM, {
+    upgrade: null,
+    track: null,
+    denied: new Set(),
+    release: null,
+  });
   assert.ok(file && magnet);
   const directory = path.join(folder, "staging");
+  const { signal } = new AbortController();
 
-  const first = await qbittorrentSource.albums!.download({ result: file, album: ALBUM, directory });
+  const first = await qbittorrentSource.albums!.download({
+    result: file,
+    album: ALBUM,
+    directory,
+    signal,
+  });
   const second = await qbittorrentSource.albums!.download({
     result: magnet,
     album: ALBUM,
     directory,
+    signal,
   });
 
   const [fileForm, magnetForm] = fake.added;
@@ -280,7 +299,7 @@ test("a download hands qBittorrent the torrent file, or the magnet Prowlarr's li
   assert.equal(magnetForm.get("stopCondition"), "MetadataReceived");
   assert.notEqual(first?.pending, second?.pending);
   await assert.rejects(
-    qbittorrentSource.albums!.download({ result: magnet, album: ALBUM, directory }),
+    qbittorrentSource.albums!.download({ result: magnet, album: ALBUM, directory, signal }),
     (error) => error instanceof DownloadSourceError && /didn't add/.test(error.message),
   );
 });

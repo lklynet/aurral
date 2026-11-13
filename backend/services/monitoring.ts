@@ -270,6 +270,9 @@ export function legacyMonitorMode(effective: { rules: MonitorRules } | null | un
   return effective.rules.catalog === "latest" ? "latest" : "future";
 }
 
-export async function listArtistReleases(artistMbid: string) {
-  return listArtistAlbums(artistMbid, { hydrateLimit: 100 });
+export async function listArtistReleases(artistMbid: string, rules: MonitorRules) {
+  return listArtistAlbums(artistMbid, {
+    hydrateLimit: 100,
+    only: (release) => releaseMatchesRules(release, rules),
+  });
 }

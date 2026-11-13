@@ -37,7 +37,7 @@ If the release leaves tracks unfilled, Aurral first tries the next ranked folder
 
 ### Review a track
 
-Aurral holds a download for review when the file has the requested title but its duration or artist credit is a little off. A file from Soulseek, Usenet, or yt-dlp waits while Aurral tries the other results and download sources, and goes to review only if none of them verifies. The file stays with its track through a restart, and while an album download that failed starts again. If you deny it, Aurral searches for the track again from the start, its album's release included. A file from deemix goes to review at once. Another song by the same artist is never held for review, and neither is an automatic upgrade: Aurral drops a file it cannot verify and keeps the one you have. Flow tracks never wait for review either, since you can't judge a recommendation you haven't heard. Aurral drops a flow file it cannot verify, and the track fails if no other result verifies.
+Aurral holds a download for review when the file has the requested title but its duration or artist credit is a little off. A file from Soulseek, Usenet, deemix, or yt-dlp waits while Aurral tries the other results and download sources, and goes to review only if none of them verifies. The file stays with its track through a restart, and while an album download that failed starts again. If you deny it, Aurral searches for the track again from the start, its album's release included. Another song by the same artist is never held for review, and neither is an automatic upgrade: Aurral drops a file it cannot verify and keeps the one you have. Flow tracks never wait for review either, since you can't judge a recommendation you haven't heard. Aurral drops a flow file it cannot verify, and the track fails if no other result verifies.
 
 Each review row shows the requested track, artist, and album, the path of the downloaded file, the match scores, and the duration. Preview the track, then approve or deny it.
 
@@ -68,7 +68,7 @@ A row in **Cutoff unmet** changes to **Upgrade queued** at once, and keeps that 
 Automatic search picks a result for you. When it picks the wrong one, or none, you can choose the file yourself.
 
 1. In **Wanted > Missing**, select **Choose a download manually** on a track.
-2. In **Download client**, select a client. The list shows the configured clients: Soulseek, Tidarr, deemix, yt-dlp, and Usenet through SABnzbd or NZBGet.
+2. In **Download client**, select a client. The list shows the configured clients: Soulseek, Tidarr, deemix, yt-dlp, qBittorrent, Usenet, and download source plugins. Usenet, Tidarr, qBittorrent, and plugins that download only albums list albums. Aurral downloads the album you choose and imports the track from it.
 3. Select **Search**. Aurral shows up to 100 results from that client.
 4. Select one result, then select **Download selected**.
 

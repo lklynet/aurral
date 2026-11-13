@@ -286,9 +286,22 @@ type PipelinePayloadFields = {
   downloadAttemptId?: unknown;
 };
 
-export function isPipelinePayloadActive(payload: PipelinePayloadFields = {}) {
+// A cancelled job or playlist has a cancellation pass that removes the work
+// its steps started.
+export function isPipelinePayloadCancelled(payload: PipelinePayloadFields = {}) {
   const jobId = normalizeId(payload.jobId);
-  if (jobId && isDownloadJobCancelled(jobId)) return false;
+  if (jobId && isDownloadJobCancelled(jobId)) return true;
+  const playlistId = normalizeId(payload.playlistId);
+  if (!playlistId) return false;
+  const current = readPlaylistCancellation(playlistId);
+  if (!current) return Number(payload.playlistGeneration || 0) !== 0;
+  if (current.state === "cancelled") return true;
+  return Number(payload.playlistGeneration || 0) !== Number(current.generation || 0);
+}
+
+export function isPipelinePayloadActive(payload: PipelinePayloadFields = {}) {
+  if (isPipelinePayloadCancelled(payload)) return false;
+  const jobId = normalizeId(payload.jobId);
   if (
     payload.downloadAttemptId !== undefined &&
     getActiveDownloadAttemptId(jobId) !== (payload.downloadAttemptId || null)
@@ -308,15 +321,7 @@ export function isPipelinePayloadActive(payload: PipelinePayloadFields = {}) {
     )
       return false;
   }
-
-  const playlistId = normalizeId(payload.playlistId);
-  if (!playlistId) return true;
-  const current = readPlaylistCancellation(playlistId);
-  if (!current) {
-    return Number(payload.playlistGeneration || 0) === 0;
-  }
-  if (current.state === "cancelled") return false;
-  return Number(payload.playlistGeneration || 0) === Number(current.generation || 0);
+  return true;
 }
 
 export async function withPipelineCommitLock<T>(

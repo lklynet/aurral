@@ -155,11 +155,7 @@ function describe(queue: string, payload: JsonObject | null) {
           label: `${base.label}: ${titleize(payload.playlistId)}`,
           description: `Finds missing MusicBrainz IDs for ${titleize(payload.playlistId)}.`,
         }
-      : {
-          ...base,
-          description:
-            "Scans playlists for tracks missing MusicBrainz IDs and queues enrichment jobs.",
-        };
+      : base;
   }
   if (queue === "library-scan" && payload?.force) {
     return {

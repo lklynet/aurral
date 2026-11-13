@@ -1,3 +1,4 @@
+import pMap from "p-map";
 import * as v from "valibot";
 import { isOwnKey } from "../../../lib/ownKey.ts";
 import { http, isTransientNetworkError } from "../../../lib/http.ts";
@@ -125,6 +126,7 @@ const providerRequestLimiter = createRateLimiter(METADATA_REQUEST_MIN_INTERVAL_M
   maxQueue: METADATA_MAX_QUEUED_REQUESTS,
 });
 const METADATA_MAX_RETRIES = 1;
+const ALBUM_LIST_CONCURRENCY = 8;
 
 export function clearMetadataProviderCaches() {
   metadataHotCache.flushAll();
@@ -517,20 +519,10 @@ function refreshMetadata<Schema extends v.GenericSchema>(
               }
               const circuitAfterWait = getMetadataCircuitError(baseUrl);
               if (circuitAfterWait) throw circuitAfterWait;
-              const requestTimeoutMs = remainingMs - (Date.now() - admissionStarted);
-              if (requestTimeoutMs <= 0) {
-                const error: MetadataError = new Error(
-                  "Metadata provider request deadline exceeded",
-                );
-                error.code = "ETIMEDOUT";
-                throw error;
-              }
               providerRequestStarted = true;
               return http.get(`${baseUrl}${path}`, {
                 query: params,
-                timeoutMs: Number.isFinite(requestTimeoutMs)
-                  ? Math.max(1, Math.floor(requestTimeoutMs))
-                  : METADATA_REQUEST_TIMEOUT_MS,
+                timeoutMs: METADATA_REQUEST_TIMEOUT_MS,
                 bodyTimeoutMs: METADATA_RESPONSE_BODY_TIMEOUT_MS,
                 headers: {
                   "User-Agent": getUserAgent(),
@@ -566,8 +558,13 @@ function refreshMetadata<Schema extends v.GenericSchema>(
           // A 429 for one album or artist is about that entity, so only it waits
           // out the Retry-After BrainzMash sent.
           if (status === 429 && leaseToken && !isMetadataCircuitError(error)) {
-            const retryAt = Date.now() + getRetryAfterMs(error);
+            const retryAfterMs = getRetryAfterMs(error);
+            const retryAt = Date.now() + retryAfterMs;
             deferMetadataRequest(cacheKey, leaseToken, retryAt);
+            logger.info("metadata", "BrainzMash rate limited a request", {
+              path,
+              retryAfterSeconds: Math.round(retryAfterMs / 1000),
+            });
             if (fallbackValue !== undefined) return fallbackValue;
             throw createMetadataCooldownError(retryAt - Date.now());
           }
@@ -617,7 +614,11 @@ async function request<Schema extends v.GenericSchema>(
   schema: Schema,
   path: string,
   params: MetadataParams = {},
-  { signal, forceRefresh = false }: MetadataRequestOptions = {},
+  {
+    signal,
+    forceRefresh = false,
+    keepStale,
+  }: MetadataRequestOptions & { keepStale?: (value: v.InferOutput<Schema>) => boolean } = {},
 ): Promise<v.InferOutput<Schema>> {
   const baseUrl = getMetadataBaseUrl();
   const cacheKey = `${baseUrl}${path}:${JSON.stringify(params)}`;
@@ -626,7 +627,7 @@ async function request<Schema extends v.GenericSchema>(
   }
   const cached = await readCachedMetadata(cacheKey, schema);
   if (cached && !forceRefresh) {
-    if (cached.stale) {
+    if (cached.stale && !keepStale?.(cached.value)) {
       void refreshMetadata(schema, cacheKey, path, params, { fallbackValue: cached.value }).catch(
         () => {},
       );
@@ -970,18 +971,27 @@ export async function resolveAlbumByArtistAndTitle({
   return null;
 }
 
+// A release date in the past does not change, so a list that reads an album
+// for its date takes a cached one at any age instead of refreshing it.
+function wasReleased(album: v.InferOutput<typeof albumSchema>) {
+  const date = String(album.releasedate || "").trim();
+  return date !== "" && date < new Date().toISOString().slice(0, date.length);
+}
+
 export async function listArtistAlbums(
   artistMbid: string,
   {
     releaseTypes = [],
     includeTrackCounts = false,
     hydrateLimit = 30,
+    only,
     signal,
     forceRefresh = false,
   }: {
     releaseTypes?: string[] | string;
     includeTrackCounts?: boolean;
     hydrateLimit?: number;
+    only?: (album: ArtistDetailAlbum) => boolean;
     signal?: AbortSignal;
     forceRefresh?: boolean;
   } = {},
@@ -995,6 +1005,7 @@ export async function listArtistAlbums(
   const artist = toNormalizedArtist(rawArtist);
   let albums: ArtistDetailAlbum[] = (rawArtist.Albums ?? []).map(toNormalizedArtistAlbum);
   albums = applyReleaseTypeFilter(albums, releaseTypes);
+  if (only) albums = albums.filter(only);
   albums.sort((left, right) => {
     const leftBootleg = (left.releaseStatuses || []).includes("Bootleg") ? 1 : 0;
     const rightBootleg = (right.releaseStatuses || []).includes("Bootleg") ? 1 : 0;
@@ -1010,22 +1021,18 @@ export async function listArtistAlbums(
     Number.isFinite(Number(hydrateLimit)) && Number(hydrateLimit) >= 0
       ? Math.min(100, Math.floor(Number(hydrateLimit)))
       : 30;
-  await Promise.all(
-    albums.slice(0, safeHydrateLimit).map(async (album) => {
+  await pMap(
+    albums.slice(0, safeHydrateLimit),
+    async (album) => {
       try {
-        const needsDate = !album.firstReleaseDate;
-        const needsRating = includeTrackCounts;
-        if (!needsDate && !needsRating) return;
-
-        const hydrated = await getAlbumByMbid(album.id, { signal });
-        if (needsDate) {
-          album.firstReleaseDate = hydrated.releaseDate || album.firstReleaseDate;
-        }
-        if (needsRating) {
-          album.rating = hydrated.rating || null;
-        }
+        const hydrated = toNormalizedAlbum(
+          await request(albumSchema, `/album/${album.id}`, {}, { signal, keepStale: wasReleased }),
+        );
+        album.firstReleaseDate = hydrated.releaseDate;
+        if (includeTrackCounts) album.rating = hydrated.rating || null;
       } catch {}
-    }),
+    },
+    { concurrency: ALBUM_LIST_CONCURRENCY },
   );
 
   return albums.map((album) => ({

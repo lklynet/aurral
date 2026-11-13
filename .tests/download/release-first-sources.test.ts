@@ -4,7 +4,6 @@ import {
   localDownloadWorker,
   sourceless,
   usenetCandidate,
-  usenetRelease,
   ytdlpResult,
 } from "./fixtures.ts";
 import type { PipelinePayload } from "../../backend/services/downloadPipeline.ts";
@@ -14,7 +13,7 @@ import { createTrackedJob, trackedJob } from "./fixtures.ts";
 import { test, beforeEach, afterEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { access, mkdir } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   setupIsolatedBackend,
@@ -577,8 +576,7 @@ async function quickSearchDownloaded(
   assert.ok(track !== undefined);
   await downloadWorker.processJob(trackedJob(downloadTracker, track));
   const staged = path.join(
-    process.env.DOWNLOAD_FOLDER!,
-    ".ytdlp-staging",
+    getDownloadClient("ytdlp").stagingRoot(),
     track,
     `${artist} - Second.mp3`,
   );
@@ -924,7 +922,8 @@ test("one wanted track of an exact Soulseek release downloads only that track's 
   );
 });
 
-function mockDeemix(t: TestContext, tracks: string[]) {
+// A deemix that saves each queued item as a file once Aurral queues it.
+function mockDeemix(tracks: string[]) {
   vi.spyOn(deemix, "searchAlbums").mockImplementation(async () => [
     {
       id: "42",
@@ -933,9 +932,11 @@ function mockDeemix(t: TestContext, tracks: string[]) {
       url: "https://www.deezer.com/album/42",
     },
   ]);
-  vi.spyOn(deemix, "getAlbumTracks").mockImplementation(async () =>
-    tracks.map((title, index) => ({
-      id: `track-${index + 1}`,
+  vi.spyOn(deemix, "getAlbum").mockImplementation(async () => ({
+    title: "deezer Album",
+    artist: "Deezer Band",
+    tracks: tracks.map((title, index) => ({
+      id: `${index + 1}`,
       title,
       artist: "Deezer Band",
       durationSec: 200,
@@ -944,77 +945,65 @@ function mockDeemix(t: TestContext, tracks: string[]) {
       url: `https://www.deezer.com/track/${index + 1}`,
       readable: true,
       album: "deezer Album",
-      albumId: "7",
-      albumUrl: "https://www.deezer.com/album/7",
+      albumId: "42",
+      albumUrl: "https://www.deezer.com/album/42",
     })),
-  );
-  vi.spyOn(deemix, "getQueueItem").mockImplementation(async (uuid) => ({
-    status: "completed",
-    type: "track",
-    files: [{ path: `/deemix/${uuid}.flac` }],
   }));
+  const queue: Awaited<ReturnType<typeof deemix.getQueue>> = {};
+  const save = async (uuid: string) => {
+    const file = path.join(state.baseDir, "deemix-saved", `${uuid}.flac`);
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, "audio");
+    queue[uuid] = { status: "completed", files: [{ path: file }] };
+    return uuid;
+  };
+  vi.spyOn(deemix, "getQueue").mockImplementation(async () => queue);
   return {
-    track: vi.spyOn(deemix, "addToQueue").mockImplementation(async (_url, id) => `${id}_9`),
+    queue,
+    track: vi
+      .spyOn(deemix, "addToQueue")
+      .mockImplementation(async (_url, id) => save(deemix.queueId("track", id))),
     album: vi
       .spyOn(deemix, "addAlbumToQueue")
-      .mockImplementation(async (_url, id) => `album_${id}_9`),
+      .mockImplementation(async (_url, id) => save(deemix.queueId("album", id))),
+    removed: vi.spyOn(deemix, "removeFromQueue").mockImplementation(async (uuid) => {
+      delete queue[String(uuid)];
+      return true;
+    }),
   };
 }
 
 test("an exact deemix release queues each wanted track by its own URL, and the album URL only when every track is wanted", async (t) => {
   useSources({ deemix: { enabled: true, url: "http://127.0.0.1:9", bitrate: 9 } });
   const titles = ["First", "Second", "Third"];
-  const queued = mockDeemix(t, titles);
+  const queued = mockDeemix(titles);
   const group = album("deezer", "Deezer Band", [{ id: "deemix-release", tracks: titles }]);
   await serveGroups(t, [group]);
   const ids = libraryJobs(group, ["First", "Third"]);
 
   const searched = await processPipelinePayload(albumAttempt(ids, { source: "deemix" }));
   assert.deepEqual(
-    deemixCandidates(searched).map((candidate) => [
-      candidate.kind,
-      candidate.releaseVerified,
-      candidate.raw.tracks!.map((track) => [track.jobId, track.url]),
-    ]),
-    [
-      [
-        "tracks",
-        true,
-        [
-          [ids[0], "https://www.deezer.com/track/1"],
-          [ids[1], "https://www.deezer.com/track/3"],
-        ],
-      ],
-    ],
+    deemixCandidates(searched).map((candidate) => candidate.raw.id),
+    ["42"],
   );
   const polling = await processPipelinePayload(searched);
-  assert.ok(polling != null);
+  assert.ok(isStepFrom(polling, "deemix"));
+  assert.equal(polling.phase, "poll");
   assert.deepEqual(
     queued.track.mock.calls.map((call) => call),
     [
-      ["https://www.deezer.com/track/1", "track-1"],
-      ["https://www.deezer.com/track/3", "track-3"],
+      ["https://www.deezer.com/track/1", "1"],
+      ["https://www.deezer.com/track/3", "3"],
     ],
   );
   assert.equal(queued.album.mock.calls.length, 0);
-  const finalizing = await processPipelinePayload(polling);
-  assert.ok(isStepFrom(finalizing, "deemix"));
-  assert.equal(finalizing.phase, "finalize");
-  assert.equal(finalizing.albumGrab, true);
-  assert.deepEqual(finalizing.downloadedPaths, [
-    "/deemix/track-1_9.flac",
-    "/deemix/track-3_9.flac",
-  ]);
 
   resetDatabase(db);
   useSources({ deemix: { enabled: true, url: "http://127.0.0.1:9", bitrate: 9 } });
   const whole = libraryJobs(group, titles);
-  const searchedWhole = await processPipelinePayload(albumAttempt(whole, { source: "deemix" }));
-  assert.deepEqual(
-    deemixCandidates(searchedWhole).map((candidate) => candidate.kind),
-    ["album"],
+  await processPipelinePayload(
+    await processPipelinePayload(albumAttempt(whole, { source: "deemix" })),
   );
-  await processPipelinePayload(searchedWhole);
   assert.deepEqual(
     queued.album.mock.calls.map((call) => call),
     [["https://www.deezer.com/album/42", "42"]],
@@ -1022,17 +1011,14 @@ test("an exact deemix release queues each wanted track by its own URL, and the a
   assert.equal(queued.track.mock.calls.length, 2);
 });
 
-test("every deemix track an attempt queued is removed on cancel, and its track search after a fallback removes only its own", async (t) => {
+test("every deemix track an album attempt queued is removed on cancel", async (t) => {
   useSources({ deemix: { enabled: true, url: "http://127.0.0.1:9", bitrate: 9 } });
   const titles = ["First", "Second", "Third"];
-  mockDeemix(t, titles);
-  const removed = vi.spyOn(deemix, "removeFromQueue").mockImplementation(async () => true);
-  const removedIds = () => removed.mock.calls.map((call) => call[0]).sort();
+  const { removed } = mockDeemix(titles);
   const group = album("deezer", "Deezer Band", [{ id: "deemix-cancelled", tracks: titles }]);
   await serveGroups(t, [group]);
 
   const cancelled = libraryJobs(group, ["First", "Third"]);
-  assert.ok(cancelled.every((value) => value != null));
   enqueuePipelineStep(
     await processPipelinePayload(
       await processPipelinePayload(albumAttempt(cancelled, { source: "deemix" })),
@@ -1040,47 +1026,13 @@ test("every deemix track an attempt queued is removed on cancel, and its track s
     {},
   );
   await cancelDownloadWorkForJobs(cancelled.map((id) => trackedJob(downloadTracker, id)));
-  assert.deepEqual(removedIds(), ["track-1_9", "track-3_9"]);
-
-  resetDatabase(db);
-  useSources({ deemix: { enabled: true, url: "http://127.0.0.1:9", bitrate: 9 } });
-  removed.mockClear();
-  const ids = libraryJobs(group, ["First", "Third"]);
-  const finalizing = await processPipelinePayload(
-    await processPipelinePayload(
-      await processPipelinePayload(albumAttempt(ids, { source: "deemix" })),
-    ),
-  );
-  assert.ok(finalizing != null);
-  const fallback = await processPipelinePayload(finalizing);
-  assert.ok(fallback != null);
-  assert.equal(fallback.albumGrab, false);
-  assert.equal(trackedJob(downloadTracker, ids[1]).status, "pending");
-  vi.spyOn(deemix, "search").mockImplementation(async () => [
-    {
-      id: "track-1",
-      title: "First",
-      artist: "Deezer Band",
-      album: "deezer Album",
-      albumId: "7",
-      albumUrl: "https://www.deezer.com/album/7",
-      durationSec: 200,
-      url: "https://www.deezer.com/track/1",
-      readable: true,
-    },
-  ]);
-  const polling = await processPipelinePayload(await processPipelinePayload(fallback));
-  assert.ok(isStepFrom(polling, "deemix"));
-  assert.equal(polling.phase, "poll");
-  removed.mockClear();
-  await processPipelinePayload({ ...polling, pollAttempts: 200 });
-  assert.deepEqual(removedIds(), ["track-1_9"]);
+  assert.deepEqual(removed.mock.calls.map((call) => call[0]).sort(), ["track_1_9", "track_3_9"]);
 });
 
 test("a later deemix release queues only the tracks its attempt still wants, by their own URLs", async (t) => {
   useSources({ deemix: { enabled: true, url: "http://127.0.0.1:9", bitrate: 9 } });
   const titles = ["First", "Second", "Third"];
-  const queued = mockDeemix(t, titles);
+  const queued = mockDeemix(titles);
   vi.spyOn(deemix, "searchAlbums").mockImplementation(async () =>
     ["42", "43"].map((id) => ({
       id,
@@ -1089,26 +1041,25 @@ test("a later deemix release queues only the tracks its attempt still wants, by 
       url: `https://www.deezer.com/album/${id}`,
     })),
   );
-  vi.spyOn(deemix, "removeFromQueue").mockImplementation(async () => true);
+  queued.album.mockImplementation(async (_url, id) => {
+    const uuid = deemix.queueId("album", id);
+    queued.queue[uuid] = { status: "failed", files: [] };
+    return uuid;
+  });
   const group = album("deezer", "Deezer Band", [{ id: "deemix-later", tracks: titles }]);
   await serveGroups(t, [group]);
   const ids = libraryJobs(group, titles);
-  assert.ok(ids.every((value) => value != null));
 
   const searched = await processPipelinePayload(albumAttempt(ids, { source: "deemix" }));
   assert.deepEqual(
-    deemixCandidates(searched).map((candidate) => [candidate.kind, candidate.raw.albumId]),
-    [
-      ["album", "42"],
-      ["album", "43"],
-    ],
+    deemixCandidates(searched).map((candidate) => candidate.raw.id),
+    ["42", "43"],
   );
   const next = await processPipelinePayload(await processPipelinePayload(searched));
   assert.ok(next != null);
   assert.equal(next.phase, "download");
   downloadTracker.setDone(requireFixture(ids[2]), "/library/Deezer Band/03 Third.flac");
-  const polling = await processPipelinePayload(next);
-  assert.ok(polling != null);
+  await processPipelinePayload(next);
   assert.deepEqual(
     queued.album.mock.calls.map((call) => call),
     [["https://www.deezer.com/album/42", "42"]],
@@ -1116,23 +1067,16 @@ test("a later deemix release queues only the tracks its attempt still wants, by 
   assert.deepEqual(
     queued.track.mock.calls.map((call) => call),
     [
-      ["https://www.deezer.com/track/1", "track-1"],
-      ["https://www.deezer.com/track/2", "track-2"],
+      ["https://www.deezer.com/track/1", "1"],
+      ["https://www.deezer.com/track/2", "2"],
     ],
   );
-  const finalizing = await processPipelinePayload(polling);
-  assert.ok(isStepFrom(finalizing, "deemix"));
-  assert.deepEqual(finalizing.downloadedPaths, [
-    "/deemix/track-1_9.flac",
-    "/deemix/track-2_9.flac",
-  ]);
 });
 
 test("a finished album download waits while its release cannot be read, and goes on without the wait's delay once it can", async (t) => {
   useSources({ deemix: { enabled: true, url: "http://127.0.0.1:9", bitrate: 9 } });
   const titles = ["First", "Second", "Third"];
-  mockDeemix(t, titles);
-  const removed = vi.spyOn(deemix, "removeFromQueue").mockImplementation(async () => true);
+  const { removed } = mockDeemix(titles);
   const group = album("deezer", "Deezer Band", [{ id: "deemix-blink", tracks: titles }]);
   let down = false;
   await serveGroups(t, [group], { unavailable: () => down });
@@ -1152,7 +1096,6 @@ test("a finished album download waits while its release cannot be read, and goes
     [waiting.phase, waiting.albumGrab, waiting.delaySeconds > 0],
     ["finalize", true, true],
   );
-  assert.equal(removed.mock.calls.length, 0);
   assert.equal(trackedJob(downloadTracker, ids[1]).status, "downloading");
 
   down = false;
@@ -1160,14 +1103,13 @@ test("a finished album download waits while its release cannot be read, and goes
   const fallback = await processPipelinePayload(waiting);
   assert.ok(fallback != null);
   assert.deepEqual([fallback.albumGrab, fallback.delaySeconds || 0], [false, 0]);
-  assert.deepEqual(removed.mock.calls.map((call) => call[0]).sort(), ["track-1_9", "track-3_9"]);
+  assert.deepEqual(removed.mock.calls.map((call) => call[0]).sort(), ["track_1_9", "track_3_9"]);
 });
 
 test("a finished album download takes the release a merge left in its place, and a later outage waits as long again before it goes on without one", async (t) => {
   useSources({ deemix: { enabled: true, url: "http://127.0.0.1:9", bitrate: 9 } });
   const titles = ["First", "Second", "Third"];
-  mockDeemix(t, titles);
-  const removed = vi.spyOn(deemix, "removeFromQueue").mockImplementation(async () => true);
+  const { removed } = mockDeemix(titles);
   const group = album("deezer", "Deezer Band", [{ id: "deemix-waits", tracks: titles }]);
   let unknown = false;
   await serveGroups(t, [group], { missing: () => unknown });
@@ -1197,7 +1139,6 @@ test("a finished album download takes the release a merge left in its place, and
     ids.map((id) => trackedJob(downloadTracker, id).releaseMbid),
     ["deemix-waits-merged", "deemix-waits-merged"],
   );
-  assert.equal(removed.mock.calls.length, 0);
 
   unknown = true;
   clearApiCaches();
@@ -1372,8 +1313,7 @@ test("an album attempt whose leading track stopped gives the rest back untried a
       ...sourceless(attempt),
       phase: "finalize",
       source: "usenet" as const,
-      downloadClient: "nzbget",
-      nzbId,
+      pendingId: `nzbget:${nzbId}`,
     };
   };
 
@@ -1482,7 +1422,7 @@ test("cancelling only the leading track of a queued album attempt gives the rest
   );
 });
 
-test("an album step that fails on every retry blocks the release it downloaded, starts again after fresh work, and searches for each track after the third time", async (t) => {
+test("an album step that fails on every retry starts again after fresh work, and searches for each track after the third time", async (t) => {
   useSources({
     nzbget: { enabled: true, url: "http://127.0.0.1:9" },
     prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "key" },
@@ -1503,25 +1443,12 @@ test("an album step that fails on every retry blocks the release it downloaded, 
     await downloadWorker.processJob(trackedJob(downloadTracker, ids[0]));
     const finalizing = {
       ...sourceless(claimQueued(requireFixture(ids[0]))),
-      phase: "finalize",
+      phase: "poll",
       source: "usenet" as const,
-      downloadClient: "nzbget",
-      nzbId: `nzb-${attempt}`,
+      pendingId: `nzbget:nzb-${attempt}`,
+      unreadPolls: Number.MAX_SAFE_INTEGER,
       candidateIndex: 0,
-      candidates: [
-        usenetCandidate({
-          raw: {
-            release: usenetRelease({
-              guid: `guid-${attempt}`,
-              title: "Retry Band - retries Album",
-              downloadUrl: "",
-              indexerId: 1,
-              size: 0,
-              categories: [],
-            }),
-          },
-        }),
-      ],
+      candidates: [usenetCandidate({ guid: `guid-${attempt}`, title: "retries Album" })],
     };
     assert.equal(finalizing.albumGrab, true);
     await assert.rejects(processPipelinePayload(finalizing), /ECONNREFUSED/);
@@ -1539,7 +1466,7 @@ test("an album step that fails on every retry blocks the release it downloaded, 
           job.albumGrabAttempted,
           (job.deniedRemoteSources || []).map((entry) => entry[1]),
         ],
-        ["pending", false, Array.from({ length: attempt }, (_, index) => `guid-${index + 1}`)],
+        ["pending", false, []],
       );
     }
     const fresh = createTrackedJob(

@@ -39,10 +39,10 @@ function shouldFetchReleaseDate(
 ) {
   if (!stored) return true;
   const age = nowMs - stored.refreshedAt;
-  if (age > 60 * DAY_MS) return true;
   if (age < 12 * HOUR_MS) return false;
   const releaseTime = getReleaseTime(stored.releaseDate);
-  return releaseTime != null && releaseTime > nowMs - 30 * DAY_MS;
+  if (releaseTime == null) return age > 60 * DAY_MS;
+  return releaseTime > nowMs - 30 * DAY_MS;
 }
 
 type CalendarArtist = ReturnType<typeof listReleaseCalendarArtists>[number];

@@ -15,9 +15,6 @@ import {
   processSlskdPipelinePayload,
   SLSKD_NOT_CONFIGURED_MESSAGE,
 } from "./slskdOrchestrator.ts";
-import { discardUsenetWork, processUsenetPipelinePayload } from "./usenetOrchestrator.ts";
-import { processYtdlpPipelinePayload } from "./ytdlpOrchestrator.ts";
-import { discardDeemixWork, processDeemixPipelinePayload } from "./deemixOrchestrator.ts";
 import {
   albumGrabJobs,
   blockAlbumGrabSource,
@@ -57,6 +54,8 @@ import {
 } from "./download/sourcePipeline.ts";
 import { nativeDownloadSource } from "./download/nativeSources.ts";
 import { isNzbSource } from "./usenetClientCommon.ts";
+import { removeLegacyUsenetDownload } from "./usenetSource.ts";
+import { removeLegacyDeemixDownload } from "./deemixSource.ts";
 import { recordTrackJobFailed } from "./aurralHistoryService.ts";
 import { finalizeQualityUpgradeFailure } from "./qualityUpgradeOutcome.ts";
 
@@ -66,21 +65,10 @@ import { finalizeQualityUpgradeFailure } from "./qualityUpgradeOutcome.ts";
 const slskdClient = getDownloadClient("slskd");
 
 type SlskdStepPayload = Parameters<typeof processSlskdPipelinePayload>[0];
-type UsenetStepPayload = Parameters<typeof processUsenetPipelinePayload>[0];
-type YtdlpStepPayload = Parameters<typeof processYtdlpPipelinePayload>[0];
-type DeemixStepPayload = Parameters<typeof processDeemixPipelinePayload>[0];
 type SourceError = { source: string; message: string };
 
 export type PipelinePayload = PipelineStep &
-  (
-    | { source?: null }
-    | { source: "share" }
-    | SlskdStepPayload
-    | UsenetStepPayload
-    | DeemixStepPayload
-    | YtdlpStepPayload
-    | SourcePayload
-  ) & {
+  ({ source?: null } | { source: "share" } | SlskdStepPayload | SourcePayload) & {
     exhaustedSources?: string[];
     sourceErrors?: SourceError[];
     releaseWaits?: number | null;
@@ -101,10 +89,10 @@ export const pipelinePayloadSchema = v.custom<PipelinePayload>((input) =>
   v.is(pipelineStepSchema, input),
 );
 
-const isNzbStep = (
-  payload: PipelinePayload,
-): payload is Extract<PipelinePayload, { source: UsenetStepPayload["source"] }> =>
-  isNzbSource(payload.source);
+const removeLegacyDownload = (payload: PipelinePayload) =>
+  isNzbSource(payload.source)
+    ? removeLegacyUsenetDownload(payload)
+    : payload.source === "deemix" && removeLegacyDeemixDownload(payload);
 
 const isSourceContractStep = (
   payload: PipelinePayload,
@@ -247,8 +235,6 @@ export function buildNextSourcePayload(
   if (!next) return null;
   const step = { ...payload, ...sourceSearchReset(), triedSources: [...tried], sourceErrors };
   const { id } = next;
-  if (id === "slskd" || id === "deemix" || id === "ytdlp") return { ...step, source: id };
-  if (isNzbSource(id)) return { ...step, source: id };
   return { ...step, source: id };
 }
 
@@ -264,10 +250,8 @@ const sourceSearchReset = () => ({
   pollAttempts: 0,
   batchId: null,
   legacyTransfer: null,
-  nzbId: null,
   queueUuid: null,
   queueUuids: null,
-  history: null,
   pendingId: null,
   downloadedPath: null,
 });
@@ -494,8 +478,6 @@ async function discardSourceWork(payload: PipelinePayload) {
     const native = nativeDownloadSource(payload.source);
     if (native) await discardContractSourceWork(payload, native);
   } else if (payload.source === "slskd") await discardSlskdWork(payload);
-  else if (isNzbStep(payload)) await discardUsenetWork(payload);
-  else if (payload.source === "deemix") await discardDeemixWork(payload);
 }
 
 // An attempt that ends while it still holds tracks was dropped before its
@@ -603,30 +585,9 @@ async function processSourcePayload(payload: PipelinePayload): Promise<PipelineP
         )
       : null;
   }
-  if (isNzbStep(payload)) {
-    if (!isSourceConfigured(payload.source)) {
-      const job = downloadTracker.getJob(payload.jobId);
-      return job
-        ? failOrTryNextSource(payload, job, `${getSourceLabel(payload.source)} is not configured`)
-        : null;
-    }
-    return processUsenetPipelinePayload(payload, { failOrTryNextSource });
-  }
-  if (payload.source === "deemix") {
-    if (!isSourceConfigured("deemix")) {
-      const job = downloadTracker.getJob(payload.jobId);
-      return job ? failOrTryNextSource(payload, job, "deemix is not configured") : null;
-    }
-    return processDeemixPipelinePayload(payload, { failOrTryNextSource });
-  }
-  if (payload.source === "ytdlp") {
-    if (!isSourceConfigured("ytdlp")) {
-      const job = downloadTracker.getJob(payload.jobId);
-      return job ? failOrTryNextSource(payload, job, "yt-dlp is not configured") : null;
-    }
-    return processYtdlpPipelinePayload(payload, { failOrTryNextSource });
-  }
   if (isSourceContractStep(payload)) {
+    if (await removeLegacyDownload(payload))
+      return { ...payload, ...sourceSearchReset(), source: payload.source };
     const native = nativeDownloadSource(payload.source);
     if (!native) return processPluginPipelinePayload(payload, { failOrTryNextSource });
     if (!isSourceConfigured(native.id)) {

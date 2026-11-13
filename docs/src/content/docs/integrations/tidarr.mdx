@@ -26,6 +26,6 @@ Tidarr lists each album in four qualities, from FLAC 24-bit to 96 kbps M4A. Aurr
 
 Tidarr downloads whole albums. For a release, Aurral tries only Tidal albums with as many tracks as the release, and checks the downloaded files like any other source. For a single track, Aurral downloads at most two albums that hold it, then tries the next source.
 
-After Aurral processes an album, it removes the album from Tidarr along with the files it did not import.
+When Tidarr finishes an album, Aurral links or copies its audio files into its own folder, then removes the album and its files from Tidarr.
 
 See [Download source priority and fallback](/integrations/usenet/#download-source-priority-and-fallback).

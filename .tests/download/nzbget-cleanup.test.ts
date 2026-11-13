@@ -29,10 +29,11 @@ const [
   { NzbgetClient },
   { removeNzbgetDownloadFolder },
   { getDownloadClient },
-  { processUsenetPipelinePayload },
+  { processSourcePipelinePayload, stagingDir },
+  { usenetSource },
   { syncPathMappings },
   { approveBlockedJob, denyBlockedJob },
-  { processPipelinePayload, failPipelineJob },
+  { processPipelinePayload },
   { prowlarrClient },
   { downloadWorker },
 ] = await setupIsolatedBackend(
@@ -43,7 +44,8 @@ const [
   () => import("../../backend/services/nzbgetClient.ts"),
   () => import("../../backend/services/nzbgetCleanup.ts"),
   () => import("../../backend/services/download/downloadClientSettings.ts"),
-  () => import("../../backend/services/usenetOrchestrator.ts"),
+  () => import("../../backend/services/download/sourcePipeline.ts"),
+  () => import("../../backend/services/usenetSource.ts"),
   () => import("../../backend/services/pathMappings.ts"),
   () => import("../../backend/services/downloadJobs/blockedJobReview.ts"),
   () => import("../../backend/services/downloadPipeline.ts"),
@@ -59,10 +61,11 @@ beforeEach(async () => {
   syncPathMappings([]);
   root = path.join(state.baseDir, `completed-${++sequence}`);
   await fs.mkdir(path.join(root, "aurral", "release"), { recursive: true });
+  await fs.rm(stagingDir(usenetSource, ""), { recursive: true, force: true });
 });
 afterAll(() => cleanupIsolatedState(state));
 
-type UsenetPayload = Parameters<typeof processUsenetPipelinePayload>[0];
+type SourcePayload = Parameters<typeof processSourcePipelinePayload>[0];
 
 const throwOnFailure = {
   failOrTryNextSource: async (_payload: unknown, _job: unknown, reason: string): Promise<never> => {
@@ -321,8 +324,8 @@ async function pipelineFixture(
   downloadTracker.setDownloading(jobId);
   downloadTracker.updateDownloadMetadata(jobId, {
     downloadSource: "usenet",
-    downloadClient: "nzbget",
-    downloadClientId: 42,
+    downloadClient: "usenet",
+    downloadClientId: "nzbget:42",
   });
   const history = {
     NZBID: 42,
@@ -342,83 +345,70 @@ async function pipelineFixture(
     completedPath: root,
   }));
   const deleted = vi.spyOn(client, "editItem").mockImplementation(async () => true);
-  return {
+  const candidate = usenetCandidate({
+    guid: "release",
+    title: "The Band - Album FLAC",
+    album: "Album",
+  });
+  const payload: SourcePayload = {
     jobId,
-    deleted,
-    payload: {
-      jobId,
-      source: "usenet" as const,
-      phase: "finalize",
-      downloadClient: "nzbget",
-      nzbId: 42,
-      history,
-      destination: `The Band/import-${sequence}`,
-      candidate: usenetCandidate({
-        raw: { release: { title: "The Band - Album FLAC", guid: "release" } },
-        resolvedAlbumName: "Album",
-      }),
-    },
+    source: "usenet",
+    phase: "poll",
+    pendingId: "nzbget:42",
+    destination: `The Band/import-${sequence}`,
+    candidates: [candidate],
+    candidateIndex: 0,
   };
+  return { jobId, deleted, history, candidate, payload };
 }
 
-const finishThroughPipeline = (
-  t: TestContext,
-  payload: Awaited<ReturnType<typeof pipelineFixture>>["payload"],
-) => {
-  vi.spyOn(prowlarrClient, "isConfigured").mockImplementation(() => true);
-  for (const id of ["slskd", "deemix", "ytdlp", "sabnzbd"] as const) {
-    vi.spyOn(getDownloadClient(id), "isConfigured").mockImplementation(() => false);
-  }
-  return processPipelinePayload(payload);
-};
+type SourceHelpers = Parameters<typeof processSourcePipelinePayload>[2];
+
+const run = (payload: SourcePayload, helpers: SourceHelpers = throwOnFailure) =>
+  processSourcePipelinePayload(payload, usenetSource, helpers);
+
+async function finish(payload: SourcePayload, helpers: SourceHelpers = throwOnFailure) {
+  const next = await run(payload, helpers);
+  return isStepFrom(next, "usenet") && next.phase === "finalize" ? run(next, helpers) : next;
+}
+
+const keptByAurral = async () => fs.readdir(stagingDir(usenetSource, "")).catch((): string[] => []);
 
 const historyDeletes = (deleted: MockInstance<InstanceType<typeof NzbgetClient>["editItem"]>) =>
   deleted.mock.calls.filter((call) => call[0] === "HistoryFinalDelete").length;
 
-test("a single-track import keeps the requested song and removes the rest of the album", async (t) => {
+test("NZBGet lets go of a finished download once Aurral has its files, and the import keeps only the requested song", async (t) => {
   const { jobId, payload, deleted } = await pipelineFixture(t);
-  await processUsenetPipelinePayload(payload, throwOnFailure);
-  const job = downloadTracker.getJob(jobId);
-  assert.ok(job != null);
+  await finish(payload);
+  const job = trackedJob(downloadTracker, jobId);
   assert.equal(job.status, "done");
   assert.equal(await exists(job.finalPath), true);
   assert.equal(await exists(folder()), false);
   assert.equal(historyDeletes(deleted), 1);
+  assert.deepEqual(await keptByAurral(), []);
 });
 
 test("turning off Delete leftover files keeps the rest of the album", async (t) => {
   const { jobId, payload, deleted } = await pipelineFixture(t, { deleteLeftovers: false });
-  await processUsenetPipelinePayload(payload, throwOnFailure);
+  await finish(payload);
   assert.equal(trackedJob(downloadTracker, jobId).status, "done");
   assert.equal(await exists(path.join(folder(), "Unwanted.flac")), true);
   assert.equal(historyDeletes(deleted), 1);
 });
 
-test("a failed import keeps the download and its history", async (t) => {
-  const { jobId, payload, deleted } = await pipelineFixture(t);
+test("an import that fails keeps the files Aurral was handed, and its retry imports them", async (t) => {
+  const { jobId, payload } = await pipelineFixture(t);
   const obstructed = path.join(state.baseDir, "blocked-destination");
   await fs.mkdir(obstructed, { recursive: true });
-  const settings = dbOps.getSettings();
-  dbOps.updateSettings({
-    ...settings,
-    downloadFolderPath: obstructed,
-    integrations: {
-      ...settings.integrations,
-      slskd: { enabled: true, url: "http://127.0.0.1:9", priority: 2 },
-    },
-  });
-  vi.spyOn(prowlarrClient, "isConfigured").mockImplementation(() => true);
+  dbOps.updateSettings({ ...dbOps.getSettings(), downloadFolderPath: obstructed });
   await fs.writeFile(path.join(obstructed, "The Band"), "a file cannot contain a track");
-  const failure = await processUsenetPipelinePayload(payload, throwOnFailure).then(
-    () => null,
-    (error) => error,
-  );
-  assert.match(failure?.message || "", /E(NOTDIR|EXIST)/);
+  const finalize = await run(payload);
+  assert.ok(isStepFrom(finalize, "usenet"));
+  await assert.rejects(run(finalize), /E(NOTDIR|EXIST)/);
   assert.notEqual(trackedJob(downloadTracker, jobId).status, "done");
-  assert.equal(await failPipelineJob(payload, failure.message), null);
-  assert.equal(trackedJob(downloadTracker, jobId).status, "failed");
-  assert.equal(await exists(path.join(folder(), "Wanted.flac")), true);
-  assert.equal(deleted.mock.calls.length, 0);
+  await fs.rm(path.join(obstructed, "The Band"));
+  assert.equal(await run(finalize), null);
+  assert.equal(trackedJob(downloadTracker, jobId).status, "done");
   dbOps.updateSettings({ ...dbOps.getSettings(), downloadFolderPath: null });
 });
 
@@ -426,35 +416,25 @@ for (const [decision, review] of [
   ["approved", approveBlockedJob],
   ["denied", denyBlockedJob],
 ] as const) {
-  test(`a song held for review keeps its download until it is ${decision}`, async (t: import("vite-plus/test").TestContext) => {
+  test(`a song held for review keeps its file until it is ${decision}`, async (t: import("vite-plus/test").TestContext) => {
     t.onTestFinished(async () => {
       await downloadWorker.stopAndDrain();
     });
-    const { jobId, payload, deleted } = await pipelineFixture(t, { durationMs: 15000 });
-    await finishThroughPipeline(t, payload);
-    assert.equal(trackedJob(downloadTracker, jobId).status, "blocked");
-    assert.equal(await exists(path.join(folder(), "Unwanted.flac")), true);
-    assert.equal(deleted.mock.calls.length, 0);
+    const { jobId, payload } = await pipelineFixture(t, { durationMs: 15000 });
+    vi.spyOn(prowlarrClient, "isConfigured").mockImplementation(() => true);
+    for (const id of ["slskd", "deemix", "ytdlp", "sabnzbd"] as const)
+      vi.spyOn(getDownloadClient(id), "isConfigured").mockImplementation(() => false);
+    const finalize = await processPipelinePayload(payload);
+    assert.ok(isStepFrom(finalize, "usenet"));
+    await processPipelinePayload(finalize);
+    const held = trackedJob(downloadTracker, jobId);
+    assert.equal(held.status, "blocked");
+    assert.equal(await exists(held.stagingPath), true);
     assert.equal((await review(jobId)).status, 200);
-    assert.equal(await exists(folder()), false);
-    assert.equal(historyDeletes(deleted), 1);
+    assert.equal(await exists(held.stagingPath), false);
+    assert.deepEqual(await keptByAurral(), []);
   });
 }
-
-test("removing a song held for review removes its download", async (t) => {
-  const { jobId, payload, deleted } = await pipelineFixture(t, { durationMs: 15000 });
-  const removed = new Promise<void>((resolve) => {
-    deleted.mockImplementation(async (command) => {
-      if (command === "HistoryFinalDelete") resolve();
-      return true;
-    });
-  });
-  await finishThroughPipeline(t, payload);
-  assert.equal(trackedJob(downloadTracker, jobId).status, "blocked");
-  downloadTracker.removeJob(jobId);
-  await removed;
-  assert.equal(await exists(folder()), false);
-});
 
 for (const [sharer, fixture] of [
   [
@@ -474,7 +454,7 @@ for (const [sharer, fixture] of [
 ] as const) {
   test(`an import leaves a folder that ${sharer} of the same name shares`, async (t) => {
     const { jobId, payload, deleted } = await pipelineFixture(t, fixture());
-    await processUsenetPipelinePayload(payload, throwOnFailure);
+    await finish(payload);
     assert.equal(trackedJob(downloadTracker, jobId).status, "done");
     assert.equal(await exists(path.join(folder(), "Unwanted.flac")), true);
     assert.equal(historyDeletes(deleted), 1);
@@ -484,7 +464,6 @@ for (const [sharer, fixture] of [
 test("an album grab removes the download after importing its songs", async (t) => {
   const { jobId, payload } = await pipelineFixture(t);
   const group = `album-${sequence}`;
-  // Recreate the leader with album ownership so both requests share one NZB.
   downloadTracker.removeJob(jobId);
   const ids = ["Wanted", "Unwanted"].map((trackName, index) =>
     createTrackedJob(
@@ -518,39 +497,33 @@ test("an album grab removes the download after importing its songs", async (t) =
       ],
     }),
   ]);
-  await processUsenetPipelinePayload(
-    {
-      ...payload,
-      jobId: requireFixture(ids[0]),
-      albumGrab: true,
-      albumGroupJobIds: ids,
-      releaseMbid: `${group}-release`,
-    },
-    throwOnFailure,
-  );
+  await finish({
+    ...payload,
+    jobId: requireFixture(ids[0]),
+    albumGrab: true,
+    albumGroupJobIds: ids,
+    releaseMbid: `${group}-release`,
+  });
   for (const id of ids) {
-    const job = downloadTracker.getJob(id);
-    assert.ok(job != null);
+    const job = trackedJob(downloadTracker, id);
     assert.equal(job.status, "done");
     assert.equal(await exists(job.finalPath), true);
   }
   assert.equal(await exists(folder()), false);
+  assert.deepEqual(await keptByAurral(), []);
 });
 
 test("a download whose request is cancelled while it is checked is removed", async (t) => {
-  const { jobId, payload, deleted } = await pipelineFixture(t);
+  const { jobId, payload, history } = await pipelineFixture(t);
   const { cancelDownloadJob } =
     await import("../../backend/services/downloadJobs/downloadCancellation.ts");
   vi.spyOn(getDownloadClient("nzbget"), "getHistoryItem").mockImplementation(async () => {
     cancelDownloadJob(jobId);
-    return payload.history;
+    return history;
   });
-  assert.equal(
-    await processUsenetPipelinePayload({ ...payload, history: null }, throwOnFailure),
-    null,
-  );
+  assert.equal(await run(payload), null);
   assert.equal(await exists(folder()), false);
-  assert.equal(historyDeletes(deleted), 1);
+  assert.deepEqual(await keptByAurral(), []);
 });
 
 test("cancelling a song removes its finished download", async (t) => {
@@ -562,19 +535,17 @@ test("cancelling a song removes its finished download", async (t) => {
   assert.equal(historyDeletes(deleted), 1);
 });
 
-for (const phase of ["poll", "finalize"] as const) {
-  for (const [state, settle] of [
-    ["finished another way", (jobId: string) => downloadTracker.setDone(jobId, "/elsewhere.flac")],
-    ["failed", (jobId: string) => downloadTracker.setFailed(jobId, "Timed out")],
-  ] as const) {
-    test(`a download whose song ${state} is removed when it is next checked (${phase})`, async (t) => {
-      const { jobId, payload, deleted } = await pipelineFixture(t);
-      settle(jobId);
-      assert.equal(await processUsenetPipelinePayload({ ...payload, phase }, throwOnFailure), null);
-      assert.equal(await exists(folder()), false);
-      assert.equal(historyDeletes(deleted), 1);
-    });
-  }
+for (const [state, settle] of [
+  ["finished another way", (jobId: string) => downloadTracker.setDone(jobId, "/elsewhere.flac")],
+  ["failed", (jobId: string) => downloadTracker.setFailed(jobId, "Timed out")],
+] as const) {
+  test(`a download whose song ${state} is removed when it is next checked`, async (t) => {
+    const { jobId, payload, deleted } = await pipelineFixture(t);
+    settle(jobId);
+    assert.equal(await run(payload), null);
+    assert.equal(await exists(folder()), false);
+    assert.equal(historyDeletes(deleted), 1);
+  });
 }
 
 const failAttempt = (jobId: string | null) => ({
@@ -586,18 +557,10 @@ const failAttempt = (jobId: string | null) => ({
 });
 
 test("a failed download is removed before Aurral tries the next release", async (t) => {
-  const { jobId, payload, deleted } = await pipelineFixture(t);
-  payload.history.Status = "FAILURE/PAR";
-  const next = await processUsenetPipelinePayload(
-    {
-      ...payload,
-      phase: "poll",
-      candidateIndex: 0,
-      candidates: [payload.candidate, payload.candidate],
-    },
-    throwOnFailure,
-  );
-  assert.ok(next != null);
+  const { jobId, payload, deleted, history, candidate } = await pipelineFixture(t);
+  history.Status = "FAILURE/PAR";
+  const next = await run({ ...payload, candidates: [candidate, candidate] });
+  assert.ok(isStepFrom(next, "usenet"));
   assert.equal(next.phase, "download");
   assert.equal(next.candidateIndex, 1);
   assert.equal(await exists(folder()), false);
@@ -605,71 +568,52 @@ test("a failed download is removed before Aurral tries the next release", async 
   assert.equal(trackedJob(downloadTracker, jobId).status, "downloading");
 });
 
-test("a download keeps polling while NZBGet cannot be read, goes on once it can, stops waiting after a long outage, and the next download waits as long again", async (t) => {
-  const { jobId, payload, deleted } = await pipelineFixture(t);
+test("a download keeps polling while NZBGet cannot be read, stops waiting after a long outage, and the next download waits as long again and goes on once NZBGet answers", async (t) => {
+  const { payload, deleted, history } = await pipelineFixture(t);
   const client = getDownloadClient("nzbget");
   let down = true;
   vi.spyOn(client, "getHistoryItem").mockImplementation(async () => {
     if (down) throw new Error("connect ECONNREFUSED");
-    return payload.history;
+    return history;
   });
-  const poll = async (current: UsenetPayload) => {
-    const next = await processUsenetPipelinePayload(current, throwOnFailure);
-    assert.ok(next != null);
-    return next as UsenetPayload;
+  const poll = async (current: SourcePayload) => {
+    const next = await run(current);
+    assert.ok(isStepFrom(next, "usenet"));
+    return next;
   };
-  let polling: UsenetPayload = { ...payload, phase: "poll", history: null };
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    polling = await poll(polling);
-    assert.equal(polling.phase, "poll");
-  }
-  assert.equal(deleted.mock.calls.length, 0);
-  assert.equal(trackedJob(downloadTracker, jobId).status, "downloading");
-  down = false;
-  assert.equal((await processUsenetPipelinePayload(polling, throwOnFailure))!.phase, "finalize");
-
-  down = true;
+  let polling = payload;
   let error: Error | undefined;
   for (let attempt = 0; attempt < 1000 && !error; attempt += 1) {
-    polling = await poll(polling).catch((caught) => {
+    polling = await poll(polling).catch((caught: Error) => {
       error = caught;
       return polling;
     });
+    if (attempt < 100) assert.equal(polling.phase, "poll");
   }
   assert.match(error?.message || "", /ECONNREFUSED/);
   assert.equal(deleted.mock.calls.length, 0);
 
   vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async () => Buffer.from("<nzb/>"));
   vi.spyOn(client, "appendNzb").mockImplementation(async () => ({ nzbId: 43, nzbName: "release" }));
-  const next = await processUsenetPipelinePayload(
-    {
-      ...polling,
-      phase: "download",
-      candidateIndex: 0,
-      candidates: [
-        usenetCandidate({
-          raw: {
-            release: {
-              ...payload.candidate.raw.release,
-              guid: "next",
-              downloadUrl: "http://indexer/next",
-            },
-          },
-        }),
-      ],
-    },
-    throwOnFailure,
-  );
-  assert.ok(isStepFrom(next, "usenet"));
-  assert.equal(next.nzbId, 43);
-  assert.equal((await poll(next as UsenetPayload)).phase, "poll");
+  const next = await poll({
+    ...polling,
+    phase: "download",
+    candidateIndex: 0,
+    candidates: [usenetCandidate({ guid: "next", title: "The Band - Album FLAC", album: "Album" })],
+  });
+  assert.equal(next.pendingId, "nzbget:43");
+  const waiting = await poll(next);
+  assert.equal(waiting.phase, "poll");
+  assert.equal(waiting.unreadPolls, 1);
+  down = false;
+  assert.equal((await poll(waiting)).phase, "finalize");
 });
 
 test("a rejected download is removed", async (t) => {
-  const { jobId, payload, deleted } = await pipelineFixture(t);
+  const { jobId, payload } = await pipelineFixture(t);
   dbOps.updateSettings({ ...dbOps.getSettings(), qualityProfile: { enabled: ["mp3-320"] } });
-  await processUsenetPipelinePayload(payload, failAttempt(jobId));
+  await finish(payload, failAttempt(jobId));
   assert.equal(trackedJob(downloadTracker, jobId).status, "failed");
   assert.equal(await exists(folder()), false);
-  assert.equal(historyDeletes(deleted), 1);
+  assert.deepEqual(await keptByAurral(), []);
 });

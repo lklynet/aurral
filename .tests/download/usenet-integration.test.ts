@@ -1,7 +1,8 @@
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import type { ServerResponse } from "node:http";
-import { createTrackedJob, trackedJob, usenetCandidate } from "./fixtures.ts";
+import * as v from "valibot";
+import { createTrackedJob, isStepFrom, trackedJob, usenetCandidate } from "./fixtures.ts";
 
 import {
   setupIsolatedBackend,
@@ -17,7 +18,8 @@ const [
   isolatedState,
   { prowlarrClient },
   { downloadTracker },
-  { processUsenetPipelinePayload },
+  { processSourcePipelinePayload },
+  { usenetSource, tidarrSource },
   { nzbgetClient },
   { SabnzbdClient, sabnzbdClient },
   { TidarrClient },
@@ -29,7 +31,8 @@ const [
   "usenet-integration",
   () => import("../../backend/services/prowlarrClient.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
-  () => import("../../backend/services/usenetOrchestrator.ts"),
+  () => import("../../backend/services/download/sourcePipeline.ts"),
+  () => import("../../backend/services/usenetSource.ts"),
   () => import("../../backend/services/nzbgetClient.ts"),
   () => import("../../backend/services/sabnzbdClient.ts"),
   () => import("../../backend/services/tidarrClient.ts"),
@@ -238,7 +241,7 @@ test("Prowlarr connection test fails when something else answers at its address"
   }
 });
 
-type UsenetPayload = Parameters<typeof processUsenetPipelinePayload>[0];
+type UsenetPayload = Parameters<typeof processSourcePipelinePayload>[0];
 type UsenetResult = UsenetPayload & {
   error?: string;
   message?: string;
@@ -277,18 +280,22 @@ const musicIndexer = {
 
 async function runPipeline(payload: UsenetPayload): Promise<UsenetResult> {
   let failure: UsenetResult | undefined;
-  const result = await processUsenetPipelinePayload(payload, {
+  const source = payload.source === "tidarr" ? tidarrSource : usenetSource;
+  const result = await processSourcePipelinePayload(payload, source, {
     failOrTryNextSource: async (_payload, _job, message, details) => {
       failure = { ...payload, phase: "failed", error: message, message, details };
       return null;
     },
   });
   if (failure) return failure;
-  assert.ok(result);
+  assert.ok(isStepFrom(result, payload.source));
   assert.equal(result.jobId, payload.jobId);
-  assert.equal(result.source, payload.source);
-  return result as UsenetResult;
+  return result;
 }
+
+const releaseData = v.object({ guid: v.string() });
+const guids = (step: UsenetResult) =>
+  (step.candidates ?? []).map(({ raw }) => v.parse(releaseData, raw.data).guid);
 
 async function searchUntilDone(payload: UsenetPayload) {
   let result: UsenetResult = payload;
@@ -360,7 +367,7 @@ test("Usenet searches like Lidarr: a music search where supported, then cleaned 
       { query: "AC DC Back in Black", type: "search", indexerIds: ["1", "2"] },
       { query: "AC DC Hells Bells", type: "search", indexerIds: ["1", "2"] },
     ]);
-    assert.equal(result.message, "No suitable Usenet search results");
+    assert.equal(result.message, "No matching album in the search results");
   } finally {
     await server.close();
   }
@@ -703,39 +710,35 @@ test("an indexer's download client takes its releases, and other indexers keep t
     nzbId: 123,
     nzbName: "release.nzb",
   }));
-  const download = (indexerId: number, manualDownloadClient: string | null = null) =>
-    runPipeline({
+  let downloads = 0;
+  const download = (indexerId: number) => {
+    const attempt = ++downloads;
+    return runPipeline({
       phase: "download",
       source: "usenet",
-      manualDownloadClient,
       jobId: createTrackedJob(
         downloadTracker,
         { artistName: "Daft Punk", trackName: "One More Time" },
-        `indexer-client-${indexerId}-${manualDownloadClient}`,
+        `indexer-client-${attempt}`,
       ),
       candidateIndex: 0,
       candidates: [
         usenetCandidate({
-          raw: {
-            release: releaseFixture({
-              guid: `release-${indexerId}-${manualDownloadClient}`,
-              title: "Daft Punk - Discovery FLAC",
-              protocol: "usenet",
-              downloadUrl: `http://prowlarr.local/${indexerId}/download`,
-              indexerId,
-            }),
-          },
+          guid: `release-${attempt}`,
+          title: "Daft Punk - Discovery FLAC",
+          downloadUrl: `http://prowlarr.local/${indexerId}/download`,
+          indexerId,
         }),
       ],
     });
+  };
 
-  assert.equal((await download(1)).downloadClient, "sabnzbd");
-  assert.equal((await download(2)).downloadClient, "nzbget");
-  assert.equal((await download(2, "sabnzbd")).downloadClient, "nzbget");
+  assert.equal((await download(1)).pendingId, "sabnzbd:SABnzbd_nzo_1");
+  assert.equal((await download(2)).pendingId, "nzbget:123");
 
   configure(false);
   const nzbsFetched = nzbRequests.mock.calls.length;
-  assert.equal((await download(2)).error, "NZBGet is not set up");
+  assert.equal((await download(2)).error, "download failed: NZBGet is not set up");
   assert.equal(nzbRequests.mock.calls.length, nzbsFetched);
 });
 
@@ -833,7 +836,7 @@ for (const albumGrab of [false, true]) {
     assert.ok(jobId != null);
     if (!albumGrab) {
       for (const id of ["first-1", "first-2"])
-        downloadTracker.recordDeniedSource(jobId, "usenet", id);
+        downloadTracker.recordDeniedSource(jobId, "usenet", `album:${id}`);
     }
     const originalDenials = structuredClone(trackedJob(downloadTracker, jobId).deniedRemoteSources);
     const original = prowlarrClient.search;
@@ -854,17 +857,7 @@ for (const albumGrab of [false, true]) {
     try {
       const result = await searchUntilDone({ phase: "search", source: "usenet", jobId, albumGrab });
       assert.equal(result.phase, "download");
-      assert.ok(result.candidates);
-      assert.deepEqual(
-        result.candidates.map((entry) => entry.raw.guid),
-        ["allowed-1", "allowed-2"],
-      );
-      // A release title cannot prove the tracklist; the download is judged later.
-      assert.ok(
-        result.candidates.every(
-          (entry) => entry.releaseVerified === (albumGrab ? false : undefined),
-        ),
-      );
+      assert.deepEqual(guids(result), ["allowed-1", "allowed-2"]);
       assert.deepEqual(trackedJob(downloadTracker, jobId).deniedRemoteSources, originalDenials);
     } finally {
       prowlarrClient.search = original;
@@ -881,7 +874,7 @@ test("Tidarr tries each album once, at its best allowed quality", async () => {
     useTidarr(server.url);
     for (const [denied, expected] of [
       [null, ["123-hires_lossless", "456-hires_lossless"]],
-      ["123-hires_lossless", ["456-hires_lossless"]],
+      ["album:tidarr:123", ["456-hires_lossless"]],
     ] as const) {
       const jobId = createTrackedJob(
         downloadTracker,
@@ -891,8 +884,7 @@ test("Tidarr tries each album once, at its best allowed quality", async () => {
       assert.ok(jobId != null);
       if (denied) downloadTracker.recordDeniedSource(jobId, "tidarr", denied);
       const result = await searchUntilDone({ phase: "search", source: "tidarr", jobId });
-      assert.ok(result.candidates);
-      assert.deepEqual(result.candidates.map((entry) => entry.raw.guid).sort(), expected);
+      assert.deepEqual(guids(result).sort(), expected);
     }
     assert.equal(server.searches[0], "Tidal Band Album");
   } finally {
@@ -942,11 +934,7 @@ test("a Tidarr album grab skips albums whose track count differs from the releas
       albumGrab: true,
       releaseMbid: "tidarr-album-release",
     });
-    assert.ok(result.candidates);
-    assert.deepEqual(
-      result.candidates.map((entry) => entry.raw.guid),
-      ["456-hires_lossless"],
-    );
+    assert.deepEqual(guids(result), ["456-hires_lossless"]);
   } finally {
     await server.close();
   }
@@ -985,24 +973,21 @@ test("a Usenet track search tries the requested album before a single of the tra
       "usenet-order",
     );
     const result = await searchUntilDone({ phase: "search", source: "usenet", jobId });
-    assert.ok(result.candidates);
-    assert.deepEqual(
-      result.candidates.map((entry) => entry.raw.guid),
-      expected,
-    );
+    assert.deepEqual(guids(result), expected);
     search.mockRestore();
   }
 });
 
-test("a Usenet search runs one Prowlarr query per pipeline step", async () => {
+test("a Usenet search runs every query in one step, and says why it found nothing", async () => {
+  vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => []);
   for (const [name, results, error] of [
-    ["Step", async () => [], "No suitable Usenet search results"],
+    ["Empty", async () => [], "No matching album in the search results"],
     [
       "Down",
       async () => {
         throw new Error("indexer down");
       },
-      "Prowlarr search failed: indexer down",
+      "album search failed: Prowlarr search failed: indexer down",
     ],
   ] as const) {
     const search = vi.spyOn(prowlarrClient, "search").mockImplementation(results);
@@ -1016,16 +1001,12 @@ test("a Usenet search runs one Prowlarr query per pipeline step", async () => {
       },
       "usenet-steps",
     );
-    let payload: UsenetResult = { phase: "search", source: "usenet", jobId };
-    let steps = 0;
-    while (payload?.phase === "search" && steps < 20) {
-      const before = search.mock.calls.length;
-      payload = await runPipeline(payload);
-      assert.ok(search.mock.calls.length - before <= 1);
-      steps += 1;
-    }
-    assert.equal(payload.error, error);
-    assert.equal(steps, search.mock.calls.length);
+    const result = await runPipeline({ phase: "search", source: "usenet", jobId });
+    assert.equal(result.error, error);
+    assert.deepEqual(
+      search.mock.calls.map(([query]) => query),
+      [`${name} Artist ${name} Album`, `${name} Artist ${name} Song`],
+    );
     search.mockRestore();
   }
 });
@@ -1405,10 +1386,10 @@ test("an indexer that answers HTTP 429 gets no NZB request from any job until it
   const first = await run("Limited One");
   const second = await run("Limited Two");
   assert.deepEqual(requests, ["/1/Limited-One", "/2/Limited-One"]);
-  assert.equal(first.error, "The indexer did not return an NZB file");
+  assert.equal(first.error, "download failed: The indexer did not return an NZB file");
   assert.equal(
     second.error,
-    "Indexer 1 has reached its NZB limit. Aurral will ask it again in 10 minutes.",
+    "download failed: Indexer 1 has reached its NZB limit. Aurral will ask it again in 10 minutes.",
   );
 
   vi.advanceTimersByTime(601 * 1000);
@@ -1449,10 +1430,10 @@ test("a track spends its two NZB grabs on indexers that answer, not on ones that
   const appended = vi
     .spyOn(nzbgetClient, "appendNzb")
     .mockImplementation(async () => ({ nzbId: requests.length, nzbName: "Atomic" }));
-  vi.spyOn(nzbgetClient, "getHistoryItem").mockImplementation(async (nzbId) => {
-    assert.equal(typeof nzbId, "number");
-    return { NZBID: Number(nzbId), Status: "FAILURE/HEALTH" };
-  });
+  vi.spyOn(nzbgetClient, "getHistoryItem").mockImplementation(async (nzbId) => ({
+    NZBID: Number(nzbId),
+    Status: "FAILURE/HEALTH",
+  }));
   vi.spyOn(nzbgetClient, "deleteQueueItem").mockImplementation(async () => true);
   vi.spyOn(nzbgetClient, "deleteHistoryItem").mockImplementation(async () => true);
   const run = (artistName: string) =>
@@ -1468,14 +1449,14 @@ test("a track spends its two NZB grabs on indexers that answer, not on ones that
 
   const first = await run("Grab One");
   assert.deepEqual(requests, ["/1/Grab-One", "/2/Grab-One", "/3/Grab-One", "/4/Grab-One"]);
-  assert.equal(first.error, "Usenet download failed: FAILURE/HEALTH");
+  assert.equal(first.error, "download failed: Usenet download failed: FAILURE/HEALTH");
 
   await run("Grab Two");
   assert.deepEqual(requests.slice(4), ["/2/Grab-Two", "/3/Grab-Two", "/4/Grab-Two"]);
   assert.equal(appended.mock.calls.length, 4);
 });
 
-test("a track spends a grab on a broken NZB but not on a Newznab error", async (t: import("vite-plus/test").TestContext) => {
+test("a broken NZB and a Newznab error do not use up a track's downloads", async (t: import("vite-plus/test").TestContext) => {
   const requests: (string | undefined)[] = [];
   const server = await createMockHttpServer((req, res) => {
     requests.push(req.url);
@@ -1499,6 +1480,6 @@ test("a track spends a grab on a broken NZB but not on a Newznab error", async (
 
   const result = await runUntilSettled({ phase: "search", source: "usenet", jobId });
 
-  assert.deepEqual(requests, ["/1/broken", "/2/broken", "/3/broken", "/4/broken"]);
-  assert.equal(result.error, "The indexer did not return an NZB file");
+  assert.deepEqual(requests, ["/1/broken", "/2/broken", "/3/broken", "/4/broken", "/5/broken"]);
+  assert.equal(result.error, "download failed: The indexer did not return an NZB file");
 });

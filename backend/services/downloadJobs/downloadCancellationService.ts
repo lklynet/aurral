@@ -1,11 +1,9 @@
 import * as v from "valibot";
 import { unknownList } from "../../../lib/unknownList.ts";
 import { getDownloadClient } from "../download/downloadClientSettings.ts";
-import { deemixQueueIds } from "../deemixClient.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
-import { isNzbSource, type UsenetClientKey } from "../usenetClientCommon.ts";
-import { nativeDownloadSource } from "../download/nativeSources.ts";
-import { pluginDownloadSource } from "../plugins/pluginDownloadSource.ts";
+import { contractSource } from "../download/nativeSources.ts";
+import type { DownloadSource } from "../download/downloadSource.ts";
 import { discardSourceWork } from "../download/sourcePipeline.ts";
 import { downloadPipelineQueue } from "../jobs/queues.ts";
 import type { DownloadProviderWorkRow } from "../../db/rows.ts";
@@ -228,135 +226,44 @@ async function cancelSlskdWork(
   return { searches: searchIds.size, transfers: transfers.size };
 }
 
-async function cancelDeemixWork(payloads: CancellationPayload[], jobs: CancellationJob[]) {
-  const client = getDownloadClient("deemix");
-  const queueIds = new Set<string>();
-  const failures: unknown[] = [];
-  for (const payload of payloads) {
-    if (payload?.source === "deemix") {
-      for (const queueId of deemixQueueIds(payload)) queueIds.add(normalizeId(queueId));
-    }
-  }
+// A job's staging folder goes even when no step of it is queued, and the
+// download its source started goes once no job left takes a track from it.
+// A download the source didn't confirm removing keeps the jobs, so the
+// cancellation can run again.
+async function cancelSourceWork(payloads: CancellationPayload[], jobs: CancellationJob[]) {
+  const work = new Map<string, { source: DownloadSource; pendingId: string | null }>();
   for (const job of jobs) {
-    if (job?.downloadSource === "deemix" || job?.downloadClient === "deemix") {
-      const queueId = normalizeId(job.downloadClientId);
-      if (queueId) queueIds.add(queueId);
-    }
+    const source = contractSource(String(job?.downloadSource || job?.downloadClient || ""));
+    const jobId = normalizeId(job?.id);
+    if (source && jobId)
+      work.set(jobId, { source, pendingId: normalizeId(job.downloadClientId) || null });
   }
-  if (queueIds.size > 0 && !client?.isConfigured?.()) {
-    logger.warn("deemix", "Cannot cancel tracked deemix work while deemix is not configured", {
-      queueItems: queueIds.size,
-    });
-    throw new Error("deemix is not configured; tracked work cannot be cancelled");
-  }
-  for (const queueId of queueIds) {
-    if (!queueId) continue;
-    await attemptProviderCleanup(
-      failures,
-      "deemix",
-      "Could not cancel a removed playlist queue item",
-      { queueId },
-      async () => {
-        const removed = await client.removeFromQueue(queueId);
-        if (!removed) throw new Error("deemix did not confirm queue removal");
-      },
-    );
-  }
-  throwProviderCleanupFailures("deemix", failures);
-  return { queueItems: queueIds.size };
-}
-
-async function cancelUsenetWork(
-  clientKey: UsenetClientKey | "tidarr",
-  label: string,
-  payloads: CancellationPayload[],
-  jobs: CancellationJob[],
-) {
-  const client = getDownloadClient(clientKey);
-  const ids = new Set(
-    jobs
-      .filter((job) => job?.downloadClient === clientKey)
-      .map((job) => normalizeId(job.downloadClientId))
-      .filter(Boolean),
-  );
-  const failures: unknown[] = [];
   for (const payload of payloads) {
-    if (isNzbSource(payload?.source) && payload?.downloadClient === clientKey) {
-      const id = normalizeId(payload.nzbId);
-      if (id) ids.add(id);
-    }
-  }
-  if (ids.size > 0 && !client?.isConfigured?.()) {
-    logger.warn(clientKey, `Cannot cancel tracked ${label} work while ${label} is not configured`, {
-      items: ids.size,
-    });
-    throw new Error(`${label} is not configured; tracked work cannot be cancelled`);
-  }
-  for (const id of ids) {
-    for (const [message, cleanup, lookup] of [
-      [
-        "Could not cancel a removed playlist queue item",
-        () => client.deleteQueueItem(id),
-        () => client.getQueueItem(id),
-      ],
-      [
-        "Could not remove a deleted playlist history item",
-        () => client.deleteHistoryItem(id, { deleteFiles: true }),
-        () => client.getHistoryItem(id),
-      ],
-    ] satisfies [string, () => unknown, () => unknown][]) {
-      await attemptProviderCleanup(failures, clientKey, message, { id }, async () => {
-        const removed = await cleanup();
-        if (!removed && (await lookup())) {
-          throw new Error(`${label} did not confirm item removal`);
-        }
-      });
-    }
-  }
-  throwProviderCleanupFailures(clientKey, failures);
-  return { historyItems: ids.size };
-}
-
-async function cancelYtdlpWork(payloads: CancellationPayload[], jobs: CancellationJob[]) {
-  const client = getDownloadClient("ytdlp");
-  const ids = new Set(
-    jobs
-      .filter((job) => job?.downloadClient === "ytdlp" || job?.downloadSource === "ytdlp")
-      .map((job) => normalizeId(job.id))
-      .filter(Boolean),
-  );
-  const failures: unknown[] = [];
-  for (const payload of payloads) {
-    if (payload?.source === "ytdlp") {
-      const jobId = normalizeId(payload.jobId);
-      if (jobId) ids.add(jobId);
-    }
-  }
-  for (const jobId of ids) {
-    await attemptProviderCleanup(
-      failures,
-      "ytdlp",
-      "Could not clean removed playlist staging",
-      { jobId },
-      () => client.cleanupStaging(jobId),
-    );
-  }
-  throwProviderCleanupFailures("ytdlp", failures);
-  return { stagingJobs: ids.size };
-}
-
-async function cancelSourceWork(payloads: CancellationPayload[]) {
-  let discarded = 0;
-  for (const payload of payloads) {
-    const id = String(payload?.source ?? "");
-    const source = nativeDownloadSource(id) ?? pluginDownloadSource(id);
+    const source = contractSource(String(payload?.source ?? ""));
     const jobId = normalizeId(payload?.jobId);
-    if (!source || !jobId) continue;
     const pendingId = typeof payload?.pendingId === "string" ? payload.pendingId : null;
-    await discardSourceWork({ jobId, pendingId }, source);
-    discarded += 1;
+    if (source && jobId)
+      work.set(jobId, { source, pendingId: pendingId ?? work.get(jobId)?.pendingId ?? null });
   }
-  return { discarded };
+  const except = new Set(work.keys());
+  const failures: unknown[] = [];
+  for (const [jobId, { source, pendingId }] of work)
+    await discardSourceWork({ jobId, pendingId }, source, {
+      except,
+      onDiscardError: (error) => {
+        logger.warn(source.id, "Could not cancel a download", {
+          jobId,
+          pendingId: pendingId ?? "",
+          reason: asAppError(error)?.message || String(error),
+        });
+        failures.push(error);
+        for (const [id, entry] of work)
+          if (entry.pendingId === pendingId)
+            downloadTracker.updateDownloadMetadata(id, { downloadClientId: pendingId });
+      },
+    });
+  throwProviderCleanupFailures("download source", failures);
+  return { discarded: work.size };
 }
 
 function fulfilledValue<T>(result: PromiseSettledResult<T>) {
@@ -371,12 +278,7 @@ async function cancelProviderWork(
 ) {
   const results = await Promise.allSettled([
     cancelSlskdWork(payloads, jobs, providerWork),
-    cancelDeemixWork(payloads, jobs),
-    cancelUsenetWork("sabnzbd", "SABnzbd", payloads, jobs),
-    cancelUsenetWork("nzbget", "NZBGet", payloads, jobs),
-    cancelUsenetWork("tidarr", "Tidarr", payloads, jobs),
-    cancelYtdlpWork(payloads, jobs),
-    cancelSourceWork(payloads),
+    cancelSourceWork(payloads, jobs),
   ]);
   const failures = results
     .filter((result) => result.status === "rejected")
@@ -384,14 +286,9 @@ async function cancelProviderWork(
   if (failures.length > 0) {
     throw new AggregateError(failures, "Could not cancel download provider work");
   }
-  const [slskd, deemix, sabnzbd, nzbget, tidarr, ytdlp, sources] = results;
+  const [slskd, sources] = results;
   return {
     slskd: fulfilledValue(slskd),
-    deemix: fulfilledValue(deemix),
-    sabnzbd: fulfilledValue(sabnzbd),
-    nzbget: fulfilledValue(nzbget),
-    tidarr: fulfilledValue(tidarr),
-    ytdlp: fulfilledValue(ytdlp),
     sources: fulfilledValue(sources),
   };
 }

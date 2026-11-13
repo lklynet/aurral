@@ -23,16 +23,14 @@ import { requireFixture } from "../playlists/fixtures.ts";
 
 const execFileAsync = promisify(execFile);
 
-type UsenetPayload = Parameters<
-  typeof import("../../backend/services/usenetOrchestrator.ts").processUsenetPipelinePayload
->[0];
+type SourcePayload = import("../../backend/services/download/sourcePipeline.ts").SourcePayload;
 const [
   state,
   { dbOps, userOps },
   { downloadTracker },
   { getDownloadClient },
-  { processUsenetPipelinePayload, removeReviewedUsenetDownload },
-  { discardReviewFile },
+  { processSourcePipelinePayload },
+  { usenetSource },
   { processPipelinePayload },
   { downloadWorker, startWorkerIfPending },
   { buildSlskdRankingHistoryOptions },
@@ -64,8 +62,8 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/download/downloadClientSettings.ts"),
-  () => import("../../backend/services/usenetOrchestrator.ts"),
-  () => import("../../backend/services/downloadJobs/reviewFiles.ts"),
+  () => import("../../backend/services/download/sourcePipeline.ts"),
+  () => import("../../backend/services/usenetSource.ts"),
   () => import("../../backend/services/downloadPipeline.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/services/slskdTransferHistory.ts"),
@@ -87,6 +85,25 @@ afterAll(async () => {
   await downloadWorker.stopAndDrain();
   await cleanupIsolatedState(state);
 });
+
+type SourceHelpers = Parameters<typeof processSourcePipelinePayload>[2];
+
+const failOnSourceFallback = {
+  failOrTryNextSource: async (_: unknown, __: unknown, reason: string): Promise<never> => {
+    throw new Error(reason);
+  },
+};
+
+const runUsenet = (payload: SourcePayload, helpers: SourceHelpers = failOnSourceFallback) =>
+  processSourcePipelinePayload(payload, usenetSource, helpers);
+
+async function runToEnd(
+  payload: PipelinePayload | null | undefined,
+  helpers: SourceHelpers = failOnSourceFallback,
+) {
+  while (isStepFrom(payload, "usenet")) payload = await runUsenet(payload, helpers);
+  return payload;
+}
 
 // Serves the album's one release from the metadata provider and returns its ID.
 async function serveRelease(
@@ -226,39 +243,19 @@ test("one Usenet NZB fills two sibling jobs", async (t) => {
     FinalDir: album.folder,
   }));
   const candidate = usenetCandidate({
-    raw: {
-      release: {
-        title: "The Band - Album",
-        guid: "release-one",
-        downloadUrl: "https://nzb.test/release",
-      },
-    },
-    score: 10,
-    resolvedAlbumName: "Other Release",
+    guid: "release-one",
+    title: "The Band - Album",
+    album: "Other Release",
+    downloadUrl: "https://nzb.test/release",
   });
-  const queued = await processUsenetPipelinePayload(
-    { ...album.payload, candidates: [candidate], candidateIndex: 0 },
-    {
-      failOrTryNextSource: async (_: unknown, __: unknown, reason: string) => {
-        throw new Error(reason);
-      },
-    },
-  );
-  assert.ok(queued != null);
+  const queued = await runUsenet({ ...album.payload, candidates: [candidate], candidateIndex: 0 });
+  assert.ok(isStepFrom(queued, "usenet"));
   assert.equal(append.mock.calls.length, 1);
   assert.equal(queued.phase, "poll");
-  const polled = await processUsenetPipelinePayload(queued as UsenetPayload, {
-    failOrTryNextSource: async (_payload, _job, reason) => {
-      throw new Error(reason);
-    },
-  });
-  assert.ok(polled != null);
+  const polled = await runUsenet(queued);
+  assert.ok(isStepFrom(polled, "usenet"));
   assert.equal(polled.phase, "finalize");
-  await processUsenetPipelinePayload(polled as UsenetPayload, {
-    failOrTryNextSource: async (_payload, _job, reason) => {
-      throw new Error(reason);
-    },
-  });
+  await runUsenet(polled);
   for (const id of album.ids) {
     const job = downloadTracker.getJob(id);
     assert.ok(job != null);
@@ -299,42 +296,34 @@ test("a Usenet NZB short of the pinned release imports nothing, blocks it for ev
   vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
   vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
   const releaseMbid = await serveRelease(t, group, titles);
-  const next = await processUsenetPipelinePayload(
-    {
-      source: "usenet" as const,
-      phase: "finalize",
-      jobId: requireFixture(ids[0]),
-      playlistId: "library",
-      playlistGeneration: 0,
-      downloadAttemptId: getActiveDownloadAttemptId(requireFixture(ids[0])),
-      destination: `The Band/${group}`,
-      albumGrab: true,
-      albumGroupJobIds: ids,
-      releaseMbid,
-      nzbId: "short-nzb",
-      downloadedPath: folder,
-      history: { Status: "SUCCESS", FinalDir: folder },
-      candidateIndex: 0,
-      candidates: [
-        usenetCandidate({
-          raw: {
-            release: {
-              title: "The Band - Album",
-              guid: "short-release",
-              downloadUrl: "https://nzb.test/short",
-            },
-          },
-          resolvedAlbumName: "Album",
-          releaseVerified: false,
-        }),
-      ],
-    },
-    {
-      failOrTryNextSource: async (_payload, _job, reason) => {
-        throw new Error(reason);
-      },
-    },
-  );
+  vi.spyOn(client, "getHistoryItem").mockImplementation(async () => ({
+    Status: "SUCCESS",
+    FinalDir: folder,
+  }));
+  const polled = await runUsenet({
+    source: "usenet" as const,
+    phase: "poll",
+    jobId: requireFixture(ids[0]),
+    playlistId: "library",
+    playlistGeneration: 0,
+    downloadAttemptId: getActiveDownloadAttemptId(requireFixture(ids[0])),
+    destination: `The Band/${group}`,
+    albumGrab: true,
+    albumGroupJobIds: ids,
+    releaseMbid,
+    pendingId: "nzbget:7",
+    candidateIndex: 0,
+    candidates: [
+      usenetCandidate({
+        guid: "short-release",
+        title: "The Band - Album",
+        album: "Album",
+        downloadUrl: "https://nzb.test/short",
+      }),
+    ],
+  });
+  assert.ok(isStepFrom(polled, "usenet"));
+  const next = await runUsenet(polled);
   assert.ok(next != null);
   assert.deepEqual(
     [next.source, next.phase, next.albumGrab, next.jobId],
@@ -346,7 +335,7 @@ test("a Usenet NZB short of the pinned release imports nothing, blocks it for ev
     const job = downloadTracker.getJob(id);
     assert.ok(job != null);
     assert.notEqual(job.status, "done");
-    assert.deepEqual(job.deniedRemoteSources, [["usenet", "short-release"]]);
+    assert.deepEqual(job.deniedRemoteSources, [["usenet", "album:short-release"]]);
   }
 });
 
@@ -412,18 +401,13 @@ async function makeUpgrades(
     upgradeIds.push(upgradeId);
   }
   const candidate = usenetCandidate({
-    raw: {
-      release: {
-        title: `The Band - ${group} FLAC`,
-        guid: `${group}-release`,
-        downloadUrl: `https://nzb.test/${group}`,
-      },
-    },
-    score: 10,
-    resolvedAlbumName: group,
+    guid: `${group}-release`,
+    title: `The Band - ${group} FLAC`,
+    album: group,
+    downloadUrl: `https://nzb.test/${group}`,
   });
-  const start = (jobId: string, helpers: Parameters<typeof processUsenetPipelinePayload>[1]) =>
-    processUsenetPipelinePayload(
+  const start = (jobId: string, helpers: SourceHelpers) =>
+    runUsenet(
       {
         source: "usenet" as const,
         phase: "download",
@@ -453,6 +437,7 @@ async function holdDownloadWorker() {
 
 function mockNzbget(t: TestContext, folder: string, nzbIds: number[] = [77]) {
   const client = getDownloadClient("nzbget");
+  vi.spyOn(client, "isConfigured").mockImplementation(() => true);
   vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async () =>
     Buffer.from("<nzb></nzb>"),
   );
@@ -465,41 +450,25 @@ function mockNzbget(t: TestContext, folder: string, nzbIds: number[] = [77]) {
     FinalDir: folder,
   }));
   const removed = vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
-  vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
-  return { append, removed };
+  const discarded = vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
+  return { append, removed, discarded };
 }
 
-const failOnSourceFallback = {
-  failOrTryNextSource: async (_: unknown, __: unknown, reason: string) => {
-    throw new Error(reason);
-  },
-};
+const pendingIds = (steps: (PipelinePayload | null)[]) =>
+  steps.map((step) => stepFrom(step, "usenet").pendingId);
 
-async function runToEnd(
-  payload: Awaited<ReturnType<typeof processUsenetPipelinePayload>>,
-  helpers: Parameters<typeof processUsenetPipelinePayload>[1] = failOnSourceFallback,
-) {
-  while (payload?.phase)
-    payload = await processUsenetPipelinePayload(payload as UsenetPayload, helpers);
-}
-
-test("upgrades for two tracks of one album share a single Usenet download", async (t) => {
+test("upgrades for two tracks of one album share a single Usenet download, handed over once", async (t) => {
   const titles = ["First", "Second"];
   const { folder, upgradeIds, start } = await makeUpgrades("shared-upgrade", titles);
   const { append, removed } = mockNzbget(t, folder);
 
-  const [first, second] = await Promise.all(
-    upgradeIds.map((id) => start(id!, failOnSourceFallback)),
-  );
-  assert.ok(first !== undefined && second !== undefined);
+  const started = await Promise.all(upgradeIds.map((id) => start(id!, failOnSourceFallback)));
   assert.equal(append.mock.calls.length, 1);
-  assert.deepEqual([stepFrom(first, "usenet").nzbId, stepFrom(second, "usenet").nzbId], [77, 77]);
+  assert.deepEqual(pendingIds(started), ["nzbget:77", "nzbget:77"]);
 
-  await runToEnd(first);
+  await runToEnd(started[0]);
   assert.equal(downloadTracker.getJob(upgradeIds[0]), null);
-  assert.equal(removed.mock.calls.length, 0);
-
-  await runToEnd(second);
+  await runToEnd(started[1]);
   assert.equal(downloadTracker.getJob(upgradeIds[1]), null);
   assert.equal(removed.mock.calls.length, 1);
   const upgraded = downloadTracker
@@ -516,7 +485,7 @@ test("the last upgrade to reject a shared Usenet download removes it", async (t)
   const { folder, upgradeIds, start } = await makeUpgrades("shared-rejected", ["First", "Second"], {
     files: ["Other", "Another"],
   });
-  const { append, removed } = mockNzbget(t, folder);
+  const { append, discarded } = mockNzbget(t, folder);
   const ended: string[] = [];
   const helpers = {
     failOrTryNextSource: async (_: unknown, job: { id: string }) => {
@@ -527,24 +496,26 @@ test("the last upgrade to reject a shared Usenet download removes it", async (t)
 
   const started = await Promise.all(upgradeIds.map((id) => start(id!, helpers)));
   assert.equal(append.mock.calls.length, 1);
-  for (const payload of started) await runToEnd(payload, helpers);
+  await runToEnd(started[0], helpers);
+  assert.equal(discarded.mock.calls.length, 0);
+  await runToEnd(started[1], helpers);
   assert.deepEqual(ended.sort(), [...upgradeIds].sort());
-  assert.equal(removed.mock.calls.length, 1);
+  assert.equal(discarded.mock.calls.length, 1);
 });
 
-test("an upgrade never attaches to a Usenet download that is being removed", async (t) => {
+test("an upgrade never joins a Usenet download that is being removed", async (t) => {
   const { folder, upgradeIds, start } = await makeUpgrades(
     "removing-download",
     ["First", "Second"],
     { files: ["Other"] },
   );
-  const { append, removed } = mockNzbget(t, folder, [101, 102]);
+  const { append, discarded } = mockNzbget(t, folder, [101, 102]);
   let finishRemoval!: () => void;
   let removalStarted!: () => void;
   const started = new Promise<void>((resolve) => {
     removalStarted = resolve;
   });
-  removed.mockImplementation(() => {
+  discarded.mockImplementation(() => {
     removalStarted();
     return new Promise<boolean>((resolve) => {
       finishRemoval = () => resolve(true);
@@ -555,89 +526,24 @@ test("an upgrade never attaches to a Usenet download that is being removed", asy
   const rejecting = runToEnd(await start(upgradeIds[0]!, helpers), helpers);
   await started;
   const next = await start(upgradeIds[1]!, helpers);
-  assert.ok(isStepFrom(next, "usenet"));
   finishRemoval();
   await rejecting;
 
   assert.equal(append.mock.calls.length, 2);
-  assert.equal(next.nzbId, 102);
-});
-
-test("a track awaiting a shared NZB submits a new one if the old download is retired", async (t) => {
-  const group = "retired-while-attaching";
-  const folder = join(state.baseDir, group);
-  await writeTracks(folder, ["First"]);
-  const firstJobId = createTrackedJob(
-    downloadTracker,
-    { artistName: "The Band", albumName: group, trackName: "First" },
-    "library",
-  );
-  assert.ok(firstJobId != null);
-  downloadTracker.setDownloading(firstJobId);
-  downloadTracker.updateDownloadMetadata(firstJobId, {
-    downloadSource: "usenet",
-    downloadClient: "nzbget",
-    downloadClientId: 84,
-    releaseGuid: `${group}-guid`,
-  });
-  const nextJobId = createTrackedJob(
-    downloadTracker,
-    { artistName: "The Band", albumName: group, trackName: "First" },
-    "library",
-  );
-  assert.ok(nextJobId != null);
-  downloadTracker.setDownloading(nextJobId);
-  const candidate = usenetCandidate({
-    raw: {
-      release: {
-        title: `The Band - ${group}`,
-        guid: `${group}-guid`,
-        downloadUrl: `https://nzb.test/${group}`,
-      },
-    },
-    score: 10,
-    resolvedAlbumName: group,
-  });
-  const { append } = mockNzbget(t, folder, [85]);
-
-  const attaching = processUsenetPipelinePayload(
-    {
-      source: "usenet" as const,
-      phase: "download",
-      jobId: nextJobId,
-      playlistId: "library",
-      playlistGeneration: 0,
-      destination: `The Band/${group}`,
-      candidates: [candidate],
-      candidateIndex: 0,
-    },
-    failOnSourceFallback,
-  );
-  const removing = removeReviewedUsenetDownload(trackedJob(downloadTracker, firstJobId));
-  const [next] = await Promise.all([attaching, removing]);
-
-  assert.equal(stepFrom(next, "usenet").nzbId, 85);
-  assert.equal(append.mock.calls.length, 1);
-  downloadTracker.removeJob(firstJobId);
-  downloadTracker.removeJob(nextJobId);
+  assert.deepEqual(pendingIds([next]), ["nzbget:102"]);
 });
 
 test("upgrades for two copies of one track share the release without moving its file early", async (t) => {
   const { folder, upgradeIds, start } = await makeUpgrades("same-track", ["First", "First"], {
     files: ["First"],
   });
-  const { append, removed } = mockNzbget(t, folder, [81, 82]);
+  const { append } = mockNzbget(t, folder, [81, 82]);
 
   const started = await Promise.all(upgradeIds.map((id) => start(id!, failOnSourceFallback)));
   assert.equal(append.mock.calls.length, 1);
-  assert.deepEqual(
-    started.map((payload) => stepFrom(payload, "usenet").nzbId),
-    [81, 81],
-  );
-  await runToEnd(requireFixture(started[0]));
-  assert.equal(removed.mock.calls.length, 0);
-  await runToEnd(requireFixture(started[1]));
-  assert.equal(removed.mock.calls.length, 1);
+  assert.deepEqual(pendingIds(started), ["nzbget:81", "nzbget:81"]);
+  await runToEnd(started[0]);
+  await runToEnd(started[1]);
   const upgraded = downloadTracker
     .getAll()
     .filter((job) => job.albumName === "same-track" && !job.upgradeForJobId);
@@ -674,106 +580,37 @@ test("overlapping static playlists share one Usenet release across their track j
     return id;
   });
   const candidate = usenetCandidate({
-    raw: {
-      release: {
-        title: `The Band - ${group}`,
-        guid: `${group}-guid`,
-        downloadUrl: `https://nzb.test/${group}`,
-      },
-    },
-    score: 10,
-    resolvedAlbumName: group,
+    guid: `${group}-guid`,
+    title: `The Band - ${group}`,
+    album: group,
+    downloadUrl: `https://nzb.test/${group}`,
   });
   const { append, removed } = mockNzbget(t, folder, [84, 85, 86]);
   const started = await Promise.all(
     jobs.map((jobId, index) =>
-      processUsenetPipelinePayload(
-        {
-          source: "usenet" as const,
-          phase: "download",
-          jobId,
-          playlistId: requireFixture(requests[index]).playlistId,
-          playlistGeneration: 0,
-          destination: `The Band/${group}-${index}`,
-          candidates: [candidate],
-          candidateIndex: 0,
-        },
-        failOnSourceFallback,
-      ),
+      runUsenet({
+        source: "usenet",
+        phase: "download",
+        jobId,
+        playlistId: requireFixture(requests[index]).playlistId,
+        playlistGeneration: 0,
+        destination: `The Band/${group}-${index}`,
+        candidates: [candidate],
+        candidateIndex: 0,
+      }),
     ),
   );
 
   assert.equal(append.mock.calls.length, 1);
-  assert.deepEqual(
-    started.map((payload) => stepFrom(payload, "usenet").nzbId),
-    [84, 84, 84],
-  );
-  for (const [index, payload] of started.entries()) {
-    await runToEnd(payload);
-    assert.equal(removed.mock.calls.length, index === started.length - 1 ? 1 : 0);
-  }
+  assert.deepEqual(pendingIds(started), ["nzbget:84", "nzbget:84", "nzbget:84"]);
+  for (const payload of started) await runToEnd(payload);
+  assert.equal(removed.mock.calls.length, 1);
   for (const jobId of jobs) {
     const job = downloadTracker.getJob(jobId);
     assert.ok(job != null);
     assert.equal(job.status, "done");
     assert.ok((await stat(job.finalPath!)).isFile());
   }
-});
-
-test("a pending review keeps a shared Usenet file until its final consumer releases it", async (t) => {
-  const folder = join(state.baseDir, "shared-review-release");
-  const [sourcePath] = await writeTracks(folder, ["First"]);
-  assert.ok(sourcePath);
-  const { removed } = mockNzbget(t, folder);
-  const downloadMetadata = {
-    downloadSource: "usenet",
-    downloadClient: "nzbget",
-    downloadClientId: 87,
-    releaseGuid: "shared-review-release-guid",
-  };
-  const pendingJobId = createTrackedJob(
-    downloadTracker,
-    { artistName: "The Band", albumName: "Album", trackName: "First" },
-    "library",
-  );
-  assert.ok(pendingJobId != null);
-  downloadTracker.setDownloading(pendingJobId);
-  downloadTracker.updateDownloadMetadata(pendingJobId, downloadMetadata);
-  downloadTracker.keepHeldForReview(pendingJobId, {
-    reason: "Review required",
-    source: "usenet" as const,
-    sourcePath,
-    transferId: 87,
-    metadata: downloadMetadata,
-  });
-  downloadTracker.setPending(pendingJobId);
-
-  const reviewedJobId = createTrackedJob(
-    downloadTracker,
-    { artistName: "The Band", albumName: "Album", trackName: "First" },
-    "library",
-  );
-  assert.ok(reviewedJobId != null);
-  downloadTracker.setDownloading(reviewedJobId);
-  downloadTracker.updateDownloadMetadata(reviewedJobId, downloadMetadata);
-  downloadTracker.setBlocked(reviewedJobId, "Review required", sourcePath);
-
-  await discardReviewFile(trackedJob(downloadTracker, reviewedJobId));
-  assert.ok((await stat(sourcePath)).isFile());
-  assert.equal(removed.mock.calls.length, 0);
-
-  await discardReviewFile({
-    id: pendingJobId,
-    stagingPath: sourcePath,
-    downloadSource: "usenet",
-    downloadClient: "nzbget",
-    downloadClientId: 87,
-  });
-  await assert.rejects(stat(sourcePath));
-  assert.equal(removed.mock.calls.length, 1);
-  downloadTracker.setPending(reviewedJobId);
-  downloadTracker.removeJob(reviewedJobId);
-  downloadTracker.removeJob(pendingJobId);
 });
 
 test("after a failed Usenet submission, one waiting upgrade submits the release for the others", async () => {
@@ -797,10 +634,7 @@ test("after a failed Usenet submission, one waiting upgrade submits the release 
   const started = await Promise.all(upgradeIds.map((id) => start(id!, helpers)));
   assert.equal(fetches, 2);
   assert.equal(append.mock.calls.length, 1);
-  assert.deepEqual(
-    started.filter(Boolean).map((payload) => stepFrom(payload, "usenet").nzbId),
-    [91, 91],
-  );
+  assert.deepEqual(pendingIds(started.filter(Boolean)), ["nzbget:91", "nzbget:91"]);
 });
 
 // A Library track at MP3 128 pinned to its album's release, beside a
@@ -895,16 +729,10 @@ async function pinnedUpgrade(
     [true, releaseMbid, [attempt.jobId]],
   );
   const candidate = usenetCandidate({
-    raw: {
-      release: {
-        title: `The Band - ${group}`,
-        guid: `${group}-nzb`,
-        downloadUrl: `https://nzb.test/${group}`,
-      },
-    },
-    score: 10,
-    resolvedAlbumName: group,
-    releaseVerified: false,
+    guid: `${group}-nzb`,
+    title: `The Band - ${group}`,
+    album: group,
+    downloadUrl: `https://nzb.test/${group}`,
   });
   return {
     original,
@@ -914,6 +742,7 @@ async function pinnedUpgrade(
     upgradeId: attempt.jobId,
     download: {
       ...attempt,
+      candidate: null,
       source: "usenet" as const,
       phase: "download",
       candidates: [candidate],
@@ -1098,19 +927,14 @@ async function releaseUpgrades(
   ]);
   const trackSearch = vi.spyOn(prowlarrClient, "search").mockImplementation(async () => []);
   const candidate = usenetCandidate({
-    raw: {
-      release: {
-        title: `The Band - ${group}`,
-        guid: `${group}-guid`,
-        downloadUrl: `https://nzb.test/${group}`,
-      },
-    },
-    score: 10,
-    resolvedAlbumName: group,
-    releaseVerified: false,
+    guid: `${group}-guid`,
+    title: `The Band - ${group}`,
+    album: group,
+    downloadUrl: `https://nzb.test/${group}`,
   });
   const download = (attempt: PipelinePayload) => ({
     ...attempt,
+    candidate: null,
     source: "usenet" as const,
     phase: "download",
     candidates: [candidate],
@@ -1915,23 +1739,18 @@ test("a Usenet download of a second-disc track takes the disc in its name", asyn
     FinalDir: folder,
   }));
   const candidate = usenetCandidate({
-    raw: {
-      release: {
-        title: "The Band - Bomb",
-        guid: "release-disc-two",
-        downloadUrl: "https://nzb.test/disc-two",
-      },
-    },
-    score: 10,
-    resolvedAlbumName: "Disc Album",
+    guid: "release-disc-two",
+    title: "The Band - Bomb",
+    album: "Disc Album",
+    downloadUrl: "https://nzb.test/disc-two",
   });
   const fail = {
     failOrTryNextSource: async (_: unknown, __: unknown, reason: string) => {
       throw new Error(reason);
     },
   };
-  let payload: UsenetPayload | PipelinePayload | null = {
-    source: "usenet" as const,
+  const payload: SourcePayload = {
+    source: "usenet",
     phase: "download",
     jobId,
     playlistId: "library",
@@ -1940,7 +1759,7 @@ test("a Usenet download of a second-disc track takes the disc in its name", asyn
     candidates: [candidate],
     candidateIndex: 0,
   };
-  while (payload) payload = await processUsenetPipelinePayload(payload as UsenetPayload, fail);
+  await runToEnd(payload, fail);
   const job = downloadTracker.getJob(jobId);
   assert.ok(job != null);
   assert.equal(job.status, "done");
@@ -2026,18 +1845,13 @@ test("a Usenet download of a whole two-disc album takes the copy of a repeated t
   }));
   vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
   const candidate = usenetCandidate({
-    raw: {
-      release: {
-        title: "The Band - Disc Album",
-        guid: "release-two-disc",
-        downloadUrl: "https://nzb.test/two-disc",
-      },
-    },
-    score: 10,
-    resolvedAlbumName: "Disc Album",
+    guid: "release-two-disc",
+    title: "The Band - Disc Album",
+    album: "Disc Album",
+    downloadUrl: "https://nzb.test/two-disc",
   });
-  let payload: UsenetPayload | PipelinePayload | null = {
-    source: "usenet" as const,
+  const payload: SourcePayload = {
+    source: "usenet",
     phase: "download",
     jobId,
     playlistId: "library",
@@ -2046,8 +1860,7 @@ test("a Usenet download of a whole two-disc album takes the copy of a repeated t
     candidates: [candidate],
     candidateIndex: 0,
   };
-  while (payload)
-    payload = await processUsenetPipelinePayload(payload as UsenetPayload, failOnSourceFallback);
+  await runToEnd(payload);
   const job = downloadTracker.getJob(jobId);
   assert.ok(job != null);
   assert.equal(job.status, "done");
@@ -2125,19 +1938,14 @@ test("a Usenet download of a pinned track is not imported when its only copy run
   vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
   vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
   const candidate = usenetCandidate({
-    raw: {
-      release: {
-        title: "The Band - Beta",
-        guid: "release-long-copy",
-        downloadUrl: "https://nzb.test/long-copy",
-      },
-    },
-    score: 10,
-    resolvedAlbumName: "Long Album",
+    guid: "release-long-copy",
+    title: "The Band - Beta",
+    album: "Long Album",
+    downloadUrl: "https://nzb.test/long-copy",
   });
   const reasons: string[] = [];
-  let payload: UsenetPayload | PipelinePayload | null = {
-    source: "usenet" as const,
+  const payload: SourcePayload = {
+    source: "usenet",
     phase: "download",
     jobId,
     playlistId: "library",
@@ -2146,14 +1954,12 @@ test("a Usenet download of a pinned track is not imported when its only copy run
     candidates: [candidate],
     candidateIndex: 0,
   };
-  while (payload) {
-    payload = await processUsenetPipelinePayload(payload as UsenetPayload, {
-      failOrTryNextSource: async (_, __, reason) => {
-        reasons.push(reason);
-        return null;
-      },
-    });
-  }
+  await runToEnd(payload, {
+    failOrTryNextSource: async (_, __, reason) => {
+      reasons.push(reason);
+      return null;
+    },
+  });
   assert.notEqual(trackedJob(downloadTracker, jobId).status, "done");
   assert.equal(trackedJob(downloadTracker, jobId).finalPath, null);
   assert.equal(reasons.length, 1);
@@ -2413,16 +2219,10 @@ test("a Usenet album needs every track of the pinned release, imports only the w
   vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
   const candidates = ["partial", "expired", "complete"].map((name) =>
     usenetCandidate({
-      raw: {
-        release: {
-          title: `The Band - Album ${name}`,
-          guid: `guid-${name}`,
-          downloadUrl: `https://nzb.test/${name}`,
-        },
-      },
-      score: 10,
-      resolvedAlbumName: "Album",
-      releaseVerified: false,
+      guid: `guid-${name}`,
+      title: `The Band - Album ${name}`,
+      album: "Album",
+      downloadUrl: `https://nzb.test/${name}`,
     }),
   );
   const helpers = {
@@ -2430,8 +2230,8 @@ test("a Usenet album needs every track of the pinned release, imports only the w
       throw new Error(reason);
     },
   };
-  let payload: UsenetPayload | PipelinePayload | null = {
-    source: "usenet" as const,
+  const payload: SourcePayload = {
+    source: "usenet",
     phase: "download",
     jobId: requireFixture(ids[0]),
     playlistId: "library",
@@ -2444,15 +2244,15 @@ test("a Usenet album needs every track of the pinned release, imports only the w
     candidates,
     candidateIndex: 0,
   };
-  while (payload) payload = await processUsenetPipelinePayload(payload as UsenetPayload, helpers);
+  await runToEnd(payload, helpers);
   assert.equal(append.mock.calls.length, 2);
   for (const id of ids) {
     const job = downloadTracker.getJob(id);
     assert.ok(job != null);
     assert.equal(job.status, "done");
     assert.deepEqual(
-      job.deniedRemoteSources!.filter(([, guid]) => guid === "guid-partial"),
-      [["usenet", "guid-partial"]],
+      job.deniedRemoteSources!.filter(([, guid]) => guid === "album:guid-partial"),
+      [["usenet", "album:guid-partial"]],
     );
   }
   assert.deepEqual(
@@ -2496,16 +2296,10 @@ test("one playlist track outside any album request tries the next Usenet release
   vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
   const candidates = ["short", "whole"].map((name) =>
     usenetCandidate({
-      raw: {
-        release: {
-          title: `The Band - Album ${name}`,
-          guid: `guid-${name}`,
-          downloadUrl: `https://nzb.test/${name}`,
-        },
-      },
-      score: 10,
-      resolvedAlbumName: "Album",
-      releaseVerified: false,
+      guid: `guid-${name}`,
+      title: `The Band - Album ${name}`,
+      album: "Album",
+      downloadUrl: `https://nzb.test/${name}`,
     }),
   );
   const helpers = {
@@ -2513,8 +2307,8 @@ test("one playlist track outside any album request tries the next Usenet release
       throw new Error(reason);
     },
   };
-  let payload: UsenetPayload | PipelinePayload | null = {
-    source: "usenet" as const,
+  const payload: SourcePayload = {
+    source: "usenet",
     phase: "download",
     jobId,
     playlistId: "static",
@@ -2527,13 +2321,13 @@ test("one playlist track outside any album request tries the next Usenet release
     candidates,
     candidateIndex: 0,
   };
-  while (payload) payload = await processUsenetPipelinePayload(payload as UsenetPayload, helpers);
+  await runToEnd(payload, helpers);
   assert.equal(append.mock.calls.length, 2);
   const job = downloadTracker.getJob(jobId);
   assert.ok(job != null);
   assert.equal(job.status, "done");
   assert.match(basename(job.finalPath!), /^02 - Second\b/);
-  assert.deepEqual(job.deniedRemoteSources, [["usenet", "guid-short"]]);
+  assert.deepEqual(job.deniedRemoteSources, [["usenet", "album:guid-short"]]);
 });
 
 test("a Soulseek album gives up on files left queued or crawling and keeps the ones that finished", async (t) => {

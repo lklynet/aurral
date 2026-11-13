@@ -366,14 +366,19 @@ test("a download the provider will not cancel stays in the Library while every t
     await import("../../backend/services/download/downloadClientSettings.ts");
   const client = getDownloadClient("deemix");
   vi.spyOn(client, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(client, "removeFromQueue").mockImplementation(async () => false);
+  vi.spyOn(client, "getQueue").mockImplementation(async () => ({
+    "refused-provider-work": { status: "downloading" },
+  }));
+  vi.spyOn(client, "removeFromQueue").mockImplementation(async () => {
+    throw new Error("deemix refused");
+  });
   downloadPipelineQueue.enqueue({
     jobId: requireFixture(f.jobs[0]).id,
     playlistId: f.source.id,
     playlistGeneration: 0,
     phase: "poll",
     source: "deemix",
-    queueUuid: "refused-provider-work",
+    pendingId: "refused-provider-work",
   });
   const result = await execute({
     ownerUserId: f.user.id,
@@ -409,7 +414,7 @@ test("bulk leader removal hands its album download to an unselected held peer", 
     playlistGeneration: 0,
     phase: "poll",
     source: "deemix",
-    queueUuid: "album-work-needed-by-peer",
+    pendingId: "album-work-needed-by-peer",
     albumGrab: true,
     albumGroupJobIds: f.jobs.map((job) => job.id),
   });
@@ -430,7 +435,7 @@ test("bulk leader removal hands its album download to an unselected held peer", 
   const payload = requireFixture(downloadPipelineQueue.list()[0]).payload;
   assert.ok(payload != null);
   assert.equal(payload.jobId, requireFixture(f.jobs[1]).id);
-  assert.equal(payload.queueUuid, "album-work-needed-by-peer");
+  assert.equal(payload.pendingId, "album-work-needed-by-peer");
   assert.equal(
     requireFixture(config.flowPlaylistConfig.getStaticPlaylist(f.source.id)).tracks.length,
     1,

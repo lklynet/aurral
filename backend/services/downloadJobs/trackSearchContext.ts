@@ -197,15 +197,22 @@ async function resolveReleaseGroup(track: DownloadTrackFields): Promise<ReleaseG
       noteFailure(error);
     }
     try {
-      const candidates = safeMbid ? await listArtistAlbums(safeMbid) : [];
+      const albums = safeMbid ? await listArtistAlbums(safeMbid, { hydrateLimit: 0 }) : [];
+      const candidates = albums.filter(
+        (album) => album.id && matchesAlbumTitle(album.title, safeAlbum),
+      );
+      if (track.releaseYear && candidates.length > 1) {
+        for (const candidate of candidates) {
+          const album = await getAlbumByMbid(candidate.id).catch(() => null);
+          candidate.firstReleaseDate = album?.releaseDate || null;
+        }
+      }
       for (const best of rankCandidates(candidates, safeAlbum, track.releaseYear)) {
-        const id = best?.id;
-        if (!id || !matchesAlbumTitle(best?.title, safeAlbum)) continue;
-        if (!(await holds(id))) continue;
+        if (!(await holds(best.id))) continue;
         return {
-          id: String(id),
-          title: String(best?.title || safeAlbum).trim() || safeAlbum,
-          releaseYear: getYear(best?.firstReleaseDate),
+          id: String(best.id),
+          title: String(best.title || safeAlbum).trim() || safeAlbum,
+          releaseYear: getYear(best.firstReleaseDate),
         };
       }
     } catch (error) {

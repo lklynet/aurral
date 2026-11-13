@@ -126,11 +126,11 @@ async function linkAudioFiles(torrent: { hash: string; save_path: string }, dire
   }
 }
 
-export const qbittorrentSource: DownloadSource = {
+export const qbittorrentSource = {
   id: "qbittorrent",
   staging: "qbittorrent",
   albums: {
-    async search(album, upgrade) {
+    async search(album, { upgrade }) {
       const ranked = await searchReleases(album, upgrade).catch((error: unknown) => {
         if (error instanceof DownloadSourceError) throw error;
         throw new DownloadSourceError(`Prowlarr search failed: ${failure(error)}`);
@@ -183,7 +183,7 @@ export const qbittorrentSource: DownloadSource = {
     const torrents = await qbittorrentClient.torrentsTagged(id);
     await qbittorrentClient.deleteTorrents(torrents.map((torrent) => torrent.hash));
   },
-};
+} satisfies DownloadSource;
 
 // As in Lidarr, qBittorrent stops a torrent at its seeding limit, and Aurral
 // then removes it. Only a torrent Aurral took its files from is marked, so a

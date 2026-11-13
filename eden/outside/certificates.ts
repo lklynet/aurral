@@ -45,7 +45,7 @@ const name = (commonName: string) =>
   sequence(der(0x31, sequence(oid(COMMON_NAME), text(0x0c, commonName))));
 
 const pem = (label: string, body: Buffer) =>
-  `-----BEGIN ${label}-----\n${body.toString("base64").replace(/(.{64})/g, "$1\n")}\n-----END ${label}-----\n`;
+  `-----BEGIN ${label}-----\n${(body.toString("base64").match(/.{1,64}/g) ?? []).join("\n")}\n-----END ${label}-----\n`;
 
 function certificate({
   subject,
