@@ -759,7 +759,6 @@ test("a configured scan resolves untagged artists only on one unambiguous MusicB
       metadata: {
         ...originalSettings.integrations.metadata,
         baseUrl: server.url,
-        enableNarrowFallbacks: false,
       },
     },
   });
@@ -918,7 +917,6 @@ async function withReleaseGroups(
       metadata: {
         ...originalSettings.integrations.metadata,
         baseUrl: server.url,
-        enableNarrowFallbacks: false,
       },
     },
   });

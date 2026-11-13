@@ -6,11 +6,11 @@ const DEPRECATIONS = {
   "auth-env":
     "AUTH_USER or AUTH_PASSWORD is set. Aurral no longer reads them. Manage accounts in Settings → Users, then remove both.",
   "integration-env":
-    "LASTFM_API_KEY or LASTFM_API_SECRET is set. Save the Last.fm keys in Settings → Discovery → Last.fm, then remove the variables. A future release stops reading them.",
+    "LASTFM_API_KEY, LASTFM_API_SECRET, or TICKETMASTER_API_KEY is set. Save the keys in Settings → Discovery, then remove the variables. A future release stops reading them.",
   "tuning-env": "CONTACT_EMAIL is set. A future release stops reading it. Remove it.",
 };
 
-const INTEGRATION_ENV = ["LASTFM_API_KEY", "LASTFM_API_SECRET"];
+const INTEGRATION_ENV = ["LASTFM_API_KEY", "LASTFM_API_SECRET", "TICKETMASTER_API_KEY"];
 
 type DeprecationKind = keyof typeof DEPRECATIONS;
 

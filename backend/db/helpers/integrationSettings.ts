@@ -30,7 +30,6 @@ export const integrationSettingsSchema = v.looseObject({
   lastfm: service({
     apiKey: text,
     apiSecret: text,
-    discoveryPeriod: text,
   }),
   slskd: service({
     enabled: flag,
@@ -100,8 +99,6 @@ export const integrationSettingsSchema = v.looseObject({
   ticketmaster: service({
     apiKey: text,
     searchRadiusMiles: count,
-    localDiscoveryIncludeRecommendations: flag,
-    localDiscoveryIncludeTrending: flag,
   }),
   news: service({
     enabled: flag,
@@ -110,12 +107,7 @@ export const integrationSettingsSchema = v.looseObject({
     ),
     groups: lenient(recordOf(v.boolean())),
   }),
-  metadata: service({
-    provider: text,
-    baseUrl: text,
-    userAgentSuffix: text,
-    enableNarrowFallbacks: flag,
-  }),
+  metadata: service({ baseUrl: text }),
   general: service({ apiKey: text }),
   gotify: service({
     url: text,

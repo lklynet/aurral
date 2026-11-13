@@ -85,7 +85,6 @@ test("re-adding an Aurral album keeps the date it was first added", async () => 
       metadata: {
         ...originalSettings.integrations?.metadata,
         baseUrl: server.url,
-        enableNarrowFallbacks: false,
       },
     },
   });

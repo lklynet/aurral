@@ -6,7 +6,6 @@ import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { getTicketmasterApiKey } from "../../../services/apiClients/index.ts";
 import { getLibraryArtistNames } from "../../../services/libraryQueryService.ts";
-import { getLocalDiscoveryPreferences } from "../../../services/discovery/index.ts";
 import { getUserDiscovery } from "../../../services/discovery/userDiscovery.ts";
 import {
   getNearbyShows,
@@ -69,15 +68,10 @@ export default new Hono<AppEnv>().get(
         ip: c.var.clientIp,
       };
       rememberNearbyLocation(userId, location);
-      const localDiscoveryPreferences = getLocalDiscoveryPreferences();
       const radiusMiles = getTicketmasterRadiusMiles();
       const { body: discovery } = getUserDiscovery(userId, 24);
-      const recommendedArtists = localDiscoveryPreferences.includeRecommendations
-        ? discovery.recommendations
-        : [];
-      const trendingArtists = localDiscoveryPreferences.includeTrending
-        ? discovery.globalTop.slice(0, 18)
-        : [];
+      const recommendedArtists = discovery.recommendations;
+      const trendingArtists = discovery.globalTop.slice(0, 18);
       const libraryArtists = getLibraryArtistNames();
       const nearbyShows = await getNearbyShows({
         req: { ip: location.ip },

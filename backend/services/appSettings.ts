@@ -28,9 +28,7 @@ const objectValue = v.record(v.string(), v.unknown());
 const asObject = (value: unknown) => (v.is(objectValue, value) ? value : undefined);
 
 export const appSettingsPatch = v.object({
-  quality: v.optional(v.string()),
   qualityProfile: v.optional(v.unknown()),
-  releaseTypes: v.optional(v.array(v.string())),
   integrations: v.optional(objectValue),
   downloadFolderPath: v.optional(v.nullable(v.string())),
   pathMappings: v.optional(v.unknown()),
@@ -81,21 +79,11 @@ export function readAppSettings() {
   if (settings?.integrations?.musicbrainz) {
     delete settings.integrations.musicbrainz;
   }
-  if (!settings?.integrations?.metadata) {
-    settings.integrations.metadata = {
-      provider: "brainzmash",
-      baseUrl: "",
-      userAgentSuffix: "",
-      enableNarrowFallbacks: true,
-    };
-  } else {
-    settings.integrations.metadata = {
-      ...settings.integrations.metadata,
-      baseUrl: String(settings.integrations.metadata.baseUrl || "")
-        .trim()
-        .replace(/\/+$/, ""),
-    };
-  }
+  settings.integrations.metadata = {
+    baseUrl: String(settings.integrations.metadata?.baseUrl || "")
+      .trim()
+      .replace(/\/+$/, ""),
+  };
   settings.security = {
     ...(settings.security || {}),
     localNetworkBypass: {
@@ -135,7 +123,6 @@ function normalizeIntegrationPatch(
       ...(currentSettings.integrations?.metadata || {}),
       ...metadata,
     };
-    nextMetadata.provider = "brainzmash";
     const trimmedBaseUrl = String(nextMetadata.baseUrl || "").trim();
     if (trimmedBaseUrl) {
       const baseUrlValidation = validateExternalUrl(trimmedBaseUrl);
@@ -146,9 +133,6 @@ function normalizeIntegrationPatch(
     } else {
       nextMetadata.baseUrl = "";
     }
-    nextMetadata.userAgentSuffix =
-      typeof nextMetadata.userAgentSuffix === "string" ? nextMetadata.userAgentSuffix.trim() : "";
-    nextMetadata.enableNarrowFallbacks = nextMetadata.enableNarrowFallbacks !== false;
     integrations.metadata = nextMetadata;
   }
   const prowlarr = asObject(integrations.prowlarr);
@@ -360,9 +344,7 @@ function normalizeIntegrationPatch(
 
 export async function saveAppSettings(input: v.InferOutput<typeof appSettingsPatch>) {
   const {
-    quality,
     qualityProfile,
-    releaseTypes,
     integrations,
     downloadFolderPath,
     pathMappings,
@@ -415,7 +397,6 @@ export async function saveAppSettings(input: v.InferOutput<typeof appSettingsPat
       dateTimeFormat !== undefined
         ? dateTimeFormat
         : currentSettings.dateTimeFormat || defaultData.settings.dateTimeFormat,
-    quality: quality !== undefined ? quality : currentSettings.quality || "standard",
     qualityProfile:
       qualityProfile !== undefined
         ? normalizeQualityProfile(
@@ -433,17 +414,12 @@ export async function saveAppSettings(input: v.InferOutput<typeof appSettingsPat
       pathMappings !== undefined
         ? normalizePathMappings(pathMappings)
         : currentSettings.pathMappings || [],
-    releaseTypes:
-      releaseTypes !== undefined
-        ? releaseTypes
-        : currentSettings.releaseTypes || defaultData.settings.releaseTypes,
     integrations: mergedIntegrations,
     inbox:
       inbox !== undefined
         ? {
             ...(currentSettings.inbox || defaultData.settings.inbox),
             ...inbox,
-            enabled: inbox.enabled !== false,
             releases: inbox.releases !== false,
             shows: inbox.shows !== false,
             news: inbox.news !== false,

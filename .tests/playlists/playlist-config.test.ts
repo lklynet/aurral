@@ -199,14 +199,14 @@ test("flow saves and settings saves leave each other's newer values alone", () =
   const flow = flowPlaylistConfig.createFlow({ name: "Stale Copy", size: 20 });
   const staleSettings = dbOps.getSettings();
   db.prepare(
-    "INSERT INTO settings (key, value) VALUES ('quality', 'lossless') ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    "INSERT INTO settings (key, value) VALUES ('dateTimeFormat', 'day-first') ON CONFLICT(key) DO UPDATE SET value = excluded.value",
   ).run();
 
   flowPlaylistConfig.markLastRunAt(flow.id, 1234);
   dbOps.invalidateSettingsCache();
-  assert.equal(dbOps.getSettings().quality, "lossless");
+  assert.equal(dbOps.getSettings().dateTimeFormat, "day-first");
 
-  dbOps.updateSettings({ ...staleSettings, quality: "standard" });
+  dbOps.updateSettings({ ...staleSettings, dateTimeFormat: "browser" });
   invalidateFlowPlaylistConfigCache();
   assert.equal(flowPlaylistConfig.getFlow(flow.id)?.lastRunAt, 1234);
 });

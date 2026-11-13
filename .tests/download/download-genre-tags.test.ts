@@ -53,7 +53,7 @@ async function withAlbumGenres(genres: string[] | null, run: () => Promise<unkno
   dbOps.updateSettings({
     integrations: {
       ...previous.integrations,
-      metadata: { provider: "brainzmash", baseUrl: server.url, enableNarrowFallbacks: false },
+      metadata: { baseUrl: server.url },
     },
   });
   clearMetadataProviderCaches();

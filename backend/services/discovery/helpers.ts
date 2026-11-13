@@ -1,19 +1,8 @@
-import { isOwnKey } from "../../../lib/ownKey.ts";
 import { randomUUID } from "crypto";
 import pMap, { pMapSkip } from "p-map";
 import * as v from "valibot";
 import { dbOps } from "../../db/helpers/index.ts";
 import type { ArtistMatchFields } from "./artistKeys.ts";
-
-export const LASTFM_PERIODS = ["none", "7day", "1month", "3month", "6month", "12month", "overall"];
-export const LISTENBRAINZ_RANGE_BY_PERIOD = {
-  "7day": "week",
-  "1month": "month",
-  "3month": "quarter",
-  "6month": "half_yearly",
-  "12month": "year",
-  overall: "all_time",
-};
 
 export const DISCOVERY_QUALITY_INITIAL = "initial";
 export const DISCOVERY_QUALITY_ENRICHING = "enriching";
@@ -27,12 +16,6 @@ export const DISCOVERY_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const getDiscoveryRecommendationPoolLimit = () => DISCOVERY_RECOMMENDATIONS_MAX;
 
-export const getLastfmDiscoveryPeriod = () => {
-  const settings = dbOps.getSettings();
-  const p = settings.integrations?.lastfm?.discoveryPeriod;
-  return p && LASTFM_PERIODS.includes(p) ? p : "1month";
-};
-
 export const DISCOVERY_MODES = ["safer", "balanced", "deeper"] as const;
 export type DiscoveryMode = (typeof DISCOVERY_MODES)[number];
 const discoveryModeSchema = v.picklist(DISCOVERY_MODES);
@@ -44,23 +27,6 @@ export const getDiscoveryMode = (userId: number | null): DiscoveryMode =>
 
 export const setDiscoveryMode = (userId: number, mode: DiscoveryMode) =>
   dbOps.setJSONSetting(discoveryModeKey(userId), mode);
-
-export const getLocalDiscoveryPreferences = () => {
-  const settings = dbOps.getSettings();
-  return {
-    includeRecommendations:
-      settings.integrations?.ticketmaster?.localDiscoveryIncludeRecommendations !== false,
-    includeTrending: settings.integrations?.ticketmaster?.localDiscoveryIncludeTrending !== false,
-  };
-};
-
-export const getListenbrainzRange = (discoveryPeriod: string) => {
-  if (discoveryPeriod === "none") return null;
-  const range = isOwnKey(LISTENBRAINZ_RANGE_BY_PERIOD, discoveryPeriod)
-    ? LISTENBRAINZ_RANGE_BY_PERIOD[discoveryPeriod]
-    : undefined;
-  return range || "month";
-};
 
 export const normalizeTextList = (value: unknown) => {
   if (!Array.isArray(value)) return [];

@@ -2,7 +2,6 @@ import * as v from "valibot";
 import { http, isTransientNetworkError, waitBeforeRetry } from "../../lib/http.ts";
 import { lenient, lenientCount, lenientText } from "./integrationData.ts";
 import { asAppError } from "../../lib/errors.ts";
-import { isOwnKey } from "../../lib/ownKey.ts";
 import createRateLimiter from "./apiClients/rateLimiter.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import { validateExternalUrl } from "./urlValidator.ts";
@@ -39,15 +38,6 @@ const koitoTopArtistsSchema = v.fallback(
 
 const koitoLimiter = createRateLimiter(250);
 
-const KOITO_PERIOD_BY_DISCOVERY_PERIOD = {
-  "7day": "week",
-  "1month": "month",
-  "3month": "year",
-  "6month": "year",
-  "12month": "year",
-  overall: "all_time",
-};
-
 export function normalizeKoitoBaseUrl(baseUrl: unknown) {
   const trimmed = String(baseUrl || "")
     .trim()
@@ -69,13 +59,6 @@ export function normalizeKoitoBaseUrl(baseUrl: unknown) {
 export function getKoitoListenBrainzBaseUrl(baseUrl: unknown) {
   const normalized = normalizeKoitoBaseUrl(baseUrl);
   return normalized ? `${normalized}/apis/listenbrainz` : "";
-}
-
-export function getKoitoPeriod(discoveryPeriod: string | null | undefined) {
-  if (!discoveryPeriod || discoveryPeriod === "none") return null;
-  return isOwnKey(KOITO_PERIOD_BY_DISCOVERY_PERIOD, discoveryPeriod)
-    ? KOITO_PERIOD_BY_DISCOVERY_PERIOD[discoveryPeriod]
-    : "month";
 }
 
 const koitoRequest = koitoLimiter.wrap(
@@ -126,20 +109,11 @@ const koitoRequest = koitoLimiter.wrap(
   },
 );
 
-export async function fetchKoitoTopArtists(
-  baseUrl: unknown,
-  {
-    discoveryPeriod = "1month",
-    limit = 50,
-  }: { discoveryPeriod?: string | null; limit?: number } = {},
-) {
+export async function fetchKoitoTopArtists(baseUrl: unknown, limit = 50) {
   const validation = validateExternalUrl(baseUrl);
   if (!validation.valid) {
     throw new Error(validation.error || "Invalid Koito URL");
   }
-  const period = getKoitoPeriod(discoveryPeriod);
-  if (!period) return [];
-
   const boundedLimit = Math.min(50, Math.max(1, Number(limit) || 50));
   const artists: NonNullable<v.InferOutput<typeof koitoTopArtistsSchema>["items"]> = [];
   let page = 1;
@@ -148,7 +122,7 @@ export async function fetchKoitoTopArtists(
     const data = v.parse(
       koitoTopArtistsSchema,
       await koitoRequest(validation.url, "/apis/web/v1/top/artists", {
-        period,
+        period: "month",
         page,
         limit: Math.min(KOITO_DEFAULT_LIMIT, boundedLimit - artists.length),
       }),

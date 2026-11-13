@@ -349,20 +349,11 @@ function InboxGroup() {
 
   return (
     <SettingsGroup title="Inbox">
-      <SettingsRow label="Enabled" htmlFor="inbox-enabled">
-        <PillToggle
-          id="inbox-enabled"
-          checked={inbox.enabled !== false}
-          aria-label="Enabled"
-          onChange={(event) => update({ enabled: event.target.checked })}
-        />
-      </SettingsRow>
       {INBOX_ITEMS.map(([key, label]) => (
         <SettingsRow key={key} label={label} htmlFor={`inbox-${key}`}>
           <PillToggle
             id={`inbox-${key}`}
             checked={inbox[key] === true}
-            disabled={inbox.enabled === false}
             aria-label={label}
             onChange={(event) => update({ [key]: event.target.checked })}
           />

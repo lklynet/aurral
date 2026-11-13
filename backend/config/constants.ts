@@ -30,7 +30,6 @@ export const defaultData = {
       lastfm: {
         apiKey: "",
         apiSecret: "",
-        discoveryPeriod: "1month",
       },
       slskd: {
         enabled: false,
@@ -91,18 +90,13 @@ export const defaultData = {
       ticketmaster: {
         apiKey: "",
         searchRadiusMiles: 250,
-        localDiscoveryIncludeRecommendations: true,
-        localDiscoveryIncludeTrending: true,
       },
       news: {
         enabled: true,
         feeds: [],
       },
       metadata: {
-        provider: "brainzmash",
         baseUrl: "",
-        userAgentSuffix: "",
-        enableNarrowFallbacks: true,
       },
       general: {},
       gotify: {
@@ -117,25 +111,12 @@ export const defaultData = {
       },
       webhooks: [],
     },
-    releaseTypes: [
-      "Album",
-      "EP",
-      "Single",
-      "Broadcast",
-      "Soundtrack",
-      "Spokenword",
-      "Remix",
-      "Live",
-      "Compilation",
-      "Demo",
-    ],
     security: {
       localNetworkBypass: {
         enabled: false,
       },
     },
     inbox: {
-      enabled: true,
       releases: true,
       shows: true,
       news: true,

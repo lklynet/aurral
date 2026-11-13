@@ -173,7 +173,7 @@ export async function startPerfApp({ artists }: { artists: number }) {
     onboardingComplete: true,
     integrations: {
       general: { authUser: "test", authPassword: "password" },
-      metadata: { provider: "brainzmash", baseUrl: metadata.url },
+      metadata: { baseUrl: metadata.url },
     },
     security: { localNetworkBypass: { enabled: false } },
   });

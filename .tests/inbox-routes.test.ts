@@ -80,7 +80,7 @@ test("malformed and oversized JSON bodies get client errors", async () => {
 
   const oversized = await app.request(
     "/inbox/missing",
-    patchJson(JSON.stringify({ action: "x".repeat(3 * 1024 ** 2) })),
+    patchJson(JSON.stringify({ action: "x".repeat(6 * 1024 ** 2) })),
   );
   assert.equal(oversized.status, 413);
 });

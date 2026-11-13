@@ -41,7 +41,7 @@ beforeAll(async () => {
     onboardingComplete: true,
     integrations: {
       general: { authUser: "test", authPassword: "password" },
-      metadata: { baseUrl: metadataServer.url, enableNarrowFallbacks: false },
+      metadata: { baseUrl: metadataServer.url },
     },
     security: { localNetworkBypass: { enabled: false } },
   });

@@ -38,19 +38,13 @@ const [
   () => import("../backend/services/imageProxyService.ts"),
 );
 
-dbOps.updateSettings({
-  integrations: {
-    ...dbOps.getSettings().integrations,
-    metadata: { enableNarrowFallbacks: false },
-  },
-});
-
 beforeEach(() => {
   archiveCover = noArchiveCover;
   const get = http.get.bind(http);
-  vi.spyOn(http, "get").mockImplementation(async (url, options) =>
-    url.startsWith("https://coverartarchive.org/") ? archiveCover : get(url, options),
-  );
+  vi.spyOn(http, "get").mockImplementation(async (url, options) => {
+    if (url.startsWith("https://musicbrainz.org/")) throw new Error("MusicBrainz is unavailable");
+    return url.startsWith("https://coverartarchive.org/") ? archiveCover : get(url, options);
+  });
   clearMetadataProviderCaches();
   dbOps.deleteImage(`rg:${mbid}`);
   replies.clear();
@@ -137,7 +131,7 @@ test("an unavailable artist/title search logs its context without caching missin
     releaseGroupMbid: mbid,
     artistName: "",
     albumTitle: "Missing Album",
-    reason: `Request to ${new URL(providerServer.url).host} failed with status code 404`,
+    reason: "MusicBrainz is unavailable",
   });
 });
 

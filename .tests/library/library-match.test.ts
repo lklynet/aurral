@@ -131,7 +131,6 @@ beforeAll(async () => {
       metadata: {
         ...settings.integrations.metadata,
         baseUrl: server.url,
-        enableNarrowFallbacks: false,
       },
     },
   });

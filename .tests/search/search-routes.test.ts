@@ -76,7 +76,6 @@ beforeAll(async () => {
       metadata: {
         ...settings.integrations.metadata,
         baseUrl: metadataServer.url,
-        enableNarrowFallbacks: false,
       },
     },
   });

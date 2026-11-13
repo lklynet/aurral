@@ -21,7 +21,7 @@ import {
   warnUnreadableIntegrationSettings,
   type StoredIntegrations,
 } from "./integrationSettings.ts";
-import { lenient, listOf } from "./storedSchemas.ts";
+import { lenient } from "./storedSchemas.ts";
 
 export type { StoredIntegrations } from "./integrationSettings.ts";
 
@@ -44,7 +44,6 @@ export interface StoredPlaylistWorker {
 }
 
 const inboxSchema = v.looseObject({
-  enabled: flag,
   releases: flag,
   shows: flag,
   news: flag,
@@ -58,14 +57,11 @@ export type QualityProfile = ReturnType<typeof normalizeQualityProfile>;
 
 export interface AppSettings {
   integrations: StoredIntegrations;
-  quality: string;
   dateTimeFormat: string;
   qualityProfile: QualityProfile;
-  queueCleaner: Record<string, unknown>;
   security: StoredSecurity;
   downloadFolderPath: string | null;
   pathMappings: ReturnType<typeof normalizePathMappings>;
-  releaseTypes: string[];
   playlistWorker: SettingsPlaylistWorker;
   inbox: SettingsInbox;
   onboardingComplete: boolean;
@@ -73,15 +69,12 @@ export interface AppSettings {
 
 export interface SettingsUpdate {
   integrations?: StoredIntegrations;
-  quality?: string;
   dateTimeFormat?: string | null;
   qualityProfile?: unknown;
-  queueCleaner?: Record<string, unknown>;
   security?: StoredSecurity;
   inbox?: StoredInbox;
   downloadFolderPath?: string | null;
   pathMappings?: unknown;
-  releaseTypes?: string[];
   flows?: unknown;
   staticPlaylists?: unknown;
   playlistWorker?: StoredPlaylistWorker;
@@ -220,13 +213,7 @@ export const dbOps = {
       decryptIntegrations(dbHelpers.parseJSON(getSettingStmt.get("integrations")?.value), encKey),
     );
     warnUnreadableIntegrationSettings(unreadable);
-    const quality = getSettingStmt.get("quality")?.value;
     const dateTimeFormat = getSettingStmt.get("dateTimeFormat")?.value;
-    const queueCleaner = dbHelpers.readJSON(
-      v.record(v.string(), v.unknown()),
-      getSettingStmt.get("queueCleaner")?.value,
-      "queueCleaner",
-    );
     const security = dbHelpers.readJSON(
       securitySchema,
       getSettingStmt.get("security")?.value,
@@ -238,11 +225,6 @@ export const dbOps = {
       dbHelpers.parseJSON(getSettingStmt.get("pathMappings")?.value) || [],
     );
     syncPathMappings(pathMappings);
-    const releaseTypes = dbHelpers.readJSON(
-      listOf(v.string()),
-      getSettingStmt.get("releaseTypes")?.value,
-      "releaseTypes",
-    );
     const playlistWorker = normalizePlaylistWorkerSettings(
       readStoredSettingJson(v.looseObject({}), "playlistWorker"),
     );
@@ -260,17 +242,13 @@ export const dbOps = {
     }
     const result = {
       integrations: decryptedIntegrations,
-      quality: quality || "standard",
       dateTimeFormat: normalizeDateTimeFormat(dateTimeFormat),
       qualityProfile,
-      queueCleaner: queueCleaner || {},
       security: security ?? { localNetworkBypass: { enabled: false } },
       downloadFolderPath: downloadFolderPath || null,
       pathMappings,
-      releaseTypes: releaseTypes || [],
       playlistWorker,
       inbox: {
-        enabled: inbox.enabled !== false,
         releases: inbox.releases !== false,
         shows: inbox.shows !== false,
         news: inbox.news !== false,
@@ -306,9 +284,6 @@ export const dbOps = {
           dbHelpers.stringifyJSON(encryptIntegrations(savedIntegrations, encKey)),
         );
       }
-      if (settings.quality) {
-        upsertSettingStmt.run("quality", settings.quality);
-      }
       if (settings.dateTimeFormat !== undefined) {
         upsertSettingStmt.run("dateTimeFormat", normalizeDateTimeFormat(settings.dateTimeFormat));
       }
@@ -320,9 +295,6 @@ export const dbOps = {
           ),
         );
       }
-      if (settings.queueCleaner) {
-        upsertSettingStmt.run("queueCleaner", dbHelpers.stringifyJSON(settings.queueCleaner));
-      }
       if (settings.security !== undefined) {
         upsertSettingStmt.run("security", dbHelpers.stringifyJSON(settings.security));
       }
@@ -330,7 +302,6 @@ export const dbOps = {
         upsertSettingStmt.run(
           "inbox",
           dbHelpers.stringifyJSON({
-            enabled: settings.inbox.enabled !== false,
             releases: settings.inbox.releases !== false,
             shows: settings.inbox.shows !== false,
             news: settings.inbox.news !== false,
@@ -359,9 +330,6 @@ export const dbOps = {
         const normalizedMappings = normalizePathMappings(settings.pathMappings);
         upsertSettingStmt.run("pathMappings", dbHelpers.stringifyJSON(normalizedMappings));
         syncPathMappings(normalizedMappings);
-      }
-      if (settings.releaseTypes) {
-        upsertSettingStmt.run("releaseTypes", dbHelpers.stringifyJSON(settings.releaseTypes));
       }
       if (settings.flows !== undefined) {
         upsertSettingStmt.run("flows", dbHelpers.stringifyJSON(settings.flows));

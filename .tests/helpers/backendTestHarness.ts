@@ -82,7 +82,6 @@ export function applyIsolatedBackendEnv(paths: IsolatedStatePaths) {
   process.env.WEEKLY_FLOW_FOLDER = join(paths.baseDir, "weekly-flow");
   process.env.DOWNLOAD_FOLDER = join(paths.baseDir, "downloads");
   process.env.NODE_ENV = "test";
-  process.env.JSON_BODY_LIMIT = "2mb";
 }
 
 export async function cleanupIsolatedState(paths: IsolatedStatePaths) {

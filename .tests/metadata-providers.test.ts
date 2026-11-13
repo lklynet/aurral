@@ -53,7 +53,6 @@ afterAll(async () => {
 const OFFLINE_CHILD_ARGS = ["--import", new URL("./setup-env.ts", import.meta.url).href];
 
 test("default settings and unset backend config use BrainzMash metadata", async () => {
-  assert.equal(defaultData.settings.integrations.metadata.provider, "brainzmash");
   assert.equal(defaultData.settings.integrations.metadata.baseUrl, "");
   assert.equal(brainzmashProvider.getMetadataBaseUrl(), DEFAULT_METADATA_BASE_URL);
 
@@ -142,9 +141,7 @@ test("stale album metadata is served while one refresh runs in the background", 
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -191,9 +188,7 @@ test("BrainzMash data Aurral can't read is never served, from the provider or th
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -234,9 +229,7 @@ test("cached artist lookups read only what Aurral already stored", async () => {
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -275,9 +268,7 @@ test("entity metadata is shared with other processes until the cache is cleared"
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -331,9 +322,7 @@ test("metadata past its stale window is removed from storage", async () => {
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -408,9 +397,7 @@ test("artist album refreshes can bypass the long-lived metadata cache", async ()
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -470,9 +457,7 @@ test("an artist's album list refreshes a cached album only while it is not out y
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -517,9 +502,7 @@ test("missing entity metadata is negatively cached for repeated lookups", async 
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -557,9 +540,7 @@ test("transient entity failures use a persistent cooldown instead of redownloadi
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -599,9 +580,7 @@ test("an album request already sent finishes and is cached after its caller leav
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -643,9 +622,7 @@ test("a request that waited its turn is sent with its full timeout", async () =>
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: "http://metadata.test",
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -690,9 +667,7 @@ test("local request admission timeouts do not put entity metadata into cooldown"
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -754,9 +729,7 @@ test("forced refreshes serve stale album metadata when the provider fails", asyn
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -810,9 +783,7 @@ test("an album 429 makes only that album wait out its retry-after", async () => 
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -847,16 +818,14 @@ test("a search 429 pauses every metadata request for at most fifteen minutes", a
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
     clearMetadataProviderCaches();
 
     await assert.rejects(
-      () => searchAlbums("Rate Limited", { throwOnFailure: true }),
+      () => searchAlbums("Rate Limited", { throwOnFailure: true, musicbrainzFallback: false }),
       (error) => asAppError(error)?.response?.status === 429,
     );
     await assert.rejects(
@@ -916,9 +885,7 @@ test("a metadata 403 opens a shared blocked cooldown for subsequent requests", a
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -988,9 +955,7 @@ test("search metadata coalesces concurrent misses and shares fresh cache entries
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -1029,9 +994,7 @@ test("album search shows no results when its MusicBrainz fallback is down", asyn
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
-          enableNarrowFallbacks: true,
         },
       },
     });
@@ -1061,7 +1024,6 @@ test("BrainzMash rejects the saturation boundary before its deadline", async () 
         ...(previousSettings.integrations || {}),
         metadata: {
           ...(previousSettings.integrations?.metadata || {}),
-          provider: "brainzmash",
           baseUrl: server.url,
         },
       },
@@ -1106,7 +1068,6 @@ test("independent provider processes share request admission", async () => {
         metadata: {
           ...previous.integrations?.metadata,
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -1169,7 +1130,6 @@ test("independent provider processes share one active entity request", async () 
         metadata: {
           ...previous.integrations?.metadata,
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
@@ -1226,7 +1186,6 @@ test("clearing caches preserves provider spacing for another process", async () 
         metadata: {
           ...previous.integrations?.metadata,
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
