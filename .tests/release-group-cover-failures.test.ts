@@ -9,8 +9,9 @@ import { requireFixture } from "./playlists/fixtures.ts";
 import { http } from "../lib/http.ts";
 
 const mbid = "11111111-1111-4111-8111-111111111111";
-const fallbackMbid = "22222222-2222-4222-8222-222222222222";
+const missingMbid = "22222222-2222-4222-8222-222222222222";
 const replies = new Map<string, { status: number; body: unknown }>();
+const deezerReplies = new Map<string, unknown>();
 const requests: string[] = [];
 const providerServer = await createMockHttpServer((request, response) => {
   const pathname = new URL(request.url || "/", "http://localhost").pathname;
@@ -39,12 +40,14 @@ const [
 beforeEach(() => {
   const get = http.get.bind(http);
   vi.spyOn(http, "get").mockImplementation(async (url, options) => {
-    if (url.startsWith("https://musicbrainz.org/")) throw new Error("MusicBrainz is unavailable");
-    return get(url, options);
+    if (!url.startsWith("https://api.deezer.com/")) return get(url, options);
+    const data = deezerReplies.get(new URL(url).pathname) ?? { data: [] };
+    return { status: 200, statusText: "OK", headers: {}, data };
   });
   clearMetadataProviderCaches();
   dbOps.deleteImage(`rg:${mbid}`);
   replies.clear();
+  deezerReplies.clear();
   requests.length = 0;
 });
 
@@ -110,58 +113,37 @@ test("confirmed missing metadata is cached as missing artwork without a warning"
   assert.equal(warnings.mock.calls.length, 0);
 });
 
-test("an unavailable artist/title search logs its context without caching missing artwork", async () => {
-  replies.set(`/album/${mbid}`, { status: 200, body: { id: mbid, images: [] } });
-  const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-  const result = await fetchReleaseGroupCoverUrl(mbid, { albumTitle: "Missing Album" });
-
-  assert.equal(result.notFound, false);
-  assert.equal(result.transientError, true);
-  assert.equal(dbOps.getImage(`rg:${mbid}`), null);
-  assert.equal(warnings.mock.calls.length, 1);
-  assert.match(
-    String(requireFixture(warnings.mock.calls[0])[1]),
-    /cover artist\/title lookup failed/,
-  );
-  assert.deepEqual(warnings.mock.calls[0]?.[2], {
-    releaseGroupMbid: mbid,
-    artistName: "",
-    albumTitle: "Missing Album",
-    reason: "MusicBrainz is unavailable",
+test("an album BrainzMash has no cover for takes Deezer's without asking BrainzMash again", async () => {
+  replies.set(`/album/${mbid}`, {
+    status: 200,
+    body: { id: mbid, images: [{ CoverType: "Disc", Url: "https://images.example/disc.png" }] },
   });
-});
+  const cover = "https://images.example/deezer.jpg";
+  deezerReplies.set("/search/artist", { data: [{ id: 7, name: "Cover Artist" }] });
+  deezerReplies.set("/artist/7/albums", {
+    data: [{ id: 9, title: "Covered", record_type: "album", cover_xl: cover }],
+  });
 
-test("a failed metadata lookup still allows the artist/title fallback to return a cover", async () => {
-  replies.set(`/album/${mbid}`, { status: 503, body: {} });
-  const album = {
-    id: fallbackMbid,
-    title: "Fallback Album",
-    images: [{ CoverType: "Cover", Url: "https://images.example/fallback.jpg" }],
-  };
-  replies.set("/search/album", { status: 200, body: [album] });
-  replies.set(`/album/${fallbackMbid}`, { status: 200, body: album });
-  const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const result = await fetchReleaseGroupCoverUrl(mbid, {
+    artistName: "Cover Artist",
+    albumTitle: "Covered",
+  });
 
-  const result = await fetchReleaseGroupCoverUrl(mbid, { albumTitle: album.title });
-
-  assert.equal(result.imageUrl, requireFixture(album.images[0]).Url);
-  assert.equal(result.notFound, false);
-  assert.equal(result.transientError, false);
+  assert.equal(result.imageUrl, cover);
+  assert.deepEqual(requests, [`/album/${mbid}`]);
   assert.equal(dbOps.getImage(`rg:${mbid}`), null);
-  assert.equal(warnings.mock.calls.length, 1);
 });
 
 test("every release group carries a cover URL that needs no metadata lookup", () => {
   const cachedImage = "https://coverartarchive.org/release-group/cached/front-500.jpg";
   dbOps.setImage(`rg:${mbid}`, cachedImage);
-  dbOps.setImage(`rg:${fallbackMbid}`, "NOT_FOUND");
+  dbOps.setImage(`rg:${missingMbid}`, "NOT_FOUND");
   const unknownMbid = "33333333-3333-4333-8333-333333333333";
   const providerCover = "https://images.example/provider.jpg";
 
   const covered = withCoverUrls([
     { id: mbid },
-    { id: fallbackMbid },
+    { id: missingMbid },
     { id: unknownMbid },
     { id: "44444444-4444-4444-8444-444444444444", coverUrl: providerCover },
     { id: null },

@@ -11,6 +11,9 @@ const FANART_SQUARE =
 const DEEZER =
   /^(https?:\/\/[\w-]+\.dzcdn\.net\/images\/[a-z]+\/[0-9a-f]+\/)\d+x\d+(-[^/?#]*\.(?:jpg|png))$/i;
 const DEEZER_WIDTHS = [120, 250, 500, 1000];
+const LIDARR_COVER =
+  /^(https?:\/\/imagecache\.lidarr\.audio\/v1\/caa\/[^/?#]+\/[^/?#]+)-(?:250|500|1200)(\.[a-z]+)$/i;
+const LIDARR_COVER_WIDTHS = [250, 500, 1200];
 const AURRAL_COVER =
   /\/api\/(?:playlists\/(?:artwork\/[^/?#]+|flow-templates\/[^/?#]+\/cover)|discover\/playlists\/[^/?#]+\/[^/?#]+\/cover)(?:\?|$)/;
 const AURRAL_COVER_WIDTH = 1000;
@@ -27,6 +30,13 @@ export function imageSizes(url: string): ImageSize[] {
   if (deezer) {
     return DEEZER_WIDTHS.map((width) => ({
       url: `${deezer[1]}${width}x${width}${deezer[2]}`,
+      width,
+    }));
+  }
+  const lidarrCover = url.match(LIDARR_COVER);
+  if (lidarrCover) {
+    return LIDARR_COVER_WIDTHS.map((width) => ({
+      url: `${lidarrCover[1]}-${width}${lidarrCover[2]}`,
       width,
     }));
   }

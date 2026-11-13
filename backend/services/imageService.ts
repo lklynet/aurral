@@ -1,6 +1,5 @@
 import type { CachedArtistImage } from "../db/helpers/cache.ts";
 import { dbOps } from "../db/helpers/index.ts";
-import { asAppError } from "../../lib/errors.ts";
 import type { ArtistOverride } from "../db/helpers/overrides.ts";
 import { buildStableImageProxyUrl } from "./imageProxyService.ts";
 import { getArtistImageKindRank, getImageUrl, type ImageList } from "./imageRanking.ts";
@@ -8,6 +7,7 @@ import type { NormalizedArtist } from "./providers/brainzmashMappers.ts";
 import { getArtistByMbid, listArtistAlbums } from "./providers/brainzmashProvider.ts";
 import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.ts";
 import { wikimediaGetArtistPhotoUrl } from "./apiClients/wikimedia.ts";
+import { logger, safeLogDiagnostic } from "./logger.ts";
 import {
   fetchDeezerArtistImageUrl,
   fetchReleaseGroupCoverUrl,
@@ -15,9 +15,7 @@ import {
 } from "./releaseGroupCoverService.ts";
 
 type ReleaseGroupSummary = Awaited<ReturnType<typeof listArtistAlbums>>[number];
-type ArtistReleaseGroup = Pick<ReleaseGroupSummary, "id" | "type" | "firstReleaseDate"> & {
-  title?: string;
-};
+type ArtistReleaseGroup = Pick<ReleaseGroupSummary, "id"> & { title?: string };
 type FoundReleaseGroupCover = { releaseGroupId: string; imageUrl: string; types: string[] };
 type GetArtistImageOptions = { forceRefresh?: boolean; artistName?: string | null };
 type ArtistImageResult = {
@@ -140,13 +138,6 @@ const getCachedUrl = (cacheKey: string) => {
   return undefined;
 };
 
-const typeRank = (primaryType: string) => {
-  if (primaryType === "Album") return 0;
-  if (primaryType === "EP") return 1;
-  if (primaryType === "Single") return 2;
-  return 3;
-};
-
 const buildArtistCoverFromUrl = (imageUrl: string | null, types: string[] = ["Front"]) => ({
   url: imageUrl,
   images: [
@@ -169,20 +160,10 @@ const recoverArtistCoverFromCachedReleaseGroups = async (resolvedMbid: string) =
   }
 
   const albums: ArtistReleaseGroup[] = await listArtistAlbums(resolvedMbid, {
-    includeTrackCounts: false,
-    hydrateLimit: 30,
+    hydrateLimit: 0,
   }).catch(() => []);
-  const ordered = albums
-    .filter((rg) => rg?.id)
-    .sort((a, b) => {
-      const rankDiff = typeRank(a.type) - typeRank(b.type);
-      if (rankDiff !== 0) return rankDiff;
-      const dateA = a.firstReleaseDate || "";
-      const dateB = b.firstReleaseDate || "";
-      return dateB.localeCompare(dateA);
-    });
 
-  for (const rg of ordered) {
+  for (const rg of albums) {
     const cachedUrl = getCachedUrl(`rg:${rg.id}`);
     if (cachedUrl) {
       dbOps.setDeezerMbidCache(rgCacheKey, rg.id);
@@ -333,22 +314,10 @@ export const getArtistImage = async (
       const albums: ArtistReleaseGroup[] = cachedRg
         ? cachedRg === "NOT_FOUND"
           ? []
-          : [{ id: cachedRg, type: "Album", firstReleaseDate: null }]
-        : await listArtistAlbums(resolvedMbid, {
-            includeTrackCounts: false,
-            hydrateLimit: 30,
-          });
+          : [{ id: cachedRg }]
+        : await listArtistAlbums(resolvedMbid, { hydrateLimit: 0 });
 
-      const ordered = albums
-        .filter((rg) => rg?.id)
-        .sort((a, b) => {
-          const rankDiff = typeRank(a.type) - typeRank(b.type);
-          if (rankDiff !== 0) return rankDiff;
-          const dateA = a.firstReleaseDate || "";
-          const dateB = b.firstReleaseDate || "";
-          return dateB.localeCompare(dateA);
-        })
-        .slice(0, 25);
+      const ordered = albums.slice(0, 25);
 
       let nextIndex = 0;
       let foundCover = null as FoundReleaseGroupCover | null;
@@ -409,7 +378,7 @@ export const getArtistImage = async (
         dbOps.setDeezerMbidCache(rgCacheKey, "NOT_FOUND");
       }
     } catch (e) {
-      console.warn(`Failed to fetch image for ${mbid}:`, asAppError(e)?.message);
+      logger.warn("images", "Artist image lookup failed", { mbid, reason: safeLogDiagnostic(e) });
       return { url: null, images: [], transientError: true };
     }
 

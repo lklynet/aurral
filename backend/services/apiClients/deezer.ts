@@ -337,7 +337,9 @@ export async function getDeezerArtist(
         query: { q: artistName, limit: 10 },
         timeoutMs: 5000,
       });
-      const match = artists.find((artist) => artistNameKey(artist.name) === wanted);
+      const [match] = artists
+        .filter((artist) => artistNameKey(artist.name) === wanted)
+        .toSorted((left, right) => (right.nb_fan ?? 0) - (left.nb_fan ?? 0));
       return match ? toArtist(match) : null;
     });
   } catch (error) {
@@ -724,17 +726,18 @@ export function attachDeezerTrackPreviews<T extends TrackLike>(
   });
 }
 
-export async function deezerGetAlbumTracks(deezerAlbumId: string | number) {
+async function loadDeezerAlbumTracks(deezerAlbumId: string | number) {
   const id = String(deezerAlbumId).replace(/^dz-/, "");
   if (!id || id === "dz") return [];
 
-  return albumTrackCache
-    .load(id, async () => {
-      const raw = await deezerList(deezerTrackSchema, `/album/${id}/tracks`, { timeoutMs: 3000 });
-      return raw.map(toAlbumTrack);
-    })
-    .catch(() => []);
+  return albumTrackCache.load(id, async () => {
+    const raw = await deezerList(deezerTrackSchema, `/album/${id}/tracks`, { timeoutMs: 3000 });
+    return raw.map(toAlbumTrack);
+  });
 }
+
+export const deezerGetAlbumTracks = (deezerAlbumId: string | number) =>
+  loadDeezerAlbumTracks(deezerAlbumId).catch(() => []);
 
 export async function enrichTracksWithDeezerPreviews<T extends TrackLike>(
   tracks: T[],
@@ -779,7 +782,7 @@ export async function enrichTracksWithDeezerPreviews<T extends TrackLike>(
     }
     if (!resolvedAlbumId) return tracks;
 
-    const deezerTracks = await deezerGetAlbumTracks(resolvedAlbumId);
+    const deezerTracks = await loadDeezerAlbumTracks(resolvedAlbumId);
     previewAlbumCache.set(normalizedCacheKey, deezerTracks);
     return attachDeezerTrackPreviews(tracks, deezerTracks);
   } catch {

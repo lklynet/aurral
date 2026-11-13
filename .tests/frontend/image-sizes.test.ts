@@ -5,7 +5,7 @@ import { imageSizes, resizedImageWidth } from "../../lib/imageSizes.ts";
 const urlsByWidth = (url: string) =>
   Object.fromEntries(imageSizes(url).map((size) => [size.width, size.url]));
 
-test("artwork from fanart, Deezer, and Aurral covers offers every size its host serves", () => {
+test("artwork from fanart, Deezer, the Lidarr image cache, and Aurral covers offers every size its host serves", () => {
   assert.deepEqual(urlsByWidth("https://assets.fanart.tv/fanart/plaid-4fe86e55a9e8e.jpg"), {
     200: "https://assets.fanart.tv/preview/plaid-4fe86e55a9e8e.jpg",
     400: "https://assets.fanart.tv/bigpreview/plaid-4fe86e55a9e8e.jpg",
@@ -19,6 +19,11 @@ test("artwork from fanart, Deezer, and Aurral covers offers every size its host 
       1000: "https://cdn-images.dzcdn.net/images/artist/638e69b9/1000x1000-000000-80-0-0.jpg",
     },
   );
+  assert.deepEqual(urlsByWidth("https://imagecache.lidarr.audio/v1/caa/r/1-1200.jpg"), {
+    250: "https://imagecache.lidarr.audio/v1/caa/r/1-250.jpg",
+    500: "https://imagecache.lidarr.audio/v1/caa/r/1-500.jpg",
+    1200: "https://imagecache.lidarr.audio/v1/caa/r/1-1200.jpg",
+  });
   assert.deepEqual(urlsByWidth("/api/playlists/artwork/p1?v=7:0"), {
     128: "/api/playlists/artwork/p1?v=7:0&w=128",
     256: "/api/playlists/artwork/p1?v=7:0&w=256",
@@ -38,7 +43,7 @@ test("artwork from fanart, Deezer, and Aurral covers offers every size its host 
     imageSizes("https://cdn-images.dzcdn.net/images/artist//1000x1000-000000-80-0-0.jpg"),
     [],
   );
-  assert.deepEqual(imageSizes("https://imagecache.lidarr.audio/v1/caa/r/1-1200.jpg"), []);
+  assert.deepEqual(imageSizes("https://imagecache.lidarr.audio/v1/caa/r/1.jpg"), []);
 });
 
 test("a requested width rounds up to a size Aurral resizes to, and past the largest keeps the original", () => {

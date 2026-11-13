@@ -13,16 +13,30 @@ const photo = "https://cdn.deezer.test/recovered-artist.jpg";
 const missingArtist = { error: { type: "DataException", message: "no data", code: 800 } };
 let artistLinked = true;
 let wikidataLinked = false;
+let albumCount = 0;
+const providerRequests: string[] = [];
 const provider = await createMockHttpServer((req, res) => {
+  const path = requireFixture(req.url);
+  providerRequests.push(path);
   res.setHeader("content-type", "application/json");
+  if (path.startsWith("/album/")) {
+    const id = path.slice("/album/".length);
+    const images = [{ CoverType: "Cover", Url: `https://images.example/${id}.jpg` }];
+    res.end(JSON.stringify({ id, title: id, images }));
+    return;
+  }
   res.end(
     JSON.stringify(
-      requireFixture(req.url).startsWith("/artist/")
+      path.startsWith("/artist/")
         ? {
             id: mbid,
             artistname: "Provider Artist",
             images: [],
-            Albums: [],
+            Albums: Array.from({ length: albumCount }, (_, index) => ({
+              Id: `album-${index + 1}`,
+              Title: `Album ${index + 1}`,
+              Type: "Album",
+            })),
             links: [
               ...(artistLinked
                 ? [{ type: "deezer", target: "https://www.deezer.com/artist/101" }]
@@ -60,6 +74,8 @@ const [
 beforeEach(() => {
   artistLinked = true;
   wikidataLinked = false;
+  albumCount = 0;
+  providerRequests.length = 0;
   resetDatabase(db);
   clearMetadataProviderCaches();
   deezer.clearDeezerCaches();
@@ -87,15 +103,18 @@ function responses(
   });
 }
 
-test("an artist name search accepts only the same name, not the first result", async (t) => {
+test("an artist name search accepts only the same name, and the one with the most fans", async (t) => {
   responses(t, () => ({
     data: [
       { id: 7, name: "Lowkey" },
       { id: 8, name: "Sigur Rós", picture_big: photo },
+      { id: 9, name: "Avatar", nb_fan: 2 },
+      { id: 10, name: "Avatar", nb_fan: 80931 },
     ],
   }));
   assert.equal(await deezer.getDeezerArtist("Low"), null);
   assert.equal((await deezer.getDeezerArtist("sigur ros"))?.imageUrl, photo);
+  assert.equal((await deezer.getDeezerArtist("Avatar"))?.id, 10);
 });
 
 test.each([
@@ -374,6 +393,23 @@ for (const origin of ["relationship", "override", "name search"] as const) {
   });
 }
 
+test("an artist with no photo takes an album cover without loading every album", async (t) => {
+  artistLinked = false;
+  albumCount = 8;
+  responses(t, () => ({ data: [] }));
+
+  const image = await getArtistImage(mbid, { forceRefresh: true });
+
+  assert.match(String(image.url), /^https:\/\/images\.example\/album-[1-4]\.jpg$/);
+  assert.deepEqual(providerRequests.toSorted(), [
+    "/album/album-1",
+    "/album/album-2",
+    "/album/album-3",
+    "/album/album-4",
+    `/artist/${mbid}`,
+  ]);
+});
+
 for (const origin of ["relationship", "override"] as const) {
   test("a missing " + origin + " artist ID allows the image absence to be cached", async (t) => {
     artistLinked = origin === "relationship";
@@ -395,6 +431,24 @@ for (const origin of ["relationship", "override"] as const) {
     assert.equal(requests, 1);
   });
 }
+
+test("album previews Deezer failed to list are asked for again", async (t) => {
+  let failed = true;
+  responses(t, () => {
+    if (failed) throw new Error("Provider unavailable");
+    return {
+      data: [
+        { id: 41, title: "Song", track_position: 1, preview: "https://cdn.deezer.test/41.mp3" },
+      ],
+    };
+  });
+  const tracks = [{ title: "Song", trackNumber: 1 }];
+  const options = { deezerAlbumId: "9", cacheKey: "library:retried" };
+  assert.deepEqual(await deezer.enrichTracksWithDeezerPreviews(tracks, options), tracks);
+  failed = false;
+  const [previewed] = await deezer.enrichTracksWithDeezerPreviews(tracks, options);
+  assert.equal(previewed?.previewTrackId, "41");
+});
 
 test("cached album previews still attach to each request's current tracks", async (t) => {
   responses(t, () => ({

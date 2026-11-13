@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { inspectImageBuffer } from "../backend/services/imageProxyService.ts";
 import { getSourceLabel } from "../backend/services/downloadSourceService.ts";
-import { selectBestAlbumImage } from "../backend/services/imageRanking.ts";
+import { selectBestArtistImage } from "../backend/services/imageRanking.ts";
 
 test("name lookups ignore inherited object properties", async () => {
   assert.equal(getSourceLabel("constructor"), "constructor");
@@ -11,6 +11,6 @@ test("name lookups ignore inherited object properties", async () => {
     /Unsupported image content type/,
   );
   const first = { url: "https://example.test/a.jpg", kind: "constructor" };
-  const second = { url: "https://example.test/b.jpg", kind: "front" };
-  assert.equal(selectBestAlbumImage([first, second]), second);
+  const second = { url: "https://example.test/b.jpg", kind: "poster" };
+  assert.equal(selectBestArtistImage([first, second]), second);
 });

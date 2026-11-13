@@ -24,7 +24,7 @@ import {
   type NormalizedArtist,
   type NormalizedRelease,
 } from "./brainzmashMappers.ts";
-import { selectBestAlbumImage } from "../imageRanking.ts";
+import { selectAlbumCover } from "../imageRanking.ts";
 import {
   coreAlbumTitle,
   isSilenceTrack,
@@ -775,7 +775,7 @@ export async function searchAlbums(
       const credited = artists.find((artist) => artist.id === entry.artistid) || artists[0];
       const primaryArtist = credited ? toNormalizedArtist(credited) : null;
       const images = entry.images ?? [];
-      const coverImage = selectBestAlbumImage(images);
+      const coverImage = selectAlbumCover(images);
       return {
         id: entry.id,
         title: entry.title || "Untitled Release",

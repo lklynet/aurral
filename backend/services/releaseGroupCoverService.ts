@@ -9,16 +9,14 @@ import {
   getAlbumByMbid,
   isMetadataCircuitError,
   isMetadataNotFoundError,
-  resolveAlbumByArtistAndTitle,
 } from "./providers/brainzmashProvider.ts";
 import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.ts";
-import type { NormalizedAlbum } from "./providers/brainzmashMappers.ts";
+import { selectAlbumCover } from "./imageRanking.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 
 export const LEGACY_COVER_HOST_PATTERN = /https?:\/\/(?:archive\.org|[\w-]+\.ca\.archive\.org)\//i;
 
 type DeezerArtistId = Parameters<typeof getDeezerArtistById>[0];
-type CoverWriteOptions = { persist?: boolean };
 type ReleaseGroupCoverOptions = {
   artistName?: string;
   albumTitle?: string;
@@ -29,22 +27,6 @@ const releaseGroupCoverRequests = new Map<
   string,
   ReturnType<typeof fetchReleaseGroupCoverUncached>
 >();
-
-const getImageUrl = (image: NormalizedAlbum["images"][number]) => image?.url || null;
-
-const pickAlbumCoverUrl = (images: NormalizedAlbum["images"] = []) => {
-  if (!Array.isArray(images) || images.length === 0) return null;
-  const ranked = images
-    .map((image) => ({
-      url: getImageUrl(image),
-      kind: String(image?.kind || "")
-        .trim()
-        .toLowerCase(),
-    }))
-    .filter((entry) => entry.url);
-  const preferred = ranked.find((entry) => ["front", "cover", "albumcover"].includes(entry.kind));
-  return (preferred || ranked[0])?.url || null;
-};
 
 export { warmPublicImageUrl };
 
@@ -77,54 +59,18 @@ const getCachedUrl = (cacheKey: string) => {
   return undefined;
 };
 
-const persistCover = (cacheKey: string, proxiedUrl: string) => {
-  dbOps.setImage(cacheKey, proxiedUrl);
+const foundCover = (imageUrl: string | null | undefined) => {
+  const proxiedUrl = toPublicCoverUrl(imageUrl ?? null);
+  return proxiedUrl
+    ? { imageUrl: proxiedUrl, types: ["Front"], notFound: false, transientError: false }
+    : null;
 };
 
-const acceptCoverUrl = async (
-  cacheKey: string,
-  imageUrl: string | null,
-  { persist = true }: CoverWriteOptions = {},
-) => {
-  const proxiedUrl = toPublicCoverUrl(imageUrl);
-  if (!proxiedUrl) return null;
-  if (persist) persistCover(cacheKey, proxiedUrl);
-  return {
-    imageUrl: proxiedUrl,
-    types: ["Front"],
-    notFound: false,
-    transientError: false,
-  };
-};
-
-const buildReleaseGroupCoverResult = async (
-  cacheKey: string,
-  album: NormalizedAlbum,
-  { persist = true }: CoverWriteOptions = {},
-) => {
-  const imageUrl = pickAlbumCoverUrl(album?.images);
-  if (!imageUrl) {
-    return { imageUrl: null, types: [], notFound: true, transientError: false };
-  }
-  return (
-    (await acceptCoverUrl(cacheKey, imageUrl, { persist })) || {
-      imageUrl: null,
-      types: [],
-      notFound: true,
-      transientError: false,
-    }
-  );
-};
-
-const fetchDeezerAlbumCover = async (
-  cacheKey: string,
-  {
-    artistName = "",
-    deezerArtistId = null,
-    albumTitle = "",
-  }: { artistName?: string; deezerArtistId?: DeezerArtistId; albumTitle?: string } = {},
-  { persist = true }: CoverWriteOptions = {},
-) => {
+const fetchDeezerAlbumCover = async ({
+  artistName = "",
+  deezerArtistId = null,
+  albumTitle = "",
+}: { artistName?: string; deezerArtistId?: DeezerArtistId; albumTitle?: string } = {}) => {
   if (!albumTitle) return null;
   try {
     const album = await resolveDeezerAlbumForPreview({
@@ -132,8 +78,7 @@ const fetchDeezerAlbumCover = async (
       deezerArtistId,
       albumTitle,
     });
-    if (!album?._coverUrl) return null;
-    return acceptCoverUrl(cacheKey, album._coverUrl, { persist });
+    return foundCover(album?._coverUrl);
   } catch {
     return null;
   }
@@ -175,20 +120,19 @@ const fetchReleaseGroupCoverUncached = async (
       transientError: false,
     };
   }
-  const normalizedArtistName = typeof artistName === "string" ? artistName.trim() : "";
-  const normalizedAlbumTitle = typeof albumTitle === "string" ? albumTitle.trim() : "";
   let sawTransientError = false;
   let deezerArtistId = null;
-  let deezerArtistName = normalizedArtistName;
-  let deezerAlbumTitle = normalizedAlbumTitle;
+  let deezerArtistName = artistName.trim();
+  let deezerAlbumTitle = albumTitle.trim();
   try {
     const album = await getAlbumByMbid(releaseGroupMbid);
-    deezerArtistId = getLinkedDeezerArtistId(album?.artists?.[0]?.links);
-    deezerArtistName ||= album?.artists?.[0]?.name || "";
-    deezerAlbumTitle ||= album?.title || "";
-    const result = await buildReleaseGroupCoverResult(cacheKey, album);
-    if (result.imageUrl) {
-      return result;
+    deezerArtistId = getLinkedDeezerArtistId(album.artists[0]?.links);
+    deezerArtistName ||= album.artists[0]?.name || "";
+    deezerAlbumTitle ||= album.title;
+    const cover = foundCover(selectAlbumCover(album.images)?.url);
+    if (cover) {
+      dbOps.setImage(cacheKey, cover.imageUrl);
+      return cover;
     }
   } catch (error) {
     if (!isMetadataNotFoundError(error)) {
@@ -200,42 +144,12 @@ const fetchReleaseGroupCoverUncached = async (
         });
     }
   }
-  if (normalizedAlbumTitle) {
-    try {
-      const resolvedAlbumMbid = await resolveAlbumByArtistAndTitle({
-        artistName: normalizedArtistName,
-        albumTitle: normalizedAlbumTitle,
-      });
-      if (resolvedAlbumMbid && resolvedAlbumMbid !== releaseGroupMbid) {
-        const resolvedAlbum = await getAlbumByMbid(resolvedAlbumMbid);
-        const result = await buildReleaseGroupCoverResult(cacheKey, resolvedAlbum, {
-          persist: false,
-        });
-        if (result.imageUrl) {
-          return result;
-        }
-      }
-    } catch (error) {
-      sawTransientError = true;
-      if (!isMetadataCircuitError(error))
-        logger.warn("images", "Release-group cover artist/title lookup failed", {
-          releaseGroupMbid,
-          artistName: normalizedArtistName,
-          albumTitle: normalizedAlbumTitle,
-          reason: safeLogDiagnostic(error),
-        });
-    }
-  }
-  const deezerCover = await fetchDeezerAlbumCover(
-    cacheKey,
-    {
-      artistName: deezerArtistName,
-      deezerArtistId,
-      albumTitle: deezerAlbumTitle,
-    },
-    { persist: false },
-  );
-  if (deezerCover?.imageUrl) return deezerCover;
+  const deezerCover = await fetchDeezerAlbumCover({
+    artistName: deezerArtistName,
+    deezerArtistId,
+    albumTitle: deezerAlbumTitle,
+  });
+  if (deezerCover) return deezerCover;
   if (sawTransientError) {
     return { imageUrl: null, types: [], notFound: false, transientError: true };
   }

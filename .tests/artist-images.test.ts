@@ -1,7 +1,7 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
-import { selectBestAlbumImage, selectBestArtistImage } from "../backend/services/imageRanking.ts";
+import { selectAlbumCover, selectBestArtistImage } from "../backend/services/imageRanking.ts";
 
 test("artist image selection prefers poster art over banners for square displays", () => {
   const selected = selectBestArtistImage([
@@ -26,16 +26,21 @@ test("artist image selection prefers poster art over banners for square displays
   assert.equal(selected?.url, "https://assets.fanart.tv/fanart/bieber-justin-5375fe939e307.jpg");
 });
 
-test("album image selection prefers cover art and accepts BrainzMash casing", () => {
-  const selected = selectBestAlbumImage([
+test("an album's cover is its cover art in either casing, never a disc scan", () => {
+  const selected = selectAlbumCover([
     { kind: "Disc", url: "https://example.test/disc.png" },
     { kind: "Cover", url: "https://example.test/cover.jpg" },
   ]);
   assert.equal(selected?.url, "https://example.test/cover.jpg");
 
-  const brainzmash = selectBestAlbumImage([
+  const brainzmash = selectAlbumCover([
     { CoverType: "Disc", Url: "https://example.test/disc.png" },
     { CoverType: "Cover", Url: "https://example.test/cover.jpg" },
   ]);
   assert.equal(brainzmash?.Url, "https://example.test/cover.jpg");
+
+  assert.equal(
+    selectAlbumCover([{ CoverType: "Disc", Url: "https://example.test/disc.png" }]),
+    null,
+  );
 });
