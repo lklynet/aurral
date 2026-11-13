@@ -1,4 +1,3 @@
-import PillToggle from "../../../components/PillToggle";
 import { DotLoader } from "../../../components/DotLoader";
 import { useDiscoveryStatus } from "../../../hooks/useDiscoveryStatus";
 import { formatDateTime } from "../../../utils/dateTime.ts";
@@ -121,26 +120,6 @@ function TicketmasterDetail() {
             onChange={(event) =>
               update({ searchRadiusMiles: clamp(event.target.value, 5, 250, 250) })
             }
-          />
-        </SettingsRow>
-      </SettingsGroup>
-      <SettingsGroup title="Local shows">
-        <SettingsRow label="Recommended artists" htmlFor="ticketmaster-recommended">
-          <PillToggle
-            id="ticketmaster-recommended"
-            checked={ticketmaster.localDiscoveryIncludeRecommendations !== false}
-            aria-label="Recommended artists"
-            onChange={(event) =>
-              update({ localDiscoveryIncludeRecommendations: event.target.checked })
-            }
-          />
-        </SettingsRow>
-        <SettingsRow label="Trending artists" htmlFor="ticketmaster-trending">
-          <PillToggle
-            id="ticketmaster-trending"
-            checked={ticketmaster.localDiscoveryIncludeTrending !== false}
-            aria-label="Trending artists"
-            onChange={(event) => update({ localDiscoveryIncludeTrending: event.target.checked })}
           />
         </SettingsRow>
       </SettingsGroup>

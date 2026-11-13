@@ -163,11 +163,6 @@ function getSettingsMetadata() {
   return settings.integrations?.metadata || {};
 }
 
-function isNarrowFallbacksEnabled() {
-  const metadata = getSettingsMetadata();
-  return metadata.enableNarrowFallbacks !== false;
-}
-
 export function getMetadataBaseUrl() {
   const metadata = getSettingsMetadata();
   const raw = String(
@@ -801,7 +796,7 @@ export async function searchAlbums(
     failure = error;
   }
 
-  if (items.length === 0 && musicbrainzFallback && isNarrowFallbacksEnabled()) {
+  if (items.length === 0 && musicbrainzFallback) {
     failure = null;
     const escapeLucenePhrase = (value: string) =>
       String(value || "")

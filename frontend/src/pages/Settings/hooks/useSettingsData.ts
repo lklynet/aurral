@@ -8,7 +8,6 @@ import { downloadClientSettingsClient } from "../../../utils/api/clients/downloa
 import { refetchDiscoveryStatus } from "../../../hooks/useDiscoveryStatus";
 import { discoveryClient } from "../../../utils/api/clients/discovery.ts";
 import { DISCOVERY_MANUAL_REFRESH_KEY } from "../../../utils/discoverRecentNavigation.ts";
-import { allReleaseTypes } from "../constants";
 import { checkForChanges, normalizeSettings, type SettingsState } from "../utils";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import { appSettingsQueryOptions } from "../../../queryOptions.ts";
@@ -21,7 +20,6 @@ const defaultSettings = {
   dateTimeFormat: "browser",
   downloadFolderPath: "",
   pathMappings: [],
-  quality: "standard",
   qualityProfile: {
     order: [
       "flac-hires",
@@ -51,12 +49,10 @@ const defaultSettings = {
     automaticUpgrades: false,
     intervalDays: 2,
   },
-  releaseTypes: allReleaseTypes,
   integrations: {
     lastfm: {
       apiKey: "",
       apiSecret: "",
-      discoveryPeriod: "1month",
     },
     slskd: {
       enabled: true,
@@ -117,8 +113,6 @@ const defaultSettings = {
     ticketmaster: {
       apiKey: "",
       searchRadiusMiles: 250,
-      localDiscoveryIncludeRecommendations: true,
-      localDiscoveryIncludeTrending: true,
     },
     news: {
       enabled: true,
@@ -138,12 +132,7 @@ const defaultSettings = {
         concerts: true,
       },
     },
-    metadata: {
-      provider: "brainzmash",
-      baseUrl: "",
-      userAgentSuffix: "",
-      enableNarrowFallbacks: true,
-    },
+    metadata: { baseUrl: "" },
     general: {},
     gotify: {
       url: "",
@@ -158,7 +147,6 @@ const defaultSettings = {
     webhooks: [],
   },
   inbox: {
-    enabled: true,
     releases: true,
     shows: true,
     news: true,
@@ -336,7 +324,7 @@ export function useSettingsData(showSuccess: Toast, showError: Toast) {
         if (typeof window !== "undefined") {
           window.dispatchEvent(
             new CustomEvent("aurral:settings-updated", {
-              detail: { inboxEnabled: normalizedSettings.inbox?.enabled !== false },
+              detail: { inboxEnabled: Object.values(normalizedSettings.inbox).some(Boolean) },
             }),
           );
         }

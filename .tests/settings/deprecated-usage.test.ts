@@ -67,7 +67,11 @@ test("reports configuration Aurral no longer reads or will stop reading", () => 
       LASTFM_API_SECRET: undefined,
       LIDARR_TIMEOUT_MS: undefined,
       CONTACT_EMAIL: undefined,
+      TICKETMASTER_API_KEY: undefined,
     },
     () => assert.deepEqual(kinds(), []),
+  );
+  withEnv({ LIBRARY_FOLDER: "/data/library", TICKETMASTER_API_KEY: "key" }, () =>
+    assert.deepEqual(kinds(), ["integration-env"]),
   );
 });

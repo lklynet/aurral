@@ -248,3 +248,42 @@ test("upgrading drops settings that became fixed and keeps each user's discovery
     assert.equal(read(key), null, key);
   }
 });
+
+test("upgrading drops settings nothing reads and keeps a turned-off Inbox off", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, 10));
+  const insert = db.prepare<[string, string]>("INSERT INTO settings (key, value) VALUES (?, ?)");
+  insert.run("quality", "standard");
+  insert.run("releaseTypes", JSON.stringify(["Album"]));
+  insert.run("queueCleaner", "{}");
+  insert.run(
+    "integrations",
+    JSON.stringify({
+      lastfm: { apiKey: "key", discoveryPeriod: "none" },
+      ticketmaster: { apiKey: "key", localDiscoveryIncludeTrending: false },
+      metadata: { provider: "brainzmash", baseUrl: "https://meta.example", userAgentSuffix: "x" },
+    }),
+  );
+  insert.run("inbox", JSON.stringify({ enabled: false, releases: true, news: true }));
+
+  migrate(db);
+
+  const setting = (key: string) =>
+    db.prepare<[string], string>("SELECT value FROM settings WHERE key = ?").pluck().get(key);
+  for (const key of ["quality", "releaseTypes", "queueCleaner"]) {
+    assert.equal(setting(key), undefined);
+  }
+  assert.deepEqual(JSON.parse(setting("integrations") ?? ""), {
+    lastfm: { apiKey: "key" },
+    ticketmaster: { apiKey: "key" },
+    metadata: { baseUrl: "https://meta.example" },
+  });
+  assert.deepEqual(JSON.parse(setting("inbox") ?? ""), {
+    releases: false,
+    news: false,
+    shows: false,
+    recommendedNews: false,
+    discoveries: false,
+  });
+});

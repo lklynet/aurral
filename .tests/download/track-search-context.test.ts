@@ -81,7 +81,6 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
       metadata: {
         ...originalSettings.integrations.metadata,
         baseUrl: "https://brainzmash.example.test",
-        enableNarrowFallbacks: false,
       },
     },
   });
@@ -562,7 +561,6 @@ function stubMetadata(
       metadata: {
         ...originalSettings.integrations.metadata,
         baseUrl: "https://brainzmash.example.test",
-        enableNarrowFallbacks: false,
       },
     },
   });
@@ -801,7 +799,7 @@ test("a download takes the album of its title from the year it names, when the a
   };
   const fetched: string[] = [];
   stubMetadata(t, (path: string) => {
-    if (path === "/search/album") return [];
+    if (path === "/search/album" || path === "/ws/2/release-group") return [];
     if (path === "/artist/hits-band") {
       return {
         ...band,

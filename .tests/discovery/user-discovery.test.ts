@@ -150,21 +150,14 @@ test("discovery for the API key, which has no user account, queues no listening 
   assert.deepEqual(refreshJobs(), []);
 });
 
-test("each user keeps their own discovery mode without changing local show settings", async () => {
-  dbOps.updateSettings({
-    integrations: { ticketmaster: { localDiscoveryIncludeTrending: false } },
-  });
+test("each user keeps their own discovery mode", async () => {
   const preferencesOf = (id: number) =>
     testClient(signedInAs(testUser(id)).route("/", api)).discover.preferences;
 
   const saved = await preferencesOf(1).$post({ json: { discoveryMode: "deeper" } });
   assert.equal(saved.status, 200);
 
-  assert.deepEqual(await (await preferencesOf(1).$get()).json(), {
-    discoveryMode: "deeper",
-    localDiscoveryIncludeRecommendations: true,
-    localDiscoveryIncludeTrending: false,
-  });
+  assert.deepEqual(await (await preferencesOf(1).$get()).json(), { discoveryMode: "deeper" });
   assert.equal((await (await preferencesOf(2).$get()).json()).discoveryMode, "balanced");
   assert.equal(discovery.getDiscoveryMode(1), "deeper");
 });

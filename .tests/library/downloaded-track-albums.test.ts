@@ -153,7 +153,6 @@ beforeAll(() => {
       metadata: {
         ...originalSettings.integrations?.metadata,
         baseUrl: metadataServer.url,
-        enableNarrowFallbacks: false,
       },
     },
   });

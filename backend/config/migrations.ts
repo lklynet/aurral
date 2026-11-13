@@ -160,6 +160,27 @@ const dropFixedSettings: Migration = (db) =>
     DELETE FROM settings WHERE key IN ('missingTrackSearch', 'reviewTimeoutHours', 'subsonic', 'playlistFiles');
   `);
 
+// These settings had no reader or no way to change them. A turned-off Inbox
+// keeps every item off, which is how Inbox is turned off now.
+const dropUnusedSettings: Migration = (db) =>
+  db.exec(`
+    DELETE FROM settings WHERE key IN ('quality', 'releaseTypes', 'queueCleaner');
+    UPDATE settings SET value = json_remove(value,
+        '$.lastfm.discoveryPeriod',
+        '$.ticketmaster.localDiscoveryIncludeRecommendations',
+        '$.ticketmaster.localDiscoveryIncludeTrending',
+        '$.metadata.provider',
+        '$.metadata.userAgentSuffix',
+        '$.metadata.enableNarrowFallbacks')
+      WHERE key = 'integrations' AND json_valid(value);
+    UPDATE settings SET value = json_set(value,
+        '$.releases', json('false'), '$.shows', json('false'), '$.news', json('false'),
+        '$.recommendedNews', json('false'), '$.discoveries', json('false'))
+      WHERE key = 'inbox' AND json_valid(value) AND json_type(value, '$.enabled') = 'false';
+    UPDATE settings SET value = json_remove(value, '$.enabled')
+      WHERE key = 'inbox' AND json_valid(value);
+  `);
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -171,6 +192,7 @@ export const migrations: Migration[] = [
   clearMetadataFailureBackoff,
   nameUsenetDownloadsBySource,
   dropFixedSettings,
+  dropUnusedSettings,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

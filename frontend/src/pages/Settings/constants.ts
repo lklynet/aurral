@@ -1,16 +1,3 @@
-export const allReleaseTypes = [
-  "Album",
-  "EP",
-  "Single",
-  "Broadcast",
-  "Soundtrack",
-  "Spokenword",
-  "Remix",
-  "Live",
-  "Compilation",
-  "Demo",
-];
-
 export const GRANULAR_PERMISSIONS = {
   accessPlaylists: false,
   addArtist: true,

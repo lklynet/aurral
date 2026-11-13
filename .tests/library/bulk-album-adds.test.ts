@@ -82,7 +82,6 @@ test("adding more albums at once than the metadata queue holds adds every album"
       metadata: {
         ...originalSettings.integrations?.metadata,
         baseUrl: server.url,
-        enableNarrowFallbacks: false,
       },
     },
   });

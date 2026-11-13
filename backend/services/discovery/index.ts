@@ -3,7 +3,6 @@ export {
   DISCOVERY_MODES,
   getDiscoveryMode,
   setDiscoveryMode,
-  getLocalDiscoveryPreferences,
   DISCOVERY_RECOMMENDATIONS_PER_REFRESH,
   getDiscoveryRecommendationPoolLimit,
   DISCOVERY_QUALITY_INITIAL,

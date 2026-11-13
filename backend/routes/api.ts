@@ -44,22 +44,10 @@ import users from "./users.ts";
 import visualizer from "./visualizer.ts";
 import wrapped from "./wrapped.ts";
 
-const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || "5mb";
-
-function byteSize(value: string) {
-  const match = /^(\d+(?:\.\d+)?)\s*([kmg]?b)?$/i.exec(value.trim());
-  if (!match) return 5 * 1024 ** 2;
-  const exponent = ["b", "kb", "mb", "gb"].indexOf((match[2] || "b").toLowerCase());
-  return Math.floor(Number(match[1]) * 1024 ** exponent);
-}
-
 const jsonBodyLimit = bodyLimit({
-  maxSize: byteSize(JSON_BODY_LIMIT),
+  maxSize: 5 * 1024 ** 2,
   onError: (c) =>
-    c.json(
-      { error: "Payload too large", message: `Request body exceeds limit (${JSON_BODY_LIMIT})` },
-      413,
-    ),
+    c.json({ error: "Payload too large", message: "Request body exceeds limit (5mb)" }, 413),
 });
 
 export const api = new Hono<AppEnv>()

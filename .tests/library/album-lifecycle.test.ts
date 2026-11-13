@@ -1125,7 +1125,6 @@ test("an album asks for its most common edition and a shorter download leaves it
       metadata: {
         ...originalSettings.integrations?.metadata,
         baseUrl: metadata.url,
-        enableNarrowFallbacks: false,
       },
     },
   });
@@ -1282,7 +1281,6 @@ test("an album that wants the expanded edition keeps wanting the extra track a d
       metadata: {
         ...originalSettings.integrations?.metadata,
         baseUrl: metadata.url,
-        enableNarrowFallbacks: false,
       },
     },
   });
@@ -1403,7 +1401,6 @@ test("an album asked for in an edition downloads that edition", async (t: TestCo
       metadata: {
         ...originalSettings.integrations?.metadata,
         baseUrl: metadata.url,
-        enableNarrowFallbacks: false,
       },
     },
   });
@@ -1490,7 +1487,6 @@ test("a two-disc album downloads a title it repeats on each disc to two names", 
       metadata: {
         ...originalSettings.integrations?.metadata,
         baseUrl: metadata.url,
-        enableNarrowFallbacks: false,
       },
     },
   });
@@ -1608,7 +1604,6 @@ test("an album asks for its release's own lengths and fills a missing one from p
       metadata: {
         ...originalSettings.integrations?.metadata,
         baseUrl: metadata.url,
-        enableNarrowFallbacks: false,
       },
     },
   });
@@ -1685,7 +1680,6 @@ test("asking for an album downloads the missing tracks of the edition its track 
       metadata: {
         ...originalSettings.integrations?.metadata,
         baseUrl: metadata.url,
-        enableNarrowFallbacks: false,
       },
     },
   });
@@ -1851,7 +1845,6 @@ test("asking for an album leaves out its [silence] places", async (t: TestContex
       metadata: {
         ...originalSettings.integrations?.metadata,
         baseUrl: metadata.url,
-        enableNarrowFallbacks: false,
       },
     },
   });

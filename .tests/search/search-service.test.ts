@@ -49,7 +49,6 @@ test("searchArtists normalizes BrainzMash artists", async () => {
       metadata: {
         ...originalSettings.integrations.metadata,
         baseUrl: server.url,
-        enableNarrowFallbacks: false,
       },
     },
   });
@@ -99,7 +98,6 @@ test("searchAlbums names the album's credited artist, not the first one listed",
       metadata: {
         ...originalSettings.integrations.metadata,
         baseUrl: server.url,
-        enableNarrowFallbacks: false,
       },
     },
   });
@@ -150,7 +148,6 @@ test("searchAlbums puts the album an artist and title search names first", async
       metadata: {
         ...originalSettings.integrations.metadata,
         baseUrl: server.url,
-        enableNarrowFallbacks: false,
       },
     },
   });
@@ -191,7 +188,6 @@ test("searchAlbums reports a further page while more results exist", async () =>
       metadata: {
         ...originalSettings.integrations.metadata,
         baseUrl: server.url,
-        enableNarrowFallbacks: false,
       },
     },
   });

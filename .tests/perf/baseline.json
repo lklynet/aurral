@@ -241,7 +241,7 @@
   },
   "playlists": {
     "queries": {
-      "cold": 36,
+      "cold": 33,
       "warm": 19
     },
     "bytes": 4737,
@@ -361,7 +361,7 @@
   },
   "album match": {
     "queries": {
-      "cold": 32,
+      "cold": 28,
       "warm": 4
     },
     "bytes": 35,

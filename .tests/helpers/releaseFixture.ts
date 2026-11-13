@@ -108,7 +108,6 @@ export async function serveGroups<Group extends { id: string; title?: string; re
       metadata: {
         ...settings.integrations?.metadata,
         baseUrl: `https://${METADATA_HOST}`,
-        enableNarrowFallbacks: false,
       },
     },
   });

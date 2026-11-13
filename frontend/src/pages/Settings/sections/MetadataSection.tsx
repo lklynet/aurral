@@ -26,7 +26,7 @@ export function MetadataSection() {
                 ...settings,
                 integrations: {
                   ...settings.integrations,
-                  metadata: { ...metadata, provider: "brainzmash", baseUrl: event.target.value },
+                  metadata: { baseUrl: event.target.value },
                 },
               })
             }

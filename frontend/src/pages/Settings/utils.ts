@@ -1,4 +1,3 @@
-import { allReleaseTypes } from "./constants";
 import { normalizeDateTimeFormat } from "../../utils/dateTime.ts";
 import type {
   QualityProfile,
@@ -26,15 +25,12 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
     downloadFolderPath: String(savedSettings.downloadFolderPath || "").trim(),
     pathMappings: Array.isArray(savedSettings.pathMappings) ? savedSettings.pathMappings : [],
     inbox: {
-      enabled: savedSettings.inbox?.enabled !== false,
       releases: savedSettings.inbox?.releases !== false,
       shows: savedSettings.inbox?.shows !== false,
       news: savedSettings.inbox?.news !== false,
       recommendedNews: savedSettings.inbox?.recommendedNews === true,
       discoveries: savedSettings.inbox?.discoveries !== false,
     },
-    releaseTypes: savedSettings.releaseTypes || allReleaseTypes,
-    quality: savedSettings.quality || "standard",
     qualityProfile,
     security: {
       ...(savedSettings.security || {}),
@@ -45,7 +41,6 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
     integrations: {
       lastfm: {
         apiKey: "",
-        discoveryPeriod: "1month",
         ...lastfm,
       },
       news: {
@@ -133,17 +128,9 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
       ticketmaster: {
         apiKey: "",
         searchRadiusMiles: 250,
-        localDiscoveryIncludeRecommendations: true,
-        localDiscoveryIncludeTrending: true,
         ...(savedSettings.integrations?.ticketmaster || {}),
       },
-      metadata: {
-        provider: "brainzmash",
-        baseUrl: "",
-        userAgentSuffix: "",
-        enableNarrowFallbacks: true,
-        ...metadata,
-      },
+      metadata: { baseUrl: metadata.baseUrl ?? "" },
       ...(savedSettings.integrations?.google && { google: savedSettings.integrations.google }),
       general: savedSettings.integrations?.general || {},
       gotify: {

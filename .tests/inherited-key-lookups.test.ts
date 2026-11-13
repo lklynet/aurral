@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
-import { getListenbrainzRange } from "../backend/services/discovery/helpers.ts";
 import {
   buildDiscoverySeedList,
   rerankRecommendations,
@@ -15,10 +14,6 @@ test("testDownloadClient reports an unknown client for inherited object keys", a
       message: `Unknown download client: ${key}`,
     });
   }
-});
-
-test("a listen history period named like an object member falls back to month", () => {
-  assert.equal(getListenbrainzRange("constructor"), "month");
 });
 
 test("a discovery mode named like an object member ranks as balanced", () => {

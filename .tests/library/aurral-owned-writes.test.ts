@@ -105,7 +105,6 @@ test("Aurral writes library album state, queues missing tracks, and refuses an a
       metadata: {
         ...originalSettings.integrations?.metadata,
         baseUrl: server.url,
-        enableNarrowFallbacks: false,
       },
     },
   });

@@ -52,7 +52,6 @@ test(
         metadata: {
           ...previous.integrations?.metadata,
           baseUrl: server.url,
-          enableNarrowFallbacks: false,
         },
       },
     });
