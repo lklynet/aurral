@@ -799,6 +799,7 @@ test("a download takes the album of its title from the year it names, when the a
       releasedate: "2005-05-01",
     },
   };
+  const fetched: string[] = [];
   stubMetadata(t, (path: string) => {
     if (path === "/search/album") return [];
     if (path === "/artist/hits-band") {
@@ -807,9 +808,11 @@ test("a download takes the album of its title from the year it names, when the a
         Albums: [
           { Id: "old-hits", Title: "Greatest Hits", Type: "Album" },
           { Id: "new-hits", Title: "Greatest Hits", Type: "Album" },
+          { Id: "other-album", Title: "Another Record", Type: "Album" },
         ],
       };
     }
+    fetched.push(path);
     return Object.values(albums).find((album) => album.id === path.replace("/album/", "")) || null;
   });
 
@@ -821,6 +824,7 @@ test("a download takes the album of its title from the year it names, when the a
     releaseYear: "2005",
   });
   assert.equal(resolved.albumMbid, "new-hits");
+  assert.deepEqual(fetched.toSorted(), ["/album/new-hits", "/album/old-hits"]);
 });
 
 const editionAlbum = () => {
