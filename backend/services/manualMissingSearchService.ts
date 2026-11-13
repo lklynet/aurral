@@ -6,16 +6,18 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { USENET_CLIENT_KEYS, type NzbSourceId } from "./usenetClientCommon.ts";
-import { getDownloadSourceStatus } from "./downloadSourceService.ts";
+import { getDownloadSourceStatus, getEnabledDownloadSources } from "./downloadSourceService.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
-import type { DownloadJob } from "./downloadJobs/downloadTracker.ts";
+import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import type { JsonObject } from "./jobs/queue.ts";
+import { contractSource } from "./download/nativeSources.ts";
+import { albumQuery, isSourceContractId, resolveTrack } from "./download/sourcePipeline.ts";
+import type { DownloadSource } from "./download/downloadSource.ts";
 
 const SESSION_TTL_MS = 10 * 60 * 1000;
 const MAX_RESULTS = 100;
 const MAX_SESSIONS = 250;
 const sessions = new Map<string, ManualSearchSession>();
-const YTDLP_LIVE_STATUSES = new Set(["is_live", "was_live", "post_live", "is_upcoming"]);
 const AUDIO_EXTENSIONS = new Set([
   ".aac",
   ".aiff",
@@ -86,11 +88,7 @@ function fileFormat(filename: unknown) {
   return path.extname(text(filename)).replace(/^\./, "").toUpperCase();
 }
 
-function isYtdlpLiveResult(result: RawSearchResult | null | undefined) {
-  return YTDLP_LIVE_STATUSES.has(text(result?.liveStatus).toLowerCase());
-}
-
-function resultView(source: string, raw: RawSearchResult) {
+function resultView(source: string, raw: Record<string, unknown>) {
   if (source === "slskd") {
     const normalizedFile = text(raw.file).replace(/\\/g, "/");
     const parent = normalizedFile.includes("/")
@@ -116,11 +114,16 @@ function resultView(source: string, raw: RawSearchResult) {
       details: [formatDuration(raw.durationSec), "Deezer"].filter(Boolean),
     };
   }
-  if (source === "ytdlp") {
+  if (isSourceContractId(source)) {
     return {
-      title: text(raw.title) || "Untitled video",
-      subtitle: text(raw.channel),
-      details: [formatDuration(raw.durationSec), "YouTube"].filter(Boolean),
+      title: text(raw.title) || "Untitled result",
+      subtitle: [text(raw.artist), text(raw.album), text(raw.year)].filter(Boolean).join(" · "),
+      details: [
+        text(raw.format).toUpperCase(),
+        raw.bitrate ? `${text(raw.bitrate)} kbps` : "",
+        formatDuration(Number(raw.durationMs) / 1000),
+        raw.trackCount ? `${text(raw.trackCount)} tracks` : "",
+      ].filter(Boolean),
     };
   }
   return {
@@ -170,6 +173,28 @@ async function searchSlskd(query: string, workContext: ManualWorkContext) {
   });
 }
 
+// A track source lists the results for the track, and an album source the
+// albums that hold it.
+async function searchContractSource(source: DownloadSource, jobId: string) {
+  const job = downloadTracker.getJob(jobId);
+  if (!job) throw new Error("This track is no longer tracked");
+  if (source.tracks) {
+    const track = resolveTrack({}, job);
+    const found = await (source.tracks.manualSearch?.(track) ??
+      source.tracks.search(track, { upgrade: null, denied: new Set() }));
+    return found.map((raw) => ({ raw, selection: { source: source.id, candidate: { raw } } }));
+  }
+  if (!source.albums) return [];
+  const found = await source.albums.search(await albumQuery({}, job), null);
+  return found.map((raw) => ({
+    raw,
+    selection: {
+      source: source.id,
+      candidate: { raw, resolvedAlbumName: raw.title, releaseVerified: false },
+    },
+  }));
+}
+
 async function searchSource(source: string, query: string, workContext: ManualWorkContext) {
   if (source === "slskd") return manualResults(source, await searchSlskd(query, workContext));
   if (source === "deemix") {
@@ -179,13 +204,8 @@ async function searchSource(source: string, query: string, workContext: ManualWo
       found.filter((entry) => entry?.readable !== false),
     );
   }
-  if (source === "ytdlp") {
-    const found = await getDownloadClient("ytdlp").search(query, { limit: 10 });
-    return manualResults(
-      source,
-      found.filter((entry) => !isYtdlpLiveResult(entry)),
-    );
-  }
+  const contract = contractSource(source);
+  if (contract) return searchContractSource(contract, workContext.jobId);
   if (source === "usenet") {
     return manualReleases(source, await prowlarrClient.search(query, { limit: MAX_RESULTS }));
   }
@@ -201,7 +221,9 @@ export function getManualDownloadSources() {
   if (status.slskd.configured) sources.push({ id: "slskd", label: "Soulseek", source: "slskd" });
   if (status.tidarr.configured) sources.push({ id: "tidarr", label: "Tidarr", source: "tidarr" });
   if (status.deemix.configured) sources.push({ id: "deemix", label: "deemix", source: "deemix" });
-  if (status.ytdlp.configured) sources.push({ id: "ytdlp", label: "yt-dlp", source: "ytdlp" });
+  for (const { id, label } of getEnabledDownloadSources()) {
+    if (contractSource(id)) sources.push({ id, label, source: id });
+  }
   if (status.usenet.prowlarrConfigured) {
     for (const client of USENET_CLIENT_KEYS.map((key) => getDownloadClient(key))) {
       if (!client.isConfigured()) continue;

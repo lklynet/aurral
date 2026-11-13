@@ -1,7 +1,7 @@
-import { test, vi } from "vite-plus/test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import fsPromises, { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -53,7 +53,9 @@ test(
     );
     await chmod(binaryPath, 0o755);
     process.env.PATH = `${tempDir}${path.delimiter}${previousPath || ""}`;
-    const client = new YtdlpClient({ enabled: true, stagingPath: tempDir });
+    const client = new YtdlpClient({ enabled: true });
+    const directory = path.join(tempDir, "staging");
+    await mkdir(directory);
     try {
       for (const [title, valid, trackName = "Stitches", artistName = "Shawn Mendes"] of [
         ["Shawn Mendes - Stitches (Audio)", true],
@@ -67,9 +69,9 @@ test(
         ["Shawn Mendes - Life of the Party (Audio)", false],
         ["Another Artist - Stitches (Audio)", false],
       ] as const) {
-        const { filePath } = await client.downloadAudio(
+        const filePath = await client.downloadAudio(
           `https://example.test/video?title=${encodeURIComponent(title)}`,
-          { jobId: "source-metadata" },
+          { directory },
         );
         const validation = await validateDownloadedTrackFile({
           request: { artistName, trackName, durationMs: 4000 },
@@ -80,8 +82,6 @@ test(
         assert.equal(validation.valid, valid, `${title}: ${validation.reason}`);
         assert.ok(validation.parsedTags != null);
         assert.equal(validation.parsedTags.title, title.replace(/^.+?\s+[-–—]\s+/, ""));
-        await client.cleanupStaging("source-metadata");
-        assert.equal(existsSync(filePath), false);
       }
     } finally {
       process.env.PATH = previousPath;
@@ -112,22 +112,19 @@ test("yt-dlp invocations remain compatible without a local Node runtime", () => 
 });
 
 test(
-  "yt-dlp cancellation waits for a stubborn child to exit before clearing staging",
+  "an aborted yt-dlp download stops yt-dlp and the processes it started",
   {
     skip: process.platform === "win32",
   },
   async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "aurral-ytdlp-cancel-"));
     const binaryPath = path.join(tempDir, "yt-dlp");
-    const pidPath = path.join(tempDir, "child.pid");
-    const grandchildPidPath = path.join(tempDir, "grandchild.pid");
+    const pidPath = path.join(tempDir, "pids");
     const previousPath = process.env.PATH;
-    const previousPidPath = process.env.AURRAL_YTDLP_TEST_PID;
-    const previousGrandchildPidPath = process.env.AURRAL_YTDLP_TEST_GRANDCHILD_PID;
     const grandchildScript = [
       "const fs = require('node:fs');",
       "process.on('SIGTERM', () => {});",
-      "fs.writeFileSync(process.env.AURRAL_YTDLP_TEST_GRANDCHILD_PID, String(process.pid));",
+      `fs.appendFileSync(${JSON.stringify(pidPath)}, process.pid + '\\n');`,
       "setInterval(() => {}, 1000);",
     ].join("\n");
     await writeFile(
@@ -137,94 +134,46 @@ test(
         "const fs = require('node:fs');",
         "const { spawn } = require('node:child_process');",
         "process.on('SIGTERM', () => {});",
-        "fs.writeFileSync(process.env.AURRAL_YTDLP_TEST_PID, String(process.pid));",
-        `spawn(process.execPath, ['-e', ${JSON.stringify(grandchildScript)}], { stdio: 'ignore', env: process.env });`,
+        `fs.appendFileSync(${JSON.stringify(pidPath)}, process.pid + '\\n');`,
+        `spawn(process.execPath, ['-e', ${JSON.stringify(grandchildScript)}], { stdio: 'ignore' });`,
         "setInterval(() => {}, 100);",
       ].join("\n"),
     );
     await chmod(binaryPath, 0o755);
     process.env.PATH = `${tempDir}${path.delimiter}${previousPath || ""}`;
-    process.env.AURRAL_YTDLP_TEST_PID = pidPath;
-    process.env.AURRAL_YTDLP_TEST_GRANDCHILD_PID = grandchildPidPath;
-
-    let pid: number | undefined;
-    let grandchildPid: number | undefined;
-    let childExited = false;
-    let grandchildStopped = false;
-    const until = async (condition: () => boolean) => {
-      while (!condition()) await new Promise<void>((resolve) => setImmediate(resolve));
-    };
-    const running = (target: number) => {
+    const readPids = async () =>
+      (await readFile(pidPath, "utf8").catch(() => "")).split("\n").filter(Boolean).map(Number);
+    const running = (pid: number) => {
       try {
-        return !execFileSync("ps", ["-o", "stat=", "-p", String(target)], { encoding: "utf8" })
+        return !execFileSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" })
           .trim()
           .startsWith("Z");
       } catch {
         return false;
       }
     };
-    const stagingDir = path.join(tempDir, "ytdlp", "stubborn-child");
-    const removals: { target: import("node:fs").PathLike; childRunning: boolean }[] = [];
-    const removeFiles = fsPromises.rm;
+    let pids: number[] = [];
     try {
-      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
-      const client = new YtdlpClient({ enabled: true, stagingPath: tempDir });
-      const download = client.downloadAudio("https://example.test/video", {
-        jobId: "stubborn-child",
-        shouldCancel: () => existsSync(pidPath) && existsSync(grandchildPidPath),
-      });
-      const cancelled = assert.rejects(download, { code: "DOWNLOAD_CANCELLED" });
-      await until(() => existsSync(pidPath) && existsSync(grandchildPidPath));
-      pid = Number(await readFile(pidPath, "utf8"));
-      grandchildPid = Number(await readFile(grandchildPidPath, "utf8"));
-      vi.spyOn(fsPromises, "rm").mockImplementation((target, options) => {
-        removals.push({ target, childRunning: running(pid!) });
-        return removeFiles(target, options);
-      });
-      const cleanup = client.cleanupStaging("stubborn-child");
-      await vi.advanceTimersByTimeAsync(1250);
-      await cancelled;
-      await cleanup;
-      assert.throws(() => process.kill(pid!, 0), { code: "ESRCH" });
-      childExited = true;
-      const stagingRemovals = removals.filter((removal) => removal.target === stagingDir);
-      assert.ok(stagingRemovals.length > 0);
-      assert.ok(
-        stagingRemovals.every((removal) => !removal.childRunning),
-        "staging was cleared while yt-dlp was still running",
+      const stop = new AbortController();
+      const directory = path.join(tempDir, "staging");
+      await mkdir(directory);
+      const download = new YtdlpClient({ enabled: true }).downloadAudio(
+        "https://example.test/video",
+        { directory, signal: stop.signal },
       );
+      while ((pids = await readPids()).length < 2) await new Promise(setImmediate);
+      stop.abort(new Error("cancelled"));
+      await assert.rejects(download, /cancelled/);
       const giveUp = Date.now() + 5000;
-      await until(() => !running(grandchildPid!) || Date.now() > giveUp);
-      assert.equal(
-        running(grandchildPid!),
-        false,
-        `yt-dlp grandchild ${grandchildPid} kept running`,
-      );
-      grandchildStopped = true;
-      assert.equal(existsSync(stagingDir), false);
+      while (pids.some(running) && Date.now() < giveUp) await new Promise(setImmediate);
+      assert.deepEqual(pids.filter(running), []);
     } finally {
-      if (!pid && existsSync(pidPath)) pid = Number(await readFile(pidPath, "utf8"));
-      if (!grandchildPid && existsSync(grandchildPidPath)) {
-        grandchildPid = Number(await readFile(grandchildPidPath, "utf8"));
-      }
-      if (!childExited && pid && Number.isInteger(pid)) {
+      for (const pid of pids) {
         try {
           process.kill(pid, "SIGKILL");
         } catch {}
       }
-      if (!grandchildStopped && grandchildPid && Number.isInteger(grandchildPid)) {
-        try {
-          process.kill(grandchildPid, "SIGKILL");
-        } catch {}
-      }
       process.env.PATH = previousPath;
-      if (previousPidPath === undefined) delete process.env.AURRAL_YTDLP_TEST_PID;
-      else process.env.AURRAL_YTDLP_TEST_PID = previousPidPath;
-      if (previousGrandchildPidPath === undefined)
-        delete process.env.AURRAL_YTDLP_TEST_GRANDCHILD_PID;
-      else process.env.AURRAL_YTDLP_TEST_GRANDCHILD_PID = previousGrandchildPidPath;
-      vi.restoreAllMocks();
-      vi.useRealTimers();
       await rm(tempDir, { recursive: true, force: true });
     }
   },
@@ -259,12 +208,13 @@ test(
     await chmod(binaryPath, 0o755);
     process.env.PATH = `${tempDir}${path.delimiter}${previousPath || ""}`;
     try {
-      const client = new YtdlpClient({ enabled: true, stagingPath: tempDir });
-      const { filePath } = await client.downloadAudio("https://example.test/video", {
-        jobId: "refused",
-      });
+      const directory = path.join(tempDir, "ytdlp", "refused");
+      await mkdir(directory, { recursive: true });
+      const filePath = await new YtdlpClient({ enabled: true }).downloadAudio(
+        "https://example.test/video",
+        { directory },
+      );
       assert.equal(await readFile(filePath, "utf8"), "audio");
-      await client.cleanupStaging("refused");
     } finally {
       process.env.PATH = previousPath;
       await rm(tempDir, { recursive: true, force: true });
@@ -300,14 +250,13 @@ test(
     await chmod(binaryPath, 0o755);
     process.env.PATH = `${tempDir}${path.delimiter}${previousPath || ""}`;
     try {
-      const client = new YtdlpClient({ enabled: true, stagingPath: tempDir, cookiesPath });
-      await client.downloadAudio("https://example.test/video", { jobId: "cookies" });
+      const client = new YtdlpClient({ enabled: true, cookiesPath });
+      await client.downloadAudio("https://example.test/video", { directory: tempDir });
       const seen = JSON.parse(await readFile(seenPath, "utf8"));
       assert.notEqual(seen.cookies, cookiesPath);
       assert.equal(seen.content, "# Netscape HTTP Cookie File\n");
       assert.equal(existsSync(seen.cookies), false);
       assert.equal(await readFile(cookiesPath, "utf8"), "# Netscape HTTP Cookie File\n");
-      await client.cleanupStaging("cookies");
     } finally {
       process.env.PATH = previousPath;
       await rm(tempDir, { recursive: true, force: true });

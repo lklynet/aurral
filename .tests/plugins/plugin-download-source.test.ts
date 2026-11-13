@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import * as v from "valibot";
 import { afterAll, afterEach, beforeEach, test, vi } from "vite-plus/test";
 import {
   cleanupIsolatedState,
@@ -29,6 +30,9 @@ const [
   { logger },
   libraryStore,
   { clearScheduledLibraryScan, isLibraryScanActive, scheduleLibraryScan },
+  manualSearch,
+  { downloadPipelineQueue },
+  { pipelinePayloadSchema, processPipelinePayload },
 ] = await setupIsolatedBackend(
   "plugin-download-source",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -43,6 +47,9 @@ const [
   () => import("../../backend/services/logger.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryScanWorker.ts"),
+  () => import("../../backend/services/manualMissingSearchService.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
+  () => import("../../backend/services/downloadPipeline.ts"),
 );
 
 const SOURCE = `let polls = 0;
@@ -343,6 +350,66 @@ test("an album-only plugin source fills a track request with the one file it kep
   assert.equal(job.status, "done");
   assert.equal(job.remoteFilename, "02 Night Drive.flac");
   await access(String(job.finalPath));
+});
+
+test("manual Search lists a plugin's results, or an album-only plugin's albums, and a chosen album fills the track", async () => {
+  const fixture = await writeFlacFixture(
+    path.join(fixtureDir, "source.flac"),
+    { title: "Night Drive", artist: "Glass Coast", album: "Lowlands" },
+    { seconds: 1 },
+  );
+  const jobId = createTrackedJob(
+    downloadTracker,
+    {
+      artistName: "Glass Coast",
+      trackName: "Night Drive",
+      albumName: "Lowlands",
+      durationMs: 1000,
+    },
+    "plugin-source",
+  );
+  downloadTracker.setFailed(jobId, "Automatic search found nothing");
+  const search = () =>
+    manualSearch.createManualMissingSearch({
+      job: trackedJob(downloadTracker, jobId),
+      sourceId: "plugin:tapes",
+      actorId: "user",
+    });
+
+  await installSource({ fixture });
+  assert.deepEqual(
+    manualSearch.getManualDownloadSources().find((source) => source.id === "plugin:tapes"),
+    { id: "plugin:tapes", label: "Tapes", source: "plugin:tapes" },
+  );
+  assert.deepEqual(
+    (await search()).results.map(({ title, subtitle, details }) => [title, subtitle, details]),
+    [["Night Drive", "Glass Coast · Lowlands", ["FLAC", "0:01"]]],
+  );
+
+  await installSource({ fixture }, { tracks: false, albums: true, files: true }, ALBUM_SOURCE);
+  const { sessionId, results } = await search();
+  assert.deepEqual(
+    results.map(({ title, subtitle }) => [title, subtitle]),
+    [
+      ["Lowlands", "Glass Coast"],
+      ["Lowlands", "Glass Coast"],
+    ],
+  );
+  const selection = manualSearch.getManualMissingSelection({
+    sessionId,
+    resultId: String(results[1]?.id),
+    jobId,
+    actorId: "user",
+  });
+  assert.ok(downloadTracker.enqueueManualSelection(jobId, selection));
+  let payload: v.InferOutput<typeof pipelinePayloadSchema> | null = v.parse(
+    pipelinePayloadSchema,
+    downloadPipelineQueue.list().find((row) => row.payload?.jobId === jobId)?.payload,
+  );
+  while (payload) payload = await processPipelinePayload(payload);
+  const job = trackedJob(downloadTracker, jobId);
+  assert.equal(job.status, "done");
+  assert.equal(job.remoteFilename, "02 Night Drive.flac");
 });
 
 async function filedFixtures(t: { onTestFinished: (fn: () => void) => void }) {

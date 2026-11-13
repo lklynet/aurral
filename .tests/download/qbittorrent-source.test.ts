@@ -260,12 +260,19 @@ test("a download hands qBittorrent the torrent file, or the magnet Prowlarr's li
   const [file, magnet] = await qbittorrentSource.albums!.search(ALBUM, null);
   assert.ok(file && magnet);
   const directory = path.join(folder, "staging");
+  const { signal } = new AbortController();
 
-  const first = await qbittorrentSource.albums!.download({ result: file, album: ALBUM, directory });
+  const first = await qbittorrentSource.albums!.download({
+    result: file,
+    album: ALBUM,
+    directory,
+    signal,
+  });
   const second = await qbittorrentSource.albums!.download({
     result: magnet,
     album: ALBUM,
     directory,
+    signal,
   });
 
   const [fileForm, magnetForm] = fake.added;
@@ -280,7 +287,7 @@ test("a download hands qBittorrent the torrent file, or the magnet Prowlarr's li
   assert.equal(magnetForm.get("stopCondition"), "MetadataReceived");
   assert.notEqual(first?.pending, second?.pending);
   await assert.rejects(
-    qbittorrentSource.albums!.download({ result: magnet, album: ALBUM, directory }),
+    qbittorrentSource.albums!.download({ result: magnet, album: ALBUM, directory, signal }),
     (error) => error instanceof DownloadSourceError && /didn't add/.test(error.message),
   );
 });

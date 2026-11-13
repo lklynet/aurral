@@ -16,7 +16,6 @@ import {
   SLSKD_NOT_CONFIGURED_MESSAGE,
 } from "./slskdOrchestrator.ts";
 import { discardUsenetWork, processUsenetPipelinePayload } from "./usenetOrchestrator.ts";
-import { processYtdlpPipelinePayload } from "./ytdlpOrchestrator.ts";
 import { discardDeemixWork, processDeemixPipelinePayload } from "./deemixOrchestrator.ts";
 import {
   albumGrabJobs,
@@ -67,7 +66,6 @@ const slskdClient = getDownloadClient("slskd");
 
 type SlskdStepPayload = Parameters<typeof processSlskdPipelinePayload>[0];
 type UsenetStepPayload = Parameters<typeof processUsenetPipelinePayload>[0];
-type YtdlpStepPayload = Parameters<typeof processYtdlpPipelinePayload>[0];
 type DeemixStepPayload = Parameters<typeof processDeemixPipelinePayload>[0];
 type SourceError = { source: string; message: string };
 
@@ -78,7 +76,6 @@ export type PipelinePayload = PipelineStep &
     | SlskdStepPayload
     | UsenetStepPayload
     | DeemixStepPayload
-    | YtdlpStepPayload
     | SourcePayload
   ) & {
     exhaustedSources?: string[];
@@ -247,7 +244,7 @@ export function buildNextSourcePayload(
   if (!next) return null;
   const step = { ...payload, ...sourceSearchReset(), triedSources: [...tried], sourceErrors };
   const { id } = next;
-  if (id === "slskd" || id === "deemix" || id === "ytdlp") return { ...step, source: id };
+  if (id === "slskd" || id === "deemix") return { ...step, source: id };
   if (isNzbSource(id)) return { ...step, source: id };
   return { ...step, source: id };
 }
@@ -618,13 +615,6 @@ async function processSourcePayload(payload: PipelinePayload): Promise<PipelineP
       return job ? failOrTryNextSource(payload, job, "deemix is not configured") : null;
     }
     return processDeemixPipelinePayload(payload, { failOrTryNextSource });
-  }
-  if (payload.source === "ytdlp") {
-    if (!isSourceConfigured("ytdlp")) {
-      const job = downloadTracker.getJob(payload.jobId);
-      return job ? failOrTryNextSource(payload, job, "yt-dlp is not configured") : null;
-    }
-    return processYtdlpPipelinePayload(payload, { failOrTryNextSource });
   }
   if (isSourceContractStep(payload)) {
     const native = nativeDownloadSource(payload.source);

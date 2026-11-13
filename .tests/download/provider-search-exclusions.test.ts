@@ -9,17 +9,27 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
-const [state, { db }, { dbOps }, { downloadTracker }, { getDownloadClient }, deemix, ytdlp, slskd] =
-  await setupIsolatedBackend(
-    "provider-search-exclusions",
-    () => import("../../backend/config/db-sqlite.ts"),
-    () => import("../../backend/db/helpers/index.ts"),
-    () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
-    () => import("../../backend/services/download/downloadClientSettings.ts"),
-    () => import("../../backend/services/deemixOrchestrator.ts"),
-    () => import("../../backend/services/ytdlpOrchestrator.ts"),
-    () => import("../../backend/services/downloadPipeline.ts"),
-  );
+const [
+  state,
+  { db },
+  { dbOps },
+  { downloadTracker },
+  { getDownloadClient },
+  deemix,
+  { ytdlpSource },
+  slskd,
+  { processSourcePipelinePayload },
+] = await setupIsolatedBackend(
+  "provider-search-exclusions",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/download/downloadClientSettings.ts"),
+  () => import("../../backend/services/deemixOrchestrator.ts"),
+  () => import("../../backend/services/ytdlpSource.ts"),
+  () => import("../../backend/services/downloadPipeline.ts"),
+  () => import("../../backend/services/download/sourcePipeline.ts"),
+);
 beforeEach(() => resetDatabase(db));
 afterAll(() => cleanupIsolatedState(state));
 
@@ -40,7 +50,15 @@ type SearchingClient = { search: (query: string) => Promise<unknown[]> };
 
 const searchSteps: [source: "deemix" | "ytdlp", step: SearchStep][] = [
   ["deemix", deemix.processDeemixPipelinePayload as SearchStep],
-  ["ytdlp", ytdlp.processYtdlpPipelinePayload as SearchStep],
+  [
+    "ytdlp",
+    ((payload, helpers) =>
+      processSourcePipelinePayload(
+        payload as Parameters<typeof processSourcePipelinePayload>[0],
+        ytdlpSource,
+        helpers as Parameters<typeof processSourcePipelinePayload>[2],
+      )) as SearchStep,
+  ],
 ];
 
 for (const [source, processPayload] of searchSteps) {
@@ -105,7 +123,6 @@ for (const [source, processPayload] of searchSteps) {
       source === "deemix" ? getDownloadClient("deemix") : getDownloadClient("ytdlp");
     if (source === "deemix")
       vi.spyOn(getDownloadClient("deemix"), "removeFromQueue").mockImplementation(async () => true);
-    else vi.spyOn(getDownloadClient("ytdlp"), "cleanupStaging").mockImplementation(async () => {});
     const helpers = { failOrTryNextSource: async () => null };
     await processPayload(
       {
