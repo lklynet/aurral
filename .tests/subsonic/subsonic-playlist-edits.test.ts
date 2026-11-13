@@ -206,8 +206,16 @@ test("renaming a Subsonic playlist keeps its library song and file", async () =>
   await fs.mkdir(path.dirname(finalPath), { recursive: true });
   await fs.writeFile(finalPath, "retained audio");
 
-  const renamed = await subsonic.updateSubsonicPlaylist(user, { playlistId, name: "After Rename" });
+  const renamedAt = Date.now() + 86_400_000;
+  vi.useFakeTimers({ toFake: ["Date"], now: renamedAt });
+  const renamed = await subsonic
+    .updateSubsonicPlaylist(user, { playlistId, name: "After Rename" })
+    .finally(() => vi.useRealTimers());
 
+  assert.equal(
+    Date.parse(requireFixture(subsonic.getSubsonicPlaylist(`shared:${playlistId}`, user)).changed),
+    renamedAt,
+  );
   assert.equal(renamed?.tracks[0]?.canonicalJobId, jobId);
   assert.equal(downloadTracker.getJob(jobId)?.status, "done");
   assert.equal(downloadTracker.getJob(savedJobId)?.status, "saved");

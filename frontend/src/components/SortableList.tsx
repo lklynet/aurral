@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   DndContext,
+  KeyboardCode,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
@@ -8,6 +9,7 @@ import {
   useSensors,
   type Announcements,
   type DragEndEvent,
+  type DragStartEvent,
   type UniqueIdentifier,
 } from "@dnd-kit/core";
 import {
@@ -17,6 +19,27 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+
+const keyboardCodes = {
+  start: [KeyboardCode.Space],
+  cancel: [KeyboardCode.Esc],
+  end: [KeyboardCode.Space, KeyboardCode.Enter, KeyboardCode.Tab],
+};
+
+// dnd-kit stops the click that ends a pointer drag from propagating but leaves its default, so a dragged link would still navigate.
+const swallowClickAfterPointerDrag = ({ activatorEvent }: DragStartEvent) => {
+  if (!(activatorEvent instanceof PointerEvent)) return;
+  const release = () => {
+    window.removeEventListener("click", swallow, true);
+    window.removeEventListener("pointerdown", release, true);
+  };
+  const swallow = (event: MouseEvent) => {
+    event.preventDefault();
+    release();
+  };
+  window.addEventListener("click", swallow, true);
+  window.addEventListener("pointerdown", release, true);
+};
 
 export function SortableList<Id extends UniqueIdentifier>({
   ids,
@@ -31,7 +54,7 @@ export function SortableList<Id extends UniqueIdentifier>({
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates, keyboardCodes }),
   );
   const indexOf = (id: UniqueIdentifier) => ids.findIndex((entry) => entry === id);
   const positionOf = (id: UniqueIdentifier) => `position ${indexOf(id) + 1} of ${ids.length}`;
@@ -59,6 +82,7 @@ export function SortableList<Id extends UniqueIdentifier>({
       collisionDetection={closestCenter}
       modifiers={[restrictToVerticalAxis]}
       accessibility={{ announcements }}
+      onDragStart={swallowClickAfterPointerDrag}
       onDragEnd={handleDragEnd}
     >
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>

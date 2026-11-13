@@ -17,7 +17,7 @@ import {
 const [
   isolatedState,
   { db },
-  { dbOps },
+  { dbOps, userOps },
   playlistConfigModule,
   { api },
   libraryScanWorker,
@@ -498,6 +498,97 @@ test("updates static playlists and keeps summaries in sync", () => {
   assert.equal(updated?.tracks?.length, 1);
   assert.equal(summary?.name, "Gym Mix Updated");
   assert.equal(summary?.trackCount, 1);
+});
+
+test("marks a playlist edited only when its name, description, or tracks change", () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: 1_000 });
+  try {
+    const playlist = flowPlaylistConfig.createStaticPlaylist({
+      name: "Gym Mix",
+      tracks: [
+        { artistName: "A", trackName: "One" },
+        { artistName: "B", trackName: "Two" },
+      ],
+    });
+    const editedAt = (at: number, edit: () => void) => {
+      vi.setSystemTime(at);
+      edit();
+      return flowPlaylistConfig.getStaticPlaylist(playlist.id)?.updatedAt;
+    };
+
+    assert.equal(playlist.updatedAt, 1_000);
+    assert.equal(
+      editedAt(2_000, () =>
+        flowPlaylistConfig.updateStaticPlaylist(playlist.id, { recordHistory: false }),
+      ),
+      1_000,
+    );
+    assert.equal(
+      editedAt(3_000, () =>
+        flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
+          tracks: [
+            {
+              artistName: "A",
+              trackName: "One",
+              trackMbid: "11111111-1111-4111-8111-111111111111",
+            },
+            { artistName: "B", trackName: "Two" },
+          ],
+        }),
+      ),
+      1_000,
+    );
+    assert.equal(
+      editedAt(4_000, () =>
+        flowPlaylistConfig.appendStaticPlaylistTracks(playlist.id, [
+          { artistName: "B", trackName: "Two" },
+        ]),
+      ),
+      1_000,
+    );
+    assert.equal(
+      editedAt(5_000, () =>
+        flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
+          tracks: [
+            { artistName: "B", trackName: "Two" },
+            { artistName: "A", trackName: "One" },
+          ],
+        }),
+      ),
+      5_000,
+    );
+    assert.equal(
+      editedAt(6_000, () => flowPlaylistConfig.updateStaticPlaylist(playlist.id, { name: "Run" })),
+      6_000,
+    );
+
+    dbOps.updateSettings({ staticPlaylists: [{ id: "legacy", name: "Old", createdAt: 500 }] });
+    invalidateFlowPlaylistConfigCache();
+    assert.equal(flowPlaylistConfig.getStaticPlaylist("legacy")?.updatedAt, 500);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a saved sidebar order keeps only playlists and flows the user can see", async () => {
+  const owner = userOps.createUser("order-owner", "hash");
+  const other = userOps.createUser("order-other", "hash");
+  assert.ok(owner && other);
+  const mine = flowPlaylistConfig.createStaticPlaylist({ name: "Mine", ownerUserId: owner.id });
+  const theirs = flowPlaylistConfig.createStaticPlaylist({ name: "Theirs", ownerUserId: other.id });
+  const flow = flowPlaylistConfig.createFlow({ name: "Weekly", ownerUserId: owner.id });
+  const app = signedInAs(testUser(owner.id)).route("/", api);
+
+  const saved = await app.request("/users/me/playlist-order", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: [flow.id, theirs.id, mine.id, flow.id, "deleted"] }),
+  });
+  assert.equal(saved.status, 200);
+  assert.deepEqual(await saved.json(), { ids: [flow.id, mine.id] });
+
+  const loaded = await app.request("/users/me/playlist-order");
+  assert.deepEqual(await loaded.json(), { ids: [flow.id, mine.id] });
 });
 
 test("defaults Spotify removed-track retention on and preserves an explicit opt-out", () => {

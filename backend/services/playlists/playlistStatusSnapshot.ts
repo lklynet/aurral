@@ -274,6 +274,7 @@ export function getPlaylistStatusSnapshot({ user = null }: { user?: RequestUser 
       sourceFlowId: playlist.sourceFlowId,
       importedAt: playlist.importedAt,
       createdAt: playlist.createdAt,
+      updatedAt: playlist.updatedAt,
       trackCount: Math.max(jobTotal, Number(playlist.trackCount || 0)),
       recordHistory: playlist.recordHistory !== false,
       showTrackAvailability: playlist.showTrackAvailability === true,

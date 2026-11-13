@@ -46,6 +46,15 @@ export const listeningHistoryQueryOptions = (userId: MaybeId) =>
     staleTime: 30_000,
   });
 
+export const playlistOrderQueryOptions = (userId: MaybeId) =>
+  queryOptions({
+    queryKey: queryKeys.myPlaylistOrder(userId),
+    queryFn: ({ signal }) =>
+      parseResponse(usersClient.me["playlist-order"].$get({}, { init: { signal } })),
+    enabled: userId != null,
+    staleTime: Infinity,
+  });
+
 export const spotifyHistoryQueryOptions = (userId: MaybeId) =>
   queryOptions({
     queryKey: queryKeys.spotifyHistory(userId),

@@ -31,6 +31,7 @@ import {
 } from "../services/listeningHistory.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { normalizeDiscoverLayout } from "../../lib/discoverLayout.ts";
+import { flowPlaylistConfig } from "../services/playlists/flowPlaylistConfig.ts";
 
 type UserUpdate = Parameters<typeof userOps.updateUser>[1];
 
@@ -70,6 +71,9 @@ const listenHistoryBody = v.partial(
 );
 const themeBody = v.object({ theme: v.optional(v.unknown()) });
 const discoverLayoutBody = v.object({ layout: v.optional(v.unknown()) });
+const playlistOrderBody = v.object({
+  ids: v.pipe(v.array(v.pipe(v.string(), v.maxLength(200))), v.maxLength(5000)),
+});
 const passwordBody = v.object({
   currentPassword: v.optional(v.string()),
   newPassword: v.optional(v.string()),
@@ -334,6 +338,27 @@ export default new Hono<AppEnv>()
       return c.json({ error: "Failed to save discover layout", message: failure?.message }, 500);
     }
   })
+  .get("/me/playlist-order", requireAuth, requireUserAccount, (c) =>
+    c.json({ ids: dbOps.getUserPlaylistOrder(c.var.user.id) }, 200),
+  )
+  .put(
+    "/me/playlist-order",
+    requireAuth,
+    requireUserAccount,
+    validate("json", playlistOrderBody),
+    (c) => {
+      const { user } = c.var;
+      const visible = new Set(
+        [
+          ...flowPlaylistConfig.getFlowsForUser(user),
+          ...flowPlaylistConfig.getStaticPlaylistsForUser(user),
+        ].map(({ id }) => id),
+      );
+      const ids = [...new Set(c.req.valid("json").ids)].filter((id) => visible.has(id));
+      dbOps.setUserPlaylistOrder(user.id, ids);
+      return c.json({ ids }, 200);
+    },
+  )
   .post("/me/password", requireAuth, requireRecentAuth(), validate("json", passwordBody), (c) => {
     try {
       const { currentPassword, newPassword } = c.req.valid("json");
