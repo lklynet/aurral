@@ -7,6 +7,7 @@ const createAbortError = () => {
 type InflightEntry = {
   controller: AbortController;
   consumers: Set<object>;
+  abortWhenUnused: boolean;
   settled: boolean;
   promise: Promise<unknown> | null;
 };
@@ -20,7 +21,7 @@ export const runSharedInflight = <T>(
   inflight: InflightRequests,
   key: string,
   task: (signal: AbortSignal) => T,
-  { signal }: { signal?: AbortSignal } = {},
+  { signal, abortWhenUnused = true }: { signal?: AbortSignal; abortWhenUnused?: boolean } = {},
 ): Promise<Awaited<T>> => {
   if (signal?.aborted) {
     return Promise.reject(getAbortReason(signal));
@@ -32,6 +33,7 @@ export const runSharedInflight = <T>(
     entry = {
       controller,
       consumers: new Set(),
+      abortWhenUnused,
       settled: false,
       promise: null,
     };
@@ -48,6 +50,8 @@ export const runSharedInflight = <T>(
       }
     });
     inflight.set(key, entry);
+  } else if (!abortWhenUnused) {
+    entry.abortWhenUnused = false;
   }
 
   const consumer = {};
@@ -60,7 +64,7 @@ export const runSharedInflight = <T>(
       finished = true;
       signal?.removeEventListener("abort", onAbort);
       entry.consumers.delete(consumer);
-      if (!entry.settled && entry.consumers.size === 0) {
+      if (entry.abortWhenUnused && !entry.settled && entry.consumers.size === 0) {
         entry.controller.abort(createAbortError());
       }
     };

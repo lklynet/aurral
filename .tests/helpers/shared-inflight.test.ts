@@ -80,3 +80,33 @@ test("the underlying operation aborts after every consumer leaves", async () => 
   assert.equal(underlyingAborted, true);
   assert.equal(inflight.size, 0);
 });
+
+test("detached work finishes after every consumer leaves", async () => {
+  const inflight: InflightRequests = new Map();
+  const controller = new AbortController();
+  let finish!: (value: string) => void;
+  const finished = new Promise<string>((resolve) => {
+    finish = resolve;
+  });
+  let underlyingAborted = false;
+
+  const task = (signal: AbortSignal) => {
+    signal.addEventListener("abort", () => {
+      underlyingAborted = true;
+    });
+    return finished;
+  };
+
+  const cancelled = runSharedInflight(inflight, "same", task, {
+    signal: controller.signal,
+    abortWhenUnused: false,
+  });
+  controller.abort();
+  await assert.rejects(cancelled, { name: "AbortError" });
+
+  const retained = runSharedInflight(inflight, "same", task, { abortWhenUnused: false });
+  finish("done");
+  assert.equal(await retained, "done");
+  assert.equal(underlyingAborted, false);
+  assert.equal(inflight.size, 0);
+});

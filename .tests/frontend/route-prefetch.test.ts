@@ -51,20 +51,12 @@ test("hovering a playlist link fetches it once and the page reuses the result", 
   assert.equal(apiRequests(requests, "/discover/playlists/deezer/42").length, 1);
 });
 
-test("a failed prefetch is not retried on the next hover", async (t) => {
-  const { requests, prefetchRoute, queryClient, queryOptions } = await setup(t, () => ({
-    status: 503,
-    body: { error: "unavailable" },
-  }));
+test("hovering an album never fetches metadata from BrainzMash", async (t) => {
+  const { requests, prefetchRoute } = await setup(t, () => ({ body: {} }));
 
-  await prefetchRoute("/album/rg-1");
-  await prefetchRoute("/album/rg-1");
-  assert.equal(apiRequests(requests, "/artists/release-group/rg-1").length, 1);
+  await prefetchRoute("/album/98c84b94-3445-4dcc-ad01-9e5e3e1271e2");
 
-  await assert.rejects(
-    queryClient.fetchQuery(queryOptions.releaseGroupDetailsQueryOptions("rg-1")),
-  );
-  assert.equal(apiRequests(requests, "/artists/release-group/rg-1").length, 2);
+  assert.equal(apiRequests(requests, "/artists/release-group/").length, 0);
 });
 
 test("no prefetch runs while the tab is hidden or for links outside the app", async (t) => {
@@ -104,7 +96,7 @@ test("a library album prefetch matches the page query whatever its list state", 
   assert.equal(requests.length, prefetched);
 });
 
-test("an album linked by MBID prefetches its library view too", async (t) => {
+test("an album linked by MBID prefetches only its local library view", async (t) => {
   const mbid = "98c84b94-3445-4dcc-ad01-9e5e3e1271e2";
   const { requests, prefetchRoute, queryClient } = await setup(t, (url) => ({
     body: url.pathname.includes("/library") ? { tracks: [], total: 0 } : { id: mbid },
@@ -112,7 +104,7 @@ test("an album linked by MBID prefetches its library view too", async (t) => {
   const { libraryViewQueryOptions } = await import("../../frontend/src/utils/libraryViewQuery.ts");
 
   await prefetchRoute(`/album/${mbid}`);
-  assert.equal(apiRequests(requests, `/artists/release-group/${mbid}`).length, 1);
+  assert.equal(apiRequests(requests, `/artists/release-group/${mbid}`).length, 0);
   const prefetched = requests.length;
 
   await queryClient.fetchQuery(libraryViewQueryOptions({ preview: false, albumId: mbid }));

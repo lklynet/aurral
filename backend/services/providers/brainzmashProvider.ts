@@ -94,7 +94,7 @@ interface MetadataError extends Error {
 }
 
 const METADATA_ENTITY_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
-const METADATA_ENTITY_STALE_TTL_SECONDS = 30 * 24 * 60 * 60;
+const METADATA_ENTITY_STALE_TTL_SECONDS = null;
 const METADATA_SEARCH_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const METADATA_NOT_FOUND_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS = 5_000;
@@ -364,7 +364,12 @@ async function storeMetadata(
 ) {
   const now = Date.now();
   const freshUntil = now + freshTtlSeconds * 1000;
-  const entry = { value, freshUntil, staleUntil: freshUntil + staleTtlSeconds * 1000 };
+  const entry = {
+    value,
+    freshUntil,
+    staleUntil:
+      staleTtlSeconds === null ? Number.MAX_SAFE_INTEGER : freshUntil + staleTtlSeconds * 1000,
+  };
   metadataHotCache.set(cacheKey, entry);
   try {
     await dbOps.setMetadataResponseAsync(cacheKey, entry);
@@ -418,6 +423,7 @@ function refreshMetadata<Schema extends v.GenericSchema>(
 ): Promise<v.InferOutput<Schema>> {
   const baseUrl = getMetadataBaseUrl();
   const cachePolicy = getMetadataCachePolicy(path);
+  const ownsPersistentRequest = isEntityMetadataPath(path);
   const circuitError = getMetadataCircuitError(baseUrl);
   if (circuitError) {
     return fallbackValue !== undefined
@@ -431,7 +437,6 @@ function refreshMetadata<Schema extends v.GenericSchema>(
     providerInflightRequests,
     cacheKey,
     async (sharedSignal: AbortSignal) => {
-      const ownsPersistentRequest = isEntityMetadataPath(path);
       let leaseToken: string | null = null;
       if (ownsPersistentRequest) {
         while (!leaseToken) {
@@ -583,7 +588,7 @@ function refreshMetadata<Schema extends v.GenericSchema>(
       }
       throw new Error("Metadata provider request failed");
     },
-    { signal },
+    { signal, abortWhenUnused: !ownsPersistentRequest },
   );
 }
 

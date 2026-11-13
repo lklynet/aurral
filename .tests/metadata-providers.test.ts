@@ -172,6 +172,96 @@ test("stale album metadata is served while one refresh runs in the background", 
   }
 });
 
+test("an accepted entity request finishes caching after its caller leaves", async () => {
+  const previousSettings = dbOps.getSettings();
+  let requests = 0;
+  let requestArrived!: () => void;
+  const requestStarted = new Promise<void>((resolve) => {
+    requestArrived = resolve;
+  });
+  let releaseResponse!: () => void;
+  const responseReleased = new Promise<void>((resolve) => {
+    releaseResponse = resolve;
+  });
+  const server = await createMockHttpServer((_request, response) => {
+    requests += 1;
+    requestArrived();
+    response.setHeader("content-type", "application/json");
+    void responseReleased.then(() =>
+      response.end(JSON.stringify({ id: "detached-album", title: "Detached Album" })),
+    );
+  });
+  const controller = new AbortController();
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    const abandoned = getAlbumByMbid("detached-album", { signal: controller.signal });
+    await requestStarted;
+    controller.abort();
+    await assert.rejects(abandoned, { name: "AbortError" });
+
+    const retained = getAlbumByMbid("detached-album");
+    releaseResponse();
+    assert.equal((await retained).title, "Detached Album");
+    assert.equal(requests, 1);
+  } finally {
+    controller.abort();
+    releaseResponse();
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("the last good entity response remains stored after its refresh window", async () => {
+  const previousSettings = dbOps.getSettings();
+  const server = await createMockHttpServer((_request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ id: "retained-album", title: "Retained Album" }));
+  });
+  const originalNow = Date.now;
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    assert.equal((await getAlbumByMbid("retained-album")).title, "Retained Album");
+    const later = originalNow() + 365 * 24 * 60 * 60 * 1000;
+    Date.now = () => later;
+    const retained = await dbOps.getMetadataResponseAsync(`${server.url}/album/retained-album:{}`);
+    assert.equal((retained?.value as Record<string, unknown>)?.title, "Retained Album");
+  } finally {
+    Date.now = originalNow;
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
 test("BrainzMash data Aurral can't read is never served, from the provider or the cache", async () => {
   const previousSettings = dbOps.getSettings();
   let requests = 0;
@@ -312,7 +402,7 @@ test("entity metadata is shared with other processes until the cache is cleared"
   }
 });
 
-test("metadata past its stale window is removed from storage", async () => {
+test("search metadata expires while the last good entity responses remain stored", async () => {
   const previousSettings = dbOps.getSettings();
   const server = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
@@ -365,8 +455,9 @@ test("metadata past its stale window is removed from storage", async () => {
       >("SELECT cache_key FROM metadata_response_cache")
       .all()
       .map((row) => row.cache_key);
-    assert.equal(keys.length, 1);
-    assert.match(requireFixture(keys[0]), /\/album\/current-album:/);
+    assert.equal(keys.length, 2);
+    assert.ok(keys.some((key) => /\/album\/expiring-album:/.test(requireFixture(key))));
+    assert.ok(keys.some((key) => /\/album\/current-album:/.test(requireFixture(key))));
   } finally {
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
