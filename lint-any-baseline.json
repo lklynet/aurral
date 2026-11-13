@@ -94,7 +94,6 @@
   ".tests/playlists/playlist-artwork-serve.test.ts": 12,
   ".tests/playlists/playlist-config.test.ts": 8,
   ".tests/playlists/playlist-import-order.test.ts": 7,
-  ".tests/playlists/playlist-mbid-enrichment.test.ts": 2,
   ".tests/playlists/status-broadcaster.int.test.ts": 6,
   ".tests/playlists/status-snapshot-process.test.ts": 4,
   ".tests/playlists/track-availability.test.ts": 4,

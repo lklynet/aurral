@@ -434,6 +434,72 @@ test("artist album refreshes can bypass the long-lived metadata cache", async ()
   }
 });
 
+test("an artist's album list refreshes a cached album only while it is not out yet", async () => {
+  const previousSettings = dbOps.getSettings();
+  const fetched: string[] = [];
+  let upcomingRefreshed!: () => void;
+  const upcomingRefresh = new Promise<void>((resolve) => {
+    upcomingRefreshed = resolve;
+  });
+  const releaseDates = { out: "2000-01-01", soon: "2999-01-01" };
+  const server = await createMockHttpServer((request, response) => {
+    const id = requireFixture(request.url).split("/").at(-1);
+    response.setHeader("content-type", "application/json");
+    if (request.url?.startsWith("/artist/")) {
+      response.end(
+        JSON.stringify({
+          id,
+          artistname: "List Artist",
+          Albums: [
+            { Id: "out", Title: "Out", Type: "Album" },
+            { Id: "soon", Title: "Soon", Type: "Album" },
+          ],
+        }),
+      );
+      return;
+    }
+    fetched.push(String(id));
+    response.end(JSON.stringify({ id, title: id, releasedate: releaseDates.soon }));
+    upcomingRefreshed();
+  });
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+    for (const [id, releasedate] of Object.entries(releaseDates)) {
+      await dbOps.setMetadataResponseAsync(`${server.url}/album/${id}:{}`, {
+        value: { id, title: id, releasedate },
+        freshUntil: Date.now() - 1000,
+        staleUntil: Date.now() + 60_000,
+      });
+    }
+
+    const albums = await listArtistAlbums("list-artist");
+    await upcomingRefresh;
+
+    assert.deepEqual(
+      albums.map((album) => album.firstReleaseDate),
+      Object.values(releaseDates),
+    );
+    assert.deepEqual(fetched, ["soon"]);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
 test("missing entity metadata is negatively cached for repeated lookups", async () => {
   const previousSettings = dbOps.getSettings();
   let requests = 0;
