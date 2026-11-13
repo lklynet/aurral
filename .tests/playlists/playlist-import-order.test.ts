@@ -59,8 +59,12 @@ const [
 
 const { downloadTracker } = trackerModule;
 const { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } = playlistConfigModule;
-const { markLatestPlaylistOperationToken, processPlaylistOperation, updateStaticPlaylist } =
-  operationsModule;
+const {
+  markLatestPlaylistOperationToken,
+  processPlaylistOperation,
+  reorderStaticPlaylistTracks,
+  updateStaticPlaylist,
+} = operationsModule;
 const { downloadWorker, DownloadWorker } = workerModule;
 assert.ok(downloadWorker instanceof DownloadWorker);
 const { flowTrackSource } = flowTrackSourceModule;
@@ -913,6 +917,34 @@ test("deleting a track keeps remaining import order in config", async () => {
     assert.deepEqual(
       jobsAfter.map((job) => job.trackName),
       ["One", "Three", "Four"],
+    );
+  } finally {
+    downloadWorker.start = originalStart;
+    downloadWorker.stop();
+  }
+});
+
+test("reordering moves only the listed tracks, within the slots they held", async () => {
+  const originalStart = downloadWorker.start;
+  downloadWorker.start = async () => {};
+  try {
+    const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Reorder", tracks: [] });
+    await appendTracks(
+      playlist.id,
+      ["One", "Two", "Three", "Four"].map((trackName) => ({
+        artistName: "A",
+        trackName,
+        albumName: "Album",
+      })),
+    );
+    const [one, two, three] = playlistJobs(playlist.id).map((job) => job.id);
+    assert.ok(one && two && three);
+
+    await reorderStaticPlaylistTracks(playlist.id, [three, "removed-elsewhere", one, two]);
+
+    assert.deepEqual(
+      playlistJobs(playlist.id).map((job) => job.trackName),
+      ["Three", "One", "Two", "Four"],
     );
   } finally {
     downloadWorker.start = originalStart;

@@ -440,6 +440,7 @@ export interface PlaylistTracksPanelProps<T extends PlaylistPanelTrack> {
   bulkAddLabel?: string;
   onBulkAddToLibrary?: (tracks: T[]) => unknown;
   onBulkMoveToPlaylist?: (tracks: T[], target: PlaylistTrackTarget) => unknown;
+  onReorder?: (jobIds: string[]) => unknown;
   bulkActionLoading?: boolean;
 }
 
@@ -487,6 +488,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
   bulkAddLabel = "Copy",
   onBulkAddToLibrary,
   onBulkMoveToPlaylist,
+  onReorder,
   bulkActionLoading = false,
 }: PlaylistTracksPanelProps<T>) {
   const [sortKey, setSortKey] = useState("index");
@@ -495,14 +497,21 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const trackOrderKey = useMemo(() => tracks.map((track) => track.id).join("\n"), [tracks]);
+  const trackSetKey = useMemo(
+    () =>
+      tracks
+        .map((track) => track.id)
+        .sort()
+        .join("\n"),
+    [tracks],
+  );
 
   useEffect(() => {
     setSortKey("index");
     setSortDirection("asc");
     setEditMode(false);
     setSelectedIds(new Set());
-  }, [trackOrderKey]);
+  }, [trackSetKey]);
 
   const {
     playTrack,
@@ -572,6 +581,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
   const playableTracks = useMemo(() => visibleTracks.filter(canPlayTrack), [visibleTracks]);
   const allVisibleSelected =
     visibleTracks.length > 0 && visibleTracks.every((track) => selectedIds.has(track.id));
+  const canReorder = editMode && sortKey === "index" && sortDirection === "asc" && !normalizedQuery;
   const isSourceActive = matchesSource(playbackSource);
   const currentTrackId = isSourceActive && currentTrack?.id ? currentTrack.id : null;
 
@@ -899,7 +909,12 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
             </>
           ) : (
             <TooltipButton
-              onClick={() => setEditMode(true)}
+              onClick={() => {
+                setEditMode(true);
+                if (!onReorder) return;
+                setSortKey("index");
+                setSortDirection("asc");
+              }}
               className="native-library-icon-button"
               label="Select tracks"
               aria-label="Select tracks"
@@ -934,6 +949,9 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
           showReason={reasonsVary}
           wideTime={rows.some((row) => typeof row.time !== "string")}
           sort={{ key: sortKey, direction: sortDirection, onSort: handleSort }}
+          onReorder={
+            onReorder && canReorder ? (keys) => onReorder(keys.map((key) => String(key))) : null
+          }
           selection={
             editMode
               ? {

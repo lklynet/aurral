@@ -8636,6 +8636,34 @@ button.native-library-card__artist:focus-visible {
   justify-content: center;
 }
 
+.native-library-track__grip {
+  display: inline-flex;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--aurral-radius-sm);
+  padding: 0;
+  background: transparent;
+  color: var(--aurral-text-subtle);
+  cursor: grab;
+  touch-action: none;
+}
+
+.native-library-track__grip svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.native-library-track.is-dragging {
+  position: relative;
+  z-index: var(--aurral-z-raised);
+  background: var(--aurral-surface-raised);
+  box-shadow: var(--aurral-shadow-popover);
+}
+
 .native-library-track__favorite,
 .native-library-track__hover-action {
   opacity: 0;

@@ -37,6 +37,7 @@ import type { Flow, StaticPlaylist } from "../../utils/playlistStats.ts";
 import type { PlaylistTrackRow } from "./playlistPageUtils.ts";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
 import { albumPath } from "../../../../lib/albumPath.ts";
+import { reorderInPlace } from "../../../../lib/reorderInPlace.ts";
 import { useShareAction } from "../../hooks/useShareAction.ts";
 import {
   normalizeNameKey,
@@ -240,6 +241,29 @@ export function PlaylistTracks({
 
   const handleDeleteTrack = (track: PlaylistTrackRow) => bulkActions.removeTracks(entry, [track]);
 
+  const canReorder = !isFlow && !("importSource" in entry && entry.importSource?.syncEnabled);
+
+  const handleReorder = async (jobIds: string[]) => {
+    const queryKey = queryKeys.playlistJobs(entry.id);
+    await queryClient.cancelQueries({ queryKey });
+    queryClient.setQueryData<PlaylistTrackRow[]>(queryKey, (rows) =>
+      rows ? reorderInPlace(rows, (row) => row.id, jobIds) : rows,
+    );
+    try {
+      await parseResponse(
+        playlistRoutes[":playlistId"]["track-order"].$put({
+          param: { playlistId: encodeURIComponent(entry.id) },
+          json: { jobIds },
+        }),
+      );
+    } catch (err) {
+      showError(
+        `Could not reorder ${entry.name || "the playlist"}. ${getApiErrorMessage(err, "Try again.")}`,
+      );
+      await refresh();
+    }
+  };
+
   const handleReSearchTrack = async (track: PlaylistTrackRow, forceReplacementSearch = false) => {
     const jobId = track?.id;
     if (!jobId || reSearchingTrackIds[jobId]) return;
@@ -442,6 +466,7 @@ export function PlaylistTracks({
         onBulkMoveToPlaylist={
           isFlow ? undefined : (selected, target) => moveTracks(selected, target)
         }
+        onReorder={canReorder ? handleReorder : undefined}
         playlists={staticPlaylists}
         playlistSavingKey={playlistMenuSavingKey}
         playlistMenuError={playlistMenuError}
