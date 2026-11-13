@@ -16,7 +16,8 @@ const [
   { downloadTracker },
   { getDownloadClient },
   { processPipelinePayload },
-  { processUsenetPipelinePayload },
+  { processSourcePipelinePayload },
+  { usenetSource },
 ] = await setupIsolatedBackend(
   "transfer-timeouts",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -24,7 +25,8 @@ const [
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/download/downloadClientSettings.ts"),
   () => import("../../backend/services/downloadPipeline.ts"),
-  () => import("../../backend/services/usenetOrchestrator.ts"),
+  () => import("../../backend/services/download/sourcePipeline.ts"),
+  () => import("../../backend/services/usenetSource.ts"),
 );
 
 beforeEach(() => {
@@ -32,8 +34,6 @@ beforeEach(() => {
   resetDatabase(db);
 });
 afterAll(() => cleanupIsolatedState(state));
-
-type UsenetPayload = Parameters<typeof processUsenetPipelinePayload>[0];
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -280,60 +280,39 @@ test("a file in an uploader's queue moves to the next candidate after 10 minutes
   assert.equal(lastCandidate.phase, "poll");
 });
 
-test("a paused Usenet download keeps waiting while the client holds it", async () => {
-  const client = getDownloadClient("nzbget");
-  vi.spyOn(client, "getHistoryItem").mockImplementation(async () => null);
-  vi.spyOn(client, "getQueueItem").mockImplementation(async () => ({ NZBID: 7, Status: "PAUSED" }));
-  const jobId = addJob();
-  const next = await processUsenetPipelinePayload(
-    {
-      phase: "poll",
-      source: "usenet" as const,
-      jobId,
-      downloadClient: "nzbget",
-      nzbId: 7,
-      pollAttempts: 5000,
-    },
-    failSource,
-  );
-  assert.ok(isStepFrom(next, "usenet"));
-  assert.equal(next.phase, "poll");
-  assert.equal(next.missingPolls, 0);
+const directory = "/nonexistent/aurral-usenet-handover";
+
+test("a paused or post-processing Usenet download keeps waiting while the client holds it", async () => {
+  const nzbget = getDownloadClient("nzbget");
+  vi.spyOn(nzbget, "getHistoryItem").mockImplementation(async () => null);
+  vi.spyOn(nzbget, "getQueueItem").mockImplementation(async () => ({ NZBID: 7, Status: "PAUSED" }));
+  const sabnzbd = getDownloadClient("sabnzbd");
+  vi.spyOn(sabnzbd, "getHistoryItem").mockImplementation(async () => ({
+    nzo_id: "SAB_1",
+    status: "Extracting",
+  }));
+  vi.spyOn(sabnzbd, "getQueueItem").mockImplementation(async () => null);
+
+  assert.deepEqual(await usenetSource.status({ id: "nzbget:7", directory }), { done: false });
+  assert.deepEqual(await usenetSource.status({ id: "sabnzbd:SAB_1", directory }), {
+    done: false,
+  });
 });
 
-test("a Usenet download that leaves the client moves to the next release", async () => {
+test("a Usenet download that left both the queue and the history is gone", async () => {
   const client = getDownloadClient("nzbget");
-  vi.spyOn(client, "getHistoryItem").mockImplementation(async () => null);
+  const history = vi.spyOn(client, "getHistoryItem").mockImplementation(async () => null);
   vi.spyOn(client, "getQueueItem").mockImplementation(async () => null);
-  const jobId = addJob();
-  const payload = {
-    phase: "poll",
-    source: "usenet" as const,
-    jobId,
-    downloadClient: "nzbget",
-    nzbId: 7,
-    candidateIndex: 0,
-    candidates: [
-      usenetCandidate({ raw: { release: { guid: "a" } } }),
-      usenetCandidate({ raw: { release: { guid: "b" } } }),
-    ],
-  };
-  const waiting = await processUsenetPipelinePayload(payload, failSource);
-  assert.ok(isStepFrom(waiting, "usenet"));
-  assert.equal(waiting.phase, "poll");
-  assert.equal(waiting.missingPolls, 1);
-  const next = await processUsenetPipelinePayload(
-    { ...waiting, missingPolls: 60 } as UsenetPayload,
-    failSource,
+  await assert.rejects(
+    usenetSource.status({ id: "nzbget:7", directory }),
+    /left the download client/,
   );
-  assert.ok(isStepFrom(next, "usenet"));
-  assert.equal(next.phase, "download");
-  assert.equal(next.candidateIndex, 1);
-  assert.equal(next.nzbId, null);
+  assert.equal(history.mock.calls.length, 2);
 });
 
 test("an NZBGet download that failed is removed from the client", async () => {
   const client = getDownloadClient("nzbget");
+  vi.spyOn(client, "isConfigured").mockImplementation(() => true);
   vi.spyOn(client, "getHistoryItem").mockImplementation(async () => ({
     NZBID: 7,
     Status: "FAILURE/PAR",
@@ -341,50 +320,22 @@ test("an NZBGet download that failed is removed from the client", async () => {
   const fromQueue = vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
   const fromHistory = vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
   const jobId = addJob();
-  const result = await processUsenetPipelinePayload(
+  const result = await processSourcePipelinePayload(
     {
       phase: "poll",
-      source: "usenet" as const,
+      source: "usenet",
       jobId,
-      downloadClient: "nzbget",
-      nzbId: 7,
+      pendingId: "nzbget:7",
       candidateIndex: 0,
-      candidates: [usenetCandidate({ raw: { release: { guid: "broken" } } })],
+      candidates: [usenetCandidate({ guid: "broken", title: "First" })],
     },
+    usenetSource,
     failSource,
   );
   assert.equal(result, null);
   assert.match(requireFixture(failures[0]), /Usenet download failed/);
   assert.deepEqual(
-    fromQueue.mock.calls.map((call) => call[0]),
-    [7],
+    [fromQueue, fromHistory].map((mock) => mock.mock.calls.map((call) => call[0])),
+    [["7"], ["7"]],
   );
-  assert.deepEqual(
-    fromHistory.mock.calls.map((call) => call[0]),
-    [7],
-  );
-});
-
-test("a Usenet download still post-processing in the client keeps waiting", async () => {
-  const client = getDownloadClient("sabnzbd");
-  vi.spyOn(client, "getHistoryItem").mockImplementation(async () => ({
-    nzo_id: "SAB_1",
-    status: "Extracting",
-  }));
-  vi.spyOn(client, "getQueueItem").mockImplementation(async () => null);
-  const jobId = addJob();
-  const next = await processUsenetPipelinePayload(
-    {
-      phase: "poll",
-      source: "usenet" as const,
-      jobId,
-      downloadClient: "sabnzbd",
-      nzbId: "SAB_1",
-      missingPolls: 60,
-    },
-    failSource,
-  );
-  assert.ok(isStepFrom(next, "usenet"));
-  assert.equal(next.phase, "poll");
-  assert.equal(next.missingPolls, 0);
 });

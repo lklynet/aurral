@@ -109,7 +109,7 @@ test("upgrading drops what only Lidarr mode read and keeps the rest", () => {
 test("upgrading fails finished downloads without a file and statuses Aurral does not read", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  migrate(db, migrations.slice(0, -2));
+  migrate(db, migrations.slice(0, -3));
   const insert = db.prepare<[string, string, string | null]>(
     `INSERT INTO download_jobs (id, artist_name, track_name, owner_id, status, final_path, created_at)
      VALUES (?, 'Artist', 'Song', 'library', ?, ?, 1)`,
@@ -134,7 +134,7 @@ test("upgrading fails finished downloads without a file and statuses Aurral does
 test("upgrading lets albums that failed to load try again, and keeps rate-limit waits", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  migrate(db, migrations.slice(0, -1));
+  migrate(db, migrations.slice(0, -2));
   const insert = db.prepare<[string, number, number]>(
     "INSERT INTO metadata_request_state (cache_key, failure_count, retry_after, updated_at) VALUES (?, ?, ?, 1000)",
   );
@@ -148,5 +148,61 @@ test("upgrading lets albums that failed to load try again, and keeps rate-limit 
   assert.deepEqual(
     db.prepare("SELECT cache_key FROM metadata_request_state ORDER BY cache_key").pluck().all(),
     ["rate-limited", "rate-limited-after-failing"],
+  );
+});
+
+test("upgrading names a Usenet job's download by its client and its turned-down releases by album", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, -1));
+  const insert = db.prepare<[string, string, string, string | null, string | null]>(
+    `INSERT INTO download_jobs (id, artist_name, track_name, owner_id, status, download_source,
+       download_client, download_client_id, denied_remote_sources, created_at)
+     VALUES (?, 'Artist', 'Song', 'library', 'downloading', ?, ?, ?, ?, 1)`,
+  );
+  insert.run("nzbget", "usenet", "nzbget", "42", JSON.stringify([["usenet", "Guid-A"]]));
+  insert.run(
+    "tidarr",
+    "tidarr",
+    "tidarr",
+    "SABnzbd_nzo_1",
+    JSON.stringify([
+      ["tidarr", "123-lossless"],
+      ["slskd", "user\0file"],
+    ]),
+  );
+  insert.run("qbittorrent", "qbittorrent", "qbittorrent", "aurral-tag", null);
+
+  migrate(db);
+
+  assert.deepEqual(
+    db
+      .prepare(
+        "SELECT id, download_client, download_client_id, denied_remote_sources FROM download_jobs ORDER BY id",
+      )
+      .all(),
+    [
+      {
+        id: "nzbget",
+        download_client: "usenet",
+        download_client_id: "nzbget:42",
+        denied_remote_sources: JSON.stringify([["usenet", "album:guid-a"]]),
+      },
+      {
+        id: "qbittorrent",
+        download_client: "qbittorrent",
+        download_client_id: "aurral-tag",
+        denied_remote_sources: null,
+      },
+      {
+        id: "tidarr",
+        download_client: "tidarr",
+        download_client_id: "tidarr:SABnzbd_nzo_1",
+        denied_remote_sources: JSON.stringify([
+          ["tidarr", "album:tidarr:123"],
+          ["slskd", "user\0file"],
+        ]),
+      },
+    ],
   );
 });

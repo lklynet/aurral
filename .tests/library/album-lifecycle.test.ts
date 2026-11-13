@@ -14,7 +14,7 @@ import {
 } from "../helpers/backendTestHarness.ts";
 import { listen, signedInAs } from "../helpers/honoApp.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
-import { startWorkerForQueuedWork, usenetCandidate, usenetRelease } from "../download/fixtures.ts";
+import { startWorkerForQueuedWork, usenetCandidate } from "../download/fixtures.ts";
 
 const [
   isolatedState,
@@ -373,8 +373,7 @@ test("track cancellation keeps failed provider cleanup pending and succeeds afte
   downloadTracker.setDownloading(id);
   downloadTracker.updateDownloadMetadata(id, {
     downloadSource: "usenet",
-    downloadClient: "sabnzbd",
-    downloadClientId: "disposable-queue",
+    downloadClientId: "sabnzbd:disposable-queue",
   });
   const first = await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST");
   assert.equal(first.status, 200);
@@ -406,8 +405,7 @@ test("retry keeps a cancelled queued job blocked until provider cleanup succeeds
   const id = fixture.jobFor(0);
   downloadTracker.updateDownloadMetadata(id, {
     downloadSource: "usenet",
-    downloadClient: "sabnzbd",
-    downloadClientId: "disposable-queue",
+    downloadClientId: "sabnzbd:disposable-queue",
   });
 
   const cancelled = await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST");
@@ -441,8 +439,7 @@ test("retry keeps a failed job blocked until its provider request is cleaned up"
   downloadTracker.setDownloading(id);
   downloadTracker.updateDownloadMetadata(id, {
     downloadSource: "usenet",
-    downloadClient: "sabnzbd",
-    downloadClientId: "still-running-nzb",
+    downloadClientId: "sabnzbd:still-running-nzb",
   });
   downloadTracker.setFailed(id, "Usenet client remained unreadable");
 
@@ -745,8 +742,8 @@ test("album cancellation waits on provider cleanup without reviving the job", as
   const jobId = jobFor(0);
   downloadTracker.setDownloading(jobId);
   downloadTracker.updateDownloadMetadata(jobId, {
-    downloadClient: "sabnzbd",
-    downloadClientId: "unconfigured-sabnzbd-item",
+    downloadSource: "usenet",
+    downloadClientId: "sabnzbd:unconfigured-sabnzbd-item",
   });
 
   const cancelled = await callRoute(`/library/albums/${album.id}/cancel`, "POST");
@@ -1192,18 +1189,7 @@ test("an album asks for its most common edition and a shorter download leaves it
     {
       ...grab,
       source: "usenet" as const,
-      candidate: usenetCandidate({
-        raw: {
-          release: usenetRelease({
-            guid: "shorter",
-            title: "",
-            downloadUrl: "",
-            indexerId: 1,
-            size: 0,
-            categories: [],
-          }),
-        },
-      }),
+      candidate: usenetCandidate({ guid: "shorter", title: "Edition Album" }),
     },
     { filePaths: shorter, source: "usenet" },
   );
@@ -1213,7 +1199,7 @@ test("an album asks for its most common edition and a shorter download leaves it
   );
   assert.deepEqual(
     ids.map((id) => getJob(id).deniedRemoteSources),
-    ids.map(() => [["usenet", "shorter"]]),
+    ids.map(() => [["usenet", "album:shorter"]]),
   );
 
   for (const id of ids) downloadTracker.setDownloading(id);

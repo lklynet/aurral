@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import * as v from "valibot";
@@ -5,6 +6,7 @@ import { resolveAurralDataDir } from "../../config/data-dir.ts";
 import type { PipelinePayload } from "../downloadPipeline.ts";
 import {
   isPipelinePayloadActive,
+  isPipelinePayloadCancelled,
   withPipelineCommitLock,
 } from "../downloadJobs/downloadCancellation.ts";
 import {
@@ -27,7 +29,6 @@ import { logger } from "../logger.ts";
 import { albumGrabJobs, deniedAlbumSources, finishAlbumGrab } from "../albumGrab.ts";
 import { selectSoulseekAlbumFolder } from "../albumReleaseSearch.ts";
 import { getQualityProfile } from "../qualityProfile.ts";
-import { isSameCoreAlbum } from "../downloadJobs/deemixSearch.ts";
 import { isAudioFile } from "../downloadJobs/usenetReleaseSearch.ts";
 import { attemptRelease } from "../releaseResolver.ts";
 import type { ReleaseManifest } from "../releaseManifest.ts";
@@ -48,6 +49,7 @@ import {
 import {
   DownloadSourceError,
   NATIVE_SOURCE_IDS,
+  statusResult,
   trackResult,
   type AlbumResult,
   type DownloadSource,
@@ -69,6 +71,9 @@ const MAX_ALBUM_CANDIDATES = 5;
 const FILED_FALLBACK_SCAN = 8;
 const FILED_GIVE_UP = 16;
 const CANCEL_CHECK_MS = 1000;
+const MAX_UNREAD_POLLS = (30 * 60) / POLL_SECONDS;
+const MAX_TRACK_ALBUM_DOWNLOADS = 2;
+const HANDED_OVER = ".aurral-handed-over.json";
 
 type SourceCandidate =
   | ReturnType<typeof toPipelineCandidate<TrackResult>>
@@ -95,6 +100,8 @@ export type SourcePayload = PipelineStep & {
   filedPolls?: number;
   fallbackScanned?: boolean;
   pollAttempts?: number;
+  unreadPolls?: number;
+  albumDownloads?: number;
   filesChecked?: boolean;
 };
 export type SourceHelpers = {
@@ -108,11 +115,37 @@ export type SourceHelpers = {
 
 export const stagingDir = (source: DownloadSource, jobId: string) =>
   path.resolve(resolveAurralDataDir(), "_staging", source.staging, jobId);
+const handoverDir = (source: DownloadSource, pendingId: string) =>
+  stagingDir(
+    source,
+    `pending-${createHash("sha256").update(pendingId).digest("hex").slice(0, 32)}`,
+  );
+const filesDir = (payload: Pick<SourcePayload, "jobId" | "pendingId">, source: DownloadSource) =>
+  payload.pendingId ? handoverDir(source, payload.pendingId) : stagingDir(source, payload.jobId);
 const cleanup = (directory: string) =>
   fs.rm(directory, { recursive: true, force: true }).catch(() => {});
 
 const fromAlbum = (payload: SourcePayload, source: DownloadSource) =>
   payload.albumGrab !== true && !source.tracks;
+
+// A track job takes at most two albums from a source before it moves on, so
+// one track never spends an indexer's grabs on a whole search.
+const hasNextTry = (payload: SourcePayload, source: DownloadSource) =>
+  hasNextCandidate(payload) &&
+  (!fromAlbum(payload, source) || Number(payload.albumDownloads || 0) < MAX_TRACK_ALBUM_DOWNLOADS);
+const NEXT_TRY = { downloadedPath: null, pendingId: null, unreadPolls: 0 };
+
+const usesDownload = (job: DownloadJob, sourceId: string, pendingId: string) =>
+  job.status === "downloading" &&
+  job.downloadSource === sourceId &&
+  String(job.downloadClientId ?? "") === pendingId &&
+  downloadTracker.hasPersistedJob(job.id) &&
+  !downloadTracker.isInActiveAlbumGrab(job.id);
+
+const otherUsers = (sourceId: string, pendingId: string, except: ReadonlySet<string>) =>
+  downloadTracker
+    .getAll()
+    .some((job) => !except.has(job.id) && usesDownload(job, sourceId, pendingId));
 
 const deniedKey = (payload: SourcePayload, source: DownloadSource, id: string | undefined) =>
   id && fromAlbum(payload, source) ? `album:${id}` : id;
@@ -173,22 +206,36 @@ async function resolveDownloadedFile(directory: string, returned: string) {
   return filePath;
 }
 
-// Removes what a step started: the source's own download, if it has one, and
-// the folder Aurral gave it.
+// A job is done with what its step started: the folder Aurral gave it, and
+// the source's own download once no other job takes a track from it. A
+// download Aurral imported from stays with the source, so a torrent seeds.
+// Synchronous from releasing the job to checking for others, so the last of
+// two jobs finishing at once removes the download.
 export async function discardSourceWork(
   payload: Pick<SourcePayload, "jobId" | "pendingId">,
   source: DownloadSource,
-) {
-  if (payload.pendingId && source.discard) {
-    await source.discard(payload.pendingId).catch((error: unknown) =>
+  {
+    imported = false,
+    except = new Set([payload.jobId]),
+    onDiscardError = (error: unknown) =>
       logger.warn(source.id, "Could not remove a download", {
         jobId: payload.jobId,
         pendingId: payload.pendingId,
         error: error instanceof Error ? error.message : String(error),
       }),
-    );
-  }
+  }: {
+    imported?: boolean;
+    except?: ReadonlySet<string>;
+    onDiscardError?: (error: unknown) => void;
+  } = {},
+) {
+  const { pendingId } = payload;
+  for (const jobId of except) downloadTracker.releaseDownloadClient(jobId);
+  const last = !pendingId || !otherUsers(source.id, pendingId, except);
   await cleanup(stagingDir(source, payload.jobId));
+  if (!pendingId || !last) return;
+  if (!imported && source.discard) await source.discard(pendingId).catch(onDiscardError);
+  await cleanup(handoverDir(source, pendingId));
 }
 
 function startSearch(job: DownloadJob, source: DownloadSource) {
@@ -210,20 +257,20 @@ async function handleAlbumSearch(
   if (!job || job.status === "failed" || job.status === "done") return null;
   startSearch(job, source);
   const album = await albumQuery(payload, job);
+  const denied = deniedAlbumSources([job, ...albumGrabJobs(payload)], source.id);
   let results: AlbumResult[];
   try {
-    results = await albums.search(album, searchUpgrade(payload));
+    results = await albums.search(album, {
+      upgrade: searchUpgrade(payload),
+      track: fromAlbum(payload, source) ? resolveTrack(payload, job) : null,
+      denied: new Set([...denied].map((key) => key.replace(/^album:/, ""))),
+    });
   } catch (error) {
     if (!(error instanceof DownloadSourceError)) throw error;
     return helpers.failOrTryNextSource(payload, job, `album search failed: ${error.message}`);
   }
-  const denied = deniedAlbumSources([job, ...albumGrabJobs(payload)], source.id);
   const candidates = results
-    .filter(
-      (result) =>
-        !denied.has(`album:${result.id}`.toLowerCase()) &&
-        isSameCoreAlbum(result.title, album.title),
-    )
+    .filter((result) => !denied.has(`album:${result.id}`.toLowerCase()))
     .slice(0, MAX_ALBUM_CANDIDATES)
     .map((result) => ({ raw: result, resolvedAlbumName: result.title, releaseVerified: false }));
   if (candidates.length === 0)
@@ -305,7 +352,7 @@ async function stagedAudioFiles(directory: string) {
 }
 
 const downloadedFiles = (payload: SourcePayload, source: DownloadSource) =>
-  payload.importedFiles ?? stagedAudioFiles(stagingDir(source, payload.jobId));
+  payload.importedFiles ?? stagedAudioFiles(filesDir(payload, source));
 
 // Aurral judges the files themselves, as it does for a Usenet release, so a
 // track still imports when the file names didn't show which one it is.
@@ -318,7 +365,10 @@ async function albumTrackDownloaded(
     request: resolveTrack(payload, job),
     filePaths: await downloadedFiles(payload, source),
     source: source.id,
-    options: { release: await attemptRelease(payload, job) },
+    options: {
+      release: await attemptRelease(payload, job),
+      manualSelection: payload.manualSelection === true,
+    },
   });
   if (!found.filePath) {
     const candidate = payload.candidates?.[Number(payload.candidateIndex || 0)];
@@ -390,8 +440,7 @@ async function downloadFailed(
     result: payload.candidates?.[Number(payload.candidateIndex || 0)]?.raw.id ?? null,
     error: error.message,
   });
-  if (hasNextCandidate(payload))
-    return buildNextCandidatePayload(payload, { downloadedPath: null, pendingId: null });
+  if (hasNextTry(payload, source)) return buildNextCandidatePayload(payload, NEXT_TRY);
   return helpers.failOrTryNextSource(payload, job, `download failed: ${error.message}`);
 }
 
@@ -429,6 +478,67 @@ async function startDownload(
   return whileActive(payload, (signal) => albums.download({ result, album, directory, signal }));
 }
 
+// Track jobs that take one album from a source share its download. Finding
+// the download and claiming its start happen in one synchronous step, so
+// after a start fails, one waiting job starts it for the others.
+const starting = new Map<string, Promise<void>>();
+
+async function joinDownload(source: DownloadSource, job: DownloadJob, result: TrackResult) {
+  const key = `${source.id}\0${result.id}`;
+  const releaseGuid = `album:${result.id}`;
+  for (;;) {
+    const running = downloadTracker
+      .getAll()
+      .find(
+        (entry) =>
+          entry.id !== job.id &&
+          entry.releaseGuid === releaseGuid &&
+          usesDownload(entry, source.id, String(entry.downloadClientId ?? "")),
+      );
+    if (running?.downloadClientId) return { pendingId: String(running.downloadClientId) };
+    const waiting = starting.get(key);
+    if (!waiting) {
+      let settle = () => {};
+      const claim = new Promise<void>((resolve) => {
+        settle = resolve;
+      });
+      starting.set(key, claim);
+      return {
+        settle: () => {
+          if (starting.get(key) === claim) starting.delete(key);
+          settle();
+        },
+      };
+    }
+    await waiting;
+  }
+}
+
+function useDownload(
+  payload: SourcePayload,
+  source: DownloadSource,
+  result: TrackResult,
+  pendingId: string,
+) {
+  downloadTracker.updateDownloadMetadata(payload.jobId, {
+    downloadSource: source.id,
+    downloadClient: source.id,
+    downloadClientId: pendingId,
+    releaseGuid: deniedKey(payload, source, result.id),
+    releaseTitle: result.title,
+  });
+}
+
+const polling = (payload: SourcePayload, pendingId: string) => ({
+  ...payload,
+  phase: "poll",
+  pendingId,
+  pollAttempts: 0,
+  unreadPolls: 0,
+  filesChecked: false,
+  delaySeconds: POLL_SECONDS,
+});
+
 async function handleDownload(
   attempt: SourcePayload,
   source: DownloadSource,
@@ -448,29 +558,43 @@ async function handleDownload(
   if (!v.is(trackResult, result))
     return helpers.failOrTryNextSource(payload, job, "No search result to download");
   recordTrackJobDownloading(job);
+  const joined = fromAlbum(payload, source) ? await joinDownload(source, job, result) : null;
+  if (joined?.pendingId) {
+    if (!isPipelinePayloadActive(payload)) return null;
+    useDownload(payload, source, result, joined.pendingId);
+    return polling(payload, joined.pendingId);
+  }
+  let tried = payload;
   try {
-    const started = await startDownload(payload, source, job, result);
+    const counted = { ...payload, albumDownloads: Number(payload.albumDownloads || 0) + 1 };
+    const start = async () => {
+      const started = await startDownload(payload, source, job, result);
+      const pendingId = "pending" in started && started.pending ? started.pending : null;
+      if (pendingId) useDownload(counted, source, result, pendingId);
+      return { started, pendingId };
+    };
+    // A cancellation waits while an album download is handed to its client,
+    // so it finds the download and removes it, or fails and can run again.
+    const locked = !source.tracks || payload.albumGrab === true;
+    const handed = locked
+      ? await withPipelineCommitLock(payload, start)
+      : { cancelled: false, result: await start() };
+    if (handed.cancelled) return null;
+    const { started, pendingId } = handed.result;
+    tried = counted;
     if (!isPipelinePayloadActive(payload)) {
-      await discardSourceWork(
-        { ...payload, pendingId: "pending" in started ? started.pending : null },
-        source,
-      );
+      if (!locked || !pendingId || !isPipelinePayloadCancelled(payload))
+        await discardSourceWork({ ...payload, pendingId }, source);
       return null;
     }
-    if ("pending" in started && started.pending) {
-      const polling = {
-        ...payload,
-        phase: "poll",
-        pendingId: started.pending,
-        pollAttempts: 0,
-        filesChecked: false,
-        delaySeconds: POLL_SECONDS,
-      };
-      return await keepFiles(polling, source, job).catch(() => polling);
+    if (pendingId) {
+      joined?.settle?.();
+      const next = polling(counted, pendingId);
+      return await keepFiles(next, source, job).catch(() => next);
     }
     if (payload.albumGrab === true)
       return { ...payload, phase: "finalize", candidate, pendingId: null };
-    if (fromAlbum(payload, source)) return await albumTrackDownloaded(payload, source, job);
+    if (fromAlbum(payload, source)) return await albumTrackDownloaded(counted, source, job);
     if (!("path" in started) || !started.path)
       throw new DownloadSourceError("returned neither a path nor a pending download");
     return trackDownloaded(
@@ -480,7 +604,9 @@ async function handleDownload(
     );
   } catch (error) {
     if (!(error instanceof DownloadSourceError)) throw error;
-    return downloadFailed(payload, source, job, error, helpers);
+    return downloadFailed(tried, source, job, error, helpers);
+  } finally {
+    joined?.settle?.();
   }
 }
 
@@ -525,17 +651,71 @@ async function waitForFiledAlbum(payload: SourcePayload, source: DownloadSource,
   };
 }
 
+// Every job sharing a download reads it, but the source hands it over once,
+// and a mark in its folder outlasts a restart.
+const handing = new Map<string, Promise<v.InferOutput<typeof statusResult>>>();
+
+async function pendingStatus(
+  status: NonNullable<DownloadSource["status"]>,
+  id: string,
+  directory: string,
+) {
+  const mark = path.join(directory, HANDED_OVER);
+  const handed = await fs
+    .readFile(mark, "utf8")
+    .then((text) => v.parse(statusResult, JSON.parse(text)))
+    .catch(() => null);
+  if (handed) return handed;
+  const running = handing.get(directory);
+  if (running) return running;
+  const check = (async () => {
+    await fs.mkdir(directory, { recursive: true });
+    const read = await status({ id, directory });
+    if (read.done) await fs.writeFile(mark, JSON.stringify(read));
+    return read;
+  })().finally(() => handing.delete(directory));
+  handing.set(directory, check);
+  return check;
+}
+
+// A client Aurral can't reach keeps downloading, so the download waits for
+// it to answer again instead of ending.
+async function readStatus(
+  payload: SourcePayload,
+  source: DownloadSource,
+  status: NonNullable<DownloadSource["status"]>,
+  directory: string,
+) {
+  try {
+    return await pendingStatus(status, String(payload.pendingId), directory);
+  } catch (error) {
+    if (error instanceof DownloadSourceError) throw error;
+    const unreadPolls = Number(payload.unreadPolls || 0) + 1;
+    if (unreadPolls > MAX_UNREAD_POLLS) throw error;
+    if (unreadPolls === 1)
+      logger.warn(source.id, "Could not read a download; waiting", {
+        jobId: payload.jobId,
+        pendingId: payload.pendingId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    return { unreadPolls };
+  }
+}
+
 async function handlePoll(payload: SourcePayload, source: DownloadSource, helpers: SourceHelpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job || job.status === "failed" || job.status === "done") return null;
-  const directory = stagingDir(source, job.id);
+  const directory = filesDir(payload, source);
   const pollAttempts = Number(payload.pollAttempts || 0) + 1;
   try {
     if (payload.filedCount)
       return await waitForFiledAlbum({ ...payload, pollAttempts }, source, job);
-    const current = await keepFiles(payload, source, job);
+    const checked = await keepFiles(payload, source, job);
     if (!source.status) throw new DownloadSourceError("can't report a pending download");
-    const status = await source.status({ id: String(current.pendingId), directory });
+    const status = await readStatus(checked, source, source.status, directory);
+    if ("unreadPolls" in status)
+      return { ...checked, phase: "poll", pollAttempts, ...status, delaySeconds: POLL_SECONDS };
+    const current = { ...checked, unreadPolls: 0 };
     if (!isPipelinePayloadActive(current)) {
       await discardSourceWork(current, source);
       return null;
@@ -578,6 +758,8 @@ async function handlePoll(payload: SourcePayload, source: DownloadSource, helper
 // The source keeps a download Aurral imported from, so a torrent seeds, and
 // removes one Aurral didn't use.
 async function handleAlbumFinalize(payload: SourcePayload, source: DownloadSource) {
+  const job = downloadTracker.getJob(payload.jobId);
+  if (!job || job.status === "failed" || job.status === "done") return null;
   let imported = false;
   const settled = { ...payload, pendingId: null };
   const next = await finishAlbumGrab(settled, {
@@ -596,8 +778,7 @@ async function handleAlbumFinalize(payload: SourcePayload, source: DownloadSourc
       imported = true;
     },
   });
-  if (imported) await cleanup(stagingDir(source, payload.jobId));
-  else await discardSourceWork(payload, source);
+  await discardSourceWork(payload, source, { imported });
   return next;
 }
 
@@ -614,10 +795,12 @@ async function handleFinalize(
   const filePath = String(payload.downloadedPath || "").trim();
   if (!filePath) {
     await discardSourceWork(payload, source);
-    if (hasNextCandidate(payload))
-      return buildNextCandidatePayload(payload, { downloadedPath: null, pendingId: null });
+    if (hasNextTry(payload, source)) return buildNextCandidatePayload(payload, NEXT_TRY);
     return helpers.failOrTryNextSource(payload, job, "download is missing its file");
   }
+  const shared = () =>
+    Boolean(payload.pendingId) &&
+    otherUsers(source.id, String(payload.pendingId), new Set([job.id]));
   const validation = await validateDownloadedTrackFile({
     request: resolvedTrack,
     candidate: candidate?.candidate ?? candidate,
@@ -639,7 +822,8 @@ async function handleFinalize(
         path.dirname(directory),
         `${job.id}-held${path.extname(filePath)}`,
       );
-      await fs.rename(filePath, heldPath);
+      if (shared()) await fs.link(filePath, heldPath).catch(() => fs.copyFile(filePath, heldPath));
+      else await fs.rename(filePath, heldPath);
       await discardSourceWork(payload, source);
       const heldPayload = {
         ...payload,
@@ -651,8 +835,8 @@ async function handleFinalize(
           reason: validation.reason,
         }),
       };
-      return hasNextCandidate(payload)
-        ? buildNextCandidatePayload(heldPayload)
+      return hasNextTry(payload, source)
+        ? buildNextCandidatePayload(heldPayload, NEXT_TRY)
         : helpers.failOrTryNextSource(heldPayload, job, heldPayload.heldForReview.reason);
     }
     downloadTracker.recordDeniedSource(
@@ -662,8 +846,7 @@ async function handleFinalize(
     );
     await discardSourceWork(payload, source);
     const reason = validation.reason || "download failed track validation";
-    if (hasNextCandidate(payload))
-      return buildNextCandidatePayload(payload, { downloadedPath: null, pendingId: null });
+    if (hasNextTry(payload, source)) return buildNextCandidatePayload(payload, NEXT_TRY);
     return helpers.failOrTryNextSource(payload, job, reason);
   }
   const inactiveOwner = deferForInactiveOwner(payload, job);
@@ -678,8 +861,10 @@ async function handleFinalize(
       await writeAudioMetadata(filePath, resolvedTrack);
       recordTrackJobMoving(job);
     }
-    const committedFinalPath = inPlace ? filePath : await commitDownloadedFile(filePath, finalPath);
-    await cleanup(directory);
+    const committedFinalPath = inPlace
+      ? filePath
+      : await commitDownloadedFile(filePath, finalPath, { preserveSource: shared() });
+    await discardSourceWork(payload, source, { imported: true });
     return finalizePipelineJobSuccess({
       downloadTracker,
       job,
@@ -690,7 +875,7 @@ async function handleFinalize(
     });
   });
   if (committed.cancelled) {
-    await cleanup(directory);
+    await discardSourceWork(payload, source);
     return null;
   }
   return committed.result;
@@ -706,8 +891,15 @@ export async function processSourcePipelinePayload(
     return null;
   }
   const album = payload.albumGrab === true;
+  const job = downloadTracker.getJob(payload.jobId);
+  const finished = !job || job.status === "failed" || job.status === "done";
+  if (finished && !album && payload.phase !== "search") {
+    await discardSourceWork(payload, source, {
+      imported: job?.status === "done" && payload.phase === "finalize",
+    });
+    return null;
+  }
   if (payload.phase === "search") {
-    const job = downloadTracker.getJob(payload.jobId);
     if (!album && source.tracks) return handleSearch(payload, source, source.tracks, helpers);
     if (source.albums) return handleAlbumSearch(payload, source, source.albums, helpers);
     return job

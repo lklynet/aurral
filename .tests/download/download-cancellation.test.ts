@@ -550,8 +550,8 @@ test("SABnzbd cancellation retains a job when a refused queue deletion leaves it
   );
   assert.ok(jobId != null);
   downloadTracker.updateDownloadMetadata(jobId, {
-    downloadClient: "sabnzbd",
-    downloadClientId: "SABnzbd_nzo_refused",
+    downloadSource: "usenet",
+    downloadClientId: "sabnzbd:SABnzbd_nzo_refused",
   });
   vi.spyOn(sabnzbdClient, "isConfigured").mockImplementation(() => true);
   vi.spyOn(sabnzbdClient, "deleteQueueItem").mockImplementation(async () => false);
@@ -568,7 +568,7 @@ test("SABnzbd cancellation retains a job when a refused queue deletion leaves it
     ),
     /Could not cancel download provider work/,
   );
-  assert.equal(downloadTracker.getJob(jobId)?.downloadClientId, "SABnzbd_nzo_refused");
+  assert.equal(downloadTracker.getJob(jobId)?.downloadClientId, "sabnzbd:SABnzbd_nzo_refused");
 });
 
 test("SABnzbd cancellation accepts already absent queue and history items", async () => {
@@ -580,8 +580,8 @@ test("SABnzbd cancellation accepts already absent queue and history items", asyn
   );
   assert.ok(jobId != null);
   downloadTracker.updateDownloadMetadata(jobId, {
-    downloadClient: "sabnzbd",
-    downloadClientId: "SABnzbd_nzo_absent",
+    downloadSource: "usenet",
+    downloadClientId: "sabnzbd:SABnzbd_nzo_absent",
   });
   vi.spyOn(sabnzbdClient, "isConfigured").mockImplementation(() => true);
   vi.spyOn(sabnzbdClient, "deleteQueueItem").mockImplementation(async () => false);
@@ -606,8 +606,8 @@ test("NZBGet cancellation deletes the tracked queue and history items", async ()
   );
   assert.ok(jobId != null);
   downloadTracker.updateDownloadMetadata(jobId, {
-    downloadClient: "nzbget",
-    downloadClientId: 42,
+    downloadSource: "usenet",
+    downloadClientId: "nzbget:42",
   });
   const calls: (string | unknown[] | undefined)[][] = [];
   vi.spyOn(nzbgetClient, "isConfigured").mockImplementation(() => true);
@@ -639,8 +639,8 @@ test("Tidarr cancellation deletes the tracked download", async () => {
   );
   assert.ok(jobId != null);
   downloadTracker.updateDownloadMetadata(jobId, {
-    downloadClient: "tidarr",
-    downloadClientId: "tidarr_nzo_77777",
+    downloadSource: "tidarr",
+    downloadClientId: "tidarr:tidarr_nzo_77777",
   });
   const deleted: string[] = [];
   vi.spyOn(tidarrClient, "isConfigured").mockImplementation(() => true);

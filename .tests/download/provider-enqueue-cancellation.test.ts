@@ -15,7 +15,8 @@ const [
   { dbOps },
   { downloadTracker },
   cancellationService,
-  { processUsenetPipelinePayload },
+  { processSourcePipelinePayload },
+  { usenetSource },
   { processDeemixPipelinePayload },
   { processPipelinePayload },
   { sabnzbdClient },
@@ -28,7 +29,8 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/downloadCancellationService.ts"),
-  () => import("../../backend/services/usenetOrchestrator.ts"),
+  () => import("../../backend/services/download/sourcePipeline.ts"),
+  () => import("../../backend/services/usenetSource.ts"),
   () => import("../../backend/services/deemixOrchestrator.ts"),
   () => import("../../backend/services/downloadPipeline.ts"),
   () => import("../../backend/services/sabnzbdClient.ts"),
@@ -165,15 +167,10 @@ test("SABnzbd cancellation waits for an in-flight append and can retry cleanup",
     source: "usenet" as const,
     candidates: [
       usenetCandidate({
-        raw: {
-          release: {
-            downloadUrl: "https://release.test/song.nzb",
-            title: "Race Artist - SABnzbd Song",
-            guid: "sabnzbd-race-guid",
-            indexerId: 1,
-            indexer: "Test Indexer",
-          },
-        },
+        guid: "sabnzbd-race-guid",
+        title: "Race Artist - SABnzbd Song",
+        downloadUrl: "https://release.test/song.nzb",
+        indexerId: 1,
       }),
     ],
   };
@@ -183,7 +180,7 @@ test("SABnzbd cancellation waits for an in-flight append and can retry cleanup",
       gate,
       job,
       payload: pipelinePayload,
-      runPipeline: () => processUsenetPipelinePayload(pipelinePayload, failTheSource),
+      runPipeline: () => processSourcePipelinePayload(pipelinePayload, usenetSource, failTheSource),
       cancelWork: () =>
         cancellationService.cancelPlaylistDownloadWork(playlistId, [
           trackedJob(downloadTracker, job.id),

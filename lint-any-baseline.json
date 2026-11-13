@@ -31,7 +31,6 @@
   ".tests/download/approved-import-path.test.ts": 33,
   ".tests/download/cancellation-enqueue.test.ts": 3,
   ".tests/download/manual-missing-search.test.ts": 3,
-  ".tests/download/nzbget-cleanup.test.ts": 7,
   ".tests/download/provider-enqueue-cancellation.test.ts": 1,
   ".tests/download/release-first-sources.test.ts": 7,
   ".tests/download/slskd-client.test.ts": 6,

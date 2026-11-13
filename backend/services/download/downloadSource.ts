@@ -60,7 +60,7 @@ export type Upgrade = { currentTier: string | null } | null;
 // source. Any other error fails the step, and the queue retries it.
 export class DownloadSourceError extends Error {}
 
-export const NATIVE_SOURCE_IDS = ["qbittorrent", "ytdlp"] as const;
+export const NATIVE_SOURCE_IDS = ["qbittorrent", "tidarr", "usenet", "ytdlp"] as const;
 
 // Plugins and native sources implement this. Aurral matches, judges, stages,
 // and files what a source returns, so a source only finds and fetches. A
@@ -69,12 +69,14 @@ export const NATIVE_SOURCE_IDS = ["qbittorrent", "ytdlp"] as const;
 // like Lidarr, says how many files it `filed`, and Aurral finds them in its
 // read-only folders and uses them where they are. An upgrade search names the quality
 // the current file has. A source without `tracks` serves a track from an
-// album download. One with `albums.files` downloads only the files Aurral
-// keeps: `list` is null until the source knows the files, and then `keep`
-// names the files to download, every file when Aurral can't tell. Manual
-// Search lists what `manualSearch` finds, or `search` without one. A
-// download stops when its `signal` aborts. `staging` is a folder in Aurral's
-// staging folder, or an absolute path.
+// album download, and an album search for a track names the track. Tracks
+// that take one album share its download. One with `albums.files` downloads
+// only the files Aurral keeps: `list` is null until the source knows the
+// files, and then `keep` names the files to download, every file when Aurral
+// can't tell. Manual Search lists what `manualSearch` finds, or `search`
+// without one. A download stops when its `signal` aborts. `status` hands a
+// finished download over once, into a folder of its own. `staging` is a
+// folder in Aurral's staging folder, or an absolute path.
 export type DownloadSource = {
   id: (typeof NATIVE_SOURCE_IDS)[number] | `${typeof PLUGIN_SOURCE_PREFIX}${string}`;
   staging: string;
@@ -91,7 +93,11 @@ export type DownloadSource = {
     }) => Promise<v.InferOutput<typeof trackDownloadResult>>;
   };
   albums?: {
-    search: (album: AlbumQuery, upgrade: Upgrade) => Promise<AlbumResult[]>;
+    search: (
+      album: AlbumQuery,
+      options: { upgrade: Upgrade; track: ResolvedTrack | null; denied: ReadonlySet<string> },
+    ) => Promise<AlbumResult[]>;
+    manualSearch?: (album: AlbumQuery, track: ResolvedTrack) => Promise<AlbumResult[]>;
     download: (input: {
       result: AlbumResult;
       album: AlbumQuery;
