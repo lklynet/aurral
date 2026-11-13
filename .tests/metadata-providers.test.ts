@@ -84,7 +84,10 @@ test("entity request failures back off for one minute, ten minutes, then one hou
   now += minute;
   const second = acquireMetadataRequest(key, 120_000, now);
   assert.equal(second.acquired, true);
-  assert.equal(failMetadataRequest(key, second.acquired ? second.token : "", now), now + 10 * minute);
+  assert.equal(
+    failMetadataRequest(key, second.acquired ? second.token : "", now),
+    now + 10 * minute,
+  );
 
   now += 10 * minute;
   const third = acquireMetadataRequest(key, 120_000, now);

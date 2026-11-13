@@ -74,8 +74,8 @@ test("an album MusicBrainz doesn't have is a 404, and an outage is an uncached 5
   assert.equal(coolingDown.status, 503);
   assert.equal(coolingDown.headers.get("cache-control"), "no-store");
   assert.equal(coolingDown.headers.get("retry-after"), "60");
-  assert.equal(
-    (await coolingDown.json()).message,
-    "Couldn’t reach the metadata service. Try again in a minute.",
-  );
+  assert.deepEqual(await coolingDown.json(), {
+    error: "Metadata unavailable",
+    message: "Couldn’t reach the metadata service. Try again in a minute.",
+  });
 });
