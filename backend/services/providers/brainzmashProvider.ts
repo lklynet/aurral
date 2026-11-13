@@ -232,6 +232,15 @@ export function isMetadataCircuitError(error: unknown) {
   );
 }
 
+export function getMetadataCooldownMs(error: unknown) {
+  return isMetadataCircuitError(error) &&
+    error instanceof Error &&
+    "retryAfterMs" in error &&
+    typeof error.retryAfterMs === "number"
+    ? error.retryAfterMs
+    : null;
+}
+
 function getRetryAfterMs(error: unknown) {
   const headers = asAppError(error)?.response?.headers;
   const retryAfter = headers?.["retry-after"] ?? headers?.["Retry-After"];

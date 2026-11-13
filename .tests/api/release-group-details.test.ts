@@ -62,11 +62,20 @@ afterAll(async () => {
   await cleanupIsolatedState(state);
 });
 
-test("an album MusicBrainz doesn't have is a 404, and an outage is an uncached 502", async () => {
+test("an album MusicBrainz doesn't have is a 404, and an outage is an uncached 502 then a 503 saying when to retry", async () => {
   const missing = await details(missingMbid);
   assert.equal(missing.status, 404);
 
   const outage = await details(outageMbid);
   assert.equal(outage.status, 502);
   assert.equal(outage.headers.get("cache-control"), "no-store");
+
+  const coolingDown = await details(outageMbid);
+  assert.equal(coolingDown.status, 503);
+  assert.equal(coolingDown.headers.get("cache-control"), "no-store");
+  assert.equal(coolingDown.headers.get("retry-after"), "60");
+  assert.equal(
+    (await coolingDown.json()).message,
+    "Couldn’t reach the metadata service. Try again in a minute.",
+  );
 });

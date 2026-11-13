@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import * as v from "valibot";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
@@ -12,6 +12,7 @@ import {
   getArtistByMbid,
   getAlbumByMbid,
   getAlbumTracksByAlbumMbid,
+  getMetadataCooldownMs,
   isMetadataNotFoundError,
 } from "../../../services/providers/brainzmashProvider.ts";
 import {
@@ -46,6 +47,30 @@ const previewsQuery = v.object({
   deezerAlbumId: queryText,
   release: queryText,
 });
+
+const waitText = (ms: number) => {
+  const minutes = Math.ceil(ms / 60_000);
+  if (minutes <= 1) return "a minute";
+  if (minutes < 90) return `${minutes} minutes`;
+  const hours = Math.round(minutes / 60);
+  return hours < 48 ? `${hours} hours` : `${Math.round(hours / 24)} days`;
+};
+
+const metadataUnavailable = <E extends AppEnv>(c: Context<E>, error: unknown) => {
+  c.header("Cache-Control", "no-store");
+  const cooldownMs = getMetadataCooldownMs(error);
+  if (cooldownMs === null) {
+    return c.json({ error: "Metadata unavailable", message: asAppError(error)?.message }, 502);
+  }
+  c.header("Retry-After", String(Math.ceil(cooldownMs / 1000)));
+  return c.json(
+    {
+      error: "Metadata unavailable",
+      message: `Couldn’t reach the metadata service. Try again in ${waitText(cooldownMs)}.`,
+    },
+    503,
+  );
+};
 
 export default new Hono<AppEnv>()
   .basePath("/artists")
@@ -110,9 +135,8 @@ export default new Hono<AppEnv>()
       if (isMetadataNotFoundError(error)) {
         return c.json({ error: "Release not found", message: failure?.message }, 404);
       }
-      c.header("Cache-Control", "no-store");
       c.header("Expires", "0");
-      return c.json({ error: "Metadata unavailable", message: failure?.message }, 502);
+      return metadataUnavailable(c, error);
     }
   })
   .get("/release-group/:mbid/cover", validate("query", coverQuery), async (c) => {
@@ -203,7 +227,7 @@ export default new Hono<AppEnv>()
         mbid,
         message: failure?.message,
       });
-      return c.json({ error: "Metadata unavailable", message: failure?.message }, 502);
+      return metadataUnavailable(c, error);
     }
   })
   .get("/release-group/:mbid/tracks", noCache, validate("query", editionQuery), async (c) => {

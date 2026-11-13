@@ -71,25 +71,25 @@ test("default settings and unset backend config use BrainzMash metadata", async 
   vi.unstubAllEnvs();
 });
 
-test("entity request failures back off for one hour, six hours, then one day", () => {
+test("entity request failures back off for one minute, ten minutes, then one hour", () => {
   const key = "backoff:test";
-  const hour = 60 * 60 * 1000;
+  const minute = 60 * 1000;
   let now = 1_000_000;
   clearMetadataRequestStates();
 
   const first = acquireMetadataRequest(key, 120_000, now);
   assert.equal(first.acquired, true);
-  assert.equal(failMetadataRequest(key, first.acquired ? first.token : "", now), now + hour);
+  assert.equal(failMetadataRequest(key, first.acquired ? first.token : "", now), now + minute);
 
-  now += hour;
+  now += minute;
   const second = acquireMetadataRequest(key, 120_000, now);
   assert.equal(second.acquired, true);
-  assert.equal(failMetadataRequest(key, second.acquired ? second.token : "", now), now + 6 * hour);
+  assert.equal(failMetadataRequest(key, second.acquired ? second.token : "", now), now + 10 * minute);
 
-  now += 6 * hour;
+  now += 10 * minute;
   const third = acquireMetadataRequest(key, 120_000, now);
   assert.equal(third.acquired, true);
-  assert.equal(failMetadataRequest(key, third.acquired ? third.token : "", now), now + 24 * hour);
+  assert.equal(failMetadataRequest(key, third.acquired ? third.token : "", now), now + 60 * minute);
   clearMetadataRequestStates();
 });
 
@@ -101,7 +101,7 @@ test("an abandoned entity request enters cooldown when its lease expires", () =>
 
   const recovered = acquireMetadataRequest(key, 1_000, now + 1_001);
   assert.equal(recovered.acquired, false);
-  assert.equal(recovered.retryAfter, now + 1_001 + 60 * 60 * 1000);
+  assert.equal(recovered.retryAfter, now + 1_001 + 60 * 1000);
   clearMetadataRequestStates();
 });
 

@@ -84,6 +84,10 @@ const failUnreadableDownloadJobs: Migration = (db) =>
       );
   `);
 
+// Album fetches that failed once used to wait up to a day before trying again.
+const clearMetadataFailureBackoff: Migration = (db) =>
+  db.exec("DELETE FROM metadata_request_state WHERE failure_count > 0");
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -92,6 +96,7 @@ export const migrations: Migration[] = [
   storeListenbrainzArtistTags,
   indexPlaysByArtist,
   failUnreadableDownloadJobs,
+  clearMetadataFailureBackoff,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

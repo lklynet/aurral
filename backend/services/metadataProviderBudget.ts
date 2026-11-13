@@ -37,7 +37,7 @@ interface MetadataRequestStateRow {
   updated_at: number;
 }
 
-const TRANSIENT_BACKOFF_MS = [60 * 60 * 1000, 6 * 60 * 60 * 1000, 24 * 60 * 60 * 1000] as const;
+const TRANSIENT_BACKOFF_MS = [60_000, 10 * 60_000, 60 * 60_000] as const;
 const REQUEST_STATE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const REQUEST_STATE_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 let nextRequestStateCleanupAt = 0;
