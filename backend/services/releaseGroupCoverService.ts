@@ -255,7 +255,12 @@ export const fetchReleaseGroupCoverUrl = (
   releaseGroupMbid: string,
   options: ReleaseGroupCoverOptions = {},
 ) => {
-  const key = `${options.bypassCache === true ? "refresh" : "read"}:${String(releaseGroupMbid || "").trim()}`;
+  const key = JSON.stringify([
+    options.bypassCache === true,
+    String(releaseGroupMbid || "").trim(),
+    options.artistName?.trim() || "",
+    options.albumTitle?.trim() || "",
+  ]);
   const existing = releaseGroupCoverRequests.get(key);
   if (existing) return existing;
   const request = fetchReleaseGroupCoverUncached(releaseGroupMbid, options).finally(() => {

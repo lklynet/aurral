@@ -180,7 +180,8 @@ export function getMetadataProviderBudget(baseUrl: string): Partial<MetadataProv
 export function reserveMetadataProviderRequest(baseUrl: string, intervalMs: number) {
   const now = Date.now();
   if (reserve.get(baseUrl, now + intervalMs, now + CLOCK_SLACK_MS)) return 0;
-  return Math.max(1, Number(readBudget.get(baseUrl)?.next_request_at || 0) - now);
+  const bookedUntil = Number(readBudget.get(baseUrl)?.next_request_at || 0);
+  return Math.max(1, bookedUntil - Date.now());
 }
 
 export function setMetadataProviderCooldown(baseUrl: string, status: number, until: number) {
