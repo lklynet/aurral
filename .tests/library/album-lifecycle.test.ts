@@ -1797,7 +1797,7 @@ test("asking for an album downloads the missing tracks of the edition its track 
   );
 });
 
-test("asking for an album leaves out its [silence] places", async (t: TestContext) => {
+test("asking for an album leaves out its [silence] places, and a file tagged with the recording MusicBrainz merged a song into fills its place", async (t: TestContext) => {
   const artistMbid = "5e5e5e5e-5e5e-4e5e-8e5e-000000000011";
   const albumMbid = "5e5e5e5e-5e5e-4e5e-8e5e-000000000012";
   const silence = "5e5e5e5e-5e5e-4e5e-8e5e-200000000009";
@@ -1878,6 +1878,58 @@ test("asking for an album leaves out its [silence] places", async (t: TestContex
       .pluck()
       .get(silence),
     0,
+  );
+
+  const filePath = path.join(isolatedState.baseDir, "silent", "04 Hidden Track.flac");
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await promisify(execFile)("ffmpeg", [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "anullsrc=r=44100:cl=stereo",
+    "-t",
+    "1",
+    "-c:a",
+    "flac",
+    "-metadata",
+    "title=Hidden Track",
+    "-metadata",
+    "artist=Silent Artist",
+    "-metadata",
+    "album=Silent Album",
+    "-metadata",
+    "track=4",
+    "-metadata",
+    `MUSICBRAINZ_ALBUMARTISTID=${artistMbid}`,
+    "-metadata",
+    `MUSICBRAINZ_RELEASEGROUPID=${albumMbid}`,
+    "-metadata",
+    "MUSICBRAINZ_TRACKID=5e5e5e5e-5e5e-4e5e-8e5e-200000000003",
+    filePath,
+  ]);
+  await scanMusicRoot({
+    rootPath: path.dirname(filePath),
+    filePaths: [filePath],
+    source: "aurral",
+  });
+  assert.deepEqual(
+    db
+      .prepare<[number], { title: string; have: number }>(
+        `SELECT track.title, EXISTS (
+           SELECT 1 FROM library_media_files AS media WHERE media.track_id = track.id
+         ) AS have
+         FROM library_album_tracks AS link
+         JOIN library_tracks AS track ON track.id = link.track_id
+         WHERE link.album_id = ? ORDER BY link.track_number`,
+      )
+      .all(Number(requested.body.album.id)),
+    [
+      { title: "Opening", have: 0 },
+      { title: "Hidden Track", have: 1 },
+    ],
   );
 });
 
