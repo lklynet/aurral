@@ -9,7 +9,6 @@ import {
 } from "../helpers/backendTestHarness.ts";
 
 const previousGroup = process.env.AURRAL_BACKGROUND_WORKER_GROUP;
-process.env.AURRAL_BACKGROUND_WORKER_GROUP = "library";
 const [
   state,
   { db },
@@ -31,6 +30,7 @@ const [
   () => import("../../backend/services/playlists/playlistFiles.ts"),
   () => import("../../backend/services/plex.ts"),
 );
+process.env.AURRAL_BACKGROUND_WORKER_GROUP = "library";
 
 const originalFetch = globalThis.fetch;
 

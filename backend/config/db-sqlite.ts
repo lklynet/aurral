@@ -30,77 +30,110 @@ if (!fs.existsSync(path.dirname(DB_PATH))) {
 
 const db = new Database(DB_PATH);
 
+const BUSY_TIMEOUT_MS = 5000;
+
 db.pragma("foreign_keys = ON");
-db.pragma("busy_timeout = 5000");
-
-const missingSteps = missingUpgradeSteps(db);
-if (missingSteps.length) {
-  console.error(
-    [
-      "Aurral 3 can't open this database yet. It was last used by an Aurral 2 that didn't finish upgrading it.",
-      "Start ghcr.io/lklynet/aurral:2 with this data folder, wait a few minutes for it to finish starting up, then start Aurral 3 again.",
-      "Aurral 3 didn't change anything.",
-      `Missing: ${missingSteps.join(", ")}`,
-    ].join("\n"),
-  );
-  process.exit(1);
-}
-
-for (let attempt = 0; attempt < 5; attempt++) {
-  try {
-    if (db.pragma("journal_mode", { simple: true }) !== "wal") {
-      db.pragma("journal_mode = WAL");
-    }
-    break;
-  } catch (error) {
-    const failure = asAppError(error);
-    if (!String(failure?.code || "").startsWith("SQLITE_BUSY") || attempt === 4) throw error;
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-  }
-}
+db.pragma(`busy_timeout = ${BUSY_TIMEOUT_MS}`);
 db.pragma("synchronous = NORMAL");
-// Worker processes share this file. A deferred transaction that reads before it writes
-// fails with SQLITE_BUSY without waiting when another process writes first.
-const createTransaction = db.transaction.bind(db);
-db.transaction = ((fn) => createTransaction(fn).immediate) as typeof db.transaction;
 db.pragma("cache_size = -2000");
 db.pragma("mmap_size = 25165824");
 db.pragma("temp_store = FILE");
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-  );
-`);
-db.prepare(
-  "INSERT INTO settings (key, value) VALUES ('schemaVersion', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-).run(String(SCHEMA_VERSION));
-
-migrateToJobQueue(db, DATA_DIR);
-try {
-  convertLidarrLibrary(db, DATA_DIR);
-} catch (error) {
-  console.error(
-    [
-      "Aurral 3 couldn't convert the Library that Lidarr ran, so it stopped before changing anything.",
-      `A copy of the database from before is in ${DATA_DIR}. Report this at https://github.com/lklynet/aurral/issues with the error below.`,
-    ].join("\n"),
-    error,
-  );
-  process.exit(1);
+let writeDepth = 0;
+function timedWrite<T>(write: () => T) {
+  if (writeDepth > 0) return write();
+  writeDepth += 1;
+  const started = performance.now();
+  try {
+    return write();
+  } finally {
+    writeDepth -= 1;
+    const heldMs = Math.round(performance.now() - started);
+    if (heldMs >= BUSY_TIMEOUT_MS) {
+      logger.warn("database", "A write kept other processes waiting for the database", {
+        heldMs,
+        at: new Error().stack
+          ?.split("\n")
+          .slice(4, 10)
+          .map((line) => line.trim()),
+      });
+    }
+  }
 }
-migrate(db);
 
-db.exec(`
-  DELETE FROM settings WHERE key LIKE 'activeDownloadAttempt:%'
-    AND NOT EXISTS (
-      SELECT 1 FROM download_jobs
-      WHERE id = substr(settings.key, length('activeDownloadAttempt:') + 1) AND status != 'done'
+// Worker processes share this file. A deferred transaction that reads before it writes
+// fails with SQLITE_BUSY without waiting when another process writes first.
+const createTransaction = db.transaction.bind(db);
+db.transaction = ((fn) =>
+  createTransaction((...args: Parameters<typeof fn>) => timedWrite(() => fn(...args)))
+    .immediate) as typeof db.transaction;
+
+function prepareDatabase() {
+  const missingSteps = missingUpgradeSteps(db);
+  if (missingSteps.length) {
+    console.error(
+      [
+        "Aurral 3 can't open this database yet. It was last used by an Aurral 2 that didn't finish upgrading it.",
+        "Start ghcr.io/lklynet/aurral:2 with this data folder, wait a few minutes for it to finish starting up, then start Aurral 3 again.",
+        "Aurral 3 didn't change anything.",
+        `Missing: ${missingSteps.join(", ")}`,
+      ].join("\n"),
     );
-`);
-initializeLibraryGenreIndex(db);
-initializeLibrarySearchIndex(db);
+    process.exit(1);
+  }
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      if (db.pragma("journal_mode", { simple: true }) !== "wal") {
+        db.pragma("journal_mode = WAL");
+      }
+      break;
+    } catch (error) {
+      const failure = asAppError(error);
+      if (!String(failure?.code || "").startsWith("SQLITE_BUSY") || attempt === 4) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+  `);
+  db.prepare(
+    "INSERT INTO settings (key, value) VALUES ('schemaVersion', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+  ).run(String(SCHEMA_VERSION));
+
+  migrateToJobQueue(db, DATA_DIR);
+  try {
+    convertLidarrLibrary(db, DATA_DIR);
+  } catch (error) {
+    console.error(
+      [
+        "Aurral 3 couldn't convert the Library that Lidarr ran, so it stopped before changing anything.",
+        `A copy of the database from before is in ${DATA_DIR}. Report this at https://github.com/lklynet/aurral/issues with the error below.`,
+      ].join("\n"),
+      error,
+    );
+    process.exit(1);
+  }
+  migrate(db);
+
+  db.exec(`
+    DELETE FROM settings WHERE key LIKE 'activeDownloadAttempt:%'
+      AND NOT EXISTS (
+        SELECT 1 FROM download_jobs
+        WHERE id = substr(settings.key, length('activeDownloadAttempt:') + 1) AND status != 'done'
+      );
+  `);
+  initializeLibraryGenreIndex(db);
+  initializeLibrarySearchIndex(db);
+}
+
+// The web process prepares the database before it starts any background worker, and a
+// worker that wrote here on startup would fail whenever another process held a long write.
+if (!process.env.AURRAL_BACKGROUND_WORKER_GROUP) prepareDatabase();
 
 export const dbHelpers = {
   parseJSON: (text: string | null | undefined): unknown => {

@@ -9,8 +9,6 @@ import {
 } from "../helpers/backendTestHarness.ts";
 import { wrappedPeriod, type WrappedPlay } from "../../backend/services/wrapped/metrics.ts";
 
-process.env.AURRAL_BACKGROUND_WORKER_GROUP = "library";
-
 const [state, { db }, { userOps }, history, reports, lastfm, { default: wrapped }] =
   await setupIsolatedBackend(
     "wrapped-history",
@@ -21,6 +19,7 @@ const [state, { db }, { userOps }, history, reports, lastfm, { default: wrapped 
     () => import("../../backend/services/apiClients/lastfm.ts"),
     () => import("../../backend/routes/wrapped.ts"),
   );
+process.env.AURRAL_BACKGROUND_WORKER_GROUP = "library";
 
 const period = wrappedPeriod(2026, "UTC", Date.parse("2027-01-01T00:00:00Z"));
 const LAUNCHED = Date.parse("2026-12-02T15:00:00Z");
