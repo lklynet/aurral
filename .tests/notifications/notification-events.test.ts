@@ -188,6 +188,9 @@ test("a Gotify webhook gets the title, message, and token Gotify reads", async (
       .get();
     assert.doesNotMatch(stored ?? "", /test-token/);
     const requests = await waitFor(2);
+    const queued = db.prepare<[], string>("SELECT payload FROM jobs").pluck().all();
+    assert.equal(queued.length, 2);
+    assert.doesNotMatch(queued.join("\n"), /test-token/);
     const gotify = requests.find((entry) => entry.url === "/message");
     const webhook = requests.find((entry) => entry.url === "/hook");
     assert.ok(gotify);
@@ -396,6 +399,9 @@ test("notifyFlowDone uses display name and track library path placeholders", asy
     await notifyFlowDone(playlistId, { completed: 3, failed: 1 }, flowPath, "Late Night");
 
     const requests = await waitFor(2);
+    const queued = db.prepare<[], string>("SELECT payload FROM jobs").pluck().all();
+    assert.equal(queued.length, 2);
+    assert.doesNotMatch(queued.join("\n"), /test-token/);
     const gotify = requests.find((entry) => entry.url === "/message");
     const webhook = requests.find((entry) => entry.url === "/hook");
     assert.ok(gotify);

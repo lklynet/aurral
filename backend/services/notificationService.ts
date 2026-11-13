@@ -7,6 +7,8 @@ import { logger } from "./logger.ts";
 import { notificationQueue } from "./jobs/queues.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { webhookSchema } from "../db/helpers/integrationSettings.ts";
+import { getSettingsEncryptionKey } from "../db/helpers/settings.ts";
+import { decryptWithKey, encryptWithKey } from "../config/encryption.ts";
 import {
   dispatchPluginEvent,
   emitPluginEvent,
@@ -83,6 +85,20 @@ function buildHeaders(headers: WebhookHeader[] | undefined) {
   return result;
 }
 
+function withHeaderValues(
+  webhook: WebhookTarget,
+  update: (value: string, key: Buffer) => string | null | undefined,
+) {
+  const key = getSettingsEncryptionKey();
+  return {
+    ...webhook,
+    headers: webhook.headers?.map((header) => ({
+      ...header,
+      value: update(header.value, key) ?? "",
+    })),
+  };
+}
+
 function escapeJsonString(value: unknown) {
   return JSON.stringify(String(value ?? "")).slice(1, -1);
 }
@@ -129,7 +145,11 @@ export async function deliverQueuedNotification(
     dispatchPluginEvent(payload);
     return;
   }
-  await sendWebhookDirect(payload.webhook, payload.event, payload.vars);
+  await sendWebhookDirect(
+    withHeaderValues(payload.webhook, decryptWithKey),
+    payload.event,
+    payload.vars,
+  );
 }
 
 type Notice = {
@@ -151,7 +171,7 @@ function notify(event: NotificationEvent, { title, message, vars = {}, plugin }:
       notificationQueue.enqueue({
         kind: "webhook",
         event,
-        webhook,
+        webhook: withHeaderValues(webhook, encryptWithKey),
         vars: resolved,
       });
     }
