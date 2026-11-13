@@ -161,7 +161,7 @@
       },
       "api.listenbrainz.org": {
         "cold": 1,
-        "warm": 1
+        "warm": 0
       },
       "brainzmash": {
         "cold": 2,
@@ -169,7 +169,7 @@
       },
       "labs.api.listenbrainz.org": {
         "cold": 1,
-        "warm": 1
+        "warm": 0
       }
     }
   },

@@ -6,7 +6,7 @@ type ScheduleOptions = { signal?: AbortSignal; timeoutMs?: number; priority?: nu
 
 export default function createRateLimiter(
   minTime: number,
-  { maxQueue = Infinity }: { maxQueue?: number } = {},
+  { maxQueue = Infinity, check }: { maxQueue?: number; check?: () => void } = {},
 ) {
   const queue = new PQueue({
     interval: Math.max(0, Number(minTime) || 0),
@@ -25,6 +25,11 @@ export default function createRateLimiter(
   ) {
     if (typeof fn !== "function") {
       return Promise.reject(new TypeError("Rate limiter callback must be a function"));
+    }
+    try {
+      check?.();
+    } catch (error) {
+      return Promise.reject(error);
     }
     if (queue.size >= maxQueue) {
       return Promise.reject(createError("Rate limiter queue is full", "EQUEUEFULL"));

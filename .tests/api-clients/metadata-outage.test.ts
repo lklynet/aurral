@@ -102,8 +102,13 @@ test.each([
     assert.deepEqual(await queued, ["ECONNREFUSED", "ECONNREFUSED", "ECONNREFUSED", "PAUSED"]);
     assert.equal(get.mock.calls.length, 3);
 
+    let whilePaused: unknown = "waiting";
+    void outcome(ask(5)).then((code) => (whilePaused = code));
+    await vi.advanceTimersByTimeAsync(0);
+    assert.equal(whilePaused, "PAUSED");
+
     vi.advanceTimersByTime(61_000);
-    const resumed = outcome(ask(5));
+    const resumed = outcome(ask(6));
     await vi.runAllTimersAsync();
     assert.equal(await resumed, "ECONNREFUSED");
     assert.equal(get.mock.calls.length, 4);

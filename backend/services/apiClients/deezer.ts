@@ -199,8 +199,8 @@ export function clearDeezerCaches() {
   ])
     cache.flushAll();
 }
-export const deezerLimiter = createRateLimiter(110);
 const deezerPause = createOutagePause("Deezer");
+export const deezerLimiter = createRateLimiter(110, { check: deezerPause.check });
 
 type DeezerRequest = Pick<HttpOptions, "query" | "signal"> & { timeoutMs: number };
 

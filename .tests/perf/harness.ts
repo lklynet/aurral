@@ -110,8 +110,38 @@ async function startFakeMetadata() {
   };
 }
 
-function takeCalls(metadata: { take(): number }) {
-  const calls: Record<string, number> = Object.fromEntries(blockedHosts);
+const LISTENBRAINZ_ANSWERS = new Map<string, unknown>([
+  ["/similar-artists/json", []],
+  ["/1/metadata/artist", []],
+]);
+
+function fakeListenbrainz() {
+  const calls = new Map<string, number>();
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (!url.hostname.endsWith("listenbrainz.org")) return realFetch(input, init);
+    calls.set(url.host, (calls.get(url.host) ?? 0) + 1);
+    const answer = LISTENBRAINZ_ANSWERS.get(url.pathname.replace(/\/$/, ""));
+    return Response.json(answer ?? { error: "Not found" }, { status: answer ? 200 : 404 });
+  };
+  return {
+    take() {
+      const taken = Object.fromEntries(calls);
+      calls.clear();
+      return taken;
+    },
+    restore() {
+      globalThis.fetch = realFetch;
+    },
+  };
+}
+
+function takeCalls(metadata: { take(): number }, listenbrainz: { take(): Record<string, number> }) {
+  const calls: Record<string, number> = {
+    ...Object.fromEntries(blockedHosts),
+    ...listenbrainz.take(),
+  };
   blockedHosts.clear();
   const brainzmash = metadata.take();
   if (brainzmash) calls.brainzmash = brainzmash;
@@ -138,6 +168,7 @@ export async function startPerfApp({ artists }: { artists: number }) {
 
   const seedStarted = performance.now();
   const metadata = await startFakeMetadata();
+  const listenbrainz = fakeListenbrainz();
   dbOps.updateSettings({
     onboardingComplete: true,
     integrations: {
@@ -226,7 +257,7 @@ export async function startPerfApp({ artists }: { artists: number }) {
 
   async function run(scenario: Scenario): Promise<ScenarioResult> {
     statements.take();
-    takeCalls(metadata);
+    takeCalls(metadata, listenbrainz);
     const started = performance.now();
     const sizes = await Promise.all(scenario.requests(context).map(request));
     const ms = performance.now() - started;
@@ -235,7 +266,7 @@ export async function startPerfApp({ artists }: { artists: number }) {
       queries: count,
       bytes: sizes.reduce((total, size) => total + size, 0),
       scans: scannedTables(db, executed),
-      calls: takeCalls(metadata),
+      calls: takeCalls(metadata, listenbrainz),
       ms,
     };
   }
@@ -246,6 +277,7 @@ export async function startPerfApp({ artists }: { artists: number }) {
     async close() {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await metadata.close();
+      listenbrainz.restore();
       await cleanupIsolatedState(paths);
     },
   };
