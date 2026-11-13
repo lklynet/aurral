@@ -3,6 +3,7 @@ import { X509Certificate } from "node:crypto";
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import tls from "node:tls";
 import { parseBuffer, parseFile } from "music-metadata";
 import * as v from "valibot";
 import { afterAll, test, vi } from "vite-plus/test";
@@ -70,12 +71,14 @@ test("the world offers only albums the Library lacks, the same ones on every run
 test("the certificate authority issues a certificate for the host a client asks for", () => {
   const authority = createAuthority();
   const signer = new X509Certificate(authority.certificate);
-  const issued = new X509Certificate(hostIssuer(authority)("api.deezer.com").cert);
+  const issue = hostIssuer(authority);
+  const issued = new X509Certificate(issue("api.deezer.com").cert);
   assert.equal(signer.ca, true);
   assert.equal(issued.checkIssued(signer), true);
   assert.equal(issued.verify(signer.publicKey), true);
   assert.equal(issued.checkHost("api.deezer.com"), "api.deezer.com");
   assert.equal(issued.checkHost("api.listenbrainz.org"), undefined);
+  for (const host of outsideByHost.keys()) tls.createSecureContext(issue(host));
 });
 
 test("the outside stand-ins answer in the shapes Aurral's clients read", async () => {

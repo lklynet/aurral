@@ -979,12 +979,14 @@ export async function listArtistAlbums(
     releaseTypes = [],
     includeTrackCounts = false,
     hydrateLimit = 30,
+    only,
     signal,
     forceRefresh = false,
   }: {
     releaseTypes?: string[] | string;
     includeTrackCounts?: boolean;
     hydrateLimit?: number;
+    only?: (album: ArtistDetailAlbum) => boolean;
     signal?: AbortSignal;
     forceRefresh?: boolean;
   } = {},
@@ -998,6 +1000,7 @@ export async function listArtistAlbums(
   const artist = toNormalizedArtist(rawArtist);
   let albums: ArtistDetailAlbum[] = (rawArtist.Albums ?? []).map(toNormalizedArtistAlbum);
   albums = applyReleaseTypeFilter(albums, releaseTypes);
+  if (only) albums = albums.filter(only);
   albums.sort((left, right) => {
     const leftBootleg = (left.releaseStatuses || []).includes("Bootleg") ? 1 : 0;
     const rightBootleg = (right.releaseStatuses || []).includes("Bootleg") ? 1 : 0;

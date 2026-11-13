@@ -256,6 +256,10 @@ test("BrainzMash refresh caches full album lookups and only fetches newly discov
     const result = await refresh("2026-10-11T12:00:00Z");
     assert.equal(result.releasesStale, 1);
     assert.equal((await visible("2026-10-11T12:00:00Z"))["Recent Release"], undefined);
+
+    clearMetadataProviderCaches();
+    await refresh("2026-12-15T12:00:00Z");
+    assert.deepEqual(albumRequests, []);
   } finally {
     removeCalendarArtist(artist.id);
   }

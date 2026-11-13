@@ -6,11 +6,14 @@ import {
   setupIsolatedBackend,
 } from "./helpers/backendTestHarness.ts";
 import { requireFixture } from "./playlists/fixtures.ts";
+import { http, type HttpResponse } from "../lib/http.ts";
 
 const mbid = "11111111-1111-4111-8111-111111111111";
 const fallbackMbid = "22222222-2222-4222-8222-222222222222";
 const replies = new Map<string, { status: number; body: unknown }>();
 const requests: string[] = [];
+const noArchiveCover: HttpResponse = { status: 404, statusText: "", headers: {}, data: null };
+let archiveCover = noArchiveCover;
 const providerServer = await createMockHttpServer((request, response) => {
   const pathname = new URL(request.url || "/", "http://localhost").pathname;
   requests.push(pathname);
@@ -43,6 +46,11 @@ dbOps.updateSettings({
 });
 
 beforeEach(() => {
+  archiveCover = noArchiveCover;
+  const get = http.get.bind(http);
+  vi.spyOn(http, "get").mockImplementation(async (url, options) =>
+    url.startsWith("https://coverartarchive.org/") ? archiveCover : get(url, options),
+  );
   clearMetadataProviderCaches();
   dbOps.deleteImage(`rg:${mbid}`);
   replies.clear();
@@ -53,6 +61,24 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
   await providerServer.close();
   delete process.env.BRAINZMASH_BASE_URL;
+});
+
+test("a cover the Cover Art Archive has is saved without asking BrainzMash", async () => {
+  const release = "33333333-3333-4333-8333-333333333333";
+  archiveCover = {
+    ...noArchiveCover,
+    status: 307,
+    headers: {
+      location: `https://archive.org/download/mbid-${release}/mbid-${release}-40449613518.jpg`,
+    },
+  };
+
+  const result = await fetchReleaseGroupCoverUrl(mbid);
+
+  const cover = `https://imagecache.lidarr.audio/v1/caa/${release}/40449613518-1200.jpg`;
+  assert.equal(result.imageUrl, buildStableImageProxyUrl(cover));
+  assert.equal(dbOps.getImage(`rg:${mbid}`)?.imageUrl, buildStableImageProxyUrl(cover));
+  assert.deepEqual(requests, []);
 });
 
 test("failed cover metadata requests log the MBID once and remain retryable", async () => {
