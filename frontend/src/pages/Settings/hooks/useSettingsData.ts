@@ -134,16 +134,6 @@ const defaultSettings = {
     },
     metadata: { baseUrl: "" },
     general: {},
-    gotify: {
-      url: "",
-      token: "",
-      notifyDiscoveryUpdated: false,
-      notifyFlowDone: false,
-      notifyRequestMade: false,
-      notifyRequestAvailable: false,
-      notifyArtistAdded: false,
-      notifyTrackAdded: false,
-    },
     webhooks: [],
   },
   inbox: {

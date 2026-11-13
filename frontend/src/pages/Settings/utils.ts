@@ -133,17 +133,6 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
       metadata: { baseUrl: metadata.baseUrl ?? "" },
       ...(savedSettings.integrations?.google && { google: savedSettings.integrations.google }),
       general: savedSettings.integrations?.general || {},
-      gotify: {
-        url: "",
-        token: "",
-        notifyDiscoveryUpdated: false,
-        notifyFlowDone: false,
-        notifyRequestMade: false,
-        notifyRequestAvailable: false,
-        notifyArtistAdded: false,
-        notifyTrackAdded: false,
-        ...(savedSettings.integrations?.gotify || {}),
-      },
       webhooks: savedSettings.integrations?.webhooks || [],
     },
   };

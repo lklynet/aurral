@@ -1,5 +1,5 @@
 ---
-title: Notifications (Gotify and webhooks)
+title: Notifications (webhooks)
 description: Send alerts when music is added, discovery updates, a flow finishes, or an album request changes.
 ---
 
@@ -12,17 +12,7 @@ Aurral can send a notification for these events:
 - **Artist added**: a user added an artist to the Library.
 - **Track added**: Aurral filed a downloaded track in the Library. This fires once per track, including flow tracks.
 
-Aurral can send notifications to Gotify, to webhooks, or to both. Gotify has one set of event switches, and each webhook has its own. Aurral does not send an event that is turned off.
-
-## Gotify
-
-Gotify is a self-hosted push notification server.
-
-1. Open **Settings > Notifications > Gotify**.
-2. Set **Server URL** to a Gotify address that Aurral can reach, for example `http://gotify:8888` in Docker.
-3. Enter the **Application token** of a Gotify application.
-4. Under **Events**, turn on the events that you want.
-5. Select **Send test**.
+Aurral sends notifications through webhooks. Each webhook has its own event switches, and Aurral does not send an event that is turned off.
 
 ## Webhooks
 
@@ -39,7 +29,8 @@ The body can use these placeholders:
 
 | Placeholder                 | Value                                                                                      |
 | --------------------------- | ------------------------------------------------------------------------------------------ |
-| `$message`                  | A ready-made sentence describing the event, the same text Gotify receives                  |
+| `$title`                    | A short heading, such as `Aurral – Request`                                                |
+| `$message`                  | A ready-made sentence describing the event                                                 |
 | `$event`                    | The event name, such as `notifyTrackAdded`                                                 |
 | `$artistName`, `$albumName` | The artist and album                                                                       |
 | `$trackName`                | The track, for **Track added**                                                             |
@@ -53,6 +44,17 @@ A placeholder that doesn't apply to an event is empty. Paths are the paths Aurra
 
 `$message` is enough for most chat services. For Discord, use the body `{"content":"$message"}`. For ntfy, point the URL at your topic and use `{"message":"$message"}`.
 
+### Gotify
+
+1. In Gotify, create an application and copy its token.
+2. Add a webhook with the URL of Gotify's `/message` endpoint, for example `http://gotify:8888/message` in Docker.
+3. Add the header `X-Gotify-Key` with the application token as its value.
+4. Use the body `{"title":"$title","message":"$message","priority":5}`.
+
+Gotify used to have its own page in Settings. Aurral turned a saved Gotify setup into a webhook like this one, with the same events.
+
+Aurral stores header values encrypted, like the other keys and passwords in Settings.
+
 ### Test a webhook
 
 Open the webhook and select **Send test**. Aurral sends the current URL, body, and headers at once. The test ignores the event switches and does not save the webhook. It fills the placeholders with these values:
@@ -60,6 +62,7 @@ Open the webhook and select **Send test**. Aurral sends the current URL, body, a
 | Placeholder   | Test value                                           |
 | ------------- | ---------------------------------------------------- |
 | `$event`      | `webhookTest`                                        |
+| `$title`      | `Aurral test`                                        |
 | `$message`    | `Aurral webhook test`                                |
 | `$flowName`   | `Aurral webhook test`                                |
 | `$flowPath`   | `/aurral/test-webhook`                               |

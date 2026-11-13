@@ -99,16 +99,6 @@ export const defaultData = {
         baseUrl: "",
       },
       general: {},
-      gotify: {
-        url: "",
-        token: "",
-        notifyDiscoveryUpdated: false,
-        notifyFlowDone: false,
-        notifyRequestMade: false,
-        notifyRequestAvailable: false,
-        notifyArtistAdded: false,
-        notifyTrackAdded: false,
-      },
       webhooks: [],
     },
     security: {

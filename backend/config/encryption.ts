@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { isRecord } from "../../lib/isRecord.ts";
 
 const PREFIX = "AURRAL_ENC:";
 const ALGO = "aes-256-gcm";
@@ -44,7 +45,6 @@ const SENSITIVE_PATHS = [
   ["nzbget", "password"],
   ["tidarr", "apiKey"],
   ["qbittorrent", "password"],
-  ["gotify", "token"],
   ["lastfm", "apiKey"],
   ["google", "clientSecret"],
   ["lastfm", "apiSecret"],
@@ -72,6 +72,18 @@ function setAt(obj: object, path: string[], value: unknown) {
   cur[last] = value;
 }
 
+function eachWebhookHeader(integrations: unknown, update: (value: string) => unknown) {
+  if (!isRecord(integrations) || !Array.isArray(integrations.webhooks)) return;
+  for (const webhook of integrations.webhooks) {
+    if (!isRecord(webhook) || !Array.isArray(webhook.headers)) continue;
+    for (const header of webhook.headers) {
+      if (isRecord(header) && typeof header.value === "string") {
+        header.value = update(header.value);
+      }
+    }
+  }
+}
+
 export function decryptIntegrations<Integrations>(
   integrations: Integrations,
   key: Buffer,
@@ -82,6 +94,7 @@ export function decryptIntegrations<Integrations>(
     const v = getAt(out, path);
     if (v != null && typeof v === "string") setAt(out, path, decryptWithKey(v, key));
   }
+  eachWebhookHeader(out, (value) => decryptWithKey(value, key));
   return out;
 }
 
@@ -95,5 +108,6 @@ export function encryptIntegrations<Integrations>(
     const v = getAt(out, path);
     if (v != null && typeof v === "string") setAt(out, path, encryptWithKey(v, key));
   }
+  eachWebhookHeader(out, (value) => encryptWithKey(value, key));
   return out;
 }

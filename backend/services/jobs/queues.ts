@@ -201,7 +201,7 @@ export const discoveryUserRefreshQueue = defineQueue<
 export const notificationQueue = defineQueue<v.InferOutput<typeof queuedNotificationSchema>>({
   name: "notifications",
   label: "Notifications",
-  description: "Delivers queued Gotify and webhook notifications and plugin events.",
+  description: "Delivers queued webhook notifications and plugin events.",
   group: "notifications",
   leaseMs: 2 * MINUTE,
   maxAttempts: 5,

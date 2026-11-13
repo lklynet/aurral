@@ -109,16 +109,6 @@ export const integrationSettingsSchema = v.looseObject({
   }),
   metadata: service({ baseUrl: text }),
   general: service({ apiKey: text }),
-  gotify: service({
-    url: text,
-    token: text,
-    notifyDiscoveryUpdated: flag,
-    notifyFlowDone: flag,
-    notifyRequestMade: flag,
-    notifyRequestAvailable: flag,
-    notifyArtistAdded: flag,
-    notifyTrackAdded: flag,
-  }),
   google: service({ enabled: flag, clientId: text, clientSecret: text, redirectUri: text }),
   musicbrainz: service({ email: text }),
 });

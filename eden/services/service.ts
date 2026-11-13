@@ -70,3 +70,12 @@ export async function addPathMapping(
   const { pathMappings } = v.parse(savedMappings, await api.get("/settings"));
   await api.post("/settings", { pathMappings: [...pathMappings, mapping] });
 }
+
+const savedWebhooks = v.looseObject({
+  integrations: v.looseObject({ webhooks: v.optional(v.array(v.looseObject({})), []) }),
+});
+
+export async function addWebhook(api: AurralApi, webhook: Record<string, unknown>) {
+  const { webhooks } = v.parse(savedWebhooks, await api.get("/settings")).integrations;
+  await api.post("/settings", { integrations: { webhooks: [...webhooks, webhook] } });
+}

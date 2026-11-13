@@ -1,5 +1,7 @@
 import type Database from "better-sqlite3";
 import { createAurral3Schema } from "./aurral-3-schema.ts";
+import { NOTIFICATION_EVENTS } from "../../lib/notificationEvents.ts";
+import { isRecord } from "../../lib/isRecord.ts";
 
 type Migration = (db: Database.Database) => void;
 
@@ -181,6 +183,37 @@ const dropUnusedSettings: Migration = (db) =>
       WHERE key = 'inbox' AND json_valid(value);
   `);
 
+// Gotify is a webhook to its /message endpoint. Its token is stored encrypted
+// the same way webhook header values are, so it moves over as it is.
+const moveGotifyToWebhook: Migration = (db) => {
+  const row = db
+    .prepare<[], string>("SELECT value FROM settings WHERE key = 'integrations'")
+    .pluck()
+    .get();
+  let integrations: unknown;
+  try {
+    integrations = JSON.parse(row ?? "");
+  } catch {
+    return;
+  }
+  if (!isRecord(integrations) || !("gotify" in integrations)) return;
+  const { gotify, ...rest } = integrations;
+  const url = isRecord(gotify) && typeof gotify.url === "string" ? gotify.url.trim() : "";
+  const token = isRecord(gotify) && typeof gotify.token === "string" ? gotify.token.trim() : "";
+  const webhooks = Array.isArray(rest.webhooks) ? rest.webhooks : [];
+  if (isRecord(gotify) && url && token) {
+    webhooks.push({
+      url: `${url.replace(/\/+$/, "")}/message`,
+      headers: [{ key: "X-Gotify-Key", value: token }],
+      body: '{"title":"$title","message":"$message","priority":5}',
+      events: NOTIFICATION_EVENTS.filter((event) => gotify[event] === true),
+    });
+  }
+  db.prepare("UPDATE settings SET value = ? WHERE key = 'integrations'").run(
+    JSON.stringify({ ...rest, webhooks }),
+  );
+};
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -193,6 +226,7 @@ export const migrations: Migration[] = [
   nameUsenetDownloadsBySource,
   dropFixedSettings,
   dropUnusedSettings,
+  moveGotifyToWebhook,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

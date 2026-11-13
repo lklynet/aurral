@@ -13,7 +13,6 @@ import {
   NOTIFICATION_EVENTS,
   type NotificationEvent,
 } from "../../../../../lib/notificationEvents.ts";
-import { configuredStatus } from "../utils/serviceStatus";
 import {
   SettingsActions,
   SettingsGroup,
@@ -109,70 +108,6 @@ function EventToggles({
   ));
 }
 
-function GotifyDetail() {
-  const { settings, updateSettings } = useServerSettings();
-  const { gotify } = settings.integrations;
-  const url = gotify.url || "";
-  const token = gotify.token || "";
-  const test = useTest(
-    () => parseResponse(downloadClientSettingsClient.gotify.test.$post({ json: { url, token } })),
-    "Test notification sent.",
-    "Test failed. Check the URL and token, then retry.",
-    "Gotify",
-  );
-  const update = (patch: Partial<Integrations["gotify"]>) => {
-    test.reset();
-    updateSettings({
-      ...settings,
-      integrations: { ...settings.integrations, gotify: { ...gotify, ...patch } },
-    });
-  };
-
-  return (
-    <SettingsPage title="Gotify" back="Notifications">
-      <SettingsGroup title="Connection">
-        <SettingsRow label="Server URL" htmlFor="gotify-url">
-          <SettingsInput
-            id="gotify-url"
-            type="url"
-            placeholder="https://gotify.example.com"
-            autoComplete="off"
-            value={url}
-            onChange={(event) => update({ url: event.target.value })}
-          />
-        </SettingsRow>
-        <SettingsRow label="Application token" htmlFor="gotify-token">
-          <SettingsInput
-            id="gotify-token"
-            type="password"
-            autoComplete="off"
-            value={token}
-            onChange={(event) => update({ token: event.target.value })}
-          />
-        </SettingsRow>
-        <SettingsActions status={test.status}>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={test.run}
-            disabled={test.testing || !url || !token}
-          >
-            {test.testing ? <DotLoader size="xs" label={null} /> : null}
-            Send test
-          </button>
-        </SettingsActions>
-      </SettingsGroup>
-      <SettingsGroup title="Events">
-        <EventToggles
-          idPrefix="gotify"
-          isOn={(key) => gotify[key] === true}
-          onChange={(key, enabled) => update({ [key]: enabled })}
-        />
-      </SettingsGroup>
-    </SettingsPage>
-  );
-}
-
 function WebhookDetail({ index }: { index: number | null }) {
   const { settings, updateSettings } = useServerSettings();
   const route = useSettingsRoute();
@@ -248,7 +183,7 @@ function WebhookDetail({ index }: { index: number | null }) {
           <SettingsRow
             label="Body"
             htmlFor="webhook-body"
-            help="Optional. With a body Aurral sends a POST, otherwise a GET. $message, $event, $artistName, $albumName, $trackName, $path, $albumPath, $username, and $flowName are filled in."
+            help="Optional. With a body Aurral sends a POST, otherwise a GET. $title, $message, $event, $artistName, $albumName, $trackName, $path, $albumPath, $username, and $flowName are filled in."
             stack
           >
             <SettingsTextarea
@@ -366,22 +301,14 @@ function InboxGroup() {
 export function NotificationsSection() {
   const { settings } = useServerSettings();
   const item = useSettingsItem();
-  const { gotify, webhooks } = settings.integrations;
+  const { webhooks } = settings.integrations;
   const webhookItem = resolveWebhookItem(webhooks, item);
 
-  if (item === "gotify") return <GotifyDetail />;
   if (webhookItem) return <WebhookDetail key={item} index={webhookItem.index} />;
 
   return (
     <SettingsPage title="Notifications">
       <InboxGroup />
-      <SettingsGroup title="Push">
-        <SettingsServiceRow
-          to="notifications/gotify"
-          name="Gotify"
-          status={configuredStatus(Boolean(gotify.url && gotify.token))}
-        />
-      </SettingsGroup>
       <SettingsGroup
         title="Webhooks"
         actions={
