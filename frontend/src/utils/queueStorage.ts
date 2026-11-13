@@ -1,5 +1,7 @@
 import { apiPathOf } from "./api/core.ts";
 import type { QueueAction, QueueSource, RepeatMode } from "./audioQueue.ts";
+import { isRecord } from "../../../lib/isRecord.ts";
+import { unknownList } from "../../../lib/unknownList.ts";
 
 export const QUEUE_STORAGE_KEY = "aurral.player.queue.v1";
 
@@ -21,18 +23,6 @@ interface QueueSnapshot {
   isShuffleEnabled: boolean;
   repeatMode: string;
   source?: unknown;
-}
-
-interface StoredQueue {
-  version?: unknown;
-  owner?: unknown;
-  tracks?: unknown;
-  playbackOrder?: unknown;
-  currentIndex?: unknown;
-  isShuffleEnabled?: unknown;
-  repeatMode?: unknown;
-  source?: unknown;
-  position?: unknown;
 }
 
 function splitQuery(value: string): [string, URLSearchParams | null] {
@@ -75,8 +65,10 @@ function restoredTrack(track: Record<string, unknown>, token: string | null | un
   if (typeof rest.src === "string") {
     rest.src = rest.src.replace("/library/canonical-stream/", "/library/stream/");
   }
-  for (const key of Array.isArray(authFields) ? authFields : []) {
-    if (typeof rest[key] === "string") rest[key] = withToken(rest[key], token);
+  for (const key of unknownList(authFields)) {
+    if (typeof key !== "string") continue;
+    const value = rest[key];
+    if (typeof value === "string") rest[key] = withToken(value, token);
   }
   return rest;
 }
@@ -134,6 +126,14 @@ export function serializeQueue(
   });
 }
 
+const isStoredTrack = (track: unknown): track is Record<string, unknown> & { src: string } =>
+  isRecord(track) && typeof track.src === "string" && track.src !== "";
+
+const isQueueSource = (source: unknown): source is QueueSource =>
+  isRecord(source) &&
+  typeof source.type === "string" &&
+  (typeof source.id === "string" || typeof source.id === "number");
+
 function isPermutation(order: unknown, length: number): order is number[] {
   if (!Array.isArray(order) || order.length !== length) return false;
   const seen = new Set(order);
@@ -148,22 +148,17 @@ export function parseStoredQueue(
   { owner, token }: { owner: string | null; token?: string | null },
 ): (Omit<RestoreQueueAction, "type"> & { position: number }) | null {
   if (!raw || owner == null) return null;
-  let stored: StoredQueue;
+  let stored: unknown;
   try {
     stored = JSON.parse(raw);
   } catch {
     return null;
   }
-  if (stored?.version !== VERSION || stored.owner !== String(owner)) return null;
-  const { tracks, playbackOrder, currentIndex } = stored;
-  if (!Array.isArray(tracks) || tracks.length === 0) return null;
-  if (
-    !tracks.every(
-      (track) => track && typeof track === "object" && typeof track.src === "string" && track.src,
-    )
-  ) {
+  if (!isRecord(stored) || stored.version !== VERSION || stored.owner !== String(owner))
     return null;
-  }
+  const { playbackOrder, currentIndex } = stored;
+  const tracks = unknownList(stored.tracks);
+  if (tracks.length === 0 || !tracks.every(isStoredTrack)) return null;
   if (!isPermutation(playbackOrder, tracks.length)) return null;
   if (
     typeof currentIndex !== "number" ||
@@ -178,11 +173,7 @@ export function parseStoredQueue(
     currentIndex,
     isShuffleEnabled: stored.isShuffleEnabled === true,
     repeatMode: isRepeatMode(stored.repeatMode) ? stored.repeatMode : "off",
-    source:
-      stored.source && typeof stored.source === "object" ? (stored.source as QueueSource) : null,
-    position:
-      Number.isFinite(stored.position) && (stored.position as number) > 0
-        ? (stored.position as number)
-        : 0,
+    source: isQueueSource(stored.source) ? stored.source : null,
+    position: typeof stored.position === "number" ? positionOrZero(stored.position) : 0,
   };
 }

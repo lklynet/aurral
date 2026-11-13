@@ -11,6 +11,8 @@ import {
   withAlpha,
 } from "./themeColor.ts";
 import { THEME_PRESETS } from "./themePresets.ts";
+import { isRecord } from "../../../lib/isRecord.ts";
+import { unknownList } from "../../../lib/unknownList.ts";
 
 export const THEME_STORAGE_KEY = "aurralTheme:v2";
 export const THEME_PAINT_STORAGE_KEY = "aurralThemePaint:v1";
@@ -90,22 +92,6 @@ type StoredThemeDocument = {
   appearance?: unknown;
   matchArtwork?: unknown;
   themes?: unknown;
-};
-type StoredLegacyPalette = {
-  surface?: unknown;
-  accent?: unknown;
-  text?: unknown;
-  danger?: unknown;
-  warning?: unknown;
-  success?: unknown;
-  info?: unknown;
-};
-type StoredLegacyTheme = {
-  id?: unknown;
-  name?: unknown;
-  label?: unknown;
-  colors?: StoredLegacyPalette;
-  variants?: Record<string, StoredLegacyPalette>;
 };
 
 const cssVariable = (role: ThemeColorRole) =>
@@ -247,8 +233,8 @@ export function tintSeedWithArtwork(seed: ThemeSeed, artwork: HexColor): ThemeSe
   };
 }
 
-function normalizeSeed(value: StoredThemeSeed, mode: ThemeMode, themeName: string): ThemeSeed {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+function normalizeSeed(value: unknown, mode: ThemeMode, themeName: string): ThemeSeed {
+  if (!isRecord(value)) {
     throw new Error(`${themeName} has unreadable ${mode} colors.`);
   }
   const seed: Partial<Record<ThemeSeedRole, HexColor>> = {};
@@ -277,9 +263,8 @@ export function isThemeId(value: unknown): value is string {
   return typeof value === "string" && /^[a-z0-9](?:[a-z0-9-]{0,63})$/.test(value);
 }
 
-export function normalizeTheme(value: StoredTheme): Theme {
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("This theme is unreadable.");
+export function normalizeTheme(value: unknown): Theme {
+  if (!isRecord(value)) throw new Error("This theme is unreadable.");
   const name = normalizeThemeName(value.name);
   if (!isThemeId(value.id)) throw new Error(`${name} has an invalid id.`);
   const theme: { id: string; name: string; light?: ThemeSeed; dark?: ThemeSeed } = {
@@ -317,15 +302,14 @@ export function createDefaultThemeDocument(): ThemeDocument {
   };
 }
 
-export function normalizeThemeDocument(value: StoredThemeDocument): ThemeDocument {
+export function normalizeThemeDocument(value: unknown): ThemeDocument {
   const document = createDefaultThemeDocument();
-  if (!value || typeof value !== "object" || value.version !== THEME_DOCUMENT_VERSION)
-    return document;
-  if (THEME_APPEARANCES.includes(value.appearance))
-    document.appearance = value.appearance as string;
+  if (!isRecord(value) || value.version !== THEME_DOCUMENT_VERSION) return document;
+  if (typeof value.appearance === "string" && THEME_APPEARANCES.includes(value.appearance))
+    document.appearance = value.appearance;
   document.matchArtwork = value.matchArtwork === true;
   const seen = new Set<string>(BUILT_IN_THEME_IDS);
-  for (const item of Array.isArray(value.themes) ? value.themes : []) {
+  for (const item of unknownList(value.themes)) {
     if (document.themes.length >= MAX_CUSTOM_THEMES) break;
     try {
       const theme = normalizeTheme(item);
@@ -344,14 +328,15 @@ export function isDefaultThemeDocument(document: ThemeDocument) {
   return JSON.stringify(document) === JSON.stringify(createDefaultThemeDocument());
 }
 
-export function convertLegacyTheme(value: StoredLegacyTheme): StoredTheme {
-  if (!value || typeof value !== "object" || !value.colors)
+export function convertLegacyTheme(value: unknown): StoredTheme {
+  if (!isRecord(value) || !isRecord(value.colors))
     throw new Error("This theme file is unreadable.");
-  const palettes = [value.colors, ...Object.values(value.variants || {})];
+  const variants = isRecord(value.variants) ? Object.values(value.variants) : [];
+  const palettes = [value.colors, ...variants].filter(isRecord);
   const theme: StoredTheme = { id: value.id, name: value.name ?? value.label };
   for (const colors of palettes) {
-    const background = normalizeHexColor(String(colors?.surface || "").slice(0, 7));
-    const accent = normalizeHexColor(String(colors?.accent || "").slice(0, 7));
+    const background = normalizeHexColor(String(colors.surface || "").slice(0, 7));
+    const accent = normalizeHexColor(String(colors.accent || "").slice(0, 7));
     if (!background || !accent) continue;
     const mode = isDarkColor(background) ? "dark" : "light";
     if (theme[mode]) continue;
@@ -383,7 +368,7 @@ function writeStorage(key: string, value: string | null) {
   }
 }
 
-function parseJson(value: string | null) {
+function parseJson(value: string | null): unknown {
   try {
     return JSON.parse(String(value));
   } catch {
@@ -398,7 +383,7 @@ function migrateLegacyDocument(): ThemeDocument | null {
   if (selection === null && appearance === null && legacyThemes === null) return null;
   const themes: Theme[] = [];
   let themeId = THEME_APPEARANCES.includes(selection) ? DEFAULT_THEME_ID : selection;
-  for (const item of Array.isArray(legacyThemes) ? legacyThemes : []) {
+  for (const item of unknownList(legacyThemes)) {
     try {
       const legacy = convertLegacyTheme(item);
       const taken = themes.map((theme) => theme.id);
@@ -427,7 +412,7 @@ function migrateLegacyDocument(): ThemeDocument | null {
 
 function readLocalDocument(): ThemeDocument {
   const stored = parseJson(readStorage(THEME_STORAGE_KEY));
-  if (stored) return normalizeThemeDocument(stored);
+  if (isRecord(stored)) return normalizeThemeDocument(stored);
   return migrateLegacyDocument() || createDefaultThemeDocument();
 }
 

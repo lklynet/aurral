@@ -17,7 +17,8 @@ import {
   type RecommendedFilter,
   type RecommendedSort,
 } from "./recommendedRails";
-import type { useDiscoveryRecommendations, DiscoverData } from "./useDiscoveryRecommendations";
+import type { useDiscoveryRecommendations } from "./useDiscoveryRecommendations";
+import type { DiscoverData } from "../utils/discoverUtils";
 
 type FeedbackProps = Pick<
   ReturnType<typeof useDiscoveryRecommendations>,

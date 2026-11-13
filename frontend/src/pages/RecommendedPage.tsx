@@ -25,6 +25,7 @@ import {
   artistMatchesGenre,
   DISCOVER_PREVIEW_ITEM_LIMIT,
   type DiscoverArtist,
+  type DiscoverData,
 } from "../utils/discoverUtils";
 import {
   buildRecommendedRails,
@@ -36,7 +37,7 @@ import {
   type RecommendationContext,
 } from "./recommendedRails";
 import { RecommendedList } from "./RecommendedList";
-import { useDiscoveryRecommendations, type DiscoverData } from "./useDiscoveryRecommendations";
+import { useDiscoveryRecommendations } from "./useDiscoveryRecommendations";
 import "./RecommendedPage.css";
 import StatePanel from "../components/StatePanel";
 
