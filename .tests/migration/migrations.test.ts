@@ -141,7 +141,7 @@ test("upgrading lets albums that failed to load try again, and keeps rate-limit 
   const day = 24 * 60 * 60 * 1000;
   insert.run("failed", 3, 1000 + day);
   insert.run("rate-limited", 0, 1000 + 7 * day);
-  insert.run("rate-limited-after-failing", 1, 1000 + 7 * day);
+  insert.run("rate-limited-after-failing", 1, 1000 + day / 2);
 
   migrate(db);
 
