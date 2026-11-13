@@ -67,7 +67,7 @@ afterAll(async () => {
   await rm(tempDir, { recursive: true, force: true });
 });
 
-test("tagging a download keeps the uploader's ratings, lyrics, ReplayGain, grouping, and cover art, but not their release ID", async () => {
+test("tagging a download keeps the uploader's ratings, lyrics, ReplayGain, grouping, and cover art, but not their release ID or a volume frame taglib cannot save", async () => {
   const filePath = makeAudio("uploaded.mp3", ["-c:a", "libmp3lame"]);
   tagAsUploader(filePath, (file) => {
     const id3 = file.getTag(taglib.TagTypes.Id3v2, true);
@@ -86,6 +86,12 @@ test("tagging a download keeps the uploader's ratings, lyrics, ReplayGain, group
     const gain = taglib.Id3v2UserTextInformationFrame.fromDescription("REPLAYGAIN_TRACK_GAIN");
     gain.text = ["-6.10 dB"];
     id3.addFrame(gain);
+    id3.addFrame(
+      taglib.Id3v2UnknownFrame.fromData(
+        taglib.Id3v2FrameIdentifiers.RVA2!,
+        taglib.ByteVector.fromString("no identification", taglib.StringType.Latin1),
+      ),
+    );
   });
 
   await writeAudioMetadata(filePath, job);

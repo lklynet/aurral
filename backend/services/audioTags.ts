@@ -290,6 +290,17 @@ function writeIdentity(file: TagLib.File, identity: object) {
   }
 }
 
+// taglib reads nothing from an RVA2 frame without an identification, but throws
+// when it saves a file that has one, so drop it first.
+function dropUnreadableVolumeFrames(file: TagLib.File) {
+  const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
+  for (const frame of id3?.getFramesByClassType<TagLib.Id3v2RelativeVolumeFrame>(
+    Id3v2FrameClassType.RelativeVolumeFrame,
+  ) || []) {
+    if (frame.identification === undefined) id3!.removeFrame(frame);
+  }
+}
+
 const isLegacyMarker = (value: unknown) => text(value).startsWith(AURRAL_IDENTITY_PREFIX);
 
 // ffmpeg wrote the old comment marker to Vorbis comments as DESCRIPTION, which
@@ -416,6 +427,7 @@ export async function writeAudioTags(
         writeIdentity(file, identity);
         clearLegacyIdentity(file);
       }
+      dropUnreadableVolumeFrames(file);
       file.save();
     } finally {
       file.dispose();
