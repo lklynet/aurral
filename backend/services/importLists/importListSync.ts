@@ -1,10 +1,9 @@
-import { isOwnKey } from "../../../lib/ownKey.ts";
 import {
   flowPlaylistConfig,
   invalidateFlowPlaylistConfigCache,
   type StaticPlaylist,
 } from "../playlists/flowPlaylistConfig.ts";
-import { fetchImportedPlaylistTracks } from "./importPlaylist.ts";
+import { importListFor, requireImportList } from "./importPlaylist.ts";
 import { updateStaticPlaylist } from "../playlists/playlistOperations.ts";
 import {
   buildImportTrackIdentity,
@@ -16,8 +15,6 @@ import {
   isDownloadOwnerProcess,
   requestDownloadOwner,
 } from "../downloadJobs/downloadOwnerClient.ts";
-import { spotifyConnectionStore } from "../spotify/spotifyConnectionStore.ts";
-import { scrobbleConnectionStore } from "../scrobbleConnectionStore.ts";
 
 type CodedError = Error & { statusCode?: number; code?: string };
 type ImportSource = NonNullable<StaticPlaylist["importSource"]>;
@@ -25,19 +22,6 @@ type SyncUser = NonNullable<Parameters<typeof flowPlaylistConfig.canUserAccessSt
 type SyncStaticPlaylistImportOptions = { playlistId: string; user?: SyncUser; force?: boolean };
 
 const HOUR_MS = 60 * 60 * 1000;
-const listenbrainzConnection = {
-  name: "ListenBrainz",
-  isConnected: (userId: number) =>
-    Boolean(scrobbleConnectionStore.getConnection(userId, "listenbrainz")),
-};
-const PROVIDER_CONNECTIONS = {
-  "spotify-playlist": {
-    name: "Spotify",
-    isConnected: (userId: number) => Boolean(spotifyConnectionStore.getConnection(userId)),
-  },
-  "listenbrainz-playlist": listenbrainzConnection,
-  "listenbrainz-createdfor": listenbrainzConnection,
-};
 
 export function isImportSourceDue(importSource: ImportSource | null | undefined, now = Date.now()) {
   if (!importSource?.syncEnabled) return false;
@@ -100,8 +84,7 @@ export async function syncStaticPlaylistImportHere({
       stats,
       excluded = [],
       artworkUrl,
-    } = await fetchImportedPlaylistTracks({
-      provider: playlist.importSource.provider,
+    } = await requireImportList(playlist.importSource.provider).fetch({
       userId: ownerUserId,
       externalId: externalPlaylistId,
       externalUsername: playlist.importSource?.externalUsername,
@@ -216,14 +199,12 @@ export async function runDueImportSourceSyncs() {
     const ownerUserId = playlist.ownerUserId;
     if (ownerUserId == null) continue;
     const provider = playlist.importSource.provider;
-    const connection = isOwnKey(PROVIDER_CONNECTIONS, provider)
-      ? PROVIDER_CONNECTIONS[provider]
-      : undefined;
-    const connectionKey = `${connection?.name ?? provider}:${ownerUserId}`;
-    if (connection && (rejected.has(connectionKey) || !connection.isConnected(ownerUserId))) {
+    const list = importListFor(provider);
+    const connectionKey = `${list?.label ?? provider}:${ownerUserId}`;
+    if (list?.isConnected && (rejected.has(connectionKey) || !list.isConnected(ownerUserId))) {
       const pending = disconnected.get(connectionKey);
       disconnected.set(connectionKey, {
-        provider: connection.name,
+        provider: list.label,
         ownerUserId,
         playlistCount: (pending?.playlistCount || 0) + 1,
       });

@@ -384,42 +384,27 @@ once the client is back. A finished job returns `409`.
 Searching again for a cancelled song from an album returns `409`. Request the
 album again to retry it. Other cancelled songs can be searched again.
 
-### Spotify import
+### Playlist import
 
-| Method   | Path                                           | Purpose                   |
-| -------- | ---------------------------------------------- | ------------------------- |
-| `GET`    | `/api/playlists/import/spotify/status`         | Spotify connection status |
-| `POST`   | `/api/playlists/import/spotify/oauth/start`    | Start Spotify OAuth       |
-| `POST`   | `/api/playlists/import/spotify/oauth/complete` | Complete Spotify OAuth    |
-| `DELETE` | `/api/playlists/import/spotify`                | Disconnect Spotify        |
-| `GET`    | `/api/playlists/import/spotify/playlists`      | List Spotify playlists    |
-| `POST`   | `/api/playlists/import/spotify/preview`        | Preview a Spotify import  |
-| `POST`   | `/api/playlists/import/spotify`                | Import Spotify playlists  |
+Every import source, including plugins, uses the same two routes. `provider` names the source: `spotify-playlist`, `listenbrainz-playlist`, `listenbrainz-createdfor`, `lastfm-station`, `youtube-music-playlist`, `deezer-playlist`, `aurral-share`, or `plugin:<id>`. `externalId` is the playlist on that source, or a link for YouTube Music and plugins. A Last.fm station also takes `externalUsername`. Preview returns the playlist's ID on the source, and import fetches the source again and stores the title the source returns.
 
-### ListenBrainz import
+| Method | Path                            | Purpose                                                         |
+| ------ | ------------------------------- | --------------------------------------------------------------- |
+| `POST` | `/api/playlists/import/preview` | Preview a playlist from an import source                        |
+| `POST` | `/api/playlists/import`         | Import and optionally schedule synchronization for the playlist |
 
-| Method | Path                                           | Purpose                                            |
-| ------ | ---------------------------------------------- | -------------------------------------------------- |
-| `GET`  | `/api/playlists/import/listenbrainz/playlists` | List playlists for the linked ListenBrainz account |
-| `POST` | `/api/playlists/import/listenbrainz/preview`   | Preview a ListenBrainz import                      |
-| `POST` | `/api/playlists/import/listenbrainz`           | Import a ListenBrainz playlist                     |
+Spotify, ListenBrainz, and Last.fm list the playlists of an account:
 
-### YouTube Music import
-
-These routes retrieve public playlists anonymously. Preview accepts a supported playlist URL. Import accepts the validated playlist ID returned by preview, fetches the source again, and stores the source title returned by YouTube Music.
-
-| Method | Path                                          | Purpose                                                         |
-| ------ | --------------------------------------------- | --------------------------------------------------------------- |
-| `POST` | `/api/playlists/import/youtube-music/preview` | Preview a public YouTube or YouTube Music playlist              |
-| `POST` | `/api/playlists/import/youtube-music`         | Import and optionally schedule synchronization for the playlist |
-
-### Last.fm import
-
-| Method | Path                                     | Purpose                                             |
-| ------ | ---------------------------------------- | --------------------------------------------------- |
-| `GET`  | `/api/playlists/import/lastfm/playlists` | List Last.fm Library, Mix, and Recommended stations |
-| `POST` | `/api/playlists/import/lastfm/preview`   | Preview a Last.fm station import                    |
-| `POST` | `/api/playlists/import/lastfm`           | Import a Last.fm station                            |
+| Method   | Path                                           | Purpose                                             |
+| -------- | ---------------------------------------------- | --------------------------------------------------- |
+| `GET`    | `/api/playlists/import/spotify/status`         | Spotify connection status                           |
+| `POST`   | `/api/playlists/import/spotify/oauth/start`    | Start Spotify OAuth                                 |
+| `POST`   | `/api/playlists/import/spotify/oauth/complete` | Complete Spotify OAuth                              |
+| `DELETE` | `/api/playlists/import/spotify`                | Disconnect Spotify                                  |
+| `GET`    | `/api/playlists/import/spotify/playlists`      | List Spotify playlists                              |
+| `GET`    | `/api/playlists/import/listenbrainz/playlists` | List playlists for the linked ListenBrainz account  |
+| `GET`    | `/api/playlists/import/lastfm/playlists`       | List Last.fm Library, Mix, and Recommended stations |
+| `GET`    | `/api/plugins/import-lists`                    | List the plugins that import playlists from links   |
 
 ## Lidarr feed
 

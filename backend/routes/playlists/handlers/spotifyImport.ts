@@ -11,12 +11,8 @@ import {
   spotifyClient,
 } from "../../../services/spotify/spotifyClient.ts";
 import { logger, safeLogDiagnostic } from "../../../services/logger.ts";
-import {
-  enqueueImportedPlaylist,
-  fetchImportedPlaylistTracks,
-} from "../../../services/importLists/importPlaylist.ts";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
-import { importSettings, requirePlaylistAccess } from "./utils.ts";
+import { requirePlaylistAccess } from "./utils.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { errorStatus } from "../../shared/errorStatus.ts";
@@ -169,103 +165,4 @@ export default new Hono<AppEnv>()
       });
       return sendSpotifyError(c, error, "Failed to fetch Spotify playlists");
     }
-  })
-  .post(
-    "/import/spotify/preview",
-    requirePlaylistAccess,
-    validate("json", v.object({ playlistId: v.string() })),
-    async (c) => {
-      try {
-        const playlistId = c.req.valid("json").playlistId.trim();
-        if (!playlistId) {
-          return c.json({ error: "playlistId is required" }, 400);
-        }
-        const { tracks, stats } = await fetchImportedPlaylistTracks({
-          provider: "spotify-playlist",
-          userId: c.var.user.id,
-          externalId: playlistId,
-        });
-        const skipped =
-          (stats.unavailable ?? 0) + (stats.podcast ?? 0) + stats.incomplete + stats.duplicate;
-        return c.json(
-          { trackCount: tracks.length, skipped, previewTracks: tracks.slice(0, 3) },
-          200,
-        );
-      } catch (error) {
-        logger.warn("playlist-import", "Spotify playlist preview failed", {
-          reason: safeLogDiagnostic(error),
-        });
-        return sendSpotifyError(c, error, "Failed to preview Spotify playlist");
-      }
-    },
-  )
-  .post(
-    "/import/spotify",
-    requirePlaylistAccess,
-    validate(
-      "json",
-      v.object({
-        ...importSettings,
-        playlistId: v.string(),
-        externalName: v.nullish(v.string()),
-      }),
-    ),
-    async (c) => {
-      let stage = "fetch";
-      const body = c.req.valid("json");
-      const name = body.name.trim();
-      try {
-        const playlistId = body.playlistId.trim();
-        const externalName = String(body.externalName || "").trim();
-        const syncIntervalHours = Number(body.syncIntervalHours ?? 24);
-        const keepRemovedTracks = body.keepRemovedTracks !== false;
-        const syncEnabled = body.syncEnabled === false ? false : syncIntervalHours > 0;
-        if (!playlistId) {
-          return c.json({ error: "playlistId is required" }, 400);
-        }
-        if (!name) {
-          return c.json({ error: "name is required" }, 400);
-        }
-        const { tracks, stats, artworkUrl } = await fetchImportedPlaylistTracks({
-          provider: "spotify-playlist",
-          userId: c.var.user.id,
-          externalId: playlistId,
-        });
-        stage = "enqueue";
-        const result = await enqueueImportedPlaylist({
-          ownerUserId: c.var.user.id,
-          name,
-          sourceName: "Spotify",
-          provider: "spotify-playlist",
-          externalId: playlistId,
-          externalName,
-          tracks,
-          sourceStats: stats,
-          artworkUrl,
-          syncEnabled,
-          syncIntervalHours,
-          keepRemovedTracks,
-        });
-        return c.json(
-          {
-            success: true,
-            playlist: null,
-            tracksQueued: Number(result?.tracksQueued || 0),
-            tracksReused: 0,
-            queued: result?.queued === true,
-          },
-          200,
-        );
-      } catch (error) {
-        const failure = asAppError(error);
-        const status =
-          failure?.code === SPOTIFY_AUTH_REQUIRED_CODE ? 401 : failure?.statusCode || 500;
-        logger[status >= 500 ? "error" : "warn"](
-          "playlist-import",
-          "Spotify playlist import request failed",
-          { playlistName: name || null, stage, reason: safeLogDiagnostic(error) },
-        );
-        return sendSpotifyError(c, error, "Failed to import Spotify playlist");
-      }
-    },
-  );
+  });

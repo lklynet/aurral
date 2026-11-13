@@ -18,7 +18,6 @@ import { shareLinksClient } from "../../../utils/api/clients/shareLinks.ts";
 import { staticPlaylistsClient } from "../../../utils/api/clients/staticPlaylists.ts";
 import { parseM3u, type M3uTrack } from "../../../../../lib/m3u.ts";
 import { scrobblingClient } from "../../../utils/api/clients/scrobbling.ts";
-import { pluginsClient } from "../../../utils/api/clients/plugins.ts";
 import { formatTrackTotal } from "../playlistPageUtils.ts";
 import { getAppBasePath, normalizeBasePathWithTrailingSlash } from "../../../utils/basePath";
 import { useAuth } from "../../../contexts/AuthContext";
@@ -59,10 +58,8 @@ type ImportPlaylist = {
 const importApi = playlistImportsClient.import;
 const youtubeFetch = apiFetchWithin(5 * 60 * 1000);
 
-type YoutubePreview = InferResponseType<
-  (typeof importApi)["youtube-music"]["preview"]["$post"],
-  200
->;
+type ImportPreview = InferResponseType<(typeof importApi)["preview"]["$post"], 200>;
+type ImportReference = InferRequestType<(typeof importApi)["preview"]["$post"]>["json"];
 type SpotifyTokens = {
   accessToken: string;
   refreshToken: string;
@@ -242,11 +239,30 @@ function isSpotifyAuthRequired(error: ApiError | null | undefined) {
   return getApiErrorBody(error)?.code === SPOTIFY_AUTH_REQUIRED_CODE;
 }
 
-function validYoutubePreview(payload: YoutubePreview) {
-  const playlist = payload?.playlist;
-  if (!playlist?.id || !playlist?.name)
-    throw new Error("YouTube Music returned an invalid playlist");
-  return payload;
+function validLinkPreview(payload: ImportPreview) {
+  const { id, name } = payload.playlist;
+  if (!id || !name) throw new Error("The link returned an invalid playlist");
+  return { ...payload, playlist: { id, name } };
+}
+
+function importReference(
+  source: ImportSource,
+  playlist: ImportPlaylist,
+  lastfmUsername: string,
+): ImportReference {
+  if (source.startsWith(PLUGIN_SOURCE)) return { provider: source, externalId: playlist.id };
+  if (source === "listenbrainz")
+    return playlist.sourceType
+      ? { provider: "listenbrainz-createdfor", externalId: playlist.sourceType }
+      : { provider: "listenbrainz-playlist", externalId: playlist.id };
+  if (source === "lastfm")
+    return {
+      provider: "lastfm-station",
+      externalId: playlist.id,
+      externalUsername: lastfmUsername,
+    };
+  if (source === "youtube") return { provider: "youtube-music-playlist", externalId: playlist.id };
+  return { provider: "spotify-playlist", externalId: playlist.id };
 }
 
 function useErrorToast(
@@ -305,26 +321,16 @@ export function PlaylistImportModal({
     [existingPlaylistNames],
   );
 
-  const youtubePreview = useMutation({
-    mutationFn: (url: string) =>
-      parseResponse(
-        importApi["youtube-music"].preview.$post({ json: { url } }, { fetch: youtubeFetch }),
-      ).then(validYoutubePreview),
+  const linkPreview = useMutation({
+    mutationFn: (reference: ImportReference) =>
+      parseResponse(importApi.preview.$post({ json: reference }, { fetch: youtubeFetch })).then(
+        validLinkPreview,
+      ),
   });
-  const resetYoutubePreview = youtubePreview.reset;
+  const resetLinkPreview = linkPreview.reset;
   const pluginImportLists = useQuery(
     pluginImportListsQueryOptions(user?.permissions?.accessPlaylists !== false),
   );
-  const pluginPreview = useMutation({
-    mutationFn: ({ id, url }: { id: string; url: string }) =>
-      parseResponse(
-        pluginsClient[":id"].import.preview.$post(
-          { param: { id }, json: { url } },
-          { fetch: youtubeFetch },
-        ),
-      ),
-  });
-  const resetPluginPreview = pluginPreview.reset;
   const pluginId = source.startsWith(PLUGIN_SOURCE) ? source.slice(PLUGIN_SOURCE.length) : null;
   const pluginImportList = pluginId
     ? pluginImportLists.data?.importLists.find((entry) => entry.pluginId === pluginId)
@@ -349,9 +355,8 @@ export function PlaylistImportModal({
     setPlaylistNameDraft(null);
     setSyncIntervalHours(24);
     setKeepRemovedTracks(true);
-    resetYoutubePreview();
-    resetPluginPreview();
-  }, [resetYoutubePreview, resetPluginPreview]);
+    resetLinkPreview();
+  }, [resetLinkPreview]);
 
   const handleSpotifyError = useCallback(
     (error: ApiError) => {
@@ -428,18 +433,9 @@ export function PlaylistImportModal({
     }),
     queryFn: () =>
       parseResponse(
-        source === "spotify"
-          ? importApi.spotify.preview.$post({ json: { playlistId: pickedPlaylist!.id } })
-          : source === "listenbrainz"
-            ? importApi.listenbrainz.preview.$post({
-                json: {
-                  playlistId: pickedPlaylist!.id,
-                  ...(pickedPlaylist!.sourceType && { playlistType: pickedPlaylist!.sourceType }),
-                },
-              })
-            : importApi.lastfm.preview.$post({
-                json: { playlistId: pickedPlaylist!.id, username: lastfmUsername },
-              }),
+        importApi.preview.$post({
+          json: importReference(source, pickedPlaylist!, lastfmUsername),
+        }),
       ),
     enabled: ["spotify", "listenbrainz", "lastfm"].includes(source) && Boolean(pickedPlaylist?.id),
   });
@@ -537,15 +533,14 @@ export function PlaylistImportModal({
     spotifyPlaylistsQuery.isLoading;
   const listenBrainzLoading = scrobbleStatusQuery.isLoading || listenBrainzPlaylistsQuery.isLoading;
 
-  const linkPreview = pluginId ? pluginPreview.data : youtubePreview.data;
-  const linkPlaylist: ImportPlaylist | null = linkPreview
-    ? { ...linkPreview.playlist, trackCount: Number(linkPreview.trackCount || 0) }
+  const linkPlaylist: ImportPlaylist | null = linkPreview.data
+    ? { ...linkPreview.data.playlist, trackCount: Number(linkPreview.data.trackCount || 0) }
     : null;
-  const youtubeError = youtubePreview.error
-    ? getApiErrorMessage(youtubePreview.error, "Failed to preview YouTube Music playlist")
-    : "";
-  const pluginError = pluginPreview.error
-    ? getApiErrorMessage(pluginPreview.error, "Couldn't read that link")
+  const linkError = linkPreview.error
+    ? getApiErrorMessage(
+        linkPreview.error,
+        pluginId ? "Couldn't read that link" : "Failed to preview YouTube Music playlist",
+      )
     : "";
   const selectedPlaylist: ImportPlaylist | null =
     source === "youtube" || pluginId
@@ -559,13 +554,9 @@ export function PlaylistImportModal({
         : source === "file"
           ? filePlaylist && { id: filePlaylist.name, name: filePlaylist.name }
           : pickedPlaylist;
-  const previewPayload = source === "youtube" || pluginId ? linkPreview : previewQuery.data;
+  const previewPayload = source === "youtube" || pluginId ? linkPreview.data : previewQuery.data;
   const previewLoading =
-    source === "youtube"
-      ? youtubePreview.isPending
-      : pluginId
-        ? pluginPreview.isPending
-        : previewQuery.isLoading;
+    source === "youtube" || pluginId ? linkPreview.isPending : previewQuery.isLoading;
   const previewTrackCount = Number(previewPayload?.trackCount || 0);
   const previewSkipped = Number(previewPayload?.skipped || 0);
   const previewTracks = Array.isArray(previewPayload?.previewTracks)
@@ -599,8 +590,7 @@ export function PlaylistImportModal({
     setPickedPlaylist(null);
     setPlaylistNameDraft(null);
     setYoutubeUrl("");
-    youtubePreview.reset();
-    pluginPreview.reset();
+    linkPreview.reset();
     setFilePlaylist(null);
     setFileError("");
     setShareUrl("");
@@ -632,13 +622,10 @@ export function PlaylistImportModal({
     const url = youtubeUrl.trim();
     if (!url || previewLoading || importing) return;
     setPlaylistNameDraft(null);
-    if (pluginId) {
-      pluginPreview.mutate({ id: pluginId, url });
-      return;
-    }
-    youtubePreview.mutate(url, {
+    linkPreview.mutate(importReference(source, { id: url, name: "" }, ""), {
       onError: (error) => {
-        showError?.(getApiErrorMessage(error, "Failed to preview YouTube Music playlist"));
+        if (!pluginId)
+          showError?.(getApiErrorMessage(error, "Failed to preview YouTube Music playlist"));
       },
     });
   };
@@ -646,8 +633,7 @@ export function PlaylistImportModal({
   const handleYoutubeUrlChange = (value: string) => {
     setYoutubeUrl(value);
     setPlaylistNameDraft(null);
-    youtubePreview.reset();
-    pluginPreview.reset();
+    linkPreview.reset();
   };
 
   const handleImportExternal = () => {
@@ -670,50 +656,22 @@ export function PlaylistImportModal({
           : isYoutube
             ? "YouTube Music"
             : "Spotify";
-    const payload = {
-      playlistId: selectedPlaylist.id,
-      name: finalName,
-      syncEnabled: syncIntervalHours > 0,
-      syncIntervalHours,
-      keepRemovedTracks,
-    };
-    const externalName = selectedPlaylist.name;
     const runImport = () =>
-      pluginId
-        ? parseResponse(
-            pluginsClient[":id"].import.$post(
-              {
-                param: { id: pluginId },
-                json: {
-                  url: selectedPlaylist.id,
-                  name: finalName,
-                  syncEnabled: payload.syncEnabled,
-                  syncIntervalHours,
-                  keepRemovedTracks,
-                },
-              },
-              { fetch: youtubeFetch },
-            ),
-          )
-        : parseResponse(
-            isListenBrainz
-              ? importApi.listenbrainz.$post({
-                  json: {
-                    ...payload,
-                    externalName,
-                    ...(selectedPlaylist.sourceType && {
-                      playlistType: selectedPlaylist.sourceType,
-                    }),
-                  },
-                })
-              : isLastfm
-                ? importApi.lastfm.$post({
-                    json: { ...payload, externalName, username: lastfmUsername },
-                  })
-                : isYoutube
-                  ? importApi["youtube-music"].$post({ json: payload }, { fetch: youtubeFetch })
-                  : importApi.spotify.$post({ json: { ...payload, externalName } }),
-          );
+      parseResponse(
+        importApi.$post(
+          {
+            json: {
+              ...importReference(source, selectedPlaylist, lastfmUsername),
+              name: finalName,
+              externalName: selectedPlaylist.name,
+              syncEnabled: syncIntervalHours > 0,
+              syncIntervalHours,
+              keepRemovedTracks,
+            },
+          },
+          { fetch: youtubeFetch },
+        ),
+      );
     externalImport.mutate(runImport, {
       onSuccess: () => {
         showSuccess?.(`Queued import of ${finalName} from ${providerLabel}`);
@@ -827,8 +785,7 @@ export function PlaylistImportModal({
 
   const clearSelection = () => {
     setPlaylistNameDraft(null);
-    if (source === "youtube") youtubePreview.reset();
-    else if (pluginId) pluginPreview.reset();
+    if (source === "youtube" || pluginId) linkPreview.reset();
     else if (source === "aurral") handleChangeShare();
     else if (source === "file") setFilePlaylist(null);
     else setPickedPlaylist(null);
@@ -1099,7 +1056,7 @@ export function PlaylistImportModal({
         help: pluginImportList
           ? `Use a link from ${pluginImportList.hosts.join(", ")}. Plugins can take up to 2 minutes.`
           : "",
-        error: pluginError,
+        error: linkError,
         value: youtubeUrl,
         placeholder: "https://…",
         loading: previewLoading,
@@ -1112,7 +1069,7 @@ export function PlaylistImportModal({
         id: "playlist-import-youtube-url",
         label: "Playlist URL",
         help: "Use a public YouTube or YouTube Music playlist.",
-        error: youtubeError,
+        error: linkError,
         value: youtubeUrl,
         placeholder: "https://music.youtube.com/playlist?list=…",
         loading: previewLoading,

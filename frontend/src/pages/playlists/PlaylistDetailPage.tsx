@@ -34,7 +34,6 @@ import { PlaylistTracks } from "./PlaylistTracks.tsx";
 import { usePlaylistTrackPlayback } from "./components/playlistTrackComponents.tsx";
 import {
   SYNC_INTERVAL_OPTIONS,
-  SYNCABLE_IMPORT_PROVIDERS,
   formatTrackTotal,
   getImportedProviderLabel,
   choiceMenuItem,
@@ -48,6 +47,7 @@ import type { PlaylistStats, PlaylistStatus, StaticPlaylist } from "../../utils/
 import { apiFetchWithin, asApiError } from "../../utils/api/core.ts";
 import { getApiErrorText } from "../../utils/api/errors.ts";
 import { routeStateOf } from "../../navigation/routeState.ts";
+import { isNativeImportProvider } from "../../../../lib/importProviders.ts";
 
 interface PlaylistDetailProps {
   playlist: StaticPlaylist;
@@ -164,9 +164,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
     pluginImportLists.data?.importLists.find(
       (entry) => `plugin:${entry.pluginId}` === importSource?.provider,
     )?.sync !== false;
-  const isSyncable = fromPlugin
-    ? pluginSyncs
-    : SYNCABLE_IMPORT_PROVIDERS.has(importSource?.provider);
+  const isSyncable = fromPlugin ? pluginSyncs : isNativeImportProvider(importSource?.provider);
   const providerLabel = fromPlugin
     ? playlist.sourceName || "a plugin"
     : isSyncable
