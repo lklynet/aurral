@@ -453,11 +453,22 @@ test("the shelf keeps categories that loaded, lists each playlist once, and drop
   );
   assert.equal(requests.length, loaded);
 
+  vi.resetModules();
+  const restarted = await import("../../backend/services/discovery/editorialPlaylists.ts");
+  assert.deepEqual((await restarted.getEditorialShelf(OWNER)).categories, categories);
+  const answered = ["/chart/0/playlists", "/chart/152/playlists", "/chart/116/playlists"];
+  assert.deepEqual(
+    requests.slice(loaded).filter((request) => answered.includes(request.split("?")[0]!)),
+    [],
+  );
+  assert.ok(!requests.slice(loaded).some((request) => request.startsWith("/search/playlist")));
+  const restartedAt = requests.length;
+
   const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 25 * 60 * 60 * 1000);
-  const stale = await getEditorialShelf(OWNER, "featured");
+  const stale = await restarted.getEditorialShelf(OWNER, "featured");
   clock.mockRestore();
   assert.deepEqual(stale.categories, featured.categories);
-  assert.deepEqual(requests.slice(loaded), ["/chart/0/playlists?limit=24"]);
+  assert.deepEqual(requests.slice(restartedAt), ["/chart/0/playlists?limit=24"]);
 });
 
 test("For you matches Deezer editor playlists to the user's top genres and tags", async (t: import("vite-plus/test").TestContext) => {

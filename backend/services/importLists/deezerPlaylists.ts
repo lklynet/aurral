@@ -9,6 +9,7 @@ import {
   deezerTrackSchema,
 } from "../apiClients/deezer.ts";
 import { readMany, readOne } from "../integrationData.ts";
+import { dbOps } from "../../db/helpers/index.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import createCache from "../apiClients/simpleCache.ts";
 import { asAppError } from "../../../lib/errors.ts";
@@ -21,6 +22,7 @@ const SHELF_PLAYLISTS_PER_CATEGORY = 12;
 const SHELF_MIN_PLAYLISTS = 3;
 const SHELF_CONCURRENCY = 6;
 const SHELF_TTL_MS = 24 * 60 * 60 * 1000;
+const SHELF_KEEP_MS = 30 * SHELF_TTL_MS;
 const SEARCH_RESULTS_PER_TAG = 25;
 const MAX_CACHED_SEARCHES = 200;
 const ARTIST_PLAYLISTS = 20;
@@ -197,6 +199,17 @@ const normalizePlaylistSummary = (playlist: DeezerPlaylist) => {
 
 type PlaylistSummary = NonNullable<ReturnType<typeof normalizePlaylistSummary>>;
 
+const storedPlaylistsSchema: v.GenericSchema<unknown, PlaylistSummary[]> = v.array(
+  v.object({
+    id: v.string(),
+    name: v.string(),
+    description: v.nullable(v.string()),
+    trackCount: v.number(),
+    artworkUrl: v.nullable(v.string()),
+    curator: v.nullable(v.string()),
+  }),
+);
+
 type DeezerTrack = v.InferOutput<typeof deezerTrackSchema>;
 
 const normalizeTracks = (rows: DeezerTrack[]) => {
@@ -287,12 +300,9 @@ export async function getDeezerPlaylist(value: unknown) {
   };
 }
 
-type ShelfSource = {
-  id: string;
-  name: string;
-  group: "genre" | "mood" | "decade";
-  load: () => Promise<PlaylistSummary[]>;
-};
+type PlaylistSource = { id: string; load: () => Promise<PlaylistSummary[]> };
+
+type ShelfSource = PlaylistSource & { name: string; group: "genre" | "mood" | "decade" };
 
 const SHELF_SOURCES: ShelfSource[] = [
   ...SHELF_GENRES.map((genre) => ({
@@ -322,18 +332,34 @@ const SHELF_SOURCES: ShelfSource[] = [
   })),
 ];
 
-function refreshSource(source: ShelfSource) {
+const storedSourceKey = (id: string) => `deezer:playlists:${id}`;
+
+async function restoreSource(id: string) {
+  const stored = await dbOps.getMetadataResponseAsync(storedSourceKey(id)).catch(() => null);
+  if (!stored) return undefined;
+  const parsed = v.safeParse(storedPlaylistsSchema, stored.value);
+  if (!parsed.success) return undefined;
+  const cached = { playlists: parsed.output, error: null, expiresAt: stored.freshUntil };
+  sourceCache.set(id, cached);
+  return cached;
+}
+
+function refreshSource(source: PlaylistSource) {
   const pending = sourceRequests.get(source.id);
   if (pending) return pending;
   const request = source
     .load()
     .then(
-      (playlists) => {
-        sourceCache.set(source.id, {
-          playlists,
-          error: null,
-          expiresAt: Date.now() + SHELF_TTL_MS,
-        });
+      async (playlists) => {
+        const now = Date.now();
+        sourceCache.set(source.id, { playlists, error: null, expiresAt: now + SHELF_TTL_MS });
+        await dbOps
+          .setMetadataResponseAsync(storedSourceKey(source.id), {
+            value: playlists,
+            freshUntil: now + SHELF_TTL_MS,
+            staleUntil: now + SHELF_KEEP_MS,
+          })
+          .catch(() => {});
         return playlists;
       },
       (error: unknown) => {
@@ -350,8 +376,8 @@ function refreshSource(source: ShelfSource) {
   return request;
 }
 
-async function loadSource(source: ShelfSource) {
-  const cached = sourceCache.get(source.id);
+async function loadSource(source: PlaylistSource) {
+  const cached = sourceCache.get(source.id) ?? (await restoreSource(source.id));
   if (cached && cached.expiresAt > Date.now()) {
     if (cached.playlists) return cached.playlists;
     throw cached.error;
@@ -446,3 +472,9 @@ export async function searchDeezerPlaylists(term: unknown): Promise<SearchedPlay
 
 export const searchEditorialPlaylists = async (term: unknown) =>
   (await searchDeezerPlaylists(term)).editors;
+
+export const loadEditorialSearch = (term: string) =>
+  loadSource({
+    id: `search:${term.toLowerCase()}`,
+    load: () => searchEditorialPlaylists(term),
+  });

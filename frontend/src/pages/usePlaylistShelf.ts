@@ -7,7 +7,7 @@ import {
   playlistStatusQueryOptions,
 } from "../queryOptions.ts";
 import type { ShelfScope } from "../../../backend/services/importLists/deezerPlaylists.ts";
-import type { BrowseProvider } from "../../../lib/browsePlaylists.ts";
+import { BROWSE_IMPORT_PROVIDERS, type BrowseProvider } from "../../../lib/browsePlaylists.ts";
 
 const GROUP_ORDER = ["mood", "decade", "genre"] as const;
 
@@ -18,7 +18,10 @@ export function usePlaylistShelf(scope?: ShelfScope) {
 
 export function useMadeForYou() {
   const { user } = useAuth();
-  return useQuery(madeForYouQueryOptions(user?.id));
+  return useQuery({
+    ...madeForYouQueryOptions(user?.id),
+    select: ({ discovery, mixes }) => ({ mixes, playlists: [...discovery, ...mixes] }),
+  });
 }
 
 export function usePlaylistCategories() {
@@ -36,7 +39,7 @@ export function usePlaylistCategories() {
   const categories = useMemo(
     () => [
       ...[
-        { id: "made-for-you", name: "Made for you", playlists: madeForYou.data?.discovery ?? [] },
+        { id: "made-for-you", name: "Made for you", playlists: madeForYou.data?.playlists ?? [] },
         { id: "for-you", name: "Your genres", playlists: shelf.data?.forYou ?? [] },
       ].filter((category) => category.playlists.length > 0),
       ...browse,
@@ -54,17 +57,20 @@ export function usePlaylistClaims() {
     select: (status) =>
       new Map(
         status.staticPlaylists.flatMap(({ ownerUserId, importSource }) =>
-          ownerUserId === user?.id &&
-          importSource?.provider === "deezer-playlist" &&
-          importSource.externalId
-            ? [[importSource.externalId, importSource.syncEnabled ? "synced" : "saved"] as const]
+          ownerUserId === user?.id && importSource?.externalId
+            ? [
+                [
+                  `${importSource.provider}:${importSource.externalId}`,
+                  importSource.syncEnabled ? "synced" : "saved",
+                ] as const,
+              ]
             : [],
         ),
       ),
   });
   return useCallback(
     (playlist: { provider: BrowseProvider; id: string }) =>
-      playlist.provider === "deezer" ? claims?.get(playlist.id) : undefined,
+      claims?.get(`${BROWSE_IMPORT_PROVIDERS[playlist.provider]}:${playlist.id}`),
     [claims],
   );
 }

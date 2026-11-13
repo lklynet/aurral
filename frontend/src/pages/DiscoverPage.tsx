@@ -212,7 +212,7 @@ function DiscoverPage() {
     const forYou = playlistShelf?.forYou || [];
     return forYou.length > 0 ? forYou : playlistShelf?.categories?.[0]?.playlists || [];
   }, [playlistShelf]);
-  const madeForYou = useMemo(() => madeForYouData?.discovery ?? [], [madeForYouData]);
+  const madeForYou = useMemo(() => madeForYouData?.playlists ?? [], [madeForYouData]);
 
   const sectionAvailability = useMemo(
     () => ({

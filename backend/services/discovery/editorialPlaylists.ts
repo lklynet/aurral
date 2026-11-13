@@ -1,30 +1,35 @@
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
-import { enqueueImportedPlaylist } from "../importLists/importPlaylist.ts";
+import { enqueueImportedPlaylist, type ImportedPlaylist } from "../importLists/importPlaylist.ts";
 import {
   getDeezerPlaylist,
   getEditorialShelf as getCategoryShelf,
+  loadEditorialSearch,
   type ShelfScope,
-  searchEditorialPlaylists,
   validateDeezerPlaylistId,
 } from "../importLists/deezerPlaylists.ts";
 import { resolveArtistAndAlbumMbids } from "../apiClients/index.ts";
 import { getUserDiscovery } from "./userDiscovery.ts";
 import type { RequestUser } from "../../middleware/requestUser.ts";
+import type { NativeImportProvider } from "../../../lib/importProviders.ts";
 
 const PROVIDER = "deezer-playlist";
 const SYNC_INTERVAL_HOURS = 24;
 const FOR_YOU_TERMS = 6;
 const FOR_YOU_PER_TERM = 2;
 const FOR_YOU_LIMIT = 12;
-const pendingAdds = new Map<string, Promise<EditorialLibraryAddResponse>>();
+const pendingAdds = new Map<string, Promise<SyncedPlaylistAddResponse>>();
 
-export const findLibraryPlaylist = (userId: number, deezerPlaylistId: string) =>
+export const findLibraryPlaylist = (
+  userId: number,
+  externalId: string,
+  provider: NativeImportProvider = PROVIDER,
+) =>
   flowPlaylistConfig
     .getStaticPlaylistsOwnedByUser(userId)
     .find(
       (playlist) =>
-        playlist.importSource?.provider === PROVIDER &&
-        playlist.importSource.externalId === deezerPlaylistId,
+        playlist.importSource?.provider === provider &&
+        playlist.importSource.externalId === externalId,
     ) || null;
 
 export const pickAvailableName = (userId: number, name: string, sourceName = "Deezer") => {
@@ -65,7 +70,7 @@ const uniqueTerms = (values: Iterable<unknown>) => {
 async function getForYouPlaylists(userId: number) {
   const { body } = await getUserDiscovery(userId, 0, 0);
   const terms = uniqueTerms([...(body.topGenres || []), ...(body.topTags || [])]);
-  const results = await Promise.allSettled(terms.map(searchEditorialPlaylists));
+  const results = await Promise.allSettled(terms.map(loadEditorialSearch));
   const seen = new Set();
   const playlists = [];
   for (const result of results) {
@@ -126,36 +131,60 @@ export async function getEditorialPlaylist(user: RequestUser, value: string) {
   };
 }
 
-type EditorialLibraryAddResponse =
+type SyncedPlaylistSource = {
+  provider: NativeImportProvider;
+  externalId: string;
+  sourceName: string;
+  load: () => Promise<
+    Pick<ImportedPlaylist, "artworkUrl" | "tracks" | "stats"> & {
+      name: string;
+      description: string | null;
+    }
+  >;
+};
+
+type SyncedPlaylistAddResponse =
   | { playlistId: string; name: string; alreadyAdded: true }
   | { playlistId: string; name: string; alreadyAdded: false; tracksQueued: number };
 
-export async function addEditorialPlaylistToLibrary(user: RequestUser, value: string) {
-  const id = validateDeezerPlaylistId(value);
-  const key = `${user.id}:${id}`;
+export function addSyncedPlaylist(user: RequestUser, source: SyncedPlaylistSource) {
+  const key = `${user.id}:${source.provider}:${source.externalId}`;
   if (!pendingAdds.has(key)) {
     pendingAdds.set(
       key,
-      addToLibrary(user, id).finally(() => pendingAdds.delete(key)),
+      addToLibrary(user, source).finally(() => pendingAdds.delete(key)),
     );
   }
   return pendingAdds.get(key)!;
 }
 
-async function addToLibrary(user: RequestUser, id: string): Promise<EditorialLibraryAddResponse> {
-  const existing = findLibraryPlaylist(user.id, id);
+export const addEditorialPlaylistToLibrary = async (user: RequestUser, value: string) => {
+  const id = validateDeezerPlaylistId(value);
+  return addSyncedPlaylist(user, {
+    provider: PROVIDER,
+    externalId: id,
+    sourceName: "Deezer",
+    load: () => getDeezerPlaylist(id),
+  });
+};
+
+async function addToLibrary(
+  user: RequestUser,
+  { provider, externalId, sourceName, load }: SyncedPlaylistSource,
+): Promise<SyncedPlaylistAddResponse> {
+  const existing = findLibraryPlaylist(user.id, externalId, provider);
   if (existing) {
     return { playlistId: existing.id, name: existing.name, alreadyAdded: true };
   }
-  const playlist = await getDeezerPlaylist(id);
-  const name = pickAvailableName(user.id, playlist.name);
+  const playlist = await load();
+  const name = pickAvailableName(user.id, playlist.name, sourceName);
   const result = await enqueueImportedPlaylist({
     ownerUserId: user.id,
     name,
-    sourceName: "Deezer",
+    sourceName,
     description: playlist.description,
-    provider: PROVIDER,
-    externalId: id,
+    provider,
+    externalId,
     externalName: playlist.name,
     tracks: playlist.tracks,
     sourceStats: playlist.stats,

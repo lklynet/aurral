@@ -8,6 +8,8 @@ export const IMPORT_PROVIDER_LABELS = {
   "youtube-music-playlist": "YouTube Music",
   "deezer-playlist": "Deezer",
   "aurral-share": "Aurral share",
+  "aurral-discovery": "Aurral",
+  "aurral-mix": "Aurral",
 } as const;
 
 export type NativeImportProvider = keyof typeof IMPORT_PROVIDER_LABELS;

@@ -49,15 +49,16 @@ const SAVE_COPY: Record<
     unavailable: "Deezer no longer has this playlist.",
   },
   discovery: {
-    add: "Add to Library",
-    open: "Open playlist",
-    added: (name) => `Added ${name} to your playlists. Missing songs will download.`,
+    add: "Add synced playlist",
+    open: "Open synced playlist",
+    added: (name) =>
+      `Added ${name} to your playlists. It syncs daily, and missing songs will download.`,
     unavailable: "This playlist was replaced by a newer one.",
   },
   mix: {
-    add: "Save as playlist",
-    open: "Open playlist",
-    added: (name) => `Saved ${name} to your playlists.`,
+    add: "Add synced playlist",
+    open: "Open synced playlist",
+    added: (name) => `Added ${name} to your playlists. It syncs daily.`,
     unavailable: "This mix was replaced by a newer one.",
   },
 };

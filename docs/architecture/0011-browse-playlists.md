@@ -15,9 +15,9 @@ A browse playlist is a list of tracks Aurral shows and plays. Nothing downloads 
 - **Made for you is stored.** It needs Deezer, so `services/discovery/discoveryPlaylists.ts` builds it at the end of each discovery refresh and keeps it in `discovery_playlists`. A playlist whose lookups all fail keeps its previous row.
 - **Covers are drawn, not picked.** Mixes and Made for you use the playlist cover templates with the lead artist's photo, one template per kind (`services/discovery/browseCovers.ts`). The cover URL carries a hash of the title, template, and artist, and the file is cached on disk under that hash, so a cover only redraws when one of them changes. Without a photo the template draws the title on color.
 - **Owned tracks play in full.** Every browse playlist response gives each track `owned` when it matches a Library track. The player streams that file and records history. Other tracks play the Deezer preview and record nothing.
-- **Saving is one import path.** Saving a mix or Made for you playlist creates a static playlist through `shared-playlist-create`. Made for you downloads missing tracks. Mixes only hold Library tracks, so there is nothing to download. Deezer playlists keep their sync. Recurring downloads stay with flows.
+- **Saving is one import path.** Saving any browse playlist creates a synced import: `BROWSE_IMPORT_PROVIDERS` in `lib/browsePlaylists.ts` maps each provider to its import source, and the browse id is the external id. Each sync reads the source's latest version, the same as any other import, so a saved mix or Made for you playlist follows its rebuilds.
+- **Only saved copies leave the app.** Browse playlists are per-user and change daily, so Subsonic and other clients see a mix or Made for you playlist only once the user saves it.
 
 ## Traps
 
-- Subsonic shows mixes as playlists with `mix:` ids. They are read-only and rebuilt each day, so a client must not expect edits to stick or ids to keep the same tracks.
-- Mix ids like `daily-1` and `artist-<id>` name a slot, not a fixed set of tracks. A link to one opens today's version.
+- Mix ids like `daily-1` and `artist-<id>` name a slot, not a fixed set of tracks. A link to one opens today's version, and a saved copy syncs to whatever fills the slot. Slots empty and refill, so these import lists are `rotating`: while a slot is empty, sync keeps the saved tracks and records no error.
