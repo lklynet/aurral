@@ -5,6 +5,7 @@ function sectionOf(pathname: string): SectionId | "none" | "parent" {
     pathname === "/" ||
     /^\/discover\/playlists(\/[^/]+)?$/.test(pathname) ||
     pathname === "/discover/news" ||
+    pathname === "/discover/releases" ||
     pathname.startsWith("/discover/trending") ||
     pathname.startsWith("/discover/recommended")
   ) {

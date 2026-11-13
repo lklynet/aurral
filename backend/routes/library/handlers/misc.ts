@@ -1,18 +1,14 @@
 import { Hono } from "hono";
 import * as v from "valibot";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
-import { dbOps } from "../../../db/helpers/index.ts";
 import { noCache } from "../../../middleware/cacheHeaders.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
-import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
 import {
   buildLibraryArtworkUrl,
   getLibraryArtworkVersions,
 } from "../../../services/libraryArtwork.ts";
-import { fetchReleaseGroupCoverUrl } from "../../../services/releaseGroupCoverService.ts";
-import { getFreshReleasesByArtists } from "../../../services/discovery/freshReleases.ts";
-import { getUserDiscovery } from "../../../services/discovery/userDiscovery.ts";
+import { getReleaseFeed, getReleaseRail } from "../../../services/discovery/releaseFeed.ts";
 import {
   getLibraryReadModelForAlbumReferences,
   getLibraryReadModelForArtists,
@@ -26,6 +22,13 @@ import { asAppError } from "../../../../lib/errors.ts";
 
 const ARTIST_LOOKUP_BATCH_MAX = 100;
 const ALBUM_LOOKUP_BATCH_MAX = 100;
+const RAIL_RELEASE_LIMIT = 24;
+
+const releaseFeedQuery = v.object({
+  when: v.picklist(["released", "upcoming"]),
+  offset: v.optional(v.pipe(v.string(), v.toNumber(), v.integer(), v.minValue(0))),
+  limit: v.optional(v.pipe(v.string(), v.toNumber(), v.integer(), v.minValue(1), v.maxValue(100))),
+});
 
 type ReadAlbum = ReturnType<typeof getLibraryReadModelForAlbumReferences>["albums"][number];
 type ReadTrack = ReturnType<typeof getLibraryReadModelForAlbumReferences>["tracks"][number];
@@ -273,74 +276,28 @@ export default new Hono<AppEnv>()
   })
   .get("/recent-releases", async (c) => {
     try {
-      const { getRecentMissingReleases } =
-        await import("../../../services/discovery/recentReleases.ts");
-      const fromLibrary = await getRecentMissingReleases(24);
-      const libraryReleaseIds = new Set(fromLibrary.map((album) => album.mbid));
-      const fromRecommendations = getFreshReleasesByArtists(
-        getUserDiscovery(c.var.user?.id ?? null, 0).body.recommendations.map((artist) => artist.id),
-      ).filter((album) => !libraryReleaseIds.has(album.mbid));
-      const recentMissing = [...fromLibrary, ...fromRecommendations]
-        .sort((left, right) => right.releaseDate.localeCompare(left.releaseDate))
-        .slice(0, 24);
-
-      const cachedCovers = dbOps.getImages(
-        recentMissing
-          .map((album) => album.mbid || album.foreignAlbumId)
-          .filter(Boolean)
-          .map((id) => `rg:${id}`),
-      );
-
-      const coverTargets = recentMissing
-        .filter((album) => libraryReleaseIds.has(album.mbid))
-        .slice(0, 6);
-      const warmedVisibleCovers = await Promise.all(
-        coverTargets.map(async (album): Promise<[string | null, string | null]> => {
-          const coverId = album.mbid || album.foreignAlbumId;
-          if (!coverId) return [null, null];
-
-          const cachedUrl = cachedCovers[`rg:${coverId}`]?.imageUrl || null;
-          if (cachedUrl && cachedUrl !== "NOT_FOUND") {
-            const imageUrl = buildImageProxyUrl(cachedUrl);
-            if (imageUrl) return [coverId, imageUrl];
-          }
-
-          const cover = await fetchReleaseGroupCoverUrl(coverId, {
-            artistName: album.artistName || "",
-            albumTitle: album.albumName || "",
-          }).catch(() => null);
-
-          if (!cover?.imageUrl) {
-            return [coverId, null];
-          }
-
-          return [coverId, buildImageProxyUrl(cover.imageUrl)];
-        }),
-      );
-
-      const warmedCoverMap = Object.fromEntries(
-        warmedVisibleCovers.filter((entry): entry is [string, string] =>
-          Boolean(entry[0] && entry[1]),
-        ),
-      );
-
-      const withCachedCovers = recentMissing.map((album) => {
-        const coverId = album.mbid || album.foreignAlbumId;
-        const cachedUrl = coverId ? cachedCovers[`rg:${coverId}`]?.imageUrl || null : null;
-        const coverUrl =
-          (coverId ? warmedCoverMap[coverId] : null) ||
-          (cachedUrl && cachedUrl !== "NOT_FOUND" ? buildImageProxyUrl(cachedUrl) : null);
-        return {
-          ...album,
-          coverUrl,
-        };
+      const releases = await getReleaseRail({
+        userId: c.var.user?.id ?? null,
+        limit: RAIL_RELEASE_LIMIT,
       });
-
       c.header("Cache-Control", "private, no-store");
-      return c.json(withCachedCovers, 200);
+      return c.json(releases, 200);
     } catch (error) {
       return c.json(
         { error: "Failed to fetch recent releases", message: asAppError(error)?.message },
+        500,
+      );
+    }
+  })
+  .get("/releases", validate("query", releaseFeedQuery), async (c) => {
+    const { when, offset = 0, limit = 24 } = c.req.valid("query");
+    try {
+      const feed = await getReleaseFeed({ userId: c.var.user?.id ?? null, when, offset, limit });
+      c.header("Cache-Control", "private, no-store");
+      return c.json(feed, 200);
+    } catch (error) {
+      return c.json(
+        { error: "Failed to fetch releases", message: asAppError(error)?.message },
         500,
       );
     }

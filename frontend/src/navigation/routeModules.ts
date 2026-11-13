@@ -28,6 +28,7 @@ export const routeModules = {
   discoverPlaylistCategory: trackLoad(() => import("../pages/DiscoverPlaylistCategoryPage")),
   browsePlaylist: trackLoad(() => import("../pages/BrowsePlaylistDetailPage")),
   news: trackLoad(() => import("../pages/NewsPage")),
+  releases: trackLoad(() => import("../pages/ReleasesPage")),
   recommended: trackLoad(() => import("../pages/RecommendedPage")),
   trending: trackLoad(() => import("../pages/TrendingPage")),
   trendingGenre: trackLoad(() => import("../pages/TrendingGenrePage")),

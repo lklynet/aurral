@@ -1,6 +1,7 @@
 import ArtworkImage from "../components/ArtworkImage";
 import { memo, useState, useEffect, type ReactNode } from "react";
 import { getReleaseGroupCover, getArtistCover } from "../utils/api/endpoints/artists.ts";
+import { resolveAuthenticatedApiAssetUrl } from "../utils/api/core.ts";
 
 import { Music } from "../components/icons";
 import ReleaseWaitBadge from "../components/ReleaseWaitBadge";
@@ -17,7 +18,8 @@ import { artworkHoverTint } from "../utils/imageColors.ts";
 import Tooltip from "../components/Tooltip";
 import RouteLink from "../components/RouteLink";
 import type { DiscoverArtist } from "../utils/discoverUtils";
-import type { RecentRelease, useDiscoverData } from "./useDiscoverData.ts";
+import type { useDiscoverData } from "./useDiscoverData.ts";
+import type { RecentRelease, useReleaseAlbumAction } from "./useReleaseAlbumAction.ts";
 
 export type DiscoverCardArtist = Partial<DiscoverArtist> & {
   libraryPath?: string | null;
@@ -28,7 +30,7 @@ export type DiscoverCardArtist = Partial<DiscoverArtist> & {
 };
 
 type DiscoverFeedbackHandler = ReturnType<typeof useDiscoverData>["handleDiscoveryFeedback"];
-type DiscoverAlbumAction = ReturnType<typeof useDiscoverData>["handleRecentReleaseAlbumAction"];
+type DiscoverAlbumAction = ReturnType<typeof useReleaseAlbumAction>["onAlbumAction"];
 type CardLink = { to: string; state?: unknown };
 
 const isRequested = (album: RecentRelease) => "requested" in album && album.requested;
@@ -192,7 +194,7 @@ export const AlbumCard = memo(
     const { isAlbumDownloading } = useActiveDownloads();
     const downloading = isPending || isAlbumDownloading(releaseGroupMbid);
     const [fetchedCover, setFetchedCover] = useState<string | null>(null);
-    const coverUrl = album.coverUrl || fetchedCover;
+    const coverUrl = resolveAuthenticatedApiAssetUrl(album.coverUrl || fetchedCover) || null;
 
     useEffect(() => {
       if (album.coverUrl || fetchedCover) return;

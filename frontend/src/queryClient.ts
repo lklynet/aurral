@@ -140,7 +140,14 @@ export const queryKeys = {
     country || null,
   ],
   recentlyAdded: (userId: MaybeId): QueryKey => ["library", "recently-added", userId || null],
-  recentReleases: (userId: MaybeId): QueryKey => ["library", "recent-releases", userId || null],
+  releases: (): QueryKey => ["library", "releases"],
+  recentReleases: (userId: MaybeId): QueryKey => ["library", "releases", "rail", userId || null],
+  releaseFeed: (userId: MaybeId, when: string): QueryKey => [
+    "library",
+    "releases",
+    when,
+    userId || null,
+  ],
   news: (userId: MaybeId, mode: string, limit: number): QueryKey => [
     "news",
     "library",

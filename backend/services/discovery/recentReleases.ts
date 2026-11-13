@@ -1,6 +1,9 @@
 import { getReleaseCalendarEntries } from "../releaseCalendarStore.ts";
 
-const RECENT_RELEASE_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const RECENT_RELEASE_WINDOW_MS = 90 * DAY_MS;
+
+export type ReleaseWindow = "released" | "upcoming";
 
 type TimeInput = string | number | Date | null | undefined;
 
@@ -10,7 +13,7 @@ interface RecentReleaseArtist {
 
 interface RecentReleaseOptions {
   now?: TimeInput;
-  includeFuture?: boolean;
+  when?: ReleaseWindow;
   artists?: RecentReleaseArtist[] | null;
 }
 
@@ -44,19 +47,21 @@ function resolveDayMs(value: TimeInput) {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
 
+export const toDay = (time: number) => new Date(time).toISOString().slice(0, 10);
+
 export async function getRecentMissingReleases(limit = 24, options: RecentReleaseOptions = {}) {
   const now = resolveTimeMs(options?.now);
-  const recentCutoff = now - RECENT_RELEASE_WINDOW_MS;
-  const today = resolveDayMs(now);
-  const includeFuture = options?.includeFuture !== false;
+  const today = resolveDayMs(now)!;
+  const upcoming = options?.when === "upcoming";
   const normalizedLimit = Math.max(1, Math.round(Number(limit) || 24));
   const providedArtists =
     Array.isArray(options?.artists) && options.artists.length > 0 ? options.artists : null;
 
   return getReleaseCalendarEntries({
-    from: new Date(recentCutoff).toISOString().slice(0, 10),
-    to: includeFuture ? null : new Date(today!).toISOString().slice(0, 10),
+    from: toDay(upcoming ? today + DAY_MS : now - RECENT_RELEASE_WINDOW_MS),
+    to: upcoming ? null : toDay(today),
     limit: normalizedLimit,
     artistIds: providedArtists ? providedArtists.map((artist) => artist?.id) : [],
+    soonestFirst: upcoming,
   });
 }

@@ -127,6 +127,26 @@
     "bytes": 12110,
     "scans": []
   },
+  "discover releases": {
+    "queries": {
+      "cold": 25,
+      "warm": 17
+    },
+    "bytes": 19539,
+    "scans": [
+      "library_artists"
+    ]
+  },
+  "releases page": {
+    "queries": {
+      "cold": 24,
+      "warm": 24
+    },
+    "bytes": 44475,
+    "scans": [
+      "library_artists"
+    ]
+  },
   "discover artist": {
     "queries": {
       "cold": 92,

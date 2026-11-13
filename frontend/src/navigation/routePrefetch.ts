@@ -85,6 +85,7 @@ const ROUTES = [
     ],
   },
   { path: "/discover/news", module: routeModules.news },
+  { path: "/discover/releases", module: routeModules.releases },
   {
     path: "/discover/recommended/:view?",
     module: routeModules.recommended,
