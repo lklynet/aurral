@@ -1,15 +1,24 @@
 import type { InferResponseType } from "hono/client";
 import type { discoveryClient } from "./api/clients/discovery.ts";
+import type { libraryMiscClient } from "./api/clients/libraryMisc.ts";
 import {
   DISCOVER_SECTION_IDS,
   normalizeDiscoverLayout as normalizeLayoutEntries,
   type DiscoverLayoutEntry,
   type DiscoverSectionId,
 } from "../../../lib/discoverLayout.ts";
+import { isRecord } from "../../../lib/isRecord.ts";
 import { shuffle } from "../../../lib/shuffle.ts";
+import { unknownList } from "../../../lib/unknownList.ts";
 
 export type DiscoverResponse = InferResponseType<typeof discoveryClient.$get, 200>;
 export type DiscoverArtist = DiscoverResponse["recommendations"][number];
+type DiscoverSeed = DiscoverResponse["basedOn"][number];
+type RecentlyAddedArtist = InferResponseType<typeof libraryMiscClient.recent.$get, 200>[number];
+type RecentRelease = InferResponseType<
+  (typeof libraryMiscClient)["recent-releases"]["$get"],
+  200
+>[number];
 
 export type DiscoverUserId = number | string | null | undefined;
 
@@ -127,15 +136,39 @@ const getStoredArraySourceKey = (primaryKey: string, fallbackKey: string) => {
   }
 };
 
-const readStoredArray = (primaryKey: string, fallbackKey: string) => {
+const readStoredArray = <T>(
+  primaryKey: string,
+  fallbackKey: string,
+  isEntry: (entry: unknown) => entry is T,
+) => {
   const sourceKey = getStoredArraySourceKey(primaryKey, fallbackKey);
   if (!sourceKey) return null;
   try {
-    return JSON.parse(localStorage.getItem(sourceKey) || "null");
+    const stored = unknownList(JSON.parse(localStorage.getItem(sourceKey) || "null"));
+    return stored.every(isEntry) ? stored : null;
   } catch {
     return null;
   }
 };
+
+const isString = (value: unknown) => typeof value === "string";
+const textOrNull = (value: unknown) => (typeof value === "string" && value ? value : null);
+
+const isRecentlyAddedArtist = (entry: unknown): entry is RecentlyAddedArtist =>
+  isRecord(entry) && typeof entry.id === "string" && typeof entry.artistName === "string";
+
+const isRecentRelease = (entry: unknown): entry is RecentRelease =>
+  isRecord(entry) && typeof entry.id === "string" && typeof entry.mbid === "string";
+
+const isDiscoverArtist = (entry: unknown): entry is DiscoverArtist =>
+  isRecord(entry) &&
+  typeof entry.name === "string" &&
+  (entry.id === null || typeof entry.id === "string");
+
+const isDiscoverSeed = (entry: unknown): entry is DiscoverSeed =>
+  isRecord(entry) &&
+  (entry.name === undefined || typeof entry.name === "string") &&
+  (entry.id == null || typeof entry.id === "string");
 
 const readStoredArrayAt = (primaryKey: string, fallbackKey: string) => {
   const sourceKey = getStoredArraySourceKey(primaryKey, fallbackKey);
@@ -185,11 +218,14 @@ export const writeStoredNearbyLocation = ({
 };
 
 export const readStoredRecentlyAdded = (userId: DiscoverUserId) => {
-  return readStoredArray(getDiscoverRecentlyAddedStorageKey(userId), DISCOVER_RECENTLY_ADDED_KEY);
+  return readStoredArray(
+    getDiscoverRecentlyAddedStorageKey(userId),
+    DISCOVER_RECENTLY_ADDED_KEY,
+    isRecentlyAddedArtist,
+  );
 };
 
-export const writeStoredRecentlyAdded = (value: unknown, userId: DiscoverUserId) => {
-  if (!Array.isArray(value)) return;
+export const writeStoredRecentlyAdded = (value: RecentlyAddedArtist[], userId: DiscoverUserId) => {
   try {
     localStorage.setItem(getDiscoverRecentlyAddedStorageKey(userId), JSON.stringify(value));
     markStoredAt(getDiscoverRecentlyAddedStorageKey(userId));
@@ -199,11 +235,14 @@ export const writeStoredRecentlyAdded = (value: unknown, userId: DiscoverUserId)
 };
 
 export const readStoredRecentReleases = (userId: DiscoverUserId) => {
-  return readStoredArray(getDiscoverRecentReleasesStorageKey(userId), DISCOVER_RECENT_RELEASES_KEY);
+  return readStoredArray(
+    getDiscoverRecentReleasesStorageKey(userId),
+    DISCOVER_RECENT_RELEASES_KEY,
+    isRecentRelease,
+  );
 };
 
-export const writeStoredRecentReleases = (value: unknown, userId: DiscoverUserId) => {
-  if (!Array.isArray(value)) return;
+export const writeStoredRecentReleases = (value: RecentRelease[], userId: DiscoverUserId) => {
   try {
     localStorage.setItem(getDiscoverRecentReleasesStorageKey(userId), JSON.stringify(value));
     markStoredAt(getDiscoverRecentReleasesStorageKey(userId));
@@ -212,18 +251,16 @@ export const writeStoredRecentReleases = (value: unknown, userId: DiscoverUserId
   }
 };
 
-type StoredDiscoveryData = { [K in keyof DiscoverResponse]?: DiscoverResponse[K] | null };
-
-export const normalizeDiscoveryData = (value: StoredDiscoveryData | null | undefined) => {
-  if (!value || typeof value !== "object") return null;
+export const normalizeDiscoveryData = (value: unknown) => {
+  if (!isRecord(value)) return null;
   return {
-    recommendations: Array.isArray(value.recommendations) ? value.recommendations : [],
-    globalTop: Array.isArray(value.globalTop) ? value.globalTop : [],
-    basedOn: Array.isArray(value.basedOn) ? value.basedOn : [],
-    topTags: Array.isArray(value.topTags) ? value.topTags : [],
-    topGenres: Array.isArray(value.topGenres) ? value.topGenres : [],
-    provider: value.provider || null,
-    lastUpdated: value.lastUpdated || null,
+    recommendations: unknownList(value.recommendations).filter(isDiscoverArtist),
+    globalTop: unknownList(value.globalTop).filter(isDiscoverArtist),
+    basedOn: unknownList(value.basedOn).filter(isDiscoverSeed),
+    topTags: unknownList(value.topTags).filter(isString),
+    topGenres: unknownList(value.topGenres).filter(isString),
+    provider: textOrNull(value.provider),
+    lastUpdated: textOrNull(value.lastUpdated),
     recommendationQuality:
       value.recommendationQuality === "initial" ||
       value.recommendationQuality === "enriching" ||
@@ -231,10 +268,10 @@ export const normalizeDiscoveryData = (value: StoredDiscoveryData | null | undef
         ? value.recommendationQuality
         : null,
     isEnriching: value.isEnriching === true,
-    discoveryRunId: value.discoveryRunId || null,
-    enrichmentStartedAt: value.enrichmentStartedAt || null,
-    enrichmentCompletedAt: value.enrichmentCompletedAt || null,
-    enrichmentProgressMessage: value.enrichmentProgressMessage || null,
+    discoveryRunId: textOrNull(value.discoveryRunId),
+    enrichmentStartedAt: textOrNull(value.enrichmentStartedAt),
+    enrichmentCompletedAt: textOrNull(value.enrichmentCompletedAt),
+    enrichmentProgressMessage: textOrNull(value.enrichmentProgressMessage),
     discoveryMode:
       value.discoveryMode === "safer" || value.discoveryMode === "deeper"
         ? value.discoveryMode
@@ -243,27 +280,25 @@ export const normalizeDiscoveryData = (value: StoredDiscoveryData | null | undef
   };
 };
 
+export type DiscoverData = NonNullable<ReturnType<typeof normalizeDiscoveryData>>;
+
 export const readStoredDiscoveryData = (userId: DiscoverUserId) => {
-  const fromStorage = normalizeDiscoveryData;
+  const fromStorage = (key: string) =>
+    normalizeDiscoveryData(JSON.parse(localStorage.getItem(key) || "null"));
   try {
     const primaryKey = getDiscoveryCacheStorageKey(userId);
-    const primary = fromStorage(JSON.parse(localStorage.getItem(primaryKey) || "null"));
+    const primary = fromStorage(primaryKey);
     if (primary) return primary;
     if (primaryKey === DISCOVERY_CACHE_KEY) return null;
-    return fromStorage(JSON.parse(localStorage.getItem(DISCOVERY_CACHE_KEY) || "null"));
+    return fromStorage(DISCOVERY_CACHE_KEY);
   } catch {
     return null;
   }
 };
 
-export const writeStoredDiscoveryData = (
-  value: Parameters<typeof normalizeDiscoveryData>[0],
-  userId: DiscoverUserId,
-) => {
-  const normalized = normalizeDiscoveryData(value);
-  if (!normalized) return;
+export const writeStoredDiscoveryData = (value: DiscoverData, userId: DiscoverUserId) => {
   try {
-    localStorage.setItem(getDiscoveryCacheStorageKey(userId), JSON.stringify(normalized));
+    localStorage.setItem(getDiscoveryCacheStorageKey(userId), JSON.stringify(value));
     markStoredAt(getDiscoveryCacheStorageKey(userId));
   } catch {
     console.warn("Failed to write discover discovery-data");

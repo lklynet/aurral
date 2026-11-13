@@ -80,14 +80,14 @@ export function renderComparison({ base, head }: Comparison) {
     const baseRounds = base.map((result) => result.metrics[name]?.samples ?? []);
     if (baseRounds.some((samples) => !samples.length)) return `| ${name} | | | new | |`;
     const headRounds = head.map((result) => result.metrics[name]?.samples ?? []);
-    const { baseMedian, headMedian, verdict } = judge(kind, baseRounds, headRounds);
-    const percent = Math.round(((headMedian - baseMedian) / baseMedian) * 100) || 0;
+    const { baseValue, headValue, verdict } = judge(kind, baseRounds, headRounds);
+    const percent = Math.round(((headValue - baseValue) / baseValue) * 100) || 0;
     const delta = `${percent > 0 ? "+" : ""}${percent}%`;
     const change = verdict === "same" ? delta : `**${verdict}** (${delta})`;
     const queries = queryChange(base[0]?.metrics[name]?.queries, firstHead.metrics[name]?.queries);
     return {
       verdict,
-      line: `| ${name} | ${format(kind, baseMedian)} | ${format(kind, headMedian)} | ${change} | ${queries} |`,
+      line: `| ${name} | ${format(kind, baseValue)} | ${format(kind, headValue)} | ${change} | ${queries} |`,
     };
   });
   const slower = rows.filter((row) => typeof row !== "string" && row.verdict === "slower").length;
@@ -95,7 +95,7 @@ export function renderComparison({ base, head }: Comparison) {
     ? `${slower} ${slower === 1 ? "measurement is" : "measurements are"} slower than main.`
     : "Nothing is slower than main.";
   const details = [
-    `${firstHead.seed.tracks.toLocaleString("en-US")} tracks, ${head.length} alternating rounds per side, medians.`,
+    `${firstHead.seed.tracks.toLocaleString("en-US")} tracks, ${head.length} alternating rounds per side, lower quartiles.`,
     "",
     "| | main | this PR | change | queries |",
     "| --- | ---: | ---: | --- | ---: |",
