@@ -82,7 +82,7 @@ interface DeemixAddToQueueResponse {
   data?: { obj?: DeemixQueueItem | DeemixQueueItem[] };
 }
 
-interface DeemixTracklistResponse {
+interface DeemixTracklistResponse extends DeemixAlbum {
   tracks?: DeemixAlbumTrack[];
 }
 
@@ -167,42 +167,6 @@ type DeemixSettings = ReturnType<typeof getSettings>;
 
 export function buildQueueUuid(trackId: string | null | undefined, bitrate: number) {
   return `track_${String(trackId || "").trim()}_${normalizeInteger(bitrate, FLAC_BITRATE)}`;
-}
-
-// The deemix queue items a download step holds: one track or album, or each
-// wanted track of a release queued by its own URL.
-export function deemixQueueIds(
-  payload: { queueUuid?: string | null; queueUuids?: (string | null)[] | null } | null | undefined,
-) {
-  return [
-    ...new Set(
-      [payload?.queueUuid, ...(payload?.queueUuids || [])]
-        .map((id) => String(id || "").trim())
-        .filter(Boolean),
-    ),
-  ];
-}
-
-export function readDeemixAlbumQueue(item: DeemixQueueItem | null) {
-  const status = String(item?.status || "");
-  const finished = !item || ["completed", "withErrors", "failed"].includes(status);
-  const seen = new Set();
-  const filePaths =
-    finished && item?.type === "album"
-      ? (Array.isArray(item.files) ? item.files : []).flatMap((file) => {
-          const path = String(file?.path || "").trim();
-          if (!path || seen.has(path)) return [];
-          seen.add(path);
-          return [path];
-        })
-      : [];
-  return {
-    finished,
-    status,
-    filePaths,
-    failedCount: Math.max(0, Number(item?.failed) || 0),
-    downloadedCount: Math.max(0, Number(item?.downloaded) || 0),
-  };
 }
 
 // deemix downloads exactly the configured bitrate, so unlike a Soulseek or
@@ -479,33 +443,40 @@ export class DeemixClient {
       .filter((entry) => entry !== null);
   }
 
-  async getAlbumTracks(albumId: string) {
-    const id = String(albumId || "").trim();
-    if (!id) return [];
+  async getAlbum(albumId: string) {
     const settings = this._getSettings();
     await requireSession(settings);
     const data = await request<DeemixTracklistResponse>(settings, "GET", "/api/getTracklist", {
-      query: { type: "album", id },
+      query: { type: "album", id: albumId.trim() },
       timeoutMs: 45000,
     });
-    return (Array.isArray(data?.tracks) ? data.tracks : [])
-      .filter((entry) => entry?.type !== "disc_separator")
-      .map(normalizeAlbumTrack)
-      .filter((entry) => entry !== null);
+    return {
+      title: String(data?.title || "").trim(),
+      artist: String(data?.artist?.name || "").trim(),
+      tracks: (Array.isArray(data?.tracks) ? data.tracks : [])
+        .filter((entry) => entry?.type !== "disc_separator")
+        .map(normalizeAlbumTrack)
+        .filter((entry) => entry !== null),
+    };
   }
 
-  async addToQueue(trackUrl: string, trackId: string | null | undefined) {
+  // deemix names a queue item by what it downloads and the bitrate.
+  queueId(type: "track" | "album", id: string) {
+    return type === "track"
+      ? buildQueueUuid(id, this._getSettings().bitrate)
+      : `album_${id.trim()}_${this._getSettings().bitrate}`;
+  }
+
+  async addToQueue(trackUrl: string, trackId: string) {
     const url = String(trackUrl || "").trim();
     if (!url) throw new Error("deemix download requires a Deezer track URL");
-    const settings = this._getSettings();
-    return this._addQueueItem(url, buildQueueUuid(trackId, settings.bitrate));
+    return this._addQueueItem(url, this.queueId("track", trackId));
   }
 
-  async addAlbumToQueue(albumUrl: string, albumId: string | null | undefined) {
+  async addAlbumToQueue(albumUrl: string, albumId: string) {
     const url = String(albumUrl || "").trim();
     if (!url) throw new Error("deemix album download requires a Deezer album URL");
-    const settings = this._getSettings();
-    return this._addQueueItem(url, `album_${String(albumId || "").trim()}_${settings.bitrate}`);
+    return this._addQueueItem(url, this.queueId("album", albumId));
   }
 
   async _addQueueItem(url: string, fallbackUuid: string) {
@@ -526,13 +497,10 @@ export class DeemixClient {
     return String(queued?.uuid || "").trim() || fallbackUuid;
   }
 
-  async getQueueItem(uuid: string | null | undefined) {
-    const id = String(uuid || "").trim();
-    if (!id) return null;
-    const settings = this._getSettings();
-    const data = await request<DeemixQueueResponse>(settings, "GET", "/api/getQueue");
+  async getQueue() {
+    const data = await request<DeemixQueueResponse>(this._getSettings(), "GET", "/api/getQueue");
     if (!data?.queue || typeof data.queue !== "object") throw new Error("deemix sent no queue");
-    return data.queue[id] || null;
+    return data.queue;
   }
 
   async removeFromQueue(uuid: string | null | undefined) {

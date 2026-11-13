@@ -32,7 +32,7 @@ Treat playlist removal as a durable cancellation boundary.
 - Library-track deletion reads each matching job's current `finalPath` after provider cancellation finishes. It includes that path in file cleanup before removing the track, so a finalizer that already held the lock cannot leave an untracked file behind.
 - Library-track deletion unlinks a file only when Aurral's Library folder holds it. Files in read-only folders stay in place.
 - Library-track and album deletion remove the static playlist tracks that referenced the deleted library jobs, under each playlist's download locks. Quick and full library refreshes remove any remaining static playlist track whose referenced job no longer exists, so a failed or older deletion cannot leave a hidden track that still blocks adding the same song.
-- slskd and deemix submissions, and album downloads from every download source, use the import lock. Each handler records the provider ID before releasing the lock, and cancellation reads the current job metadata after it acquires the lock. A failed provider cleanup therefore leaves the ID available for retry.
+- slskd submissions, album downloads from every download source, and downloads that a source hands to its client, like deemix's, use the import lock. Each handler records the provider ID before releasing the lock, and cancellation reads the current job metadata after it acquires the lock. A failed provider cleanup therefore leaves the ID available for retry.
 
 When a flow is created again with the same ID, Aurral advances the generation. Payloads from the removed flow remain invalid even if their queued jobs survive a restart.
 
@@ -57,7 +57,7 @@ Aurral cancels provider work when the adapter exposes a verified operation:
 
 If slskd, deemix, SABnzbd, or NZBGet has tracked work but is no longer configured, cancellation fails and retains the playlist and jobs for a later retry. A disabled integration cannot confirm that its remote work stopped.
 
-Aurral does not delete a source file merely because a Usenet or deemix provider reports its path. A path mapping can point into a shared library. The provider response does not prove that Aurral owns the file. Cancellation prevents import, while provider-specific cleanup handles work that Aurral can identify.
+Aurral does not delete a source file merely because a Usenet provider reports its path. A path mapping can point into a shared library. The provider response does not prove that Aurral owns the file. deemix keeps no finished files, so Aurral moves them out of its folder when a download finishes, and copies one that sits in the Library folder or a read-only folder. Cancellation prevents import, while provider-specific cleanup handles work that Aurral can identify.
 
 Subsonic playlist edits follow the static playlist rules above. A song the client removes leaves the playlist and keeps its file, so a client that removes songs and adds them back in a later request can still name them. If flow cleanup cannot be queued, Aurral restores only the cancellation markers created by that request; a failed flow disable also restores its previous enabled state.
 

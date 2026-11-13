@@ -93,8 +93,14 @@ test("provider cancellation retry retains IDs from pipeline rows removed on the 
     await import("../../backend/services/download/downloadClientSettings.ts");
   const client = getDownloadClient("deemix");
   vi.spyOn(client, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(client, "getQueue").mockImplementation(async () => ({
+    "provider-id-only-in-payload": { status: "downloading" },
+  }));
   let succeeds = false;
-  const remove = vi.spyOn(client, "removeFromQueue").mockImplementation(async () => succeeds);
+  const remove = vi.spyOn(client, "removeFromQueue").mockImplementation(async () => {
+    if (!succeeds) throw new Error("deemix refused");
+    return true;
+  });
   const jobId = createTrackedJob(
     downloadTracker,
     { artistName: "Artist", trackName: "Track" },
@@ -106,7 +112,7 @@ test("provider cancellation retry retains IDs from pipeline rows removed on the 
     playlistGeneration: 0,
     source: "deemix",
     phase: "poll",
-    queueUuid: "provider-id-only-in-payload",
+    pendingId: "provider-id-only-in-payload",
   });
   await assert.rejects(
     cancellationServiceModule.cancelDownloadWorkForJobs([trackedJob(downloadTracker, jobId)]),
@@ -122,6 +128,9 @@ test("provider cancellation keeps saved queue IDs when a saved job can't be read
     await import("../../backend/services/download/downloadClientSettings.ts");
   const client = getDownloadClient("deemix");
   vi.spyOn(client, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(client, "getQueue").mockImplementation(async () => ({
+    "queue-id-only-in-snapshot": { status: "downloading" },
+  }));
   const remove = vi.spyOn(client, "removeFromQueue").mockImplementation(async () => true);
   const jobId = createTrackedJob(
     downloadTracker,
@@ -130,7 +139,7 @@ test("provider cancellation keeps saved queue IDs when a saved job can't be read
   );
   dbOps.setJSONSetting(`downloadCancellationWork:${jobId}`, {
     jobs: [{ id: jobId, downloadClientId: 42 }, null],
-    payloads: [{ jobId, source: "deemix", queueUuid: "queue-id-only-in-snapshot" }],
+    payloads: [{ jobId, source: "deemix", pendingId: "queue-id-only-in-snapshot" }],
   });
 
   await cancellationServiceModule.cancelDownloadWorkForJobs([trackedJob(downloadTracker, jobId)]);

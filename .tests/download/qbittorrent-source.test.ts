@@ -230,7 +230,12 @@ test("an album search keeps seeded torrents of the album, best quality first", a
   ];
 
   const search = (upgrade: { currentTier: string } | null) =>
-    qbittorrentSource.albums!.search(ALBUM, { upgrade, track: null, denied: new Set() });
+    qbittorrentSource.albums!.search(ALBUM, {
+      upgrade,
+      track: null,
+      denied: new Set(),
+      release: null,
+    });
   const results = await search(null);
   const upgrades = await search({ currentTier: "mp3-320" });
 
@@ -263,6 +268,7 @@ test("a download hands qBittorrent the torrent file, or the magnet Prowlarr's li
     upgrade: null,
     track: null,
     denied: new Set(),
+    release: null,
   });
   assert.ok(file && magnet);
   const directory = path.join(folder, "staging");

@@ -17,7 +17,7 @@ const [
   cancellationService,
   { processSourcePipelinePayload },
   { usenetSource },
-  { processDeemixPipelinePayload },
+  { deemixSource },
   { processPipelinePayload },
   { sabnzbdClient },
   { deemixClient },
@@ -31,7 +31,7 @@ const [
   () => import("../../backend/services/downloadJobs/downloadCancellationService.ts"),
   () => import("../../backend/services/download/sourcePipeline.ts"),
   () => import("../../backend/services/usenetSource.ts"),
-  () => import("../../backend/services/deemixOrchestrator.ts"),
+  () => import("../../backend/services/deemixSource.ts"),
   () => import("../../backend/services/downloadPipeline.ts"),
   () => import("../../backend/services/sabnzbdClient.ts"),
   () => import("../../backend/services/deemixClient.ts"),
@@ -209,9 +209,14 @@ test("deemix cancellation waits for an in-flight enqueue and can retry cleanup",
     await gate.wait();
     return "deemix-race-item";
   });
-  vi.spyOn(deemixClient, "removeFromQueue").mockImplementation(async () => {
+  const queue: Awaited<ReturnType<typeof deemixClient.getQueue>> = {
+    "deemix-race-item": { status: "downloading" },
+  };
+  vi.spyOn(deemixClient, "getQueue").mockImplementation(async () => queue);
+  vi.spyOn(deemixClient, "removeFromQueue").mockImplementation(async (uuid) => {
     removalAttempts += 1;
     if (removalAttempts === 1) throw new Error("deemix cleanup temporarily unavailable");
+    delete queue[String(uuid)];
     return true;
   });
   const pipelinePayload = {
@@ -225,7 +230,6 @@ test("deemix cancellation waits for an in-flight enqueue and can retry cleanup",
           url: "https://deemix.test/track/race",
           title: "Deemix Song",
           artist: "Race Artist",
-          file: "Race Artist - Deemix Song",
         },
       },
     ],
@@ -236,7 +240,7 @@ test("deemix cancellation waits for an in-flight enqueue and can retry cleanup",
       gate,
       job,
       payload: pipelinePayload,
-      runPipeline: () => processDeemixPipelinePayload(pipelinePayload, failTheSource),
+      runPipeline: () => processSourcePipelinePayload(pipelinePayload, deemixSource, failTheSource),
       retryCancellation: () =>
         cancellationService.cancelDownloadWorkForJobs([trackedJob(downloadTracker, job.id)]),
     });

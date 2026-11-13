@@ -247,21 +247,11 @@ async function resolveAvailableTargetPath(targetPath: string) {
 export async function commitDownloadedFile(
   sourcePath: string,
   targetPath: string,
-  {
-    reuseExisting = false,
-    preserveSource = false,
-  }: { reuseExisting?: boolean; preserveSource?: boolean } = {},
+  { preserveSource = false }: { preserveSource?: boolean } = {},
 ) {
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
   if (path.resolve(sourcePath) === path.resolve(targetPath)) {
     return targetPath;
-  }
-  if (reuseExisting) {
-    const existing = await fs.stat(targetPath).catch(() => null);
-    if (existing?.isFile()) {
-      if (!preserveSource) await fs.rm(sourcePath, { force: true });
-      return targetPath;
-    }
   }
   const resolvedTarget = await resolveAvailableTargetPath(targetPath);
   if (preserveSource) {

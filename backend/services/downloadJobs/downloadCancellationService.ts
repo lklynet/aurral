@@ -1,7 +1,6 @@
 import * as v from "valibot";
 import { unknownList } from "../../../lib/unknownList.ts";
 import { getDownloadClient } from "../download/downloadClientSettings.ts";
-import { deemixQueueIds } from "../deemixClient.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import { contractSource } from "../download/nativeSources.ts";
 import type { DownloadSource } from "../download/downloadSource.ts";
@@ -227,44 +226,6 @@ async function cancelSlskdWork(
   return { searches: searchIds.size, transfers: transfers.size };
 }
 
-async function cancelDeemixWork(payloads: CancellationPayload[], jobs: CancellationJob[]) {
-  const client = getDownloadClient("deemix");
-  const queueIds = new Set<string>();
-  const failures: unknown[] = [];
-  for (const payload of payloads) {
-    if (payload?.source === "deemix") {
-      for (const queueId of deemixQueueIds(payload)) queueIds.add(normalizeId(queueId));
-    }
-  }
-  for (const job of jobs) {
-    if (job?.downloadSource === "deemix" || job?.downloadClient === "deemix") {
-      const queueId = normalizeId(job.downloadClientId);
-      if (queueId) queueIds.add(queueId);
-    }
-  }
-  if (queueIds.size > 0 && !client?.isConfigured?.()) {
-    logger.warn("deemix", "Cannot cancel tracked deemix work while deemix is not configured", {
-      queueItems: queueIds.size,
-    });
-    throw new Error("deemix is not configured; tracked work cannot be cancelled");
-  }
-  for (const queueId of queueIds) {
-    if (!queueId) continue;
-    await attemptProviderCleanup(
-      failures,
-      "deemix",
-      "Could not cancel a removed playlist queue item",
-      { queueId },
-      async () => {
-        const removed = await client.removeFromQueue(queueId);
-        if (!removed) throw new Error("deemix did not confirm queue removal");
-      },
-    );
-  }
-  throwProviderCleanupFailures("deemix", failures);
-  return { queueItems: queueIds.size };
-}
-
 // A job's staging folder goes even when no step of it is queued, and the
 // download its source started goes once no job left takes a track from it.
 // A download the source didn't confirm removing keeps the jobs, so the
@@ -317,7 +278,6 @@ async function cancelProviderWork(
 ) {
   const results = await Promise.allSettled([
     cancelSlskdWork(payloads, jobs, providerWork),
-    cancelDeemixWork(payloads, jobs),
     cancelSourceWork(payloads, jobs),
   ]);
   const failures = results
@@ -326,10 +286,9 @@ async function cancelProviderWork(
   if (failures.length > 0) {
     throw new AggregateError(failures, "Could not cancel download provider work");
   }
-  const [slskd, deemix, sources] = results;
+  const [slskd, sources] = results;
   return {
     slskd: fulfilledValue(slskd),
-    deemix: fulfilledValue(deemix),
     sources: fulfilledValue(sources),
   };
 }

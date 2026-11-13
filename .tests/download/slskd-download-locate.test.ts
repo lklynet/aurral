@@ -137,26 +137,6 @@ test("commitDownloadedFile moves without overwriting existing targets", async ()
   await fs.rm(root, { recursive: true, force: true });
 });
 
-test("commitDownloadedFile can reuse an existing target", async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-import-reuse-"));
-  const source = path.join(root, "deemix", "Track.flac");
-  const target = path.join(root, "aurral", "Track.flac");
-  await fs.mkdir(path.dirname(source), { recursive: true });
-  await fs.mkdir(path.dirname(target), { recursive: true });
-  await fs.writeFile(source, "duplicate-audio", "utf8");
-  await fs.writeFile(target, "existing-audio", "utf8");
-
-  const finalPath = await commitDownloadedFile(source, target, {
-    reuseExisting: true,
-  });
-
-  assert.equal(finalPath, target);
-  assert.equal(await fs.readFile(target, "utf8"), "existing-audio");
-  await assert.rejects(() => fs.stat(source), /ENOENT/);
-  await assert.rejects(() => fs.stat(path.join(root, "aurral", "Track (2).flac")));
-  await fs.rm(root, { recursive: true, force: true });
-});
-
 test("commitDownloadedFile can preserve a shared source for another consumer", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-import-shared-"));
   const source = path.join(root, "usenet", "Track.flac");

@@ -179,8 +179,10 @@ export function trackQuery(track: ResolvedTrack) {
   };
 }
 
-export async function albumQuery(payload: Parameters<typeof attemptRelease>[0], job: DownloadJob) {
-  const release: ReleaseManifest | null = await attemptRelease(payload, job);
+export const albumQuery = async (payload: Parameters<typeof attemptRelease>[0], job: DownloadJob) =>
+  albumOf(await attemptRelease(payload, job), job);
+
+export function albumOf(release: ReleaseManifest | null, job: DownloadJob) {
   return {
     artist: release?.artistNames[0] ?? job.artistName ?? null,
     title: release?.title || job.albumName || null,
@@ -256,14 +258,15 @@ async function handleAlbumSearch(
   const job = downloadTracker.getJob(payload.jobId);
   if (!job || job.status === "failed" || job.status === "done") return null;
   startSearch(job, source);
-  const album = await albumQuery(payload, job);
+  const release = await attemptRelease(payload, job);
   const denied = deniedAlbumSources([job, ...albumGrabJobs(payload)], source.id);
   let results: AlbumResult[];
   try {
-    results = await albums.search(album, {
+    results = await albums.search(albumOf(release, job), {
       upgrade: searchUpgrade(payload),
       track: fromAlbum(payload, source) ? resolveTrack(payload, job) : null,
       denied: new Set([...denied].map((key) => key.replace(/^album:/, ""))),
+      release,
     });
   } catch (error) {
     if (!(error instanceof DownloadSourceError)) throw error;
@@ -573,9 +576,10 @@ async function handleDownload(
       if (pendingId) useDownload(counted, source, result, pendingId);
       return { started, pendingId };
     };
-    // A cancellation waits while an album download is handed to its client,
-    // so it finds the download and removes it, or fails and can run again.
-    const locked = !source.tracks || payload.albumGrab === true;
+    // A cancellation waits while a download is handed to its client, so it
+    // finds the download and removes it, or fails and can run again. A track
+    // source without a client downloads the file itself, which isn't waited on.
+    const locked = !source.tracks || Boolean(source.status) || payload.albumGrab === true;
     const handed = locked
       ? await withPipelineCommitLock(payload, start)
       : { cancelled: false, result: await start() };
