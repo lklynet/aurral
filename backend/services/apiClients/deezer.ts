@@ -403,11 +403,12 @@ export async function deezerGetRelatedArtists(
 
 export async function deezerGetArtistTopTrackList(
   artistName: string,
-  { limit = 25 }: { limit?: number } = {},
+  { limit = 25, deezerArtistId = null }: { limit?: number; deezerArtistId?: DeezerArtistId } = {},
 ) {
-  const artist = await getDeezerArtist(artistName, { throwOnError: true });
-  if (!artist) return [];
-  const artistId = String(artist.id);
+  const artistId = String(
+    deezerArtistId || (await getDeezerArtist(artistName, { throwOnError: true }))?.id || "",
+  );
+  if (!artistId) return [];
   const safeLimit = Math.min(100, Math.max(1, Number(limit) || 25));
   return topTrackListCache.load(`${artistId}:${safeLimit}`, async () => {
     const top = await deezerList(deezerTrackSchema, `/artist/${artistId}/top`, {
@@ -545,6 +546,8 @@ function getTrackTitle(track: TrackLike) {
   return track?.title || track?.trackName || track?.trackname || "";
 }
 
+const DEEZER_ARTIST_ALBUM_LIMIT = 1000;
+
 export async function getDeezerAlbumsForArtist(
   artist: { id?: number | string } | null | undefined,
 ) {
@@ -552,8 +555,8 @@ export async function getDeezerAlbumsForArtist(
   const artistId = artist.id;
   return albumCache.load(String(artistId), async () => {
     const raw = await deezerList(deezerAlbumSchema, `/artist/${artistId}/albums`, {
-      query: { limit: 100 },
-      timeoutMs: 3000,
+      query: { limit: DEEZER_ARTIST_ALBUM_LIMIT },
+      timeoutMs: 10_000,
     });
     const allowed = ["album", "ep", "single"];
     return raw

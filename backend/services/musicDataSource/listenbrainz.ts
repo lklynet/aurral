@@ -15,7 +15,7 @@ import { lenient, lenientCount, lenientText } from "../integrationData.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { guessArtistMbid } from "../artistMatch.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
-import { getArtistByMbid } from "../providers/brainzmashProvider.ts";
+import { getArtistByMbid, getCachedArtistByMbid } from "../providers/brainzmashProvider.ts";
 import { getLinkedDeezerArtistId } from "../providers/brainzmashMappers.ts";
 import { listMusicbrainzGenres } from "../musicGenres.ts";
 import type { SourceHealth } from "../discovery/tasteProfile.ts";
@@ -231,7 +231,11 @@ export const listenbrainzSource = {
 
   async getArtistTopTracks(artist: MusicArtistRef, { limit = 25 }: { limit?: number } = {}) {
     const name = text(artist?.name);
-    return name ? deezerGetArtistTopTrackList(name, { limit }).catch(() => []) : [];
+    if (!name) return [];
+    const mbid = normalizeMbid(artist?.mbid);
+    const known = mbid ? await getCachedArtistByMbid(mbid).catch(() => null) : null;
+    const deezerArtistId = getLinkedDeezerArtistId(known?.links);
+    return deezerGetArtistTopTrackList(name, { limit, deezerArtistId }).catch(() => []);
   },
 
   getTagArtists,
