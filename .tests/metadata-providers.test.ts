@@ -512,6 +512,51 @@ test("transient entity failures use a persistent cooldown instead of redownloadi
   }
 });
 
+test("an album request already sent finishes and is cached after its caller leaves", async () => {
+  const previousSettings = dbOps.getSettings();
+  let requests = 0;
+  const arrived = Promise.withResolvers<void>();
+  const answer = Promise.withResolvers<void>();
+  const server = await createMockHttpServer(async (_request, response) => {
+    requests += 1;
+    arrived.resolve();
+    await answer.promise;
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ id: "left-album", title: "Left Album" }));
+  });
+  const caller = new AbortController();
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    const left = getAlbumByMbid("left-album", { signal: caller.signal });
+    await arrived.promise;
+    caller.abort();
+    await assert.rejects(left);
+    answer.resolve();
+
+    assert.equal((await getAlbumByMbid("left-album")).title, "Left Album");
+    assert.equal(requests, 1);
+  } finally {
+    answer.resolve();
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
 test("a metadata request that reaches its turn a moment early by the wall clock is admitted", () => {
   const baseUrl = "http://slots.invalid";
   vi.useFakeTimers({ toFake: ["Date"] });

@@ -474,6 +474,18 @@ function refreshMetadata<Schema extends v.GenericSchema>(
           if (leaseToken) releaseMetadataRequest(cacheKey, leaseToken);
           throw sharedSignal.reason || new Error("The operation was aborted");
         }
+        // A request BrainzMash has received is finished and cached even when every caller has left.
+        const unsent = new AbortController();
+        if (ownsPersistentRequest) {
+          sharedSignal.addEventListener(
+            "abort",
+            () => {
+              if (!providerRequestStarted) unsent.abort(sharedSignal.reason);
+            },
+            { once: true },
+          );
+        }
+        const requestSignal = ownsPersistentRequest ? unsent.signal : sharedSignal;
         try {
           const response = await providerRequestLimiter.schedule(
             async (remainingMs) => {
@@ -494,7 +506,7 @@ function refreshMetadata<Schema extends v.GenericSchema>(
                   error.code = "ETIMEDOUT";
                   throw error;
                 }
-                await delay(waitMs, undefined, { signal: sharedSignal });
+                await delay(waitMs, undefined, { signal: requestSignal });
                 const waitingCircuit = getMetadataCircuitError(baseUrl);
                 if (waitingCircuit) throw waitingCircuit;
               }
@@ -518,11 +530,11 @@ function refreshMetadata<Schema extends v.GenericSchema>(
                 headers: {
                   "User-Agent": getUserAgent(),
                 },
-                signal: sharedSignal,
+                signal: requestSignal,
               });
             },
             {
-              signal: sharedSignal,
+              signal: requestSignal,
               timeoutMs: METADATA_REQUEST_TIMEOUT_MS,
               priority: ownsPersistentRequest ? 0 : 1,
             },
@@ -535,9 +547,9 @@ function refreshMetadata<Schema extends v.GenericSchema>(
           healthState.lastFailureReason = "";
           return value;
         } catch (error) {
-          if (sharedSignal.aborted) {
+          if (requestSignal.aborted) {
             if (leaseToken) releaseMetadataRequest(cacheKey, leaseToken);
-            throw sharedSignal.reason || error;
+            throw requestSignal.reason || error;
           }
           const failure = asAppError(error);
           const status = failure?.response?.status;
