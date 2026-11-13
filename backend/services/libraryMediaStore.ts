@@ -2820,6 +2820,40 @@ export async function withLibraryScan<T extends LibraryScanCounts>(
   });
 }
 
+const libraryFileIdsStmt = db.prepare<
+  [string],
+  {
+    artistName: string | null;
+    artistMbid: string | null;
+    albumMbid: string | null;
+    trackMbid: string | null;
+  }
+>(`
+  SELECT artist.name AS artistName, artist.mbid AS artistMbid,
+    COALESCE(NULLIF(album.release_group_mbid, ''), album.mbid) AS albumMbid,
+    track.mbid AS trackMbid
+  FROM library_media_files AS media
+  JOIN library_tracks AS track ON track.id = media.track_id
+  LEFT JOIN library_albums AS album ON album.id = COALESCE(
+    media.album_id,
+    (SELECT MIN(album_id) FROM library_album_tracks WHERE track_id = media.track_id)
+  )
+  LEFT JOIN library_artists AS artist ON artist.id = album.artist_id
+  WHERE media.source IN ('aurral', 'readonly', 'flow') AND media.path = ?
+  LIMIT 1
+`);
+
+// A compilation's album artist is not the artist of its tracks.
+export function getLibraryFileIds(path: string) {
+  const ids = libraryFileIdsStmt.get(normalizeText(path));
+  if (!ids) return null;
+  const { artistName, artistMbid, ...file } = ids;
+  return {
+    ...file,
+    artistMbid: isVariousArtistsCredit(artistName, artistMbid) ? null : artistMbid,
+  };
+}
+
 export function getLibraryMediaFile({ source, path }: { source: string; path: string }) {
   return getLibraryMediaFileStmt.get(normalizeText(source), normalizeText(path));
 }
