@@ -51,7 +51,6 @@ const INTEGRATION_KEYS = [
   "news",
   "metadata",
   "general",
-  "gotify",
   "google",
 ];
 

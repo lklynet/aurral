@@ -7,6 +7,8 @@ import { logger } from "./logger.ts";
 import { notificationQueue } from "./jobs/queues.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { webhookSchema } from "../db/helpers/integrationSettings.ts";
+import { getSettingsEncryptionKey } from "../db/helpers/settings.ts";
+import { decryptWithKey, encryptWithKey } from "../config/encryption.ts";
 import {
   dispatchPluginEvent,
   emitPluginEvent,
@@ -27,6 +29,7 @@ const WEBHOOK_PLACEHOLDERS = [
   "username",
   "userId",
   "event",
+  "title",
   "message",
 ] as const;
 
@@ -45,16 +48,8 @@ interface RequestNotice {
   user?: RequestActor | null;
 }
 
-const text = v.optional(v.string());
-
 export const queuedNotificationSchema = v.variant("kind", [
   pluginEventDeliverySchema,
-  v.looseObject({
-    kind: v.literal("gotify"),
-    title: text,
-    message: text,
-    priority: v.optional(v.number()),
-  }),
   v.object({
     kind: v.literal("webhook"),
     event: v.string(),
@@ -79,28 +74,6 @@ function logDeliveryFailure(
   });
 }
 
-async function sendGotifyDirect(
-  title: string | undefined,
-  message: string | undefined,
-  priority = 5,
-) {
-  const settings = dbOps.getSettings();
-  const gotify = settings.integrations?.gotify || {};
-  const url = (gotify.url || "").trim().replace(/\/+$/, "");
-  const token = (gotify.token || "").trim();
-  if (!url || !token) return;
-  try {
-    await http.post(
-      `${url}/message`,
-      { title, message, priority },
-      { timeoutMs: 10000, headers: { "Content-Type": "application/json", "X-Gotify-Key": token } },
-    );
-  } catch (error) {
-    logDeliveryFailure("gotify", null, url, error);
-    throw error;
-  }
-}
-
 function buildHeaders(headers: WebhookHeader[] | undefined) {
   if (!Array.isArray(headers)) return {};
   const result: Record<string, string> = {};
@@ -110,6 +83,20 @@ function buildHeaders(headers: WebhookHeader[] | undefined) {
     if (k && v) result[k] = v;
   }
   return result;
+}
+
+function withHeaderValues(
+  webhook: WebhookTarget,
+  update: (value: string, key: Buffer) => string | null | undefined,
+) {
+  const key = getSettingsEncryptionKey();
+  return {
+    ...webhook,
+    headers: webhook.headers?.map((header) => ({
+      ...header,
+      value: update(header.value, key) ?? "",
+    })),
+  };
 }
 
 function escapeJsonString(value: unknown) {
@@ -154,15 +141,15 @@ async function sendWebhookDirect(webhook: WebhookTarget, event: string, vars: We
 export async function deliverQueuedNotification(
   payload: v.InferOutput<typeof queuedNotificationSchema>,
 ) {
-  if (payload.kind === "gotify") {
-    await sendGotifyDirect(payload.title, payload.message, payload.priority ?? 5);
-    return;
-  }
   if (payload.kind === "plugin") {
     dispatchPluginEvent(payload);
     return;
   }
-  await sendWebhookDirect(payload.webhook, payload.event, payload.vars);
+  await sendWebhookDirect(
+    withHeaderValues(payload.webhook, decryptWithKey),
+    payload.event,
+    payload.vars,
+  );
 }
 
 type Notice = {
@@ -176,24 +163,15 @@ function notify(event: NotificationEvent, { title, message, vars = {}, plugin }:
   try {
     const { integrations } = dbOps.getSettings();
     if (plugin) emitPluginEvent("notification", { title, message, ...plugin });
-    if (integrations?.gotify?.[event]) {
-      notificationQueue.enqueue({
-        kind: "gotify",
-        title,
-        message,
-        priority: 5,
-        requestedAt: Date.now(),
-      });
-    }
     const resolved = Object.fromEntries(
-      Object.entries({ ...vars, message, event }).filter(([, value]) => value),
+      Object.entries({ ...vars, title, message, event }).filter(([, value]) => value),
     );
     for (const webhook of integrations?.webhooks ?? []) {
       if (!webhook.events?.includes(event)) continue;
       notificationQueue.enqueue({
         kind: "webhook",
         event,
-        webhook,
+        webhook: withHeaderValues(webhook, encryptWithKey),
         vars: resolved,
       });
     }
@@ -203,29 +181,6 @@ function notify(event: NotificationEvent, { title, message, vars = {}, plugin }:
       reason: error instanceof Error ? error.message : String(error),
     });
   }
-}
-
-export async function sendGotifyTest(
-  url: string | null | undefined,
-  token: string | null | undefined,
-) {
-  const base = (url || "").trim().replace(/\/+$/, "");
-  const t = (token || "").trim();
-  if (!base || !t) {
-    const err: Error & { code?: string } = new Error("Gotify URL and token are required");
-    err.code = "MISSING_CONFIG";
-    throw err;
-  }
-  const response = await http.post(
-    `${base}/message`,
-    {
-      title: "Aurral test",
-      message: "Test notification received.",
-      priority: 5,
-    },
-    { timeoutMs: 10000, headers: { "Content-Type": "application/json", "X-Gotify-Key": t } },
-  );
-  return response.status === 200;
 }
 
 const WEBHOOK_TEST_VARS = Object.freeze({
@@ -238,6 +193,7 @@ const WEBHOOK_TEST_VARS = Object.freeze({
   path: "/music/Test artist/Test album/01 - Test track.flac",
   username: "webhook-test-user",
   userId: "webhook-test-user",
+  title: "Aurral test",
   message: "Aurral webhook test",
 });
 

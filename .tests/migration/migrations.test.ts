@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
+import { randomBytes } from "node:crypto";
 import { test } from "vite-plus/test";
 import { migrate, migrations } from "../../backend/config/migrations.ts";
+import { decryptIntegrations, encryptWithKey } from "../../backend/config/encryption.ts";
 
 const version = (db: Database.Database) => db.pragma("user_version", { simple: true });
 
@@ -285,5 +287,44 @@ test("upgrading drops settings nothing reads and keeps a turned-off Inbox off", 
     shows: false,
     recommendedNews: false,
     discoveries: false,
+  });
+});
+
+test("upgrading turns a Gotify setup into a webhook that still reads its token", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, 11));
+  const key = randomBytes(32);
+  const hook = { url: "http://ntfy.test", headers: [], events: ["notifyFlowDone"] };
+  db.prepare("INSERT INTO settings (key, value) VALUES ('integrations', ?)").run(
+    JSON.stringify({
+      gotify: {
+        url: "http://gotify.test/ ",
+        token: encryptWithKey("gotify-token", key),
+        notifyRequestMade: true,
+        notifyFlowDone: false,
+        notifyTrackAdded: true,
+      },
+      webhooks: [hook],
+    }),
+  );
+
+  migrate(db);
+
+  const stored = db
+    .prepare<[], string>("SELECT value FROM settings WHERE key = 'integrations'")
+    .pluck()
+    .get();
+  assert.doesNotMatch(stored ?? "", /gotify-token/);
+  assert.deepEqual(decryptIntegrations(JSON.parse(stored ?? ""), key), {
+    webhooks: [
+      hook,
+      {
+        url: "http://gotify.test/message",
+        headers: [{ key: "X-Gotify-Key", value: "gotify-token" }],
+        body: '{"title":"$title","message":"$message","priority":5}',
+        events: ["notifyRequestMade", "notifyTrackAdded"],
+      },
+    ],
   });
 });

@@ -64,7 +64,6 @@ async function clientTestResponse<
 }
 
 const clientConfig = v.record(v.string(), v.unknown());
-const gotifyTarget = v.object({ url: v.optional(v.string()), token: v.optional(v.string()) });
 const webhookTarget = v.object({
   url: v.optional(v.string()),
   headers: v.optional(v.array(v.object({ key: v.string(), value: v.string() }))),
@@ -139,36 +138,6 @@ export default new Hono<AppEnv>()
       getDownloadClient("ytdlp").testConnection({ force: true }),
     ),
   )
-  .post("/gotify/test", requireAuth, requireAdmin, validate("json", gotifyTarget), async (c) => {
-    try {
-      const { sendGotifyTest } = await import("../../services/notificationService.ts");
-      const input = c.req.valid("json");
-      const url = input.url?.trim();
-      const token = input.token?.trim();
-      if (!url || !token) {
-        return c.json(
-          {
-            error: "URL and token required",
-            message: "Provide Gotify URL and application token in the request body",
-          },
-          400,
-        );
-      }
-      const urlValidation = validateExternalUrl(url);
-      if (!urlValidation.valid) return c.json({ error: urlValidation.error }, 400);
-      await sendGotifyTest(urlValidation.url, token);
-      return c.json({ success: true, message: "Test notification sent" }, 200);
-    } catch (error) {
-      const failure = asAppError(error);
-      if (failure?.code === "MISSING_CONFIG") {
-        return c.json({ error: "Invalid configuration", message: failure?.message }, 400);
-      }
-      return c.json(
-        { error: "Gotify test failed", message: notificationFailureMessage(failure) },
-        notificationFailureStatus(failure),
-      );
-    }
-  })
   .post("/webhook/test", requireAuth, requireAdmin, validate("json", webhookTarget), async (c) => {
     const webhook = c.req.valid("json");
     const urlValidation = validateExternalUrl(webhook.url);

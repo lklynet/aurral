@@ -158,8 +158,7 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
   },
   notifications: {
     Inbox: "upcoming releases shows artist news recommended discoveries",
-    Webhooks: "HTTP callbacks headers body events",
-    Gotify: { item: "gotify", keywords: "push notifications mobile alerts token events" },
+    Webhooks: "HTTP callbacks headers body events Gotify push ntfy Discord",
   },
   plugins: {
     Installed: "add-ons extensions integrations download sources playlist actions updates",

@@ -11,6 +11,7 @@ import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import * as v from "valibot";
+import type { NotificationEvent } from "../../lib/notificationEvents.ts";
 
 import {
   setupIsolatedBackend,
@@ -37,6 +38,13 @@ const {
   notifyTrackAdded,
   queuedNotificationSchema,
 } = notifications;
+
+const gotifyWebhook = (baseUrl: string, events: NotificationEvent[]) => ({
+  url: `${baseUrl}/message`,
+  headers: [{ key: "X-Gotify-Key", value: "test-token" }],
+  body: '{"title":"$title","message":"$message","priority":5}',
+  events,
+});
 
 async function withCaptureServer(
   handler: (server: {
@@ -150,19 +158,14 @@ test("deliverQueuedNotification interpolates request webhook bodies", async () =
   });
 });
 
-test("notifyRequestMade queues Gotify with actor and webhook payload", async () => {
+test("a Gotify webhook gets the title, message, and token Gotify reads", async () => {
   await withCaptureServer(async ({ baseUrl, waitFor }) => {
     const settings = dbOps.getSettings();
     dbOps.updateSettings({
       integrations: {
         ...settings.integrations,
-        gotify: {
-          url: baseUrl,
-          token: "test-token",
-          notifyRequestMade: true,
-          notifyRequestAvailable: false,
-        },
         webhooks: [
+          gotifyWebhook(baseUrl, ["notifyRequestMade"]),
           {
             url: `${baseUrl}/hook`,
             body: '{"album":"$albumName","user":"$username","event":"$event","text":"$message"}',
@@ -179,13 +182,24 @@ test("notifyRequestMade queues Gotify with actor and webhook payload", async () 
       user: { id: 7, username: "alice" },
     });
 
+    const stored = db
+      .prepare<[], string>("SELECT value FROM settings WHERE key = 'integrations'")
+      .pluck()
+      .get();
+    assert.doesNotMatch(stored ?? "", /test-token/);
     const requests = await waitFor(2);
+    const queued = db.prepare<[], string>("SELECT payload FROM jobs").pluck().all();
+    assert.equal(queued.length, 2);
+    assert.doesNotMatch(queued.join("\n"), /test-token/);
     const gotify = requests.find((entry) => entry.url === "/message");
     const webhook = requests.find((entry) => entry.url === "/hook");
     assert.ok(gotify);
     assert.equal(gotify.headers["x-gotify-key"], "test-token");
-    assert.equal(gotify.body.title, "Aurral – Request");
-    assert.equal(gotify.body.message, "Album requested: Blue Train by John Coltrane (alice)");
+    assert.deepEqual(gotify.body, {
+      title: "Aurral – Request",
+      message: "Album requested: Blue Train by John Coltrane (alice)",
+      priority: 5,
+    });
     assert.ok(webhook != null);
     assert.deepEqual(webhook.body, {
       album: "Blue Train",
@@ -272,13 +286,7 @@ test("notifyRequestAvailable omits actor text when username is missing", async (
     dbOps.updateSettings({
       integrations: {
         ...settings.integrations,
-        gotify: {
-          url: baseUrl,
-          token: "test-token",
-          notifyRequestMade: false,
-          notifyRequestAvailable: true,
-        },
-        webhooks: [],
+        webhooks: [gotifyWebhook(baseUrl, ["notifyRequestAvailable"])],
       },
     });
 
@@ -290,45 +298,6 @@ test("notifyRequestAvailable omits actor text when username is missing", async (
 
     const requests = await waitFor(1);
     assert.equal(requests[0]?.body.message, "Album available: Blue Train by John Coltrane");
-  });
-});
-
-test("notifyRequestMade does not queue Gotify when the event toggle is off", async () => {
-  await withCaptureServer(async ({ baseUrl, waitFor }) => {
-    const settings = dbOps.getSettings();
-    dbOps.updateSettings({
-      integrations: {
-        ...settings.integrations,
-        gotify: {
-          url: baseUrl,
-          token: "test-token",
-          notifyRequestMade: false,
-          notifyRequestAvailable: false,
-        },
-        webhooks: [
-          {
-            url: `${baseUrl}/hook`,
-            body: '{"event":"$event"}',
-            headers: [],
-            events: ["notifyRequestAvailable"],
-          },
-        ],
-      },
-    });
-
-    await notifyRequestMade({
-      albumName: "Blue Train",
-      artistName: "John Coltrane",
-      user: { id: 7, username: "alice" },
-    });
-
-    await notifyRequestAvailable({ albumName: "Blue Train", artistName: "John Coltrane" });
-
-    const requests = await waitFor(1);
-    assert.deepEqual(
-      requests.map((entry) => [entry.url, entry.body]),
-      [["/hook", { event: "notifyRequestAvailable" }]],
-    );
   });
 });
 
@@ -363,7 +332,6 @@ test("failed notification delivery is logged without an unhandled rejection", as
     dbOps.updateSettings({
       integrations: {
         ...settings.integrations,
-        gotify: { ...settings.integrations?.gotify, notifyRequestMade: false },
         webhooks: [
           {
             url: webhookUrl,
@@ -414,12 +382,8 @@ test("notifyFlowDone uses display name and track library path placeholders", asy
     dbOps.updateSettings({
       integrations: {
         ...settings.integrations,
-        gotify: {
-          url: baseUrl,
-          token: "test-token",
-          notifyFlowDone: true,
-        },
         webhooks: [
+          gotifyWebhook(baseUrl, ["notifyFlowDone"]),
           {
             url: `${baseUrl}/hook`,
             body: '{"name":"$flowName","path":"$flowPath"}',
@@ -435,6 +399,9 @@ test("notifyFlowDone uses display name and track library path placeholders", asy
     await notifyFlowDone(playlistId, { completed: 3, failed: 1 }, flowPath, "Late Night");
 
     const requests = await waitFor(2);
+    const queued = db.prepare<[], string>("SELECT payload FROM jobs").pluck().all();
+    assert.equal(queued.length, 2);
+    assert.doesNotMatch(queued.join("\n"), /test-token/);
     const gotify = requests.find((entry) => entry.url === "/message");
     const webhook = requests.find((entry) => entry.url === "/hook");
     assert.ok(gotify);

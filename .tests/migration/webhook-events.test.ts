@@ -34,10 +34,8 @@ test("upgrading gives every saved webhook the events that were turned on for all
   start();
   const db = new Database(state.dbPath);
   try {
-    const gotify = { url: "http://gotify.test", notifyRequestMade: true };
     db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('integrations', ?)").run(
       JSON.stringify({
-        gotify,
         webhookEvents: {
           notifyRequestMade: true,
           notifyRequestAvailable: false,
@@ -61,7 +59,6 @@ test("upgrading gives every saved webhook the events that were turned on for all
       .get();
     const events = ["notifyRequestMade", "notifyFlowDone"];
     assert.deepEqual(JSON.parse(stored?.value ?? "null"), {
-      gotify,
       webhooks: [
         { url: "http://discord.test", body: '{"content":"$albumName"}', headers: [], events },
         { url: "http://ntfy.test", headers: [], events },

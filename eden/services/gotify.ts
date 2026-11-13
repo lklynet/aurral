@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import { LOGIN } from "../state.ts";
-import { json, jsonBody, local, until, type Service } from "./service.ts";
+import { NOTIFICATION_EVENTS } from "../../lib/notificationEvents.ts";
+import { addWebhook, json, jsonBody, local, until, type Service } from "./service.ts";
 
 const application = v.looseObject({ token: v.string() });
 const basic = `Basic ${Buffer.from(`${LOGIN.username}:${LOGIN.password}`).toString("base64")}`;
@@ -18,19 +19,11 @@ export const gotify: Service = {
         jsonBody("POST", { name: "Aurral" }, { authorization: basic }),
       ),
     );
-    await api.post("/settings", {
-      integrations: {
-        gotify: {
-          url: base,
-          token,
-          notifyDiscoveryUpdated: true,
-          notifyFlowDone: true,
-          notifyRequestMade: true,
-          notifyRequestAvailable: true,
-          notifyArtistAdded: true,
-          notifyTrackAdded: true,
-        },
-      },
+    await addWebhook(api, {
+      url: `${base}/message`,
+      headers: [{ key: "X-Gotify-Key", value: token }],
+      body: '{"title":"$title","message":"$message","priority":5}',
+      events: [...NOTIFICATION_EVENTS],
     });
   },
 };
