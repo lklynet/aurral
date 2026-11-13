@@ -32,6 +32,9 @@ const db = new Database(DB_PATH);
 
 const BUSY_TIMEOUT_MS = 5000;
 
+export const isDatabaseBusy = (error: unknown) =>
+  String(asAppError(error)?.code ?? "").startsWith("SQLITE_BUSY");
+
 db.pragma("foreign_keys = ON");
 db.pragma(`busy_timeout = ${BUSY_TIMEOUT_MS}`);
 db.pragma("synchronous = NORMAL");
@@ -89,8 +92,7 @@ function prepareDatabase() {
       }
       break;
     } catch (error) {
-      const failure = asAppError(error);
-      if (!String(failure?.code || "").startsWith("SQLITE_BUSY") || attempt === 4) throw error;
+      if (!isDatabaseBusy(error) || attempt === 4) throw error;
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
     }
   }
