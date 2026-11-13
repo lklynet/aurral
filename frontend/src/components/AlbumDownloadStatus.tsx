@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { Link } from "react-router";
@@ -29,18 +29,37 @@ interface AlbumArtistRef {
 type AlbumStatusState = NonNullable<ReturnType<typeof describeAlbumStatus>>;
 type AlbumStatusAction = AlbumStatusState["actions"][number];
 
+type LibraryEdition = { name: string; action: ReactNode };
+
 interface AlbumDownloadStatusProps {
   album: LibraryAlbumRef;
   artist?: AlbumArtistRef | null;
   canManage?: boolean;
+  edition?: LibraryEdition | null;
   onChanged?: () => void;
   onSettled?: () => void;
+}
+
+const editionLabel = (name: string) => (/\bedition$/i.test(name) ? name : `${name} edition`);
+
+export function AlbumEditionNote({ edition }: { edition: LibraryEdition }) {
+  return (
+    <div className="native-library-album-status">
+      <p className="native-library-album-status__label">
+        Your Library has the {editionLabel(edition.name)}
+      </p>
+      {edition.action ? (
+        <div className="native-library-album-status__actions">{edition.action}</div>
+      ) : null}
+    </div>
+  );
 }
 
 export function AlbumDownloadStatus({
   album,
   artist,
   canManage = false,
+  edition = null,
   onChanged,
   onSettled,
 }: AlbumDownloadStatusProps) {
@@ -72,8 +91,10 @@ export function AlbumDownloadStatus({
     }
   }, [onSettled, statusQuery.data?.status]);
 
-  if (!state || state.status === "complete") return null;
-  const { actions } = state;
+  if (!state || state.status === "complete") {
+    return edition ? <AlbumEditionNote edition={edition} /> : null;
+  }
+  const actions = canManage ? state.actions : [];
 
   const runAction = async (action: AlbumStatusAction) => {
     setPendingAction(action.id);
@@ -101,7 +122,10 @@ export function AlbumDownloadStatus({
     <div className="native-library-album-status" data-tone={state.tone}>
       <p className="native-library-album-status__label" role="status">
         {state.active && <DotLoader size="xs" label={null} />}
-        <span>{state.label}</span>
+        <span>
+          {state.label}
+          {edition && state.active ? ` ${editionLabel(edition.name)}` : null}
+        </span>
       </p>
       {state.recovery?.message && (
         <p className="native-library-album-status__recovery">
@@ -120,7 +144,12 @@ export function AlbumDownloadStatus({
           )}
         </p>
       )}
-      {canManage && actions.length > 0 && (
+      {edition && !state.active ? (
+        <p className="native-library-album-status__recovery">
+          Your Library has the {editionLabel(edition.name)}
+        </p>
+      ) : null}
+      {(actions.length > 0 || edition?.action) && (
         <div className="native-library-album-status__actions">
           {actions.map((action) => (
             <button
@@ -141,6 +170,7 @@ export function AlbumDownloadStatus({
               {action.label}
             </button>
           ))}
+          {edition?.action}
         </div>
       )}
     </div>

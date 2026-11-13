@@ -139,6 +139,10 @@ export const scenarios: Scenario[] = [
       `/api/artists/release-group/${DISCOVER_ALBUM}/previews`,
     ],
   },
+  {
+    name: "discover album editions",
+    requests: () => [`/api/artists/release-group/${DISCOVER_ALBUM}/editions`],
+  },
   { name: "discover search", requests: () => ["/api/search?q=perf&scope=artist"] },
   { name: "similar artists", requests: () => [`/api/artists/${SIMILAR_ARTIST}/similar`] },
   { name: "playlists", requests: () => ["/api/playlists/status"] },

@@ -14,6 +14,7 @@ export function useAlbumDownload({
   artistName,
   libraryAlbum,
   libraryArtist,
+  releaseMbid,
   onLibraryAlbumRequested,
 }: {
   releaseGroupMbid: string | null;
@@ -22,6 +23,7 @@ export function useAlbumDownload({
   artistName: string;
   libraryAlbum: LibraryAlbum | null;
   libraryArtist: LibraryArtist | null | undefined;
+  releaseMbid?: string;
   onLibraryAlbumRequested: () => Promise<void> | void;
 }) {
   const { showError, showInfo, showSuccess } = useToast();
@@ -48,6 +50,7 @@ export function useAlbumDownload({
           albumName: albumTitle,
           artistMbid,
           artistName,
+          releaseMbid,
         });
         await queryClient.invalidateQueries({
           queryKey: queryKeys.libraryAlbumLookup([releaseGroupMbid]),

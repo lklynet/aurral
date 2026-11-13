@@ -197,6 +197,16 @@
       "library_albums"
     ]
   },
+  "discover album editions": {
+    "queries": {
+      "cold": 4,
+      "warm": 4
+    },
+    "bytes": 30,
+    "scans": [
+      "library_albums"
+    ]
+  },
   "discover search": {
     "queries": {
       "cold": 12,

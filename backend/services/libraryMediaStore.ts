@@ -1839,6 +1839,44 @@ export function storeLibraryAlbumTrackList(
   return Boolean(stored);
 }
 
+// An edition someone chose stays the album's whatever its files are: the
+// album lists that release, and a track only another edition listed leaves
+// it unless it has a file.
+export function chooseLibraryAlbumEdition(
+  albumId: number,
+  release: AlbumRelease & { id: string },
+  edition: string,
+  artistNameFor?: (track: ReleaseTrack) => string | null,
+) {
+  const chosen = db.transaction(() => {
+    if (!storeLibraryAlbumTrackList(albumId, { release, artistNameFor })) return false;
+    db.prepare<[string, string, number, number]>(
+      `UPDATE library_albums
+       SET metadata_json = json_set(metadata_json, '$.requestedRelease', ?, '$.edition', ?, '$.trackListComplete', json('true')),
+         updated_at = ?
+       WHERE id = ?`,
+    ).run(release.id, edition, now(), albumId);
+    const unlisted = db
+      .prepare<[number], { trackId: number }>(
+        `SELECT link.track_id AS trackId
+         FROM library_album_tracks AS link
+         JOIN library_albums AS album ON album.id = link.album_id
+         JOIN library_tracks AS track ON track.id = link.track_id
+         WHERE link.album_id = ?
+           AND NOT EXISTS (
+             SELECT 1 FROM library_media_files AS media
+             WHERE media.track_id = link.track_id AND (media.album_id = link.album_id OR media.album_id IS NULL)
+           )
+           AND NOT ${TRACK_IS_LISTED}`,
+      )
+      .all(albumId);
+    for (const { trackId } of unlisted) unlinkFilelessAlbumTrack(albumId, trackId);
+    return true;
+  })();
+  if (chosen) invalidateLibraryCache();
+  return chosen;
+}
+
 type LibraryTrackCopy = Pick<LibraryAlbumTracksRow, "album_id" | "disc_number" | "track_number"> &
   Pick<LibraryTracksRow, "id" | "title" | "identity_key"> & { has_files: number; listed: number };
 

@@ -20,7 +20,15 @@ const audioFixture = async (filePath: string) => {
 const [
   isolatedState,
   { toReleaseManifest, mapRequest, trackRequestFor: findTrackRequest },
-  { resolveReleaseManifest, readReleaseManifest, chooseLibraryRelease },
+  {
+    resolveReleaseManifest,
+    readReleaseManifest,
+    chooseLibraryRelease,
+    albumEditions,
+    editionOf,
+    libraryRelease,
+    chooseAlbumEdition,
+  },
   { getAlbumByMbid },
   libraryStore,
   { buildTrackRequest },
@@ -602,6 +610,43 @@ test("a Library album that wants the expanded edition asks for it without a stor
   const manifest = await resolveReleaseManifest(job("Opener", "rec-1", { playlistId: "library" }));
   assert.ok(manifest != null);
   assert.equal(manifest.releaseMbid, "deluxe");
+});
+
+test("an album's editions are its whole tracklists, the standard first, named by their releases, with the Library's among them", async (t) => {
+  const pressing = (id: string, title: string, date: string, tracks: unknown[]) => ({
+    id,
+    title,
+    status: "Official",
+    releasedate: date,
+    tracks,
+  });
+  await stubMetadata(t, [
+    {
+      ...group,
+      releases: [
+        pressing("deluxe", "The Album (Deluxe Edition)", "2016-01-01", releases.deluxe),
+        pressing("std-b", "The Album", "2009-01-01", releases["std-b"]),
+        pressing("std-a", "The Album", "2008-01-01", releases["std-a"]),
+        pressing("reissue", "The Album", "2012-01-01", releases.deluxe.slice(0, 4)),
+        { ...pressing("truncated", "The Album", "", releases.deluxe), track_count: 9 },
+      ],
+    },
+  ]);
+  const album = (await getAlbumByMbid(GROUP))!;
+  const editions = albumEditions(album);
+  assert.deepEqual(
+    editions.map(({ id, name, trackCount }) => [id, name, trackCount]),
+    [
+      ["std-b", "Standard", 3],
+      ["reissue", "Alternate edition", 4],
+      ["deluxe", "Deluxe Edition", 5],
+    ],
+  );
+
+  libraryAlbum({ requestedRelease: null, edition: "standard", trackList: { release: "deluxe" } });
+  assert.equal(editionOf(editions, libraryRelease(album))?.id, "deluxe");
+  assert.equal(chooseAlbumEdition(album, "reissue")?.id, "reissue");
+  assert.equal(chooseAlbumEdition(album, "truncated")?.id, "deluxe");
 });
 
 test("unavailable metadata leaves the request unresolved instead of guessing a tracklist from the jobs", async (t) => {

@@ -5,7 +5,11 @@ import { getAlbumByMbid, isMetadataNotFoundError } from "./providers/brainzmashP
 import { invalidateLibraryQueryCache } from "./libraryQueryService.ts";
 import { readLibraryMetadata, type LibraryMetadata } from "./libraryMetadata.ts";
 import type { NormalizedAlbum, NormalizedRelease } from "./providers/brainzmashMappers.ts";
-import { listsEveryTrack, selectAlbumRelease } from "./providers/brainzmashRanking.ts";
+import {
+  listsEveryTrack,
+  runningOrder,
+  selectAlbumRelease,
+} from "./providers/brainzmashRanking.ts";
 import type { DownloadTrackFields } from "./downloadUtils.ts";
 import { manifestIndexFor, releasesHolding, toReleaseManifest } from "./releaseManifest.ts";
 
@@ -193,8 +197,71 @@ export function chooseRequestedRelease(
 // pins another: the Library album's edition, else the standard edition. An
 // album page lists it, so the release a track is added from is the album's.
 export function chooseLibraryRelease(group: NormalizedAlbum) {
+  return libraryRelease(group) || selectAlbumRelease(group);
+}
+
+export function libraryRelease(group: NormalizedAlbum) {
   const album = libraryAlbum(id(group?.id));
-  return album ? albumEdition(group, album) : selectAlbumRelease(group);
+  return album ? albumEdition(group, album) : null;
+}
+
+// A release of the group that lists every track, else the Library's edition.
+export function chooseAlbumEdition(group: NormalizedAlbum, releaseMbid: string | null | undefined) {
+  const release = releaseById(group, releaseMbid);
+  return release && listsEveryTrack(release) ? release : chooseLibraryRelease(group);
+}
+
+const isOfficial = (release: NormalizedRelease) =>
+  String(release.status || "").toLowerCase() === "official";
+
+// An album's editions are the tracklists its releases list in full, the
+// official ones when it has any: pressings with the same running order are
+// one edition. The standard edition comes first, then the rest by date.
+export function albumEditions(group: NormalizedAlbum) {
+  const standard = selectAlbumRelease(group);
+  const whole = group.releases.filter(listsEveryTrack);
+  const official = whole.filter(isOfficial);
+  const standardOrder = standard ? runningOrder(standard) : null;
+  const pressings = Map.groupBy(official.length ? official : whole, runningOrder);
+  const editions = [...pressings].map(([order, releases]) => {
+    const isStandard = order === standardOrder;
+    const release =
+      (isStandard && standard) ||
+      releases.reduce((earliest, entry) =>
+        (entry.releaseDate || "9999") < (earliest.releaseDate || "9999") ? entry : earliest,
+      );
+    return {
+      id: release.id,
+      name: isStandard ? "Standard" : editionName(group, release),
+      date: release.releaseDate,
+      trackCount: release.tracks.length,
+      order,
+      isStandard,
+    };
+  });
+  return editions.sort(
+    (left, right) =>
+      Number(right.isStandard) - Number(left.isStandard) ||
+      (left.date || "9999").localeCompare(right.date || "9999") ||
+      left.trackCount - right.trackCount,
+  );
+}
+
+export function editionOf(
+  editions: ReturnType<typeof albumEditions>,
+  release: NormalizedRelease | null | undefined,
+) {
+  const order = release && runningOrder(release);
+  return editions.find((edition) => edition.order === order) || null;
+}
+
+function editionName(group: NormalizedAlbum, release: NormalizedRelease) {
+  const title = release.title.trim();
+  const named = title.toLowerCase().startsWith(group.title.toLowerCase())
+    ? title.slice(group.title.length)
+    : title;
+  const name = named.replace(/^[\s:/([-]+|[\s)\]]+$/g, "") || release.disambiguation;
+  return name ? name[0]!.toUpperCase() + name.slice(1) : "Alternate edition";
 }
 
 export function albumEdition(group: NormalizedAlbum, album: LibraryMetadata) {

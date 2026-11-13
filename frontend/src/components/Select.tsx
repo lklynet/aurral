@@ -6,6 +6,7 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown } from "./icons";
@@ -13,6 +14,7 @@ import { Check, ChevronDown } from "./icons";
 export type SelectOption<T extends string | number> = {
   value: T;
   label: string;
+  detail?: ReactNode;
   disabled?: boolean;
 };
 
@@ -337,7 +339,14 @@ export function Select<T extends string | number>({
                       }}
                       onClick={() => commit(index)}
                     >
-                      <span className="select__value">{option.label}</span>
+                      {option.detail ? (
+                        <span className="select-menu__text">
+                          <span className="select__value">{option.label}</span>
+                          <span className="select-menu__detail">{option.detail}</span>
+                        </span>
+                      ) : (
+                        <span className="select__value">{option.label}</span>
+                      )}
                       {index === selectedIndex ? (
                         <Check className="select-menu__check" aria-hidden="true" />
                       ) : null}

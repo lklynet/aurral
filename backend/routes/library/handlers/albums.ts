@@ -8,6 +8,7 @@ import { validate } from "../../../middleware/validate.ts";
 import { logger } from "../../../services/logger.ts";
 import { getLibraryReadModelForArtistReferences } from "../../../services/libraryReadModel.ts";
 import { asAppError } from "../../../../lib/errors.ts";
+import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { isErrorStatus, isFailure } from "../../shared/errorStatus.ts";
 import { resolveDeezerAlbumToMbid } from "../../../services/apiClients/index.ts";
 import {
@@ -41,7 +42,10 @@ const requestInput = v.object({
   albumName: v.optional(v.nullable(v.string())),
   artistMbid: v.optional(v.nullable(v.string())),
   artistName: v.optional(v.nullable(v.string())),
+  releaseMbid: v.optional(v.nullable(v.pipe(v.string(), v.regex(UUID_REGEX)))),
 });
+
+const editionInput = v.object({ releaseMbid: v.pipe(v.string(), v.regex(UUID_REGEX)) });
 
 const monitoredInput = v.object({ monitored: v.optional(v.boolean()) });
 
@@ -144,7 +148,7 @@ export default new Hono<AppEnv>()
     async (c) => {
       const user = c.var.user;
       try {
-        const { albumMbid, albumName, artistMbid, artistName } = c.req.valid("json");
+        const { albumMbid, albumName, artistMbid, artistName, releaseMbid } = c.req.valid("json");
 
         if (!albumMbid || !albumName || !artistMbid || !artistName) {
           return c.json(
@@ -158,6 +162,7 @@ export default new Hono<AppEnv>()
           albumName,
           artistName,
           artistMbid,
+          releaseMbid,
           user,
         });
         const historyAlbum = {
@@ -236,6 +241,27 @@ export default new Hono<AppEnv>()
       } catch (error) {
         return c.json(
           { error: "Failed to remove album", message: asAppError(error)?.message },
+          500,
+        );
+      }
+    },
+  )
+  .put(
+    "/albums/:albumId/edition",
+    requireAuth,
+    requirePermission("addAlbum"),
+    validate("json", editionInput),
+    async (c) => {
+      try {
+        const result = await libraryManager.setAlbumEdition(
+          c.req.param("albumId"),
+          c.req.valid("json").releaseMbid,
+        );
+        if (isFailure(result)) return sendFailure(c, result);
+        return c.json(result, 200);
+      } catch (error) {
+        return c.json(
+          { error: "Failed to change the album edition", message: asAppError(error)?.message },
           500,
         );
       }

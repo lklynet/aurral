@@ -1373,6 +1373,86 @@ test("an album that wants the expanded edition keeps wanting the extra track a d
   assert.equal(missing?.monitored, 1);
 });
 
+test("an album asked for in an edition downloads that edition", async (t: TestContext) => {
+  const artistMbid = "eeeeeeee-eeee-4eee-8eee-000000000031";
+  const albumMbid = "eeeeeeee-eeee-4eee-8eee-000000000032";
+  const deluxe = "eeeeeeee-eeee-4eee-8eee-000000000033";
+  const release = (id: string, count: number) => ({
+    id,
+    status: "Official",
+    tracks: Array.from({ length: count }, (_, index) => ({
+      id: `${id}-${index}`,
+      recordingid: `eeeeeeee-eeee-4eee-8eee-40000000000${index + 1}`,
+      trackname: `Chosen Song ${index + 1}`,
+      artistid: artistMbid,
+      durationms: 1000,
+      trackposition: index + 1,
+      mediumnumber: 1,
+    })),
+  });
+  const metadata = await createMockHttpServer((request, response) => {
+    response.setHeader("content-type", "application/json");
+    if (new URL(request.url || "/", "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
+      response.writeHead(404);
+      response.end("{}");
+      return;
+    }
+    response.end(
+      JSON.stringify({
+        id: albumMbid,
+        title: "Chosen Album",
+        artistid: artistMbid,
+        artists: [{ id: artistMbid, artistname: "Chosen Artist" }],
+        releases: [release("cd", 2), release("digital", 2), release(deluxe, 3)],
+      }),
+    );
+  });
+  const originalSettings = dbOps.getSettings();
+  const originalWorkerStart = downloadWorker.start;
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
+      metadata: {
+        ...originalSettings.integrations?.metadata,
+        baseUrl: metadata.url,
+        enableNarrowFallbacks: false,
+      },
+    },
+  });
+  clearApiCaches();
+  downloadWorker.start = async () => {};
+  let ids: string[] = [];
+  t.onTestFinished(async () => {
+    for (const id of ids) {
+      if (getJob(id)?.status === "pending") downloadTracker.setCancelled(id);
+    }
+    downloadWorker.start = originalWorkerStart;
+    dbOps.updateSettings(originalSettings);
+    clearApiCaches();
+    await metadata.close();
+  });
+
+  const requested = await callRoute<RequestedAlbumBody>("/library/albums/request", "POST", {
+    albumMbid,
+    albumName: "Chosen Album",
+    artistMbid,
+    artistName: "Chosen Artist",
+    releaseMbid: deluxe,
+  });
+  assert.equal(requested.status, 201, JSON.stringify(requested.body));
+  ids = requested.body.jobIds;
+  assert.deepEqual(
+    ids.map((id) => [getJob(id).trackName, getJob(id).releaseMbid]),
+    [
+      ["Chosen Song 1", deluxe],
+      ["Chosen Song 2", deluxe],
+      ["Chosen Song 3", deluxe],
+    ],
+  );
+});
+
 test("a two-disc album downloads a title it repeats on each disc to two names", async (t: TestContext) => {
   const artistMbid = "dddddddd-dddd-4ddd-8ddd-000000000001";
   const albumMbid = "dddddddd-dddd-4ddd-8ddd-000000000002";

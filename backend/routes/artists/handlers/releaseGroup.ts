@@ -19,7 +19,12 @@ import {
   toLegacyReleaseGroupSummary,
 } from "../../../services/providers/brainzmashMappers.ts";
 import { logger } from "../../../services/logger.ts";
-import { chooseLibraryRelease } from "../../../services/releaseResolver.ts";
+import {
+  albumEditions,
+  chooseAlbumEdition,
+  editionOf,
+  libraryRelease,
+} from "../../../services/releaseResolver.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { queryText } from "../utils.ts";
 import { musicbrainzGetReleaseTrackCredits } from "../../../services/apiClients/musicbrainz.ts";
@@ -34,9 +39,12 @@ const coverQuery = v.object({
   albumTitle: queryText,
 });
 
+const editionQuery = v.object({ release: queryText });
+
 const previewsQuery = v.object({
   artistMbid: queryText,
   deezerAlbumId: queryText,
+  release: queryText,
 });
 
 export default new Hono<AppEnv>()
@@ -168,11 +176,44 @@ export default new Hono<AppEnv>()
     c.header("Cache-Control", credits.size ? "private, max-age=86400" : "no-store");
     return c.json({ credits: Object.fromEntries(credits) }, 200);
   })
-  .get("/release-group/:mbid/tracks", noCache, async (c) => {
+  .get("/release-group/:mbid/editions", noCache, async (c) => {
     const mbid = c.req.param("mbid");
     if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
     try {
-      const tracks = await getAlbumTracksByAlbumMbid(mbid, { chooseRelease: chooseLibraryRelease });
+      const group = await getAlbumByMbid(mbid);
+      const editions = albumEditions(group);
+      return c.json(
+        {
+          editions: editions.map(({ id, name, date, trackCount }) => ({
+            id,
+            name,
+            date,
+            trackCount,
+          })),
+          library: editionOf(editions, libraryRelease(group))?.id ?? null,
+        },
+        200,
+      );
+    } catch (error) {
+      const failure = asAppError(error);
+      if (isMetadataNotFoundError(error)) {
+        return c.json({ error: "Release not found", message: failure?.message }, 404);
+      }
+      logger.info("releaseGroup", "Album editions unavailable", {
+        mbid,
+        message: failure?.message,
+      });
+      return c.json({ error: "Metadata unavailable", message: failure?.message }, 502);
+    }
+  })
+  .get("/release-group/:mbid/tracks", noCache, validate("query", editionQuery), async (c) => {
+    const mbid = c.req.param("mbid");
+    if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
+    const { release } = c.req.valid("query");
+    try {
+      const tracks = await getAlbumTracksByAlbumMbid(mbid, {
+        chooseRelease: (group) => chooseAlbumEdition(group, release),
+      });
       return c.json(
         tracks.map((track) => ({
           id: track.recordingId || track.id,
@@ -207,7 +248,9 @@ export default new Hono<AppEnv>()
     try {
       const [album, tracks] = await Promise.all([
         getAlbumByMbid(mbid),
-        getAlbumTracksByAlbumMbid(mbid, { chooseRelease: chooseLibraryRelease }),
+        getAlbumTracksByAlbumMbid(mbid, {
+          chooseRelease: (group) => chooseAlbumEdition(group, query.release),
+        }),
       ]);
       const artistMbid = UUID_REGEX.test(query.artistMbid)
         ? query.artistMbid
@@ -227,7 +270,7 @@ export default new Hono<AppEnv>()
         albumTitle: album.title,
         releaseType: album.type,
         releaseDate: album.releaseDate || "",
-        cacheKey: `release-group:${mbid}:${query.deezerAlbumId || deezerArtistId || artistName}`,
+        cacheKey: `release-group:${mbid}:${query.release ? `${query.release}:` : ""}${query.deezerAlbumId || deezerArtistId || artistName}`,
       });
       for (const track of previewed) {
         if (!track.preview_url) continue;
