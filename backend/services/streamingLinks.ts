@@ -1,7 +1,8 @@
 import { decode } from "html-entities";
 import * as v from "valibot";
 import { isOwnKey } from "../../lib/ownKey.ts";
-import { DEEZER_HEADERS, deezerErrorSchema } from "./apiClients/deezer.ts";
+import { HttpError } from "../../lib/http.ts";
+import { DEEZER_HEADERS, deezerErrorSchema, deezerLimiter } from "./apiClients/deezer.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import { resolveArtistAndAlbumMbids } from "./apiClients/index.ts";
 import { getAlbumTracksByAlbumMbid } from "./providers/brainzmashProvider.ts";
@@ -327,11 +328,11 @@ function readNextData(html: string) {
 }
 
 async function lookupDeezer({ kind, id }: StreamingLink) {
-  const response = await fetchJson(
-    "deezer",
-    `https://api.deezer.com/${kind}/${id}`,
-    DEEZER_HEADERS,
-  );
+  const response = await deezerLimiter
+    .schedule(() => fetchJson("deezer", `https://api.deezer.com/${kind}/${id}`, DEEZER_HEADERS))
+    .catch((error: unknown) => {
+      throw error instanceof HttpError ? unavailable("deezer") : error;
+    });
   const failure = v.safeParse(deezerErrorSchema, response);
   if (failure.success) {
     const { code } = failure.output.error;

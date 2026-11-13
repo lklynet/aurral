@@ -42,7 +42,7 @@ const RELEASE_GROUP_LOOKUP_PRIORITY = 1;
 const LISTENBRAINZ_POPULARITY_BATCH_SIZE = 1000;
 const LISTENBRAINZ_METADATA_BATCH_SIZE = 100;
 
-const listenbrainzLimiter = createRateLimiter(350);
+const listenbrainzLimiter = createRateLimiter(350, { shared: LISTENBRAINZ_API });
 const LISTENBRAINZ_USER_AGENT = `${APP_NAME}/${APP_VERSION} ( https://github.com/lklynet/aurral )`;
 
 const LISTENBRAINZ_TIMEOUT_MS = 6000;

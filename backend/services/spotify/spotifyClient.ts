@@ -164,10 +164,16 @@ const refreshFailure = (
   return error;
 };
 
+const SPOTIFY_TIMEOUT_MS = 15_000;
+const SPOTIFY_MAX_RETRY_AFTER_SECONDS = 30;
+
 async function renewAccessToken(refreshToken: string, signal: AbortSignal) {
   const url = new URL(SPOTIFY_RENEW_URI);
   url.searchParams.set("refresh_token", refreshToken);
-  const response = await fetch(url, { method: "GET", signal });
+  const response = await fetch(url, {
+    method: "GET",
+    signal: AbortSignal.any([signal, AbortSignal.timeout(SPOTIFY_TIMEOUT_MS)]),
+  });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     const error: SpotifyError = new Error(
@@ -232,6 +238,27 @@ async function getValidConnection(userId: number | undefined) {
   }
 }
 
+async function sendSpotifyRequest(url: URL, accessToken: string) {
+  const send = () =>
+    fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+      signal: AbortSignal.timeout(SPOTIFY_TIMEOUT_MS),
+    });
+  const response = await send();
+  const retryAfter = response.headers.get("retry-after");
+  const waitSeconds = Number(retryAfter);
+  if (
+    response.status !== 429 ||
+    retryAfter === null ||
+    !(waitSeconds >= 0 && waitSeconds <= SPOTIFY_MAX_RETRY_AFTER_SECONDS)
+  ) {
+    return response;
+  }
+  await response.body?.cancel();
+  await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
+  return send();
+}
+
 async function spotifyRequest(
   userId: number | undefined,
   path: string | null,
@@ -245,12 +272,7 @@ async function spotifyRequest(
       url.searchParams.set(key, String(value));
     }
   }
-  let response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${connection.accessToken}`,
-      Accept: "application/json",
-    },
-  });
+  let response = await sendSpotifyRequest(url, connection.accessToken);
   let nextConnection = connection;
   if (response.status === 401) {
     const latest = spotifyConnectionStore.getConnection(userId);
@@ -262,12 +284,7 @@ async function spotifyRequest(
     } catch (error) {
       throw refreshFailure(userId, connection, error);
     }
-    response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${nextConnection.accessToken}`,
-        Accept: "application/json",
-      },
-    });
+    response = await sendSpotifyRequest(url, nextConnection.accessToken);
   }
   if (!response.ok) {
     const body = await response.text().catch(() => "");

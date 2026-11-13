@@ -283,30 +283,33 @@ test("a Spotify rejection pauses that owner's remaining playlists until Spotify 
   }
 });
 
-test("a sync that keeps failing the same way does not rewrite the playlist each run", async () => {
-  const error = vi.spyOn(logger, "error").mockImplementation(() => {});
+test("a failing sync waits out its interval before asking the provider again", async () => {
+  vi.spyOn(logger, "error").mockImplementation(() => {});
   vi.spyOn(logger, "warn").mockImplementation(() => {});
   connectSpotify(7, "access-token");
-  stubSpotify(() => new Response("Spotify is unavailable", { status: 503 }));
+  const requests = stubSpotify(() => new Response("Spotify is unavailable", { status: 503 }));
   const playlist = createSyncedPlaylist("Unavailable", 7, "spotify-playlist", "unavailable");
 
   await runScheduledSync();
-  const stored = flowPlaylistConfig.getStaticPlaylist(playlist.id);
-  assert.ok(stored != null);
-  assert.ok(stored.importSource != null);
-  assert.equal(stored.importSource.lastSyncError, "Spotify is unavailable");
-  assert.ok(stored.importSource != null);
-  assert.equal(stored.importSource.lastSyncAt, lastSyncAt);
+  const stored = requireFixture(flowPlaylistConfig.getStaticPlaylist(playlist.id)?.importSource);
+  assert.equal(stored.lastSyncError, "Spotify is unavailable");
+  assert.equal(stored.lastSyncAt, lastSyncAt);
+  const asked = requests.length;
   const before = databaseChanges();
 
   await runScheduledSync();
 
+  assert.equal(requests.length, asked);
   assert.equal(databaseChanges(), before);
-  assert.equal(importLogs(error).length, 2);
-  assert.equal(
-    requireFixture(flowPlaylistConfig.getStaticPlaylist(playlist.id)!.importSource).lastSyncError,
-    "Spotify is unavailable",
-  );
+
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    vi.setSystemTime(Date.now() + DAY_MS);
+    await runScheduledSync();
+  } finally {
+    vi.useRealTimers();
+  }
+  assert.ok(requests.length > asked);
 });
 
 test("a synced Aurral share follows the sender's latest snapshot until they stop sharing", async () => {

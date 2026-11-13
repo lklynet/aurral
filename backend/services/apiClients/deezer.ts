@@ -133,6 +133,13 @@ const toTopTrack = (track: DeezerTrack) => ({
   duration_ms: (track.duration || 0) * 1000,
 });
 
+const toTrackPreview = (track: DeezerTrack) => ({
+  preview_url: deezerPreviewPath(track.id),
+  previewProvider: "deezer",
+  previewTrackId: String(track.id),
+  durationMs: track.duration ? track.duration * 1000 : null,
+});
+
 const toTopListTrack = (track: DeezerTrack, artistName: string) => ({
   name: track.title.trim(),
   artistName: String(track.artist?.name || "").trim() || artistName,
@@ -183,6 +190,7 @@ const albumCache = createDeezerCache<ReturnType<typeof toAlbum>[]>(3600);
 const albumTrackCache = createDeezerCache<ReturnType<typeof toAlbumTrack>[]>(3600);
 const previewAlbumCache = createCache<ReturnType<typeof toAlbumTrack>[]>(6 * 3600);
 const previewLinkCache = createDeezerCache<string | null>(5 * 60);
+const trackPreviewCache = createDeezerCache<ReturnType<typeof toTrackPreview> | null>(3600);
 const trackSearchCache = createCache<DeezerTrack[]>(10 * 60, 500);
 
 export function clearDeezerCaches() {
@@ -195,22 +203,33 @@ export function clearDeezerCaches() {
     albumTrackCache,
     previewAlbumCache,
     previewLinkCache,
+    trackPreviewCache,
     trackSearchCache,
   ])
     cache.flushAll();
 }
 const deezerPause = createOutagePause("Deezer");
-export const deezerLimiter = createRateLimiter(110, { check: deezerPause.check });
+export const deezerLimiter = createRateLimiter(110, {
+  check: deezerPause.check,
+  shared: DEEZER_API_URL,
+});
 
-type DeezerRequest = Pick<HttpOptions, "query" | "signal"> & { timeoutMs: number };
+type DeezerRequest = Pick<HttpOptions, "query" | "signal"> & {
+  timeoutMs: number;
+  priority?: number;
+};
 
 async function deezerGet<Schema extends v.GenericSchema>(
   schema: Schema,
   path: string,
-  config: DeezerRequest,
+  { priority, ...config }: DeezerRequest,
 ) {
-  const { data } = await deezerPause.run(() =>
-    http.get(`${DEEZER_API_URL}${path}`, { ...config, headers: DEEZER_HEADERS }),
+  const { data } = await deezerLimiter.schedule(
+    () =>
+      deezerPause.run(() =>
+        http.get(`${DEEZER_API_URL}${path}`, { ...config, headers: DEEZER_HEADERS }),
+      ),
+    { signal: config.signal, priority },
   );
   const failure = v.safeParse(deezerErrorSchema, data);
   if (!failure.success) return readOne(schema, data, { service: "Deezer", endpoint: path });
@@ -252,18 +271,14 @@ const isSameRelease = (candidate: DeezerTrack, track: DeezerTrack) =>
 async function findPlayableCopy(track: DeezerTrack) {
   const isrc = track.isrc && /^[A-Z0-9]{12}$/i.test(track.isrc) ? track.isrc : null;
   if (isrc) {
-    const byIsrc = await deezerLimiter.schedule(() =>
-      deezerGet(deezerTrackSchema, `/track/isrc:${isrc}`, { timeoutMs: 3000 }),
-    );
+    const byIsrc = await deezerGet(deezerTrackSchema, `/track/isrc:${isrc}`, { timeoutMs: 3000 });
     if (byIsrc?.preview) return byIsrc;
   }
   if (!track.artist?.name) return null;
-  const candidates = await deezerLimiter.schedule(() =>
-    deezerList(deezerTrackSchema, "/search", {
-      query: { q: `${track.artist?.name} ${track.title}`, limit: 10 },
-      timeoutMs: 3000,
-    }),
-  );
+  const candidates = await deezerList(deezerTrackSchema, "/search", {
+    query: { q: `${track.artist?.name} ${track.title}`, limit: 10 },
+    timeoutMs: 3000,
+  });
   return (
     candidates.find(
       (candidate) =>
@@ -293,15 +308,12 @@ export async function searchDeezerTracks(
   const cacheKey = `${limit}:${query.trim().toLowerCase()}`;
   const cached = trackSearchCache.get(cacheKey);
   if (cached) return cached;
-  const tracks = await deezerLimiter.schedule(
-    () =>
-      deezerList(deezerTrackSchema, "/search/track", {
-        query: { q: query.trim(), limit },
-        timeoutMs: 3000,
-        signal,
-      }),
-    { signal, priority: 1 },
-  );
+  const tracks = await deezerList(deezerTrackSchema, "/search/track", {
+    query: { q: query.trim(), limit },
+    timeoutMs: 3000,
+    signal,
+    priority: 1,
+  });
   trackSearchCache.set(cacheKey, tracks);
   return tracks;
 }
@@ -316,12 +328,10 @@ export async function getDeezerArtist(
 
   try {
     return await artistCache.load(cacheKey, async () => {
-      const artists = await deezerLimiter.schedule(() =>
-        deezerList(deezerArtistSchema, "/search/artist", {
-          query: { q: artistName, limit: 10 },
-          timeoutMs: 5000,
-        }),
-      );
+      const artists = await deezerList(deezerArtistSchema, "/search/artist", {
+        query: { q: artistName, limit: 10 },
+        timeoutMs: 5000,
+      });
       const match = artists.find((artist) => artistNameKey(artist.name) === wanted);
       return match ? toArtist(match) : null;
     });
@@ -376,12 +386,10 @@ export async function deezerGetRelatedArtists(
   if (!normalizedId) return [];
   const safeLimit = Math.min(100, Math.max(1, Number(limit) || 25));
   return relatedArtistCache.load(`${normalizedId}:${safeLimit}`, async () => {
-    const rows = await deezerLimiter.schedule(() =>
-      deezerList(deezerArtistSchema, `/artist/${normalizedId}/related`, {
-        query: { limit: safeLimit },
-        timeoutMs: 5000,
-      }),
-    );
+    const rows = await deezerList(deezerArtistSchema, `/artist/${normalizedId}/related`, {
+      query: { limit: safeLimit },
+      timeoutMs: 5000,
+    });
     return rows.flatMap(toRelatedArtist);
   });
 }
@@ -395,12 +403,10 @@ export async function deezerGetArtistTopTrackList(
   const artistId = String(artist.id);
   const safeLimit = Math.min(100, Math.max(1, Number(limit) || 25));
   return topTrackListCache.load(`${artistId}:${safeLimit}`, async () => {
-    const top = await deezerLimiter.schedule(() =>
-      deezerList(deezerTrackSchema, `/artist/${artistId}/top`, {
-        query: { limit: safeLimit },
-        timeoutMs: 5000,
-      }),
-    );
+    const top = await deezerList(deezerTrackSchema, `/artist/${artistId}/top`, {
+      query: { limit: safeLimit },
+      timeoutMs: 5000,
+    });
     return top
       .filter((track) => track.title.trim())
       .map((track) => toTopListTrack(track, artistName));
@@ -447,19 +453,16 @@ export async function deezerGetTrackPreview({
   trackName: string;
 }) {
   if (!String(artistName || "").trim() || !String(trackName || "").trim()) return null;
+  const cacheKey = `${artistName.trim()}\0${trackName.trim()}`.toLowerCase();
   try {
-    const candidates = await deezerList(deezerTrackSchema, "/search", {
-      query: { q: `${artistName} ${trackName}`, limit: 10 },
-      timeoutMs: 3000,
+    return await trackPreviewCache.load(cacheKey, async () => {
+      const candidates = await deezerList(deezerTrackSchema, "/search", {
+        query: { q: `${artistName} ${trackName}`, limit: 10 },
+        timeoutMs: 3000,
+      });
+      const track = selectDeezerTrackPreview(candidates, { artistName, trackName });
+      return track ? toTrackPreview(track) : null;
     });
-    const track = selectDeezerTrackPreview(candidates, { artistName, trackName });
-    if (!track) return null;
-    return {
-      preview_url: deezerPreviewPath(track.id),
-      previewProvider: "deezer",
-      previewTrackId: String(track.id),
-      durationMs: track.duration ? track.duration * 1000 : null,
-    };
   } catch {
     return null;
   }
@@ -541,12 +544,10 @@ export async function getDeezerAlbumsForArtist(
   if (!artist?.id) return [];
   const artistId = artist.id;
   return albumCache.load(String(artistId), async () => {
-    const raw = await deezerLimiter.schedule(() =>
-      deezerList(deezerAlbumSchema, `/artist/${artistId}/albums`, {
-        query: { limit: 100 },
-        timeoutMs: 3000,
-      }),
-    );
+    const raw = await deezerList(deezerAlbumSchema, `/artist/${artistId}/albums`, {
+      query: { limit: 100 },
+      timeoutMs: 3000,
+    });
     const allowed = ["album", "ep", "single"];
     return raw
       .filter((album) => allowed.includes((album.record_type || "").toLowerCase()))
@@ -697,9 +698,7 @@ export async function deezerGetAlbumTracks(deezerAlbumId: string | number) {
 
   return albumTrackCache
     .load(id, async () => {
-      const raw = await deezerLimiter.schedule(() =>
-        deezerList(deezerTrackSchema, `/album/${id}/tracks`, { timeoutMs: 3000 }),
-      );
+      const raw = await deezerList(deezerTrackSchema, `/album/${id}/tracks`, { timeoutMs: 3000 });
       return raw.map(toAlbumTrack);
     })
     .catch(() => []);
