@@ -35,17 +35,17 @@ async function leaveOn(chosen: (source: Source) => boolean) {
 
 afterAll(() => leaveOn(() => true));
 
-const JOURNEYS: { source: Source; recordedAs: string; client?: string }[] = [
+const JOURNEYS: { source: Source; recordedAs: string }[] = [
   { source: "ytdlp", recordedAs: "ytdlp" },
-  { source: "nzbget", recordedAs: "usenet", client: "nzbget" },
-  { source: "sabnzbd", recordedAs: "usenet", client: "sabnzbd" },
+  { source: "nzbget", recordedAs: "usenet" },
+  { source: "sabnzbd", recordedAs: "usenet" },
   { source: "qbittorrent", recordedAs: "qbittorrent" },
   { source: "slskd", recordedAs: "slskd" },
   { source: "lidarr", recordedAs: "plugin:lidarr" },
   { source: "eden-fixture", recordedAs: "plugin:eden-fixture" },
 ];
 
-JOURNEYS.forEach(({ source, recordedAs, client }, index) => {
+JOURNEYS.forEach(({ source, recordedAs }, index) => {
   test.skipIf(!available(source))(`a requested album downloads through ${source}`, async () => {
     const release = worldRelease(index);
     await leaveOn((candidate) => candidate === source);
@@ -59,7 +59,7 @@ JOURNEYS.forEach(({ source, recordedAs, client }, index) => {
       `${release.name} to finish downloading`,
       async () => {
         const found = aurralRows(
-          "SELECT status, download_source, download_client, error FROM download_jobs WHERE album_name = ? AND artist_name = ?",
+          "SELECT status, download_source, error FROM download_jobs WHERE album_name = ? AND artist_name = ?",
           release.album,
           release.artist,
         );
@@ -74,10 +74,7 @@ JOURNEYS.forEach(({ source, recordedAs, client }, index) => {
     );
     const carriers = jobs.filter((job) => job.download_source);
     assert.ok(carriers.length > 0);
-    for (const job of carriers) {
-      assert.equal(job.download_source, recordedAs);
-      if (client) assert.equal(job.download_client, client);
-    }
+    for (const job of carriers) assert.equal(job.download_source, recordedAs);
   });
 });
 

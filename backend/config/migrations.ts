@@ -92,6 +92,53 @@ const clearMetadataFailureBackoff: Migration = (db) =>
     WHERE failure_count > 0 AND retry_after - updated_at IN (3600000, 21600000, 86400000);
   `);
 
+// Usenet and Tidarr became download sources like qBittorrent: a job names
+// its download with the client that holds it, and a release it turned down
+// by the album identity the source lists.
+const nameUsenetDownloadsBySource: Migration = (db) => {
+  db.exec(`
+    UPDATE download_jobs
+    SET download_client_id = download_client || ':' || download_client_id,
+      download_client = download_source
+    WHERE download_source IN ('usenet', 'tidarr')
+      AND download_client IN ('nzbget', 'sabnzbd', 'tidarr')
+      AND coalesce(download_client_id, '') <> ''
+      AND instr(download_client_id, ':') = 0;
+  `);
+  const rows = db
+    .prepare<[], { id: string; denied: string }>(
+      `SELECT id, denied_remote_sources AS denied FROM download_jobs
+       WHERE denied_remote_sources LIKE '%"usenet"%' OR denied_remote_sources LIKE '%"tidarr"%'`,
+    )
+    .all();
+  const update = db.prepare<[string, string]>(
+    "UPDATE download_jobs SET denied_remote_sources = ? WHERE id = ?",
+  );
+  const identity = (guid: string) => {
+    const id = guid.trim().toLowerCase();
+    const album = /^(\d+)-(hires_lossless|lossless|high|low)$/.exec(id)?.[1];
+    return `album:${album ? `tidarr:${album}` : id}`;
+  };
+  for (const { id, denied } of rows) {
+    let entries: unknown;
+    try {
+      entries = JSON.parse(denied);
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(entries)) continue;
+    const renamed = entries.map((entry: unknown) =>
+      Array.isArray(entry) &&
+      (entry[0] === "usenet" || entry[0] === "tidarr") &&
+      typeof entry[1] === "string" &&
+      !entry[1].startsWith("album:")
+        ? [entry[0], identity(entry[1])]
+        : entry,
+    );
+    update.run(JSON.stringify(renamed), id);
+  }
+};
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -101,6 +148,7 @@ export const migrations: Migration[] = [
   indexPlaysByArtist,
   failUnreadableDownloadJobs,
   clearMetadataFailureBackoff,
+  nameUsenetDownloadsBySource,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

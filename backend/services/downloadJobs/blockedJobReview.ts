@@ -17,8 +17,6 @@ import { discardReviewFile } from "./reviewFiles.ts";
 import { logger } from "../logger.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { asAppError } from "../../../lib/errors.ts";
-import { isNzbSource } from "../usenetClientCommon.ts";
-import { shouldPreserveReviewedUsenetSource } from "../usenetOrchestrator.ts";
 import { recordTrackJobFailed } from "../aurralHistoryService.ts";
 
 const approvalFollowUps = new Set<Promise<void>>();
@@ -76,13 +74,7 @@ export async function approveBlockedJob(jobId: string) {
     },
     async () => {
       if (!getBlockedJob(job.id)) return null;
-      let preserveSource = false;
-      if (isNzbSource(job.downloadSource)) {
-        preserveSource = shouldPreserveReviewedUsenetSource(job);
-      }
-      const committedPath = await commitDownloadedFile(sourcePath, path.join(finalDir, finalName), {
-        preserveSource,
-      });
+      const committedPath = await commitDownloadedFile(sourcePath, path.join(finalDir, finalName));
       const recorded = await recordPipelineJobSuccess({
         downloadTracker,
         job,

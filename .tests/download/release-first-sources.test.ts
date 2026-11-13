@@ -4,7 +4,6 @@ import {
   localDownloadWorker,
   sourceless,
   usenetCandidate,
-  usenetRelease,
   ytdlpResult,
 } from "./fixtures.ts";
 import type { PipelinePayload } from "../../backend/services/downloadPipeline.ts";
@@ -1371,8 +1370,7 @@ test("an album attempt whose leading track stopped gives the rest back untried a
       ...sourceless(attempt),
       phase: "finalize",
       source: "usenet" as const,
-      downloadClient: "nzbget",
-      nzbId,
+      pendingId: `nzbget:${nzbId}`,
     };
   };
 
@@ -1481,7 +1479,7 @@ test("cancelling only the leading track of a queued album attempt gives the rest
   );
 });
 
-test("an album step that fails on every retry blocks the release it downloaded, starts again after fresh work, and searches for each track after the third time", async (t) => {
+test("an album step that fails on every retry starts again after fresh work, and searches for each track after the third time", async (t) => {
   useSources({
     nzbget: { enabled: true, url: "http://127.0.0.1:9" },
     prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "key" },
@@ -1502,25 +1500,12 @@ test("an album step that fails on every retry blocks the release it downloaded, 
     await downloadWorker.processJob(trackedJob(downloadTracker, ids[0]));
     const finalizing = {
       ...sourceless(claimQueued(requireFixture(ids[0]))),
-      phase: "finalize",
+      phase: "poll",
       source: "usenet" as const,
-      downloadClient: "nzbget",
-      nzbId: `nzb-${attempt}`,
+      pendingId: `nzbget:nzb-${attempt}`,
+      unreadPolls: Number.MAX_SAFE_INTEGER,
       candidateIndex: 0,
-      candidates: [
-        usenetCandidate({
-          raw: {
-            release: usenetRelease({
-              guid: `guid-${attempt}`,
-              title: "Retry Band - retries Album",
-              downloadUrl: "",
-              indexerId: 1,
-              size: 0,
-              categories: [],
-            }),
-          },
-        }),
-      ],
+      candidates: [usenetCandidate({ guid: `guid-${attempt}`, title: "retries Album" })],
     };
     assert.equal(finalizing.albumGrab, true);
     await assert.rejects(processPipelinePayload(finalizing), /ECONNREFUSED/);
@@ -1538,7 +1523,7 @@ test("an album step that fails on every retry blocks the release it downloaded, 
           job.albumGrabAttempted,
           (job.deniedRemoteSources || []).map((entry) => entry[1]),
         ],
-        ["pending", false, Array.from({ length: attempt }, (_, index) => `guid-${index + 1}`)],
+        ["pending", false, []],
       );
     }
     const fresh = createTrackedJob(

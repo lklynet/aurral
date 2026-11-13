@@ -553,13 +553,7 @@ export class ProwlarrClient {
     }
     const content = Buffer.isBuffer(response.data) ? response.data : Buffer.alloc(0);
     const head = content.subarray(0, 65536).toString("utf8");
-    if (!/<nzb[\s>]/iu.test(head)) {
-      const error: Error & { nzbGrabSpent?: boolean } = new Error(
-        "The indexer did not return an NZB file",
-      );
-      error.nzbGrabSpent = !/<error[\s>]/iu.test(head);
-      throw error;
-    }
+    if (!/<nzb[\s>]/iu.test(head)) throw new Error("The indexer did not return an NZB file");
     return content;
   }
 }

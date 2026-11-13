@@ -5,9 +5,7 @@ import {
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
-import { USENET_CLIENT_KEYS, type NzbSourceId } from "./usenetClientCommon.ts";
 import { getDownloadSourceStatus, getEnabledDownloadSources } from "./downloadSourceService.ts";
-import { prowlarrClient } from "./prowlarrClient.ts";
 import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import type { JsonObject } from "./jobs/queue.ts";
 import { contractSource } from "./download/nativeSources.ts";
@@ -33,7 +31,7 @@ const AUDIO_EXTENSIONS = new Set([
 ]);
 
 type ManualSearchMode = "missing" | "replacement";
-type ManualSource = { id: string; label: string; source: string; downloadClient?: string };
+type ManualSource = { id: string; label: string; source: string };
 type ManualSearchJob = Pick<DownloadJob, "id"> &
   Partial<Pick<DownloadJob, "artistName" | "trackName" | "albumName">>;
 type ManualWorkContext = { jobId: string; playlistId: string | null };
@@ -45,7 +43,6 @@ type ManualSearchSession = {
   mode: ManualSearchMode;
   playlistId: string;
   sourceId: string | undefined;
-  downloadClient: string | null;
   results: Map<string, ManualResult["selection"]>;
   expiresAt: number;
 };
@@ -126,33 +123,13 @@ function resultView(source: string, raw: Record<string, unknown>) {
       ].filter(Boolean),
     };
   }
-  return {
-    title: text(raw.title) || "Untitled release",
-    subtitle: text(raw.indexer),
-    details: [
-      formatBytes(raw.size),
-      raw.files ? `${raw.files} files` : "",
-      raw.grabs ? `${raw.grabs} grabs` : "",
-      typeof raw.publishDate === "string" && raw.publishDate
-        ? new Date(raw.publishDate).toLocaleDateString("en-GB")
-        : "",
-    ].filter(Boolean),
-  };
+  return { title: text(raw.title) || "Untitled result", subtitle: "", details: [] };
 }
 
 const manualResults = <Source extends string, Raw extends RawSearchResult>(
   source: Source,
   results: Raw[],
 ) => results.map((raw) => ({ raw, selection: { source, candidate: { raw } } }));
-
-const manualReleases = <Source extends NzbSourceId, Raw extends RawSearchResult>(
-  source: Source,
-  releases: Raw[],
-) =>
-  releases.map((raw) => ({
-    raw,
-    selection: { source, candidate: { raw: { release: raw }, score: 0 } },
-  }));
 
 async function searchSlskd(query: string, workContext: ManualWorkContext) {
   const results = await getDownloadClient("slskd").searchQuery(query, {
@@ -185,7 +162,10 @@ async function searchContractSource(source: DownloadSource, jobId: string) {
     return found.map((raw) => ({ raw, selection: { source: source.id, candidate: { raw } } }));
   }
   if (!source.albums) return [];
-  const found = await source.albums.search(await albumQuery({}, job), null);
+  const album = await albumQuery({}, job);
+  const track = resolveTrack({}, job);
+  const found = await (source.albums.manualSearch?.(album, track) ??
+    source.albums.search(album, { upgrade: null, track, denied: new Set() }));
   return found.map((raw) => ({
     raw,
     selection: {
@@ -206,12 +186,6 @@ async function searchSource(source: string, query: string, workContext: ManualWo
   }
   const contract = contractSource(source);
   if (contract) return searchContractSource(contract, workContext.jobId);
-  if (source === "usenet") {
-    return manualReleases(source, await prowlarrClient.search(query, { limit: MAX_RESULTS }));
-  }
-  if (source === "tidarr") {
-    return manualReleases(source, await getDownloadClient("tidarr").search(query));
-  }
   throw new Error("Unknown manual search source");
 }
 
@@ -219,21 +193,9 @@ export function getManualDownloadSources() {
   const status = getDownloadSourceStatus();
   const sources: ManualSource[] = [];
   if (status.slskd.configured) sources.push({ id: "slskd", label: "Soulseek", source: "slskd" });
-  if (status.tidarr.configured) sources.push({ id: "tidarr", label: "Tidarr", source: "tidarr" });
   if (status.deemix.configured) sources.push({ id: "deemix", label: "deemix", source: "deemix" });
   for (const { id, label } of getEnabledDownloadSources()) {
     if (contractSource(id)) sources.push({ id, label, source: id });
-  }
-  if (status.usenet.prowlarrConfigured) {
-    for (const client of USENET_CLIENT_KEYS.map((key) => getDownloadClient(key))) {
-      if (!client.isConfigured()) continue;
-      sources.push({
-        id: `usenet:${client.key}`,
-        label: `Usenet · ${client.name}`,
-        source: "usenet",
-        downloadClient: client.key,
-      });
-    }
   }
   return sources;
 }
@@ -303,7 +265,6 @@ export function storeManualMissingSearch({
     mode: mode === "replacement" ? "replacement" : "missing",
     playlistId: text(playlistId),
     sourceId: sourceOption?.id,
-    downloadClient: sourceOption?.downloadClient || null,
     results: storedResults,
     expiresAt: Date.now() + SESSION_TTL_MS,
   });
@@ -331,7 +292,6 @@ export function getManualMissingSelection({
   return {
     ...selection,
     sourceId: session.sourceId,
-    downloadClient: session.downloadClient,
     mode: session.mode,
     playlistId: session.playlistId || null,
   };

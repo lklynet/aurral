@@ -3,7 +3,6 @@ import { unknownList } from "../../../lib/unknownList.ts";
 import { getDownloadClient } from "../download/downloadClientSettings.ts";
 import { deemixQueueIds } from "../deemixClient.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
-import { isNzbSource, type UsenetClientKey } from "../usenetClientCommon.ts";
 import { contractSource } from "../download/nativeSources.ts";
 import type { DownloadSource } from "../download/downloadSource.ts";
 import { discardSourceWork } from "../download/sourcePipeline.ts";
@@ -266,74 +265,43 @@ async function cancelDeemixWork(payloads: CancellationPayload[], jobs: Cancellat
   return { queueItems: queueIds.size };
 }
 
-async function cancelUsenetWork(
-  clientKey: UsenetClientKey | "tidarr",
-  label: string,
-  payloads: CancellationPayload[],
-  jobs: CancellationJob[],
-) {
-  const client = getDownloadClient(clientKey);
-  const ids = new Set(
-    jobs
-      .filter((job) => job?.downloadClient === clientKey)
-      .map((job) => normalizeId(job.downloadClientId))
-      .filter(Boolean),
-  );
-  const failures: unknown[] = [];
-  for (const payload of payloads) {
-    if (isNzbSource(payload?.source) && payload?.downloadClient === clientKey) {
-      const id = normalizeId(payload.nzbId);
-      if (id) ids.add(id);
-    }
-  }
-  if (ids.size > 0 && !client?.isConfigured?.()) {
-    logger.warn(clientKey, `Cannot cancel tracked ${label} work while ${label} is not configured`, {
-      items: ids.size,
-    });
-    throw new Error(`${label} is not configured; tracked work cannot be cancelled`);
-  }
-  for (const id of ids) {
-    for (const [message, cleanup, lookup] of [
-      [
-        "Could not cancel a removed playlist queue item",
-        () => client.deleteQueueItem(id),
-        () => client.getQueueItem(id),
-      ],
-      [
-        "Could not remove a deleted playlist history item",
-        () => client.deleteHistoryItem(id, { deleteFiles: true }),
-        () => client.getHistoryItem(id),
-      ],
-    ] satisfies [string, () => unknown, () => unknown][]) {
-      await attemptProviderCleanup(failures, clientKey, message, { id }, async () => {
-        const removed = await cleanup();
-        if (!removed && (await lookup())) {
-          throw new Error(`${label} did not confirm item removal`);
-        }
-      });
-    }
-  }
-  throwProviderCleanupFailures(clientKey, failures);
-  return { historyItems: ids.size };
-}
-
-// A job's staging folder goes even when no step of it is queued, and a
-// queued step also removes the download its source started.
+// A job's staging folder goes even when no step of it is queued, and the
+// download its source started goes once no job left takes a track from it.
+// A download the source didn't confirm removing keeps the jobs, so the
+// cancellation can run again.
 async function cancelSourceWork(payloads: CancellationPayload[], jobs: CancellationJob[]) {
   const work = new Map<string, { source: DownloadSource; pendingId: string | null }>();
   for (const job of jobs) {
     const source = contractSource(String(job?.downloadSource || job?.downloadClient || ""));
     const jobId = normalizeId(job?.id);
-    if (source && jobId) work.set(jobId, { source, pendingId: null });
+    if (source && jobId)
+      work.set(jobId, { source, pendingId: normalizeId(job.downloadClientId) || null });
   }
   for (const payload of payloads) {
     const source = contractSource(String(payload?.source ?? ""));
     const jobId = normalizeId(payload?.jobId);
     const pendingId = typeof payload?.pendingId === "string" ? payload.pendingId : null;
-    if (source && jobId) work.set(jobId, { source, pendingId });
+    if (source && jobId)
+      work.set(jobId, { source, pendingId: pendingId ?? work.get(jobId)?.pendingId ?? null });
   }
+  const except = new Set(work.keys());
+  const failures: unknown[] = [];
   for (const [jobId, { source, pendingId }] of work)
-    await discardSourceWork({ jobId, pendingId }, source);
+    await discardSourceWork({ jobId, pendingId }, source, {
+      except,
+      onDiscardError: (error) => {
+        logger.warn(source.id, "Could not cancel a download", {
+          jobId,
+          pendingId: pendingId ?? "",
+          reason: asAppError(error)?.message || String(error),
+        });
+        failures.push(error);
+        for (const [id, entry] of work)
+          if (entry.pendingId === pendingId)
+            downloadTracker.updateDownloadMetadata(id, { downloadClientId: pendingId });
+      },
+    });
+  throwProviderCleanupFailures("download source", failures);
   return { discarded: work.size };
 }
 
@@ -350,9 +318,6 @@ async function cancelProviderWork(
   const results = await Promise.allSettled([
     cancelSlskdWork(payloads, jobs, providerWork),
     cancelDeemixWork(payloads, jobs),
-    cancelUsenetWork("sabnzbd", "SABnzbd", payloads, jobs),
-    cancelUsenetWork("nzbget", "NZBGet", payloads, jobs),
-    cancelUsenetWork("tidarr", "Tidarr", payloads, jobs),
     cancelSourceWork(payloads, jobs),
   ]);
   const failures = results
@@ -361,13 +326,10 @@ async function cancelProviderWork(
   if (failures.length > 0) {
     throw new AggregateError(failures, "Could not cancel download provider work");
   }
-  const [slskd, deemix, sabnzbd, nzbget, tidarr, sources] = results;
+  const [slskd, deemix, sources] = results;
   return {
     slskd: fulfilledValue(slskd),
     deemix: fulfilledValue(deemix),
-    sabnzbd: fulfilledValue(sabnzbd),
-    nzbget: fulfilledValue(nzbget),
-    tidarr: fulfilledValue(tidarr),
     sources: fulfilledValue(sources),
   };
 }

@@ -130,7 +130,7 @@ export const qbittorrentSource = {
   id: "qbittorrent",
   staging: "qbittorrent",
   albums: {
-    async search(album, upgrade) {
+    async search(album, { upgrade }) {
       const ranked = await searchReleases(album, upgrade).catch((error: unknown) => {
         if (error instanceof DownloadSourceError) throw error;
         throw new DownloadSourceError(`Prowlarr search failed: ${failure(error)}`);

@@ -7,7 +7,9 @@ import {
   searchResults,
   statusResult,
   trackDownloadResult,
+  type AlbumQuery,
   type DownloadSource,
+  type Upgrade,
 } from "../download/downloadSource.ts";
 import {
   processSourcePipelinePayload,
@@ -16,6 +18,7 @@ import {
   type SourcePayload,
 } from "../download/sourcePipeline.ts";
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
+import { isSameCoreAlbum } from "../downloadJobs/deemixSearch.ts";
 import { callPlugin, PluginError } from "./pluginHost.ts";
 import {
   activePluginWith,
@@ -51,6 +54,8 @@ function pluginSource(plugin: InstalledPlugin): DownloadSource {
     }
   };
   const manifest = plugin.manifest.downloadSource;
+  const searchAlbum = (album: AlbumQuery, upgrade: Upgrade) =>
+    call("downloadSource.searchAlbum", { album, upgrade }, albumResults, SEARCH_TIMEOUT_MS);
   return {
     id: `${PLUGIN_SOURCE_PREFIX}${plugin.id}`,
     staging: `plugins/${plugin.id}`,
@@ -75,8 +80,11 @@ function pluginSource(plugin: InstalledPlugin): DownloadSource {
     }),
     ...(manifest?.albums === true && {
       albums: {
-        search: (album, upgrade) =>
-          call("downloadSource.searchAlbum", { album, upgrade }, albumResults, SEARCH_TIMEOUT_MS),
+        search: async (album, { upgrade }) =>
+          (await searchAlbum(album, upgrade)).filter((result) =>
+            isSameCoreAlbum(result.title, album.title),
+          ),
+        manualSearch: (album) => searchAlbum(album, null),
         download: ({ result, album, directory }) =>
           call(
             "downloadSource.downloadAlbum",
