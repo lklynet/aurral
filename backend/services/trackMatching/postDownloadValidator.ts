@@ -118,7 +118,9 @@ export function downloadedFileEvidence(
   const listing = parseListingTitle(filePath, { album });
   return {
     title: String(parsed?.common?.title || listing.title || "").trim(),
-    artists: [parsed?.common?.artist].filter(Boolean),
+    artists: [
+      ...new Set([parsed?.common?.artist, ...(parsed?.common?.artists ?? [])].filter(Boolean)),
+    ],
     durationMs: readDurationMsFromParsed(parsed),
     trackNumber: parsed?.common?.track?.no || listing.trackNumber || null,
     discNumber: parsed?.common?.disk?.no || listing.discNumber || null,
