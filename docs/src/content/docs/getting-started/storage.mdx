@@ -42,7 +42,7 @@ Navidrome:  /data/downloads/aurral/track.flac
 
 The host side of each mount can differ, if it points to the same host folder. The application uses the container side, so keep that side the same.
 
-Keep a service's own database or configuration mount separate from the media mount. For example, Navidrome can use `/config` for its database and `/data` for media.
+Keep a service's own database or configuration mount separate from the media mount. Navidrome keeps its database in `/data` by default, so set `ND_DATAFOLDER: /config` and mount its database folder at `/config`.
 
 ## How one track moves
 
@@ -119,8 +119,12 @@ services:
       - ${MEDIA_ROOT:-/srv/media}:/data
 
   navidrome:
+    environment:
+      ND_DATAFOLDER: /config
+      ND_CONFIGFILE: /config/navidrome.toml
     volumes:
       - ${MEDIA_ROOT:-/srv/media}:/data:ro
+      - ./navidrome:/config
 
   plex:
     volumes:

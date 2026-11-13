@@ -76,9 +76,15 @@ volumes:
   - ./config:/config
 
 # Navidrome
+environment:
+  ND_DATAFOLDER: /config
+  ND_CONFIGFILE: /config/navidrome.toml
 volumes:
   - /srv/media:/data:ro
+  - ./navidrome:/config
 ```
+
+Navidrome keeps its database in `/data` by default. `ND_DATAFOLDER` moves it out of the media mount, so Navidrome never scans its own database. If Navidrome already has a data folder, mount that folder at `/config` to keep your users and playlists.
 
 ### Setup
 
@@ -96,6 +102,7 @@ Aurral writes an M3U file for each enabled flow and each static playlist to `_pl
 - The files list each track by its full path in Aurral. Navidrome must see the Library folder and your read-only folders at the same paths.
 - Navidrome gives imported playlists to its first admin user and keeps them private. To show a playlist to other users, make it public in Navidrome.
 - When a playlist is deleted, renamed, or its flow is turned off, Aurral removes its file. Navidrome keeps the old playlist with no tracks. Delete it in Navidrome.
+- Older versions of Aurral added an **Aurral Playlists** library to Navidrome. Aurral no longer uses it, so delete it in Navidrome's library settings.
 
 By default, each file name starts with the owner's username, like `test - Road Trip`. To use the bare playlist name, turn off **Owner in file names** in **Settings > Library > Playlist files**. Playlists of different users that share a name keep the username.
 
