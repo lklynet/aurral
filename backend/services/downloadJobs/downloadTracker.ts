@@ -236,10 +236,10 @@ function storedJobState(row: DownloadJobsRow): DownloadJobState {
   return { status: "failed", finalPath: null };
 }
 
-const storedCause = (row: DownloadJobsRow): JobCause | null =>
-  v.is(v.picklist(STORED_CAUSES), row.cause)
-    ? { kind: row.cause, playlistId: row.cause_playlist_id || null }
-    : null;
+const storedCause = (row: DownloadJobsRow): JobCause | null => {
+  const kind = STORED_CAUSES.find((stored) => stored === row.cause);
+  return kind ? { kind, playlistId: row.cause_playlist_id || null } : null;
+};
 
 function rowToJob(row: DownloadJobsRow) {
   const job = {
