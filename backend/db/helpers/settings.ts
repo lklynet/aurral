@@ -115,6 +115,8 @@ export interface SettingsOps {
   getUserDiscoverLayout: (userId: number) => unknown;
   setUserDiscoverLayout: (userId: number, layout: unknown) => void;
   getUserTheme: (userId: number) => unknown;
+  getUserPlaylistOrder: (userId: number) => string[];
+  setUserPlaylistOrder: (userId: number, ids: string[]) => void;
   setUserTheme: (userId: number, theme: unknown) => void;
   deleteUserSettings: (userId: number) => void;
   getSettings: () => AppSettings;
@@ -220,6 +222,19 @@ export const dbOps = {
 
   setUserTheme(userId, theme) {
     dbOps.setJSONSetting(`user:${parseInt(String(userId), 10)}:theme`, theme);
+  },
+
+  getUserPlaylistOrder(userId) {
+    return (
+      dbOps.getJSONSetting(
+        `user:${parseInt(String(userId), 10)}:playlistOrder`,
+        v.array(v.string()),
+      ) ?? []
+    );
+  },
+
+  setUserPlaylistOrder(userId, ids) {
+    dbOps.setJSONSetting(`user:${parseInt(String(userId), 10)}:playlistOrder`, ids);
   },
 
   deleteUserSettings(userId) {

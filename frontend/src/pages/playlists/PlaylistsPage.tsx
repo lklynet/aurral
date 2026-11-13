@@ -1,8 +1,17 @@
 import { usePlaylistArtwork } from "../../hooks/usePlaylistArtwork.ts";
 import { lazy, Suspense, useEffect, useState, type ComponentProps } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import RouteLink from "../../components/RouteLink";
-import { ListMusic, MoreVertical, Plus, Upload } from "../../components/icons";
+import {
+  ArrowDownAZ,
+  ArrowUpZA,
+  ListMusic,
+  MoreVertical,
+  Plus,
+  Upload,
+} from "../../components/icons";
+import { Select } from "../../components/Select";
+import TooltipButton from "../../components/TooltipButton";
 import { SkeletonLibraryGrid, SkeletonStatus } from "../../components/Skeletons";
 import Tooltip from "../../components/Tooltip";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
@@ -25,6 +34,12 @@ import { playlistPath } from "../../navigation/playlistPaths";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
 import { routeStateOf } from "../../navigation/routeState.ts";
 import { normalizeNameKey, reserveUniqueName } from "../../utils/staticPlaylists.ts";
+import {
+  PLAYLIST_SORT_OPTIONS,
+  readPlaylistSort,
+  sortPlaylists,
+  type PlaylistSort,
+} from "../../utils/playlistOrder.ts";
 
 type ImportRequest = Pick<ComponentProps<typeof PlaylistImportModal>, "initialShareUrl">;
 
@@ -50,6 +65,7 @@ export default function PlaylistsPage() {
   useDocumentTitle("Playlists");
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
   const { status, loading, error, fetchStatus, getPlaylistStats, staticPlaylists } =
@@ -60,6 +76,21 @@ export default function PlaylistsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
+  const { sort, direction } = readPlaylistSort(searchParams);
+  const sortedPlaylists = sortPlaylists(staticPlaylists, sort, direction);
+
+  const updateSort = (next: { sort?: PlaylistSort; dir?: "asc" | "desc" }) =>
+    setSearchParams(
+      (params) => {
+        if (next.sort) {
+          params.set("sort", next.sort);
+          params.delete("dir");
+        }
+        if (next.dir) params.set("dir", next.dir);
+        return params;
+      },
+      { replace: true },
+    );
 
   useEffect(() => {
     const { openImport, shareUrl } = routeStateOf(location.state);
@@ -156,7 +187,7 @@ export default function PlaylistsPage() {
     }
     return (
       <div className="native-library-grid" role="list" aria-label="Playlists">
-        {staticPlaylists.map((playlist) => (
+        {sortedPlaylists.map((playlist) => (
           <article
             className="native-library-card"
             role="listitem"
@@ -224,6 +255,32 @@ export default function PlaylistsPage() {
             />
           </div>
         </div>
+        {staticPlaylists.length > 1 ? (
+          <div className="native-library-toolbar">
+            <div className="native-library-sort">
+              <Select
+                className=""
+                value={sort}
+                onChange={(value) => updateSort({ sort: value })}
+                aria-label="Sort playlists"
+                options={PLAYLIST_SORT_OPTIONS}
+              />
+            </div>
+            <span className="native-library-toolbar-divider" aria-hidden="true" />
+            <TooltipButton
+              className="native-library-icon-button"
+              onClick={() => updateSort({ dir: direction === "asc" ? "desc" : "asc" })}
+              label={direction === "asc" ? "Descending" : "Ascending"}
+              aria-label={direction === "asc" ? "Sort descending" : "Sort ascending"}
+            >
+              {direction === "asc" ? (
+                <ArrowDownAZ aria-hidden="true" />
+              ) : (
+                <ArrowUpZA aria-hidden="true" />
+              )}
+            </TooltipButton>
+          </div>
+        ) : null}
       </header>
       <div className="native-library-content">{renderContent()}</div>
       <CreatePlaylistModal

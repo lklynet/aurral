@@ -17,6 +17,8 @@ export interface StaticPlaylist {
   sourceName: string | null;
   sourceFlowId: string | null;
   trackCount: number;
+  createdAt: number;
+  updatedAt: number;
   recordHistory: boolean;
   showTrackAvailability: boolean;
   importSource: PlaylistStatusSnapshot["staticPlaylists"][number]["importSource"];

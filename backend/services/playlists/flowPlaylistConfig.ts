@@ -16,6 +16,7 @@ import {
   type FlowSource,
 } from "../../../lib/flows.ts";
 import {
+  buildCoreTrackIdentity,
   dedupePlaylistTracks,
   filterMissingPlaylistTracks,
   tracksShareMembership,
@@ -102,6 +103,7 @@ interface StoredStaticPlaylist {
   showTrackAvailability?: unknown;
   importedAt?: unknown;
   createdAt?: unknown;
+  updatedAt?: unknown;
   tracks?: PlaylistTrackInput[];
 }
 
@@ -293,6 +295,10 @@ const normalizeStaticPlaylist = (playlist: StoredStaticPlaylist | null | undefin
     return { ...track, membershipId };
   });
   const importSource = normalizeImportSource(playlist?.importSource);
+  const createdAt =
+    playlist?.createdAt != null && Number.isFinite(Number(playlist.createdAt))
+      ? Number(playlist.createdAt)
+      : Date.now();
   return {
     id: playlist?.id || randomUUID(),
     name: name || "Playlist",
@@ -310,10 +316,11 @@ const normalizeStaticPlaylist = (playlist: StoredStaticPlaylist | null | undefin
       playlist?.importedAt != null && Number.isFinite(Number(playlist.importedAt))
         ? Number(playlist.importedAt)
         : Date.now(),
-    createdAt:
-      playlist?.createdAt != null && Number.isFinite(Number(playlist.createdAt))
-        ? Number(playlist.createdAt)
-        : Date.now(),
+    createdAt,
+    updatedAt:
+      playlist?.updatedAt != null && Number.isFinite(Number(playlist.updatedAt))
+        ? Number(playlist.updatedAt)
+        : createdAt,
     tracks,
     trackCount: tracks.length,
   };
@@ -321,6 +328,17 @@ const normalizeStaticPlaylist = (playlist: StoredStaticPlaylist | null | undefin
 
 export type FlowConfig = ReturnType<typeof normalizeFlow>;
 export type StaticPlaylist = ReturnType<typeof normalizeStaticPlaylist>;
+
+const isSameEdit = (left: StaticPlaylist, right: StaticPlaylist) =>
+  left.name === right.name &&
+  left.description === right.description &&
+  left.tracks.length === right.tracks.length &&
+  left.tracks.every(
+    (track, index) => buildCoreTrackIdentity(track) === buildCoreTrackIdentity(right.tracks[index]),
+  );
+
+const stampEdit = (current: StaticPlaylist, next: StaticPlaylist) =>
+  isSameEdit(current, next) ? next : { ...next, updatedAt: Date.now() };
 
 const getStoredFlows = () => {
   if (cachedFlows && !childCacheExpired(flowsCachedAt)) {
@@ -670,12 +688,15 @@ export const flowPlaylistConfig = {
       ...track,
       membershipId: randomUUID(),
     }));
-    const next = normalizeStaticPlaylist({
-      ...current,
-      tracks: [...current.tracks, ...appendedTracks],
-      importedAt: current.importedAt,
-      createdAt: current.createdAt,
-    });
+    const next = stampEdit(
+      current,
+      normalizeStaticPlaylist({
+        ...current,
+        tracks: [...current.tracks, ...appendedTracks],
+        importedAt: current.importedAt,
+        createdAt: current.createdAt,
+      }),
+    );
     playlists[index] = next;
     setStaticPlaylists(playlists);
     return next;
@@ -687,33 +708,38 @@ export const flowPlaylistConfig = {
     const current = playlists[index];
     if (!current) return null;
     const nextName = updates?.name ?? current.name;
-    const next = normalizeStaticPlaylist({
-      ...current,
-      name: nextName,
-      sourceName: updates?.sourceName ?? current.sourceName,
-      description: updates?.description !== undefined ? updates.description : current.description,
-      recordHistory:
-        typeof updates?.recordHistory === "boolean" ? updates.recordHistory : current.recordHistory,
-      showTrackAvailability: updates?.showTrackAvailability ?? current.showTrackAvailability,
-      sourceFlowId: updates?.sourceFlowId ?? current.sourceFlowId,
-      discoverPresetId: updates?.discoverPresetId ?? current.discoverPresetId,
-      importSource:
-        updates?.importSource !== undefined
-          ? normalizeImportSource(updates.importSource)
-          : current.importSource,
-      tracks: Array.isArray(updates?.tracks)
-        ? dedupePlaylistTracks(updates.tracks).map((track) => {
-            const previous = current.tracks.find(
-              (entry) =>
-                entry.canonicalJobId === track.canonicalJobId &&
-                tracksShareMembership(entry, track),
-            );
-            return { ...track, membershipId: previous?.membershipId || randomUUID() };
-          })
-        : current.tracks,
-      importedAt: current.importedAt,
-      createdAt: current.createdAt,
-    });
+    const next = stampEdit(
+      current,
+      normalizeStaticPlaylist({
+        ...current,
+        name: nextName,
+        sourceName: updates?.sourceName ?? current.sourceName,
+        description: updates?.description !== undefined ? updates.description : current.description,
+        recordHistory:
+          typeof updates?.recordHistory === "boolean"
+            ? updates.recordHistory
+            : current.recordHistory,
+        showTrackAvailability: updates?.showTrackAvailability ?? current.showTrackAvailability,
+        sourceFlowId: updates?.sourceFlowId ?? current.sourceFlowId,
+        discoverPresetId: updates?.discoverPresetId ?? current.discoverPresetId,
+        importSource:
+          updates?.importSource !== undefined
+            ? normalizeImportSource(updates.importSource)
+            : current.importSource,
+        tracks: Array.isArray(updates?.tracks)
+          ? dedupePlaylistTracks(updates.tracks).map((track) => {
+              const previous = current.tracks.find(
+                (entry) =>
+                  entry.canonicalJobId === track.canonicalJobId &&
+                  tracksShareMembership(entry, track),
+              );
+              return { ...track, membershipId: previous?.membershipId || randomUUID() };
+            })
+          : current.tracks,
+        importedAt: current.importedAt,
+        createdAt: current.createdAt,
+      }),
+    );
     playlists[index] = next;
     setStaticPlaylists(playlists);
     return next;
