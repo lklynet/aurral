@@ -1966,7 +1966,7 @@ const statusPredicate = (
   sourceFilter: string | null,
   availableOnly: LibraryAvailability,
 ): PageSql | null => {
-  if (kind === "albums") {
+  if (kind === "albums" || kind === "tracks") {
     if (status === "missing") return missingTracksAlbum("album", sourceFilter);
     const monitored = monitoredAlbum("album");
     return { sql: status === "monitored" ? monitored : `NOT ${monitored}`, parameters: [] };
@@ -2763,6 +2763,7 @@ function buildPageQuery({
   artistId,
   albumId,
   userId,
+  favorites,
 }: {
   kind: string;
   sourceFilter: string | null;
@@ -2775,6 +2776,7 @@ function buildPageQuery({
   artistId: string | number | null;
   albumId: string | number | null;
   userId: number | null;
+  favorites: LibraryFavorites | null;
 }) {
   const where: string[] = [];
   const parameters: unknown[] = [];
@@ -2790,7 +2792,7 @@ function buildPageQuery({
   let idExpression: string;
   let searchableFields: string[];
   let genreAliases: string[];
-  let entityKind: string;
+  let entityKind: "artist" | "album" | "track";
   let groupBy: string | null = null;
   if (kind === "artists") {
     entityKind = "artist";
@@ -2807,6 +2809,19 @@ function buildPageQuery({
         "EXISTS (SELECT 1 FROM library_albums AS filter_album WHERE filter_album.id = ? AND filter_album.artist_id = artist.id)",
       );
       parameters.push(Number(albumId));
+    }
+    if (sort === "played" || sort === "plays") {
+      from += `
+        JOIN (
+          SELECT played_album.artist_id,
+            SUM(stats.play_count) AS play_count,
+            MAX(stats.last_played_at) AS last_played_at
+          FROM play_album_stats AS stats
+          JOIN library_albums AS played_album ON played_album.identity_key = stats.album_key
+          WHERE stats.user_id = ?
+          GROUP BY played_album.artist_id
+        ) AS played ON played.artist_id = artist.id`;
+      joinParameters.push(userId ?? -1);
     }
   } else if (kind === "albums") {
     entityKind = "album";
@@ -2832,7 +2847,8 @@ function buildPageQuery({
   } else {
     entityKind = "track";
     const needsRelations =
-      Boolean(artistId || albumId || genre || sort === "artist" || sort === "plays") ||
+      Boolean(artistId || albumId || genre || status) ||
+      ["artist", "played", "plays", "released"].includes(sort) ||
       Boolean(query && !searchMatch);
     from = needsRelations
       ? `FROM library_tracks AS track
@@ -2858,10 +2874,18 @@ function buildPageQuery({
       where.push("album.id = ?");
       parameters.push(Number(albumId));
     }
-    if (sort === "plays") {
+    if (sort === "played" || sort === "plays") {
       where.push(TRACK_PLAYED);
       parameters.push(userId ?? -1);
     }
+  }
+
+  if (favorites) {
+    from += `
+      JOIN json_each(?) AS favorite ON favorite.key = ${entityKind}.identity_key`;
+    joinParameters.push(
+      JSON.stringify(Object.fromEntries(favorites[entityKind === "track" ? "song" : entityKind])),
+    );
   }
 
   if (searchMatch) {
@@ -2905,8 +2929,23 @@ function buildPageQuery({
   } else if (kind === "tracks" && sort === "plays") {
     orderBy = `${TRACK_PLAY_COUNT} ${latestFirst}, ${recentMediaOrder(kind, sourceFilter, availableOnly, direction)}, track.id`;
     orderParameters.push(userId ?? -1);
-  } else if (kind === "albums" && sort === "released") {
-    orderBy = `coalesce(album.release_date, '') = '', album.release_date ${latestFirst}, album.id`;
+  } else if (kind === "artists" && sort === "played") {
+    orderBy = `played.last_played_at ${latestFirst}, artist.id`;
+  } else if (kind === "artists" && sort === "plays") {
+    orderBy = `played.play_count ${latestFirst}, played.last_played_at ${latestFirst}, artist.id`;
+  } else if (kind === "tracks" && sort === "played") {
+    orderBy = `(SELECT MAX(play.played_at) ${TRACK_PLAYS}) ${latestFirst}, track.id`;
+    orderParameters.push(userId ?? -1);
+  } else if (sort === "released" && kind !== "genres") {
+    const released =
+      kind === "artists"
+        ? "(SELECT MAX(release_album.release_date) FROM library_albums AS release_album WHERE release_album.artist_id = artist.id)"
+        : kind === "tracks"
+          ? "MAX(album.release_date)"
+          : "album.release_date";
+    orderBy = `coalesce(${released}, '') = '', ${released} ${latestFirst}, ${idExpression}`;
+  } else if (favorites && sort === "favorited") {
+    orderBy = `favorite.value ${latestFirst}, ${idExpression}`;
   } else if (kind === "albums" && sort === "random") {
     orderBy = "random()";
   } else if (sort === "newest") {
@@ -3319,6 +3358,8 @@ export function getAlbumStats(
   );
 }
 
+export type LibraryFavorites = Record<"artist" | "album" | "song", Map<string, number>>;
+
 type LibraryPageOptions = LibraryScope & {
   kind?: string;
   page?: unknown;
@@ -3332,6 +3373,7 @@ type LibraryPageOptions = LibraryScope & {
   artistId?: string | number | null;
   albumId?: string | number | null;
   userId?: number | null;
+  favorites?: LibraryFavorites | null;
 };
 
 type LibraryPageItems = {
@@ -3378,6 +3420,7 @@ export function getLibraryPage({
   artistId = null,
   albumId: albumReference = null,
   userId = null,
+  favorites = null,
 }: LibraryPageOptions = {}): LibraryPage {
   const albumId =
     text(albumReference) && !/^\d+$/.test(text(albumReference))
@@ -3456,6 +3499,7 @@ export function getLibraryPage({
     artistId,
     albumId,
     userId,
+    favorites,
   });
   const total = getPageTotal(
     `SELECT COUNT(DISTINCT ${queryDefinition.idExpression}) AS total
@@ -3471,6 +3515,7 @@ export function getLibraryPage({
     normalizedQuery &&
     normalizedSort === "name" &&
     !queryDefinition.groupBy &&
+    !favorites &&
     currentOffset + currentPageSize <= 1000 &&
     total > getPageTotal("SELECT COUNT(*) AS total FROM library_tracks", []) / 2;
   const pageQuery = broadTrackSearch

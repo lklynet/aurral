@@ -41,6 +41,7 @@ type LibraryPageOptions = {
   artistId?: string | number;
   albumId?: string | number;
   source?: string;
+  favorite?: boolean;
   availableOnly?: boolean | null;
 };
 
@@ -100,6 +101,7 @@ const libraryPageParams = (options: LibraryPageOptions = {}) =>
       direction: options.direction,
       artistId: options.artistId,
       albumId: options.albumId,
+      favorite: options.favorite ? "true" : undefined,
       source: options.source || "all",
       // Tri-state: an explicit boolean forces the filter, while `undefined` omits
       // the param so the backend shows what can be played and what Aurral is fetching.

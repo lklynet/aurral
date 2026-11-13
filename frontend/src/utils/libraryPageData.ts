@@ -1,5 +1,4 @@
 import { queryClient, queryKeys } from "../queryClient.ts";
-import { getPlaylistTrackStreamUrl } from "./api/playlistUrls.ts";
 import type {
   LibraryAlbum as BackendLibraryAlbum,
   LibraryArtist as BackendLibraryArtist,
@@ -95,55 +94,6 @@ export const normalizeLibraryPages = (pages: Partial<LibraryData>[]) =>
     },
     { artists: [], albums: [], tracks: [], genres: [] },
   );
-
-export const favoriteLibraryFromResponse = (
-  favorites:
-    | {
-        library?: Partial<LibraryData> | null;
-        playlistSongs?:
-          | {
-              id: string;
-              title?: unknown;
-              artist?: unknown;
-              album?: unknown;
-              duration?: unknown;
-              suffix?: unknown;
-            }[]
-          | null;
-      }
-    | null
-    | undefined,
-) => {
-  const library = normalizeLibraryPages([favorites?.library || EMPTY_LIBRARY]);
-  const playlistTracks = (Array.isArray(favorites?.playlistSongs) ? favorites.playlistSongs : [])
-    .filter((track) => /^(flow|shared)-song:/.test(text(track?.id)))
-    .map((track) => {
-      const jobId = decodeURIComponent(track.id.slice(track.id.indexOf(":") + 1))
-        .split(":")
-        .at(-1);
-      const durationMs = Number(track.duration) > 0 ? Number(track.duration) * 1000 : null;
-      return {
-        id: track.id,
-        identityKey: track.id,
-        title: typeof track.title === "string" ? track.title : "",
-        artistName: typeof track.artist === "string" ? track.artist : null,
-        albumName: typeof track.album === "string" ? track.album : null,
-        durationMs,
-        albums: [],
-        files: [
-          {
-            available: true,
-            previewUrl: getPlaylistTrackStreamUrl(jobId!),
-            format: typeof track.suffix === "string" && track.suffix ? track.suffix : null,
-            durationMs,
-          },
-        ],
-      };
-    });
-  return playlistTracks.length
-    ? { ...library, tracks: [...library.tracks, ...playlistTracks] }
-    : library;
-};
 
 export const mergeAlbumTrackPageIntoLibrary = (
   current: LibraryData,

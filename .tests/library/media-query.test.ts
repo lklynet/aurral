@@ -35,6 +35,7 @@ import {
 } from "../../backend/services/libraryMediaStore.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
 import { userOps } from "../../backend/db/helpers/index.ts";
+import { syncLibrarySearchTrack } from "../../backend/services/librarySearchIndex.ts";
 
 const metadata = {
   common: {
@@ -714,7 +715,7 @@ test("album reads prefer an album-specific file over an earlier unscoped file", 
   assert.equal(readModel.tracks[0]?.path, "/music/01-album.flac");
 });
 
-test("library album sorts follow arrival, plays, and release date", () => {
+test("library sorts follow arrival, plays, release date, and favorites", () => {
   const key = `query-newest-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({ identityKey: `${key}:artist`, name: "Newest Fixture" });
   const oldAlbum = upsertLibraryAlbum({
@@ -814,15 +815,29 @@ test("library album sorts follow arrival, plays, and release date", () => {
     assert.deepEqual(albumTitles("played", null), []);
     assert.deepEqual(albumTitles("released"), ["Old Album", "Recently Added"]);
 
-    const trackTitles = (userId: number | null) =>
+    const artistNames = (sort: string) =>
+      getLibraryPage({
+        source: "aurral",
+        kind: "artists",
+        page: 1,
+        pageSize: 5,
+        sort,
+        userId: listener.id,
+      }).items.map((item) => item.name);
+    assert.deepEqual(artistNames("played"), ["Zed Newest Fixture", "Newest Fixture"]);
+    assert.deepEqual(artistNames("plays"), ["Newest Fixture", "Zed Newest Fixture"]);
+    assert.deepEqual(artistNames("released"), ["Newest Fixture", "Zed Newest Fixture"]);
+
+    const trackTitles = (userId: number | null, sort = "plays") =>
       getLibraryPage({
         source: "aurral",
         kind: "tracks",
         page: 1,
         pageSize: 5,
-        sort: "plays",
+        sort,
         userId,
       }).items.map((item) => item.title);
+    assert.deepEqual(trackTitles(listener.id, "released"), ["Old Track", "New Track"]);
     const recordPlay = db.prepare(
       "INSERT INTO play_events (user_id, track_id, title, artist, played_at, source, created_at) VALUES (?, ?, ?, ?, ?, 'test', ?)",
     );
@@ -834,6 +849,58 @@ test("library album sorts follow arrival, plays, and release date", () => {
     assert.deepEqual(trackTitles(listener.id), ["Old Track", "New Track"]);
     assert.deepEqual(trackTitles(otherListener.id), ["New Track"]);
     assert.deepEqual(trackTitles(null), []);
+    recordPlay.run(listener.id, "f", "New Track", "Newest Fixture", now + 1000, now + 1000);
+    assert.deepEqual(trackTitles(listener.id, "played"), ["New Track", "Old Track"]);
+    assert.deepEqual(trackTitles(null, "played"), []);
+
+    const favorites = {
+      artist: new Map(),
+      album: new Map([
+        [oldAlbum.identity_key, 1000],
+        [newAlbum.identity_key, 2000],
+      ]),
+      song: new Map([[oldTrack.identity_key, 1000]]),
+    };
+    const favoriteTitles = (kind: "albums" | "tracks", sort: string) =>
+      getLibraryPage({ source: "aurral", kind, page: 1, pageSize: 5, sort, favorites }).items.map(
+        (item) => item.title,
+      );
+    assert.deepEqual(favoriteTitles("albums", "favorited"), ["Recently Added", "Old Album"]);
+    assert.deepEqual(favoriteTitles("albums", "name"), ["Old Album", "Recently Added"]);
+    assert.deepEqual(favoriteTitles("tracks", "favorited"), ["Old Track"]);
+
+    const libraryTracks = db
+      .prepare<[], { total: number }>("SELECT COUNT(*) AS total FROM library_tracks")
+      .get()!.total;
+    const broadFavorites = Array.from({ length: libraryTracks + 1 }, (_, index) => {
+      const track = upsertLibraryTrack({
+        identityKey: `${key}:broad-${index}`,
+        title: `Broad Favorite ${index}`,
+        artistName: "Newest Fixture",
+      });
+      linkLibraryAlbumTrack({ albumId: oldAlbum.id, trackId: track.id, trackNumber: index + 2 });
+      upsertLibraryMediaFile({
+        trackId: track.id,
+        albumId: oldAlbum.id,
+        source: "aurral",
+        path: `/tmp/${key}/broad-${index}.flac`,
+      });
+      syncLibrarySearchTrack(track.id);
+      return track.identity_key;
+    });
+    const broadSearch = getLibraryPage({
+      source: "aurral",
+      kind: "tracks",
+      page: 1,
+      pageSize: 5,
+      sort: "name",
+      query: "broad favorite",
+      favorites: {
+        ...favorites,
+        song: new Map(broadFavorites.map((identityKey) => [identityKey, 1])),
+      },
+    });
+    assert.equal(broadSearch.total, broadFavorites.length);
   } finally {
     db.prepare("DELETE FROM users WHERE id IN (?, ?)").run(listener.id, otherListener.id);
     db.prepare("DELETE FROM library_media_files WHERE path LIKE ?").run(`/tmp/${key}/%`);
@@ -841,7 +908,11 @@ test("library album sorts follow arrival, plays, and release date", () => {
       oldAlbum.id,
       newAlbum.id,
     );
-    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(oldTrack.id, newTrack.id);
+    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?) OR identity_key LIKE ?").run(
+      oldTrack.id,
+      newTrack.id,
+      `${key}:broad-%`,
+    );
     db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)").run(oldAlbum.id, newAlbum.id);
     db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)").run(artist.id, newArtist.id);
   }

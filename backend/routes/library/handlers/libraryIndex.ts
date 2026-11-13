@@ -15,7 +15,7 @@ import {
   LIBRARY_VIEW,
 } from "../../../services/libraryQueryService.ts";
 import {
-  getStarredIdentityKeys,
+  getLibraryStars,
   getLibraryFavorites,
   restoreStars,
   starMany,
@@ -78,6 +78,7 @@ const pageQuery = v.object({
   direction: v.optional(v.string()),
   artistId: v.optional(v.string()),
   albumId: v.optional(v.string()),
+  favorite: v.optional(v.picklist(["true"])),
   compact: v.optional(v.string()),
 });
 
@@ -96,7 +97,7 @@ const libraryPage = factory.createHandlers(noCache, validate("query", pageQuery)
   const user = c.var.user;
   const query = c.req.valid("query");
   try {
-    const favoriteKeys = user ? getStarredIdentityKeys(user) : null;
+    const stars = getLibraryStars(user);
     const kind = query.kind?.trim() ?? "";
     const pageSize = query.pageSize === undefined ? NaN : Number(query.pageSize);
     if (!kind || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) {
@@ -117,8 +118,9 @@ const libraryPage = factory.createHandlers(noCache, validate("query", pageQuery)
         artistId: query.artistId,
         albumId: query.albumId,
         userId: user?.id ?? null,
+        favorites: query.favorite ? stars.favorites : null,
       }),
-      favoriteKeys,
+      user ? stars.keys : null,
     );
     if (query.compact !== "true" || page.kind === "genres") return c.json(page, 200);
     const { items, genres, ...compactPage } = page;

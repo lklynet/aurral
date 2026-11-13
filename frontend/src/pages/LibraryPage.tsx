@@ -59,13 +59,12 @@ import { useArtistMonitoring } from "../components/ArtistMonitoringButtons";
 import { LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import {
   HOME_ALBUM_RAILS,
-  LIBRARY_DEFAULT_SORT,
   LIBRARY_PAGE_SIZE,
-  LIBRARY_SORT_OPTIONS,
   LIBRARY_STATUS_LABELS,
   LIBRARY_STATUS_OPTIONS,
+  libraryDefaultSort,
   libraryListParams,
-  librarySectionHasStatus,
+  librarySortOptions,
   libraryTabForSection,
   libraryViewQueryOptions,
   resolveLibrarySection,
@@ -131,6 +130,14 @@ const canRemoveLibraryArtist = (artist: LibraryArtist) =>
 
 const artistAlbumTotal = (artist: LibraryArtist) =>
   ("albumCount" in artist ? artist.albumCount : undefined) ?? artist.albumIds?.length ?? 0;
+
+const inPageOrder = <Entity extends { id: string | number }>(
+  items: readonly { id: string | number }[],
+  entities: readonly Entity[],
+) => {
+  const byId = new Map(entities.map((entity) => [String(entity.id), entity]));
+  return items.map((item) => byId.get(String(item.id))).filter((entity) => entity !== undefined);
+};
 
 const entityMatches = (
   entity:
@@ -293,7 +300,8 @@ function LibraryPage() {
   const forcePreview = import.meta.env.DEV && searchParams.get("preview") === "1";
   const previewQuery = forcePreview ? "?preview=1" : "";
   const sectionLabel = LIBRARY_VIEWS.find((view) => view.id === section)?.label || "Library";
-  const sortOptions = LIBRARY_SORT_OPTIONS[section] || [];
+  const sortOptions = librarySortOptions(section);
+  const defaultSort = libraryDefaultSort(section);
   const {
     sort: sortMode,
     direction: sortDirection,
@@ -418,17 +426,33 @@ function LibraryPage() {
     const { nextData } = queryData;
     return nextData && "kind" in nextData ? nextData : null;
   }, [isDetail, isPreviewLibrary, queryData, section]);
-  const totalPages =
-    pageData && "pageSize" in pageData && pageData.kind === tab && tab !== "genres"
+  const favoritePages = useMemo(() => {
+    if (section !== "favorites" || isPreviewLibrary || !Array.isArray(queryData?.nextData)) {
+      return null;
+    }
+    const [artists, albums, tracks] = queryData.nextData;
+    return {
+      artists: artists?.kind === "artists" ? artists : null,
+      albums: albums?.kind === "albums" ? albums : null,
+      tracks: tracks?.kind === "tracks" ? tracks : null,
+    };
+  }, [isPreviewLibrary, queryData?.nextData, section]);
+  const totalPages = favoritePages
+    ? Math.ceil(
+        Math.max(...Object.values(favoritePages).map((page) => page?.total ?? 0)) /
+          LIBRARY_PAGE_SIZE,
+      )
+    : pageData && "pageSize" in pageData && pageData.kind === tab && tab !== "genres"
       ? Math.ceil(pageData.total / pageData.pageSize)
       : 0;
   const lastPage = Math.max(totalPages, 1);
+  const pagesLoaded = Boolean(pageData || favoritePages);
 
   useEffect(() => {
-    if (pageData && pageIndex > lastPage) {
+    if (pagesLoaded && pageIndex > lastPage) {
       updateViewParamsRef.current({ page: lastPage > 1 ? lastPage : null }, { replace: true });
     }
-  }, [lastPage, pageData, pageIndex]);
+  }, [lastPage, pagesLoaded, pageIndex]);
   const handleLibraryEntityRemoved = useCallback(
     (removal: LibraryRemoval) => {
       if (removal.kind === "artist" && String(routeArtistId) === String(removal.entity.id)) {
@@ -538,82 +562,30 @@ function LibraryPage() {
 
   const favoriteArtists = useMemo(
     () =>
-      library.artists.filter(
-        (artist) =>
-          favoriteIds.has(favoriteId("artist", artist)) && entityMatches(artist, normalizedQuery),
-      ),
-    [favoriteIds, library.artists, normalizedQuery],
+      (favoritePages
+        ? inPageOrder(favoritePages.artists?.artists ?? [], library.artists)
+        : library.artists
+      ).filter((artist) => favoriteIds.has(favoriteId("artist", artist))),
+    [favoriteIds, favoritePages, library.artists],
   );
 
   const favoriteAlbums = useMemo(
     () =>
-      library.albums.filter((album) => {
-        const artist = getArtistForAlbum(album);
-        return (
-          favoriteIds.has(favoriteId("album", album)) &&
-          entityMatches({ ...album, artistName: artist?.name }, normalizedQuery)
-        );
-      }),
-    [favoriteIds, getArtistForAlbum, library.albums, normalizedQuery],
+      (favoritePages
+        ? inPageOrder(favoritePages.albums?.albums ?? [], library.albums)
+        : library.albums
+      ).filter((album) => favoriteIds.has(favoriteId("album", album))),
+    [favoriteIds, favoritePages, library.albums],
   );
 
   const favoriteTracks = useMemo(
     () =>
-      ownedLibraryTracks.filter((track) => {
-        const album = getAlbumForTrack(track);
-        const artist = getArtistForAlbum(album);
-        return (
-          favoriteIds.has(favoriteId("song", track)) &&
-          entityMatches(
-            {
-              ...track,
-              albumName: album?.title,
-              artistName: track.artistName || artist?.name,
-              albumArtist: artist?.name || album?.albumArtist,
-            },
-            normalizedQuery,
-          )
-        );
-      }),
-    [favoriteIds, getAlbumForTrack, getArtistForAlbum, normalizedQuery, ownedLibraryTracks],
+      (favoritePages
+        ? inPageOrder(favoritePages.tracks?.tracks ?? [], ownedLibraryTracks)
+        : ownedLibraryTracks
+      ).filter((track) => favoriteIds.has(favoriteId("song", track))),
+    [favoriteIds, favoritePages, ownedLibraryTracks],
   );
-
-  // "Recently added" keeps the server's order, which already applies the
-  // direction.
-  const sortedArtists = useMemo(() => {
-    if (sortMode === "newest") return filteredArtists;
-    const items = [...filteredArtists];
-    items.sort((left, right) => text(left.name).localeCompare(text(right.name)));
-    return sortDirection === "asc" ? items : items.reverse();
-  }, [filteredArtists, sortDirection, sortMode]);
-
-  const sortedAlbums = useMemo(() => {
-    if (sortMode !== LIBRARY_DEFAULT_SORT && sortMode !== "artist") return filteredAlbums;
-    const items = [...filteredAlbums];
-    items.sort((left, right) => {
-      if (sortMode === "artist") {
-        return text(getArtistForAlbum(left)?.name).localeCompare(
-          text(getArtistForAlbum(right)?.name),
-        );
-      }
-      return text(left.title).localeCompare(text(right.title));
-    });
-    return sortDirection === "asc" ? items : items.reverse();
-  }, [filteredAlbums, getArtistForAlbum, sortDirection, sortMode]);
-
-  const sortedTracks = useMemo(() => {
-    if (sortMode === "newest") return filteredTracks;
-    const items = [...filteredTracks];
-    items.sort((left, right) => {
-      if (sortMode === "artist") {
-        return text(
-          left.artistName || getArtistForAlbum(getAlbumForTrack(left))?.name,
-        ).localeCompare(text(right.artistName || getArtistForAlbum(getAlbumForTrack(right))?.name));
-      }
-      return text(left.title).localeCompare(text(right.title));
-    });
-    return sortDirection === "asc" ? items : items.reverse();
-  }, [filteredTracks, getAlbumForTrack, getArtistForAlbum, sortDirection, sortMode]);
 
   const sortedGenres = useMemo(() => {
     const items = [...visibleGenreStats].sort((left, right) => left.name.localeCompare(right.name));
@@ -825,7 +797,12 @@ function LibraryPage() {
     },
   });
 
-  const favoriteCount = favoriteArtists.length + favoriteAlbums.length + favoriteTracks.length;
+  const favoriteTotals = {
+    artists: favoritePages?.artists?.total ?? favoriteArtists.length,
+    albums: favoritePages?.albums?.total ?? favoriteAlbums.length,
+    tracks: favoritePages?.tracks?.total ?? favoriteTracks.length,
+  };
+  const favoriteCount = favoriteTotals.artists + favoriteTotals.albums + favoriteTotals.tracks;
   const activeCount =
     section === "home"
       ? (pageData?.total ?? library.albums.length + ownedLibraryTracks.length)
@@ -834,27 +811,26 @@ function LibraryPage() {
         : pageData && pageData.kind === tab
           ? pageData.total
           : tab === "artists"
-            ? sortedArtists.length
+            ? filteredArtists.length
             : tab === "albums"
-              ? sortedAlbums.length
+              ? filteredAlbums.length
               : tab === "tracks"
-                ? sortedTracks.length
+                ? filteredTracks.length
                 : sortedGenres.length;
   const collectionTracks = useMemo(() => {
     if (section === "favorites") return favoriteTracks;
-    if (section === "albums") return sortedAlbums.flatMap(getAlbumTracks);
-    if (section === "tracks") return sortedTracks;
+    if (section === "albums") return filteredAlbums.flatMap(getAlbumTracks);
+    if (section === "tracks") return filteredTracks;
     if (section === "genres" && selectedGenre) return filteredTracks;
     return ownedLibraryTracks;
   }, [
     favoriteTracks,
+    filteredAlbums,
     filteredTracks,
     getAlbumTracks,
     ownedLibraryTracks,
     section,
     selectedGenre,
-    sortedAlbums,
-    sortedTracks,
   ]);
 
   const collectionPlayable = collectionTracks.some((track) => firstAvailableFile(track));
@@ -1123,7 +1099,7 @@ function LibraryPage() {
       <div className="native-library-favorites">
         {favoriteArtists.length > 0 && (
           <section className="native-library-section">
-            {renderSectionHeader("Artists", favoriteArtists.length)}
+            {renderSectionHeader("Artists", favoriteTotals.artists)}
             <div className="native-library-grid native-library-grid--artists">
               {favoriteArtists.map(renderArtistCard)}
             </div>
@@ -1131,7 +1107,7 @@ function LibraryPage() {
         )}
         {favoriteAlbums.length > 0 && (
           <section className="native-library-section">
-            {renderSectionHeader("Albums", favoriteAlbums.length)}
+            {renderSectionHeader("Albums", favoriteTotals.albums)}
             <div className="native-library-grid">
               {favoriteAlbums.map((album) => renderAlbumCard(album))}
             </div>
@@ -1139,7 +1115,7 @@ function LibraryPage() {
         )}
         {favoriteTracks.length > 0 && (
           <section className="native-library-section">
-            {renderSectionHeader("Tracks", favoriteTracks.length)}
+            {renderSectionHeader("Tracks", favoriteTotals.tracks)}
             {renderTrackList(favoriteTracks, "Favorite tracks")}
           </section>
         )}
@@ -1346,14 +1322,14 @@ function LibraryPage() {
           (viewMode === "list" ? " is-list" : "")
         }
       >
-        {sortedArtists.map(renderArtistCard)}
+        {filteredArtists.map(renderArtistCard)}
       </div>
     ) : tab === "albums" ? (
       <div className={"native-library-grid" + (viewMode === "list" ? " is-list" : "")}>
-        {sortedAlbums.map((album) => renderAlbumCard(album))}
+        {filteredAlbums.map((album) => renderAlbumCard(album))}
       </div>
     ) : tab === "tracks" ? (
-      renderTrackList(sortedTracks, "Library tracks")
+      renderTrackList(filteredTracks, "Library tracks")
     ) : (
       renderGenres()
     );
@@ -1474,7 +1450,7 @@ function LibraryPage() {
                       value={sortMode}
                       onChange={(sort) =>
                         updateViewParams(
-                          { sort: sort === LIBRARY_DEFAULT_SORT ? null : sort, page: null },
+                          { sort: sort === defaultSort ? null : sort, page: null },
                           { replace: true },
                         )
                       }
@@ -1519,7 +1495,6 @@ function LibraryPage() {
                   <ListFilter aria-hidden="true" />
                 </TooltipButton>
               )}
-              {refreshControls}
               <span className="native-library-toolbar-spacer" aria-hidden="true" />
               {(tab === "artists" || tab === "albums") && (
                 <div className="native-library-view-toggle" aria-label="Library view">
@@ -1556,15 +1531,13 @@ function LibraryPage() {
                     ...genreStats.map((genre) => ({ value: genre.name, label: genre.name })),
                   ]}
                 />
-                {librarySectionHasStatus(section) && (
-                  <Select
-                    className="native-library-filter-status"
-                    value={selectedStatus ?? ""}
-                    onChange={(status) => updateViewParams({ status, page: null })}
-                    aria-label={tab === "artists" ? "Filter artists by status" : "Filter by status"}
-                    options={LIBRARY_STATUS_OPTIONS}
-                  />
-                )}
+                <Select
+                  className="native-library-filter-status"
+                  value={selectedStatus ?? ""}
+                  onChange={(status) => updateViewParams({ status, page: null })}
+                  aria-label={tab === "artists" ? "Filter artists by status" : "Filter by status"}
+                  options={LIBRARY_STATUS_OPTIONS}
+                />
                 {hasActiveFilters && (
                   <button
                     type="button"
