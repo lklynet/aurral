@@ -1,25 +1,8 @@
 import ArtworkImage from "./ArtworkImage";
 import { useEffect, useId, useState, type RefObject } from "react";
-import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type Announcements,
-  type DragEndEvent,
-  type UniqueIdentifier,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import { SortableList } from "./SortableList";
 import { GripVertical, ListMusic, Music, X } from "./icons";
 import { useAudioQueue, type AudioQueueValue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
@@ -116,55 +99,23 @@ interface QueueListProps {
 
 function QueueList({ entries, className = "", onReorder }: QueueListProps) {
   const { skipTo, removeFromQueue } = useAudioQueue();
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-  const entryIds = entries.map(({ track }) => track.entryId);
-  const sortableIds: UniqueIdentifier[] = entryIds;
-  const titleOf = (id: UniqueIdentifier) =>
-    entries.find(({ track }) => track.entryId === id)?.track.title || "Track";
-  const positionOf = (id: UniqueIdentifier) =>
-    `position ${sortableIds.indexOf(id) + 1} of ${sortableIds.length}`;
-  const announcements: Announcements = {
-    onDragStart: ({ active }) => `Picked up ${titleOf(active.id)} at ${positionOf(active.id)}.`,
-    onDragOver: ({ active, over }) =>
-      over ? `${titleOf(active.id)} moved to ${positionOf(over.id)}.` : undefined,
-    onDragEnd: ({ active, over }) =>
-      over ? `${titleOf(active.id)} dropped at ${positionOf(over.id)}.` : undefined,
-    onDragCancel: ({ active }) =>
-      `Reordering cancelled. ${titleOf(active.id)} stays at ${positionOf(active.id)}.`,
-  };
-
-  const handleDragEnd = ({ active, over }: DragEndEvent) => {
-    if (!over || active.id === over.id) return;
-    const from = sortableIds.indexOf(active.id);
-    const to = sortableIds.indexOf(over.id);
-    if (from < 0 || to < 0) return;
-    onReorder(arrayMove(entryIds, from, to));
-  };
-
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      modifiers={[restrictToVerticalAxis]}
-      accessibility={{ announcements }}
-      onDragEnd={handleDragEnd}
+    <SortableList
+      ids={entries.map(({ track }) => track.entryId)}
+      titleOf={(id) => entries.find(({ track }) => track.entryId === id)?.track.title || "Track"}
+      onReorder={onReorder}
     >
-      <SortableContext items={entryIds} strategy={verticalListSortingStrategy}>
-        <ol className={`player-queue__list ${className}`.trim()}>
-          {entries.map((entry) => (
-            <QueueRow
-              key={entry.track.entryId}
-              entry={entry}
-              onPlay={skipTo}
-              onRemove={removeFromQueue}
-            />
-          ))}
-        </ol>
-      </SortableContext>
-    </DndContext>
+      <ol className={`player-queue__list ${className}`.trim()}>
+        {entries.map((entry) => (
+          <QueueRow
+            key={entry.track.entryId}
+            entry={entry}
+            onPlay={skipTo}
+            onRemove={removeFromQueue}
+          />
+        ))}
+      </ol>
+    </SortableList>
   );
 }
 

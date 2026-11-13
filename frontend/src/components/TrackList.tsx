@@ -5,9 +5,22 @@ import {
   useState,
   type ChangeEventHandler,
   type ComponentProps,
+  type CSSProperties,
   type ReactNode,
 } from "react";
-import { AlertTriangle, ArrowDown, ArrowUp, Clock, Heart, Pause, Play } from "./icons";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  Clock,
+  GripVertical,
+  Heart,
+  Pause,
+  Play,
+} from "./icons";
+import { SortableList } from "./SortableList";
 import { DotLoader } from "./DotLoader";
 import PreviewChip from "./PreviewChip";
 import type { To } from "react-router";
@@ -205,6 +218,50 @@ function TrackLink({ link, className }: { link?: TrackLinkField | null; classNam
   );
 }
 
+type RowDrag = {
+  ref: (node: HTMLElement | null) => void;
+  style: CSSProperties;
+  dragging: boolean;
+  handle: ReactNode;
+};
+
+function SortableTrackRow({
+  id,
+  title,
+  children,
+}: {
+  id: TrackListRow["key"];
+  title: string;
+  children: (drag: RowDrag) => ReactNode;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+  return children({
+    ref: setNodeRef,
+    style: { transform: CSS.Transform.toString(transform), transition },
+    dragging: isDragging,
+    handle: (
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        className="native-library-track__grip"
+        aria-label={`Reorder ${title}`}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical aria-hidden="true" />
+      </button>
+    ),
+  });
+}
+
 function HeadingCell({
   id,
   label,
@@ -247,9 +304,11 @@ export function TrackList({
   showYear = false,
   showReason = false,
   wideTime = false,
+  onReorder = null,
 }: {
   label: string;
   rows: TrackListRow[];
+  onReorder?: ((keys: TrackListRow["key"][]) => void) | null;
   showYear?: boolean;
   showReason?: boolean;
   wideTime?: boolean;
@@ -271,6 +330,168 @@ export function TrackList({
     const timeout = window.setTimeout(() => row.classList.remove("is-search-focused"), 2400);
     return () => window.clearTimeout(timeout);
   }, [highlightKey, rows.length]);
+
+  const renderRow = (row: TrackListRow, drag: RowDrag | null) => {
+    const playLabel = row.playing
+      ? `Pause ${row.title}`
+      : row.previewOnly
+        ? `Preview ${row.title}`
+        : `Play ${row.title}`;
+    return (
+      <div
+        key={row.key}
+        ref={(node) => {
+          drag?.ref(node);
+          if (node) rowRefs.current.set(String(row.key), node);
+          else rowRefs.current.delete(String(row.key));
+        }}
+        style={drag?.style}
+        className={
+          "native-library-track" +
+          (drag?.dragging ? " is-dragging" : "") +
+          (row.active ? " is-active" : "") +
+          (row.missing ? " is-missing" : "") +
+          (row.missing && row.previewOnly ? " is-preview" : "")
+        }
+        data-library-menu-target={row.menu || row.menuElement ? true : undefined}
+        role="listitem"
+        aria-current={row.active ? "true" : undefined}
+      >
+        {selection ? (
+          <span className="native-library-track__select">
+            <input
+              type="checkbox"
+              checked={Boolean(row.selected)}
+              onChange={row.onToggleSelected}
+              aria-label={`Select ${row.title}`}
+            />
+          </span>
+        ) : row.status ? (
+          <Tooltip content={row.status.label}>
+            <span className="native-library-track__status" role="img" aria-label={row.status.label}>
+              {row.status.kind === "active" ? (
+                <DotLoader size="xs" label={null} />
+              ) : row.status.kind === "queued" ? (
+                <Clock aria-hidden="true" />
+              ) : (
+                <AlertTriangle aria-hidden="true" />
+              )}
+            </span>
+          </Tooltip>
+        ) : row.onPlay ? (
+          <TooltipButton
+            className="native-library-track__play"
+            onClick={row.onPlay}
+            disabled={row.playDisabled}
+            label={playLabel}
+            aria-label={playLabel}
+          >
+            {row.playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+          </TooltipButton>
+        ) : (
+          <span aria-hidden="true" />
+        )}
+        <span className="native-library-track__number" aria-hidden="true">
+          {row.active ? <PlayingIndicator row={row} /> : row.number}
+        </span>
+        {hasCover ? (
+          <TrackCover
+            cover={row.cover}
+            indicator={row.active ? <PlayingIndicator row={row} /> : null}
+          />
+        ) : null}
+        <Tooltip content={row.title}>
+          {row.onPlay && !row.playDisabled && !selection ? (
+            <button
+              type="button"
+              className="native-library-track__title"
+              onClick={row.onPlay}
+              aria-label={row.previewOnly ? playLabel : undefined}
+            >
+              <span>
+                {row.previewOnly ? <PreviewChip /> : null}
+                {row.badge}
+                {row.title}
+              </span>
+              {row.subtitle ? <small>{row.subtitle}</small> : null}
+              {row.detail ? (
+                <small className="native-library-track__detail">{row.detail}</small>
+              ) : null}
+            </button>
+          ) : (
+            <span className="native-library-track__title">
+              <span>
+                {row.previewOnly ? <PreviewChip /> : null}
+                {row.badge}
+                {row.title}
+              </span>
+              {row.subtitle ? <small>{row.subtitle}</small> : null}
+              {row.detail ? (
+                <small className="native-library-track__detail">{row.detail}</small>
+              ) : null}
+            </span>
+          )}
+        </Tooltip>
+        {isCollection ? (
+          <TrackLink link={row.artist} className="native-library-track__artist" />
+        ) : null}
+        {isCollection ? (
+          <TrackLink link={row.album} className="native-library-track__album" />
+        ) : null}
+        {showReason ? <span className="native-library-track__reason">{row.reason}</span> : null}
+        {showYear ? <span className="native-library-track__year">{row.year}</span> : null}
+        <span className={"native-library-track__time" + (row.timeMissing ? " is-missing" : "")}>
+          {row.time}
+        </span>
+        {row.trailing || <span />}
+        {selection ? (
+          <span />
+        ) : row.menuElement ? (
+          row.menuElement
+        ) : row.menu ? (
+          <LibraryItemMenu label={row.title || "Track"} {...row.menu} />
+        ) : (
+          <span />
+        )}
+        {drag ? (
+          drag.handle
+        ) : row.favorite && !selection ? (
+          <FavoriteButton
+            className="native-library-track__favorite"
+            active={row.favorite.active}
+            pending={row.favorite.pending}
+            label={row.title || "track"}
+            onClick={row.favorite.onToggle}
+          />
+        ) : (
+          <span />
+        )}
+      </div>
+    );
+  };
+
+  const list = (
+    <div role="list" aria-label={label}>
+      {rows.flatMap((row) => [
+        row.section ? (
+          <div
+            key={`section-${row.key}`}
+            className="native-library-track-section"
+            role="presentation"
+          >
+            {row.section}
+          </div>
+        ) : null,
+        onReorder ? (
+          <SortableTrackRow key={row.key} id={row.key} title={row.title}>
+            {(drag) => renderRow(row, drag)}
+          </SortableTrackRow>
+        ) : (
+          renderRow(row, null)
+        ),
+      ])}
+    </div>
+  );
 
   return (
     <div
@@ -313,158 +534,17 @@ export function TrackList({
           <span />
         </div>
       )}
-      <div role="list" aria-label={label}>
-        {rows.flatMap((row) => {
-          const playLabel = row.playing
-            ? `Pause ${row.title}`
-            : row.previewOnly
-              ? `Preview ${row.title}`
-              : `Play ${row.title}`;
-          return [
-            row.section ? (
-              <div
-                key={`section-${row.key}`}
-                className="native-library-track-section"
-                role="presentation"
-              >
-                {row.section}
-              </div>
-            ) : null,
-            <div
-              key={row.key}
-              ref={(node) => {
-                if (node) rowRefs.current.set(String(row.key), node);
-                else rowRefs.current.delete(String(row.key));
-              }}
-              className={
-                "native-library-track" +
-                (row.active ? " is-active" : "") +
-                (row.missing ? " is-missing" : "") +
-                (row.missing && row.previewOnly ? " is-preview" : "")
-              }
-              data-library-menu-target={row.menu || row.menuElement ? true : undefined}
-              role="listitem"
-              aria-current={row.active ? "true" : undefined}
-            >
-              {selection ? (
-                <span className="native-library-track__select">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(row.selected)}
-                    onChange={row.onToggleSelected}
-                    aria-label={`Select ${row.title}`}
-                  />
-                </span>
-              ) : row.status ? (
-                <Tooltip content={row.status.label}>
-                  <span
-                    className="native-library-track__status"
-                    role="img"
-                    aria-label={row.status.label}
-                  >
-                    {row.status.kind === "active" ? (
-                      <DotLoader size="xs" label={null} />
-                    ) : row.status.kind === "queued" ? (
-                      <Clock aria-hidden="true" />
-                    ) : (
-                      <AlertTriangle aria-hidden="true" />
-                    )}
-                  </span>
-                </Tooltip>
-              ) : row.onPlay ? (
-                <TooltipButton
-                  className="native-library-track__play"
-                  onClick={row.onPlay}
-                  disabled={row.playDisabled}
-                  label={playLabel}
-                  aria-label={playLabel}
-                >
-                  {row.playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
-                </TooltipButton>
-              ) : (
-                <span aria-hidden="true" />
-              )}
-              <span className="native-library-track__number" aria-hidden="true">
-                {row.active ? <PlayingIndicator row={row} /> : row.number}
-              </span>
-              {hasCover ? (
-                <TrackCover
-                  cover={row.cover}
-                  indicator={row.active ? <PlayingIndicator row={row} /> : null}
-                />
-              ) : null}
-              <Tooltip content={row.title}>
-                {row.onPlay && !row.playDisabled && !selection ? (
-                  <button
-                    type="button"
-                    className="native-library-track__title"
-                    onClick={row.onPlay}
-                    aria-label={row.previewOnly ? playLabel : undefined}
-                  >
-                    <span>
-                      {row.previewOnly ? <PreviewChip /> : null}
-                      {row.badge}
-                      {row.title}
-                    </span>
-                    {row.subtitle ? <small>{row.subtitle}</small> : null}
-                    {row.detail ? (
-                      <small className="native-library-track__detail">{row.detail}</small>
-                    ) : null}
-                  </button>
-                ) : (
-                  <span className="native-library-track__title">
-                    <span>
-                      {row.previewOnly ? <PreviewChip /> : null}
-                      {row.badge}
-                      {row.title}
-                    </span>
-                    {row.subtitle ? <small>{row.subtitle}</small> : null}
-                    {row.detail ? (
-                      <small className="native-library-track__detail">{row.detail}</small>
-                    ) : null}
-                  </span>
-                )}
-              </Tooltip>
-              {isCollection ? (
-                <TrackLink link={row.artist} className="native-library-track__artist" />
-              ) : null}
-              {isCollection ? (
-                <TrackLink link={row.album} className="native-library-track__album" />
-              ) : null}
-              {showReason ? (
-                <span className="native-library-track__reason">{row.reason}</span>
-              ) : null}
-              {showYear ? <span className="native-library-track__year">{row.year}</span> : null}
-              <span
-                className={"native-library-track__time" + (row.timeMissing ? " is-missing" : "")}
-              >
-                {row.time}
-              </span>
-              {row.trailing || <span />}
-              {selection ? (
-                <span />
-              ) : row.menuElement ? (
-                row.menuElement
-              ) : row.menu ? (
-                <LibraryItemMenu label={row.title || "Track"} {...row.menu} />
-              ) : (
-                <span />
-              )}
-              {row.favorite && !selection ? (
-                <FavoriteButton
-                  className="native-library-track__favorite"
-                  active={row.favorite.active}
-                  pending={row.favorite.pending}
-                  label={row.title || "track"}
-                  onClick={row.favorite.onToggle}
-                />
-              ) : (
-                <span />
-              )}
-            </div>,
-          ];
-        })}
-      </div>
+      {onReorder ? (
+        <SortableList
+          ids={rows.map((row) => row.key)}
+          titleOf={(id) => rows.find((row) => row.key === id)?.title || "Track"}
+          onReorder={onReorder}
+        >
+          {list}
+        </SortableList>
+      ) : (
+        list
+      )}
     </div>
   );
 }

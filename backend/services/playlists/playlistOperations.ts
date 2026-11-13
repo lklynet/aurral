@@ -54,6 +54,7 @@ import type {
 import { discardLibraryJobs, linkTracksToLibrary, releaseLibraryJobs } from "./playlistLibrary.ts";
 import { unknownList } from "../../../lib/unknownList.ts";
 import { isRecord } from "../../../lib/isRecord.ts";
+import { reorderInPlace } from "../../../lib/reorderInPlace.ts";
 import { finalizeQualityUpgradeFailure } from "../qualityUpgradeOutcome.ts";
 
 const operationTokenKey = (scope: string) => `playlistOperationTokens:${encodeURIComponent(scope)}`;
@@ -686,6 +687,18 @@ async function deleteStaticPlaylistTrack({ playlistId, jobId }: OperationPayload
   await releaseLibraryJobs(safePlaylistId, [safeJobId]);
   playlistManager.requestPlaylistSync([safePlaylistId]);
   return { success: true, playlist, removedJobId: safeJobId };
+}
+
+export async function reorderStaticPlaylistTracks(playlistId: string, jobIds: string[]) {
+  const playlist = await withPlaylistMutationLock(playlistId, () => {
+    const current = flowPlaylistConfig.getStaticPlaylist(playlistId);
+    if (!current) return null;
+    const tracks = reorderInPlace(current.tracks, (track) => track.canonicalJobId ?? "", jobIds);
+    if (tracks.every((track, index) => track === current.tracks[index])) return current;
+    return flowPlaylistConfig.updateStaticPlaylist(playlistId, { tracks });
+  });
+  if (playlist) playlistManager.requestPlaylistSync([playlistId]);
+  return playlist;
 }
 
 async function researchPlaylistTrack({ playlistId, jobId }: OperationPayload = {}) {
