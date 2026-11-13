@@ -574,6 +574,17 @@ export function setLibraryAlbumCredits(albumId: number, artistMbids: string[]) {
   invalidateLibraryCache();
 }
 
+function syncLibrarySearchAlbumAndTracks(albumId: number) {
+  if (!syncLibrarySearchAlbum(albumId)) return;
+  for (const track of db
+    .prepare<[number], Pick<LibraryAlbumTracksRow, "track_id">>(
+      "SELECT track_id FROM library_album_tracks WHERE album_id = ?",
+    )
+    .all(albumId)) {
+    syncLibrarySearchTrack(track.track_id);
+  }
+}
+
 export function upsertLibraryAlbum({
   identityKey,
   mbid = null,
@@ -625,16 +636,7 @@ export function upsertLibraryAlbum({
       (albumReleaseDate == null || albumReleaseDate === existing.release_date) &&
       (mergedMetadataText == null || mergedMetadataText === existing.metadata_json)
     ) {
-      const searchChanged = syncSearch && syncLibrarySearchAlbum(existing.id);
-      if (searchChanged) {
-        for (const track of db
-          .prepare<[number], Pick<LibraryAlbumTracksRow, "track_id">>(
-            "SELECT track_id FROM library_album_tracks WHERE album_id = ?",
-          )
-          .all(existing.id)) {
-          syncLibrarySearchTrack(track.track_id);
-        }
-      }
+      if (syncSearch) syncLibrarySearchAlbumAndTracks(existing.id);
       return existing;
     }
     db.prepare<
@@ -679,16 +681,7 @@ export function upsertLibraryAlbum({
     const row = db
       .prepare<[string], LibraryAlbumsRow>("SELECT * FROM library_albums WHERE identity_key = ?")
       .get(key)!;
-    const searchChanged = syncSearch && syncLibrarySearchAlbum(row?.id);
-    if (row?.id && searchChanged) {
-      for (const track of db
-        .prepare<[number], Pick<LibraryAlbumTracksRow, "track_id">>(
-          "SELECT track_id FROM library_album_tracks WHERE album_id = ?",
-        )
-        .all(row.id)) {
-        syncLibrarySearchTrack(track.track_id);
-      }
-    }
+    if (syncSearch) syncLibrarySearchAlbumAndTracks(row.id);
     return row;
   })();
   if (libraryChanged) invalidateLibraryCache();
@@ -1423,6 +1416,11 @@ function dropUnfiledAlbumTracks() {
   return links.length;
 }
 
+// The rules an album's track list was chosen by. An album listed by older
+// rules lists again from the metadata already cached, so a change to them
+// never asks the metadata provider about the whole Library.
+const LIBRARY_TRACK_LIST_RULE = 2;
+
 // Albums with a MusicBrainz release group whose track list Aurral has not
 // stored, or stored for other files or before they were retagged, with their
 // artist and the songs of their files. A requested album already has the
@@ -1435,10 +1433,12 @@ export function getLibraryAlbumsToList() {
         releaseGroupMbid: string;
         artistMbid: string | null;
         listedFor: string | null;
+        listedRule: number | null;
       }
     >(
       `SELECT album.id, album.mbid, album.release_group_mbid AS releaseGroupMbid, artist.mbid AS artistMbid,
-       CASE WHEN json_valid(album.metadata_json) THEN json_extract(album.metadata_json, '$.trackList.for') END AS listedFor
+       CASE WHEN json_valid(album.metadata_json) THEN json_extract(album.metadata_json, '$.trackList.for') END AS listedFor,
+       CASE WHEN json_valid(album.metadata_json) THEN json_extract(album.metadata_json, '$.trackList.rule') END AS listedRule
      FROM library_albums AS album
      LEFT JOIN library_artists AS artist ON artist.id = album.artist_id
      WHERE album.release_group_mbid IS NOT NULL
@@ -1461,13 +1461,19 @@ export function getLibraryAlbumsToList() {
      ORDER BY media.path`,
   );
   const pending = [];
-  for (const { listedFor, ...album } of albums) {
+  for (const { listedFor, listedRule, ...album } of albums) {
     const songs = albumFiles.all(album.id);
     const basis = createHash("sha1")
       .update(JSON.stringify([album.mbid, songs.map((file) => [file.path, file.mtimeMs])]))
       .digest("hex");
-    if (listedFor !== basis) {
-      pending.push({ ...album, basis, files: songs.map(({ mbid, title }) => ({ mbid, title })) });
+    const filesChanged = listedFor !== basis;
+    if (filesChanged || listedRule !== LIBRARY_TRACK_LIST_RULE) {
+      pending.push({
+        ...album,
+        basis,
+        filesChanged,
+        files: songs.map(({ mbid, title }) => ({ mbid, title })),
+      });
     }
   }
   return pending;
@@ -1631,7 +1637,7 @@ type ReleaseTrack = Partial<
   >
 >;
 
-type AlbumRelease = Partial<Pick<NormalizedRelease, "id" | "tracks">>;
+type AlbumRelease = Partial<Pick<NormalizedRelease, "id" | "title" | "tracks">>;
 
 type ReleaseGroup = Partial<Pick<NormalizedAlbum, "artistId" | "artists" | "releases">>;
 
@@ -1666,31 +1672,52 @@ export function isLibraryAlbumReleaseGroup(
   return files.some((file) => tracks.some((track) => holds(file, track)));
 }
 
-// An album lists the release its files come from: the one holding most of
-// their recordings, then most of their songs by title, then the release they
-// are tagged with, then the standard one, then the shortest.
+// An album lists the edition its files come from: the standard one, unless
+// another holds a file the standard does not. Then it is the one with the
+// fewest missing tracks and files it leaves out, by recording and then by
+// title, then the standard tracklist, then the release they are tagged with,
+// then the standard pressing, then the shortest. So one bonus track from a
+// deluxe edition leaves the rest of a standard album standard.
 export function chooseLibraryAlbumRelease(
   { mbid = null, files = [] }: { mbid?: string | null; files?: LibraryAlbumFile[] },
   releases: AlbumRelease[] = [],
   standard: AlbumRelease | null = null,
 ) {
-  const fileSongs = files.map((file) => songKey(file.title)).filter(Boolean);
-  let best: { release: AlbumRelease; rank: number[] } | null = null;
-  for (const release of releases) {
-    if (!release?.tracks?.length) continue;
-    const recordings = new Set(release.tracks.flatMap(releaseRecordings));
-    const songs = new Set(release.tracks.map((track) => songKey(track.title)));
-    const rank = [
-      files.filter((file) => file.mbid && recordings.has(file.mbid)).length,
-      fileSongs.filter((song) => songs.has(song)).length,
-      Number(release.id === mbid),
-      Number(Boolean(standard?.id) && release.id === standard!.id),
-      -release.tracks.length,
-    ];
-    const differs = best ? rank.findIndex((value, index) => value !== best!.rank[index]) : -1;
-    if (!best || (differs >= 0 && (rank[differs] ?? 0) > (best.rank[differs] ?? 0)))
-      best = { release, rank };
-  }
+  const fileSongs = files.map((file) => songKey(file.title));
+  const order = (release: AlbumRelease | null) =>
+    release?.tracks?.map((track) => track.recordingId || songKey(track.title)).join("\n");
+  const standardOrder = order(standard);
+  const listed = releases
+    .filter((release) => release?.tracks?.length)
+    .map((release) => {
+      const recordings = new Set(release.tracks!.flatMap(releaseRecordings));
+      const songs = new Set(release.tracks!.map((track) => songKey(track.title)));
+      const holds = files.map((file, index) =>
+        file.mbid ? recordings.has(file.mbid) : songs.has(fileSongs[index]!),
+      );
+      const closeness = (held: number) => 2 * held - release.tracks!.length;
+      const rank = [
+        closeness(holds.filter(Boolean).length),
+        closeness(fileSongs.filter((song) => song && songs.has(song)).length),
+        Number(order(release) === standardOrder),
+        Number(release.id === mbid),
+        Number(Boolean(standard?.id) && release.id === standard!.id),
+        -release.tracks!.length,
+      ];
+      return { release, holds, rank };
+    });
+  const standardHolds = listed.find(({ release }) => release.id === standard?.id)?.holds;
+  const candidates = standardHolds
+    ? listed.filter(
+        ({ release, holds }) =>
+          release.id === standard?.id || holds.some((held, index) => held && !standardHolds[index]),
+      )
+    : listed;
+  const best = candidates.reduce<(typeof listed)[number] | null>((best, candidate) => {
+    if (!best) return candidate;
+    const differs = candidate.rank.findIndex((value, index) => value !== best.rank[index]);
+    return differs >= 0 && candidate.rank[differs]! > best.rank[differs]! ? candidate : best;
+  }, null);
   return best?.release || standard;
 }
 
@@ -1785,22 +1812,31 @@ export function storeLibraryAlbumTrackList(
       });
       recordings.push(track.mbid);
     }
-    db.prepare<[string, number, number]>(
+    const title = album.identity_key?.startsWith("release-group:") && normalizeText(release?.title);
+    db.prepare<[string, string | null, number, number]>(
       `UPDATE library_albums
        SET metadata_json = json_set(
            CASE WHEN NOT json_valid(metadata_json) THEN '{}' WHEN json_type(metadata_json) = 'object' THEN metadata_json ELSE '{}' END,
            '$.trackList', json(?)),
+         title = COALESCE(?, title),
          updated_at = ?
        WHERE id = ?`,
     ).run(
-      JSON.stringify({ release: release?.id || null, for: basis, recordings }),
+      JSON.stringify({
+        release: release?.id || null,
+        for: basis,
+        rule: LIBRARY_TRACK_LIST_RULE,
+        recordings,
+      }),
+      title || null,
       now(),
       album.id,
     );
-    return true;
+    return { retitled: Boolean(title) && title !== album.title, albumId: album.id };
   })();
+  if (stored && stored.retitled) syncLibrarySearchAlbumAndTracks(stored.albumId);
   if (stored) invalidateLibraryCache();
-  return stored;
+  return Boolean(stored);
 }
 
 type LibraryTrackCopy = Pick<LibraryAlbumTracksRow, "album_id" | "disc_number" | "track_number"> &

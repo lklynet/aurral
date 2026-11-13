@@ -840,6 +840,7 @@ const uuid = (group: string, index: number) =>
 
 type TestRelease = {
   id: string;
+  title?: string;
   titles: string[];
   perDisc?: number;
   recordings?: Record<string, string>;
@@ -886,12 +887,14 @@ async function withReleaseGroups(
         releases: group.releases.map(
           ({
             id: releaseId,
+            title: releaseTitle,
             titles,
             perDisc = titles.length,
             recordings = group.recordings,
             merged = {},
           }) => ({
             id: releaseId,
+            title: releaseTitle,
             status: "Official",
             tracks: titles.map((title, index) => ({
               id: `${releaseId}-${index}`,
@@ -983,7 +986,7 @@ function listedAlbum(
   };
 }
 
-test("an album lists every track of the release its files are tagged with, including the ones it is missing", async () => {
+test("an album lists every track of the edition its files come from, including the ones it is missing, whatever edition a file is tagged with", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-"));
   const artist = `Track List ${process.pid}`;
   const artistMbid = uuid("dddddddd", 1);
@@ -1041,13 +1044,12 @@ test("an album lists every track of the release its files are tagged with, inclu
         ["One", "have"],
         ["Two", "have"],
         ["Three", "missing"],
-        ["Bonus (Radio Edit)", "missing"],
         ["Hidden", "have"],
       ];
       assert.deepEqual(albumListing("Deluxe"), listed);
       assert.deepEqual(albumListing("Bonus Single"), [["Bonus (Radio Edit)", "have"]]);
       const page = getLibraryPage({ kind: "albums", page: 1, pageSize: 10, query: "Deluxe" });
-      assert.deepEqual([page.items[0]?.availableTrackCount, page.items[0]?.trackCount], [3, 5]);
+      assert.deepEqual([page.items[0]?.availableTrackCount, page.items[0]?.trackCount], [3, 4]);
 
       const modified = getLibraryIndexLastModified();
       await scan();
@@ -1056,15 +1058,6 @@ test("an album lists every track of the release its files are tagged with, inclu
 
       await rm(two);
       await rm(hidden);
-      await scan();
-      assert.deepEqual(albumListing("Deluxe"), [
-        ["One", "have"],
-        ["Two", "missing"],
-        ["Three", "missing"],
-        ["Bonus (Radio Edit)", "missing"],
-      ]);
-
-      await album.file(root, "One", uuid("eeeeeeee", 2));
       await scan();
       assert.deepEqual(albumListing("Deluxe"), [
         ["One", "have"],
@@ -1181,7 +1174,7 @@ test("a song an album keeps after its untagged file is gone is listed once", asy
   });
 });
 
-test("an album lists the edition its files come from, again when a file of another edition joins it or a file is retagged", async (t: import("vite-plus/test").TestContext) => {
+test("an album lists the edition its files come from: a bonus track of another edition leaves it standard, and that edition's bonus tracks make it that edition until they go, listing again by new rules only from cached metadata", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-edition-"));
   const artist = `Edition List ${process.pid}`;
   const title = `Edition ${process.pid}`;
@@ -1198,7 +1191,7 @@ test("an album lists the edition its files come from, again when a file of anoth
       { id: uuid("bbbbbbbb", 60), titles: standard },
       { id: uuid("bbbbbbbb", 64), titles: [...deluxe, "Live"] },
       { id: uuid("bbbbbbbb", 61), titles: standard },
-      { id: uuid("bbbbbbbb", 62), titles: deluxe },
+      { id: uuid("bbbbbbbb", 62), title: `${title} (Deluxe)`, titles: deluxe },
     ],
   );
   t.onTestFinished(async () => {
@@ -1206,7 +1199,7 @@ test("an album lists the edition its files come from, again when a file of anoth
     await rm(root, { recursive: true, force: true });
   });
   const scan = () => scanConfiguredLibrary({ musicRoot: root, includeReadOnly: false });
-  await withReleaseGroups({ [album.releaseGroup]: album.group }, async () => {
+  await withReleaseGroups({ [album.releaseGroup]: album.group }, async (provider) => {
     await album.file(root, "One");
     await scan();
     assert.deepEqual(albumListing(title), [
@@ -1215,39 +1208,72 @@ test("an album lists the edition its files come from, again when a file of anoth
       ["Three", "missing"],
     ]);
 
-    await album.file(root, "Bonus");
-    await scan();
-    const listed = [
-      ["One", "have"],
-      ["Two", "missing"],
-      ["Three", "missing"],
-      ["Bonus", "have"],
-      ["Extra", "missing"],
-    ];
-    assert.deepEqual(albumListing(title), listed);
-
-    const modified = getLibraryIndexLastModified();
-    await scan();
-    assert.deepEqual(albumListing(title), listed);
-    assert.equal(getLibraryIndexLastModified(), modified);
-
-    await makeTrack(path.join(root, artist, title, "04 Bonus.flac"), {
+    await Promise.all(["Two", "Three"].map((name) => album.file(root, name)));
+    await makeTrack(path.join(root, artist, `${title} (Deluxe)`, "04 Bonus.flac"), {
       ARTIST: artist,
       ALBUMARTIST: artist,
-      ALBUM: title,
-      TITLE: "Two",
-      TRACKNUMBER: 2,
+      ALBUM: `${title} (Deluxe)`,
+      TITLE: "Bonus",
+      TRACKNUMBER: 4,
       MUSICBRAINZ_ALBUMARTISTID: album.group.artistMbid,
       MUSICBRAINZ_RELEASEGROUPID: album.releaseGroup,
-      MUSICBRAINZ_ALBUMID: album.releaseGroup,
-      MUSICBRAINZ_TRACKID: requireFixture(album.group.recordings.Two),
+      MUSICBRAINZ_ALBUMID: uuid("bbbbbbbb", 62),
+      MUSICBRAINZ_TRACKID: requireFixture(album.group.recordings.Bonus),
     });
     await scan();
     assert.deepEqual(albumListing(title), [
       ["One", "have"],
       ["Two", "have"],
-      ["Three", "missing"],
+      ["Three", "have"],
+      ["Bonus", "have"],
     ]);
+
+    const extra = await album.file(root, "Extra");
+    await scan();
+    const listed = [
+      ["One", "have"],
+      ["Two", "have"],
+      ["Three", "have"],
+      ["Bonus", "have"],
+      ["Extra", "have"],
+    ];
+    assert.deepEqual(albumListing(`${title} (Deluxe)`), listed);
+
+    const modified = getLibraryIndexLastModified();
+    await scan();
+    assert.deepEqual(albumListing(`${title} (Deluxe)`), listed);
+    assert.equal(getLibraryIndexLastModified(), modified);
+
+    await rm(extra);
+    await scan();
+    assert.deepEqual(albumListing(title), [
+      ["One", "have"],
+      ["Two", "have"],
+      ["Three", "have"],
+      ["Bonus", "have"],
+    ]);
+
+    const listedByOlderRules = () =>
+      db
+        .prepare<[string]>(
+          "UPDATE library_albums SET metadata_json = json_remove(metadata_json, '$.trackList.rule') WHERE title = ?",
+        )
+        .run(title);
+    const listingRule = () =>
+      db
+        .prepare<[string], { rule: number | null }>(
+          "SELECT json_extract(metadata_json, '$.trackList.rule') AS rule FROM library_albums WHERE title = ?",
+        )
+        .get(title)?.rule ?? null;
+    provider.requests.length = 0;
+    listedByOlderRules();
+    await scan();
+    assert.notEqual(listingRule(), null);
+    clearMetadataProviderCaches();
+    listedByOlderRules();
+    await scan();
+    assert.equal(listingRule(), null);
+    assert.deepEqual(provider.requests, []);
   });
 });
 
@@ -1827,7 +1853,7 @@ test("an album lists its release group only when the group holds one of its file
   );
 });
 
-test("an album someone asked for keeps the release it lists after its files are gone", async (t: import("vite-plus/test").TestContext) => {
+test("an album someone asked for keeps the release it lists after its files are gone, and its title when a file tagged with another arrives", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-gone-"));
   const artist = `Gone List ${process.pid}`;
   const title = `Gone ${process.pid}`;
@@ -1869,6 +1895,26 @@ test("an album someone asked for keeps the release it lists after its files are 
       ["Two", "missing"],
     ]);
     assert.equal(listedRelease(), uuid("bbbbbbbb", 180));
+
+    db.prepare<[string, number]>(
+      `UPDATE library_albums SET metadata_json = json_set(metadata_json,
+         '$.trackListComplete', json('true'), '$.requestedRelease', ?) WHERE id = ?`,
+    ).run(uuid("bbbbbbbb", 180), requireValue(albumId));
+    await makeTrack(path.join(root, artist, `${title} (Deluxe)`, "02 Two.flac"), {
+      ARTIST: artist,
+      ALBUMARTIST: artist,
+      ALBUM: `${title} (Deluxe)`,
+      TITLE: "Two",
+      TRACKNUMBER: 2,
+      MUSICBRAINZ_ALBUMARTISTID: album.group.artistMbid,
+      MUSICBRAINZ_RELEASEGROUPID: album.releaseGroup,
+      MUSICBRAINZ_TRACKID: requireFixture(album.group.recordings.Two),
+    });
+    await scanConfiguredLibrary({ musicRoot: root, includeReadOnly: false });
+    assert.deepEqual(albumListing(title), [
+      ["One", "missing"],
+      ["Two", "have"],
+    ]);
   });
 });
 
