@@ -26,6 +26,7 @@ import { scheduleLibraryScan } from "./libraryScanWorker.ts";
 import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import {
   buildIdentityKey,
+  chooseLibraryAlbumEdition,
   linkLibraryAlbumTrack,
   markLibraryMediaFilesUnavailable,
   removeLibraryAlbumTracksWithoutAvailableMedia,
@@ -89,7 +90,11 @@ import {
   setArtistMonitoringState,
 } from "./monitoringStore.ts";
 import { getArtistTopTracks } from "./musicDataSource/index.ts";
-import { getNormalizedText, selectAlbumRelease } from "./providers/brainzmashRanking.ts";
+import {
+  getNormalizedText,
+  listsEveryTrack,
+  selectAlbumRelease,
+} from "./providers/brainzmashRanking.ts";
 import { enqueueSystemTask } from "./jobs/systemTasks.ts";
 import { scheduleReleaseMetadataRefresh } from "./releaseMetadataSync.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
@@ -271,6 +276,7 @@ type AlbumAddOptions = {
   trackIds?: number[];
   skipCancelledTracks?: boolean;
   edition?: string | null;
+  releaseMbid?: string | null;
 };
 
 function resolveMonitoringRequest(
@@ -1384,7 +1390,7 @@ export class LibraryManager {
     return libraryForAlbum(albumMbid).albums[0]?.metadata?.edition === "expanded";
   }
 
-  _albumEdition(artist: LibraryArtistProjection | null) {
+  _albumEdition(artist: { id: string | number } | null) {
     const effective = artist ? readArtistMonitoring(Number(artist.id)) : null;
     return (effective?.rules || getMonitoringDefaults().rules).edition;
   }
@@ -1784,6 +1790,41 @@ export class LibraryManager {
     };
   }
 
+  async setAlbumEdition(albumId: string, releaseMbid: string) {
+    const id = Number(albumId);
+    const library = Number.isSafeInteger(id) ? libraryForAlbum(id) : null;
+    const album = library?.albums.find((entry) => entry.id === id);
+    if (!album?.releaseGroupMbid) {
+      return { error: "Album was not found in the library", statusCode: 404 };
+    }
+    let group;
+    try {
+      group = await metadataLookups.add(() => getMetadataAlbumByMbid(album.releaseGroupMbid!));
+    } catch {
+      return {
+        error: "Album metadata is unavailable; try again",
+        statusCode: 503,
+        code: "metadata_unavailable",
+      };
+    }
+    const wanted = releaseMbid.trim().toLowerCase();
+    const release = group.releases.find((entry) => entry.id.toLowerCase() === wanted);
+    if (!release || !listsEveryTrack(release)) {
+      return { error: "The album has no such edition", statusCode: 422 };
+    }
+    const artists = new Map<string | null | undefined, string>(
+      group.artists.map((artist) => [artist.id, artist.name]),
+    );
+    const compilation = isVariousArtistsCredit(artists.get(group.artistId), group.artistId);
+    chooseLibraryAlbumEdition(
+      album.id,
+      { ...release, title: release.title || group.title },
+      this._albumEdition(library?.artists.find((entry) => entry.id === album.artistId) || null),
+      (track) => (compilation && artists.get(track.artistId)) || null,
+    );
+    return { success: true, releaseMbid: release.id };
+  }
+
   async deleteAlbum(canonicalId: unknown, deleteFiles = false) {
     const resolved = this._resolveAlbum(canonicalId);
     if (failed(resolved)) return resolved;
@@ -2000,9 +2041,10 @@ export class LibraryManager {
     // for again, whatever release its files later turn out to be.
     const selectedRelease = chooseRequestedRelease(metadata, {
       requestedRelease:
-        existingAlbum?.metadata?.edition === edition
+        options.releaseMbid ||
+        (existingAlbum?.metadata?.edition === edition
           ? existingAlbum.metadata.requestedRelease
-          : null,
+          : null),
       listedRelease: existingAlbum?.metadata?.trackList?.release,
       edition,
     });
@@ -2189,12 +2231,14 @@ export class LibraryManager {
     albumName,
     artistMbid,
     artistName,
+    releaseMbid = null,
     user = null,
   }: {
     albumMbid?: string | null;
     albumName?: string | null;
     artistMbid?: string | null;
     artistName?: string | null;
+    releaseMbid?: string | null;
     user?: LibraryUser;
   } = {}) {
     const normalizedAlbumMbid = String(albumMbid || "").trim();
@@ -2249,7 +2293,7 @@ export class LibraryManager {
       artist.id,
       normalizedAlbumMbid,
       normalizedAlbumName,
-      { user },
+      { user, releaseMbid },
     );
     throwLibraryError(album);
     return {

@@ -189,10 +189,10 @@
   },
   "discover album tracks": {
     "queries": {
-      "cold": 8,
-      "warm": 8
+      "cold": 12,
+      "warm": 12
     },
-    "bytes": 17,
+    "bytes": 47,
     "scans": [
       "library_albums"
     ]

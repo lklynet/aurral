@@ -30,6 +30,7 @@ import {
   scanMusicRoots,
 } from "../../backend/services/libraryFileScanner.ts";
 import { scanConfiguredLibrary } from "../../backend/services/libraryIndexService.ts";
+import { libraryManager } from "../../backend/services/libraryManager.ts";
 import { setLibraryManagement } from "../../backend/services/libraryManagementStore.ts";
 import { dbOps } from "../../backend/db/helpers/index.ts";
 import { clearMetadataProviderCaches } from "../../backend/services/providers/brainzmashProvider.ts";
@@ -1274,6 +1275,61 @@ test("an album lists the edition its files come from: a bonus track of another e
     await scan();
     assert.equal(listingRule(), null);
     assert.deepEqual(provider.requests, []);
+  });
+});
+
+test("an edition someone chooses stays the album's through rescans, and choosing another drops the songs only the first listed unless they have files", async (t: import("vite-plus/test").TestContext) => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-chosen-edition-"));
+  const artist = `Chosen Edition ${process.pid}`;
+  const title = `Chosen ${process.pid}`;
+  const standard = ["One", "Two", "Three"];
+  const deluxe = [...standard, "Bonus", "Extra"];
+  const release = (index: number) => uuid("bbbbbbbb", index);
+  const album = listedAlbum(artist, uuid("dddddddd", 19), title, 190, deluxe, [
+    { id: release(190), titles: standard },
+    { id: release(191), titles: standard },
+    { id: release(192), title: `${title} (Deluxe)`, titles: deluxe },
+  ]);
+  const defaults = libraryManager.getMonitoringDefaultsState().rules;
+  t.onTestFinished(async () => {
+    libraryManager.setMonitoringDefaults(defaults);
+    removeArtistsNamed(artist);
+    await rm(root, { recursive: true, force: true });
+  });
+  const scan = () => scanConfiguredLibrary({ musicRoot: root, includeReadOnly: false });
+  await withReleaseGroups({ [album.releaseGroup]: album.group }, async () => {
+    await Promise.all([...standard, "Bonus"].map((name) => album.file(root, name)));
+    await scan();
+    const albumId = requireValue(
+      db
+        .prepare<[string], { id: number }>("SELECT id FROM library_albums WHERE title = ?")
+        .get(title),
+    ).id;
+    const have = [
+      ["One", "have"],
+      ["Two", "have"],
+      ["Three", "have"],
+      ["Bonus", "have"],
+    ];
+    assert.deepEqual(albumListing(title), have);
+
+    assert.deepEqual(await libraryManager.setAlbumEdition(String(albumId), release(192)), {
+      success: true,
+      releaseMbid: release(192),
+    });
+    const chosen = [...have, ["Extra", "missing"]];
+    assert.deepEqual(albumListing(`${title} (Deluxe)`), chosen);
+    await scan();
+    assert.deepEqual(albumListing(`${title} (Deluxe)`), chosen);
+
+    libraryManager.setMonitoringDefaults({ ...defaults, edition: "expanded" });
+    await libraryManager.setAlbumEdition(String(albumId), release(191));
+    assert.deepEqual(albumListing(title), have);
+    assert.equal(libraryManager.albumWantsExpandedEdition(album.releaseGroup), true);
+    assert.equal(
+      (await libraryManager.setAlbumEdition(String(albumId), release(199))).statusCode,
+      422,
+    );
   });
 });
 

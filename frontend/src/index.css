@@ -840,6 +840,21 @@ textarea:disabled {
   cursor: default;
 }
 
+.select-menu__text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.select-menu__detail {
+  overflow: hidden;
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .select-menu__check {
   flex: none;
   width: var(--aurral-icon-sm);
@@ -9178,6 +9193,58 @@ button.native-library-genre-row:focus-visible {
 
 .native-library-detail__meta-item {
   white-space: nowrap;
+}
+
+.native-library-detail__edition {
+  display: inline-flex;
+  max-width: 100%;
+  gap: 0.125rem;
+  margin: -0.125rem -0.25rem;
+  padding: 0.125rem 0.25rem;
+  border: 0;
+  border-radius: var(--aurral-radius-sm);
+  background: transparent;
+  color: var(--aurral-text);
+  font: inherit;
+  font-weight: 500;
+  vertical-align: bottom;
+  cursor: pointer;
+}
+
+.native-library-detail__edition .select__chevron {
+  margin-right: -0.125rem;
+}
+
+.native-library-detail__edition[aria-expanded="true"] {
+  background: var(--aurral-surface-hover);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .native-library-detail__edition:hover {
+    background: var(--aurral-surface-hover);
+  }
+}
+
+@media (pointer: coarse) {
+  .native-library-detail__edition,
+  .native-library-album-status__actions .btn-sm {
+    position: relative;
+  }
+
+  .native-library-detail__edition::after,
+  .native-library-album-status__actions .btn-sm::after {
+    content: "";
+    position: absolute;
+    inset: -0.4375rem -0.125rem;
+  }
+
+  .native-library-detail__edition::after {
+    inset: -0.375rem -0.25rem -0.875rem;
+  }
+}
+
+.native-library-detail__edition-owned {
+  color: var(--aurral-success);
 }
 
 .native-library-detail__manager {

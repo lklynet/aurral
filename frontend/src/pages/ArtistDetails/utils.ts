@@ -300,7 +300,7 @@ export const mergeReleaseDetails = <T extends ReleaseGroup | undefined>(
   };
 };
 
-export type AlbumHeaderMetaSegment = { text: string; partial?: boolean };
+export type AlbumHeaderMetaSegment = { text: string; partial?: boolean; edition?: boolean };
 
 export function buildAlbumHeaderMeta({
   release,
@@ -308,12 +308,14 @@ export function buildAlbumHeaderMeta({
   trackCount,
   availableCount = null,
   durationMs,
+  edition = null,
 }: {
   release: ReleaseGroup | null | undefined;
   libraryAlbum?: LibraryPageAlbum | null;
   trackCount: number;
   availableCount?: number | null;
   durationMs: number;
+  edition?: string | null;
 }): AlbumHeaderMetaSegment[] {
   const metric = getReleaseMetric(release);
   const unit = trackCount === 1 ? "track" : "tracks";
@@ -324,6 +326,7 @@ export function buildAlbumHeaderMeta({
         formatReleaseDate(release) || formatReleaseDate({ releaseDate: libraryAlbum?.releaseDate }),
     },
     { text: getReleaseTypeLabel(release) || releaseTypeOf(libraryAlbum) || "" },
+    { text: edition || "", edition: true },
     {
       text: !trackCount
         ? ""

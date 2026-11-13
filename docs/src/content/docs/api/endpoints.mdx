@@ -95,6 +95,7 @@ WebSocket connections.
 | `PUT`    | `/api/library/albums/:albumId`                           | Monitor or stop monitoring an album and all of its tracks with `{ "monitored": true \| false }`                                                                                                                                                        |
 | `GET`    | `/api/library/albums/:albumId/status`                    | Get the download status of an album                                                                                                                                                                                                                    |
 | `POST`   | `/api/library/albums/:albumId/cancel`                    | Cancel queued and active downloads for an album                                                                                                                                                                                                        |
+| `PUT`    | `/api/library/albums/:albumId/edition`                   | Make an edition the Library album's                                                                                                                                                                                                                    |
 | `DELETE` | `/api/library/albums/:albumId?deleteFiles=true\|false`   | Remove an album                                                                                                                                                                                                                                        |
 | `GET`    | `/api/library/tracks`                                    | List album tracks                                                                                                                                                                                                                                      |
 | `DELETE` | `/api/library/tracks/:id`                                | Delete a library track file and prune Library records when no media remains. Returns `409` when its only file is in a read-only folder                                                                                                                 |
@@ -199,22 +200,23 @@ album, and responds with `monitored: true`.
 
 ## Artist metadata
 
-| Method | Path                                      | Purpose                                                           |
-| ------ | ----------------------------------------- | ----------------------------------------------------------------- |
-| `GET`  | `/api/artists/:mbid`                      | Artist details and releases                                       |
-| `GET`  | `/api/artists/:mbid/overrides`            | Get metadata-provider overrides                                   |
-| `PUT`  | `/api/artists/:mbid/overrides`            | Set metadata-provider overrides                                   |
-| `GET`  | `/api/artists/:mbid/similar`              | Similar artists                                                   |
-| `GET`  | `/api/artists/:mbid/video`                | Find a video for a named artist and track                         |
-| `GET`  | `/api/artists/:mbid/cover`                | Artist image metadata; `refresh=true` retries a stale link        |
-| `GET`  | `/api/artists/:mbid/image`                | Artist image: Library art, or a redirect; `w` picks a width       |
-| `GET`  | `/api/artists/:mbid/preview`              | Deezer top tracks and preview URLs                                |
-| `GET`  | `/api/deezer/preview/:trackId.mp3`        | Redirect to a current Deezer preview for a track                  |
-| `POST` | `/api/artists/:mbid/appears-on`           | Find releases that include an artist                              |
-| `POST` | `/api/artists/release-groups/ratings`     | Batch release ratings                                             |
-| `GET`  | `/api/artists/release-group/:mbid`        | Release-group details                                             |
-| `GET`  | `/api/artists/release-group/:mbid/cover`  | Release-group cover metadata; `refresh=true` retries a stale link |
-| `GET`  | `/api/artists/release-group/:mbid/tracks` | Release-group tracks                                              |
+| Method | Path                                        | Purpose                                                           |
+| ------ | ------------------------------------------- | ----------------------------------------------------------------- |
+| `GET`  | `/api/artists/:mbid`                        | Artist details and releases                                       |
+| `GET`  | `/api/artists/:mbid/overrides`              | Get metadata-provider overrides                                   |
+| `PUT`  | `/api/artists/:mbid/overrides`              | Set metadata-provider overrides                                   |
+| `GET`  | `/api/artists/:mbid/similar`                | Similar artists                                                   |
+| `GET`  | `/api/artists/:mbid/video`                  | Find a video for a named artist and track                         |
+| `GET`  | `/api/artists/:mbid/cover`                  | Artist image metadata; `refresh=true` retries a stale link        |
+| `GET`  | `/api/artists/:mbid/image`                  | Artist image: Library art, or a redirect; `w` picks a width       |
+| `GET`  | `/api/artists/:mbid/preview`                | Deezer top tracks and preview URLs                                |
+| `GET`  | `/api/deezer/preview/:trackId.mp3`          | Redirect to a current Deezer preview for a track                  |
+| `POST` | `/api/artists/:mbid/appears-on`             | Find releases that include an artist                              |
+| `POST` | `/api/artists/release-groups/ratings`       | Batch release ratings                                             |
+| `GET`  | `/api/artists/release-group/:mbid`          | Release-group details                                             |
+| `GET`  | `/api/artists/release-group/:mbid/cover`    | Release-group cover metadata; `refresh=true` retries a stale link |
+| `GET`  | `/api/artists/release-group/:mbid/tracks`   | Release-group tracks; `release=` picks an edition                 |
+| `GET`  | `/api/artists/release-group/:mbid/editions` | The album's editions and the one the Library lists                |
 
 `GET /api/artists` returns `404`. Use `/api/search` or an artist
 detail route instead.

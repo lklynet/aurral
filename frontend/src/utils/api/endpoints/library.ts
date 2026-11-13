@@ -572,6 +572,7 @@ type AlbumRequestPayload = {
   albumName: string | null | undefined;
   artistMbid?: string | null;
   artistName?: string | null;
+  releaseMbid?: string | null;
 };
 
 const postAlbumRequest = (payload: AlbumRequestPayload) =>
@@ -707,6 +708,14 @@ export const cancelAlbum = (albumId: string | number) =>
         param: { albumId: encodeURIComponent(albumId) },
       }),
     ),
+  );
+
+export const setAlbumEdition = (albumId: string | number, releaseMbid: string) =>
+  parseResponse(
+    libraryAlbumsClient.albums[":albumId"].edition.$put({
+      param: { albumId: encodeURIComponent(albumId) },
+      json: { releaseMbid },
+    }),
   );
 
 export const setAlbumMonitoring = (

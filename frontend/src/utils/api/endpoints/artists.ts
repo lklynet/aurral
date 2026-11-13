@@ -46,9 +46,25 @@ export const getReleaseTrackCredits = (mbid: string, { signal }: { signal?: Abor
     ),
   );
 
-export const getReleaseGroupTracks = (mbid: string, { signal }: { signal?: AbortSignal } = {}) =>
+export const getReleaseGroupTracks = (
+  mbid: string,
+  { release, signal }: { release?: string; signal?: AbortSignal } = {},
+) =>
   parseResponse(
     artistsClient["release-group"][":mbid"].tracks.$get(
+      { param: { mbid: encodeURIComponent(mbid) }, query: { release: release || undefined } },
+      { init: { signal } },
+    ),
+  );
+
+export type AlbumEditions = InferResponseType<
+  (typeof artistsClient)["release-group"][":mbid"]["editions"]["$get"],
+  200
+>;
+
+export const getReleaseGroupEditions = (mbid: string, { signal }: { signal?: AbortSignal } = {}) =>
+  parseResponse(
+    artistsClient["release-group"][":mbid"].editions.$get(
       { param: { mbid: encodeURIComponent(mbid) } },
       { init: { signal } },
     ),
@@ -60,13 +76,18 @@ export const getReleaseGroupPreviews = (
     signal,
     artistMbid,
     deezerAlbumId,
-  }: { artistMbid?: string; deezerAlbumId?: string; signal?: AbortSignal } = {},
+    release,
+  }: { artistMbid?: string; deezerAlbumId?: string; release?: string; signal?: AbortSignal } = {},
 ) =>
   parseResponse(
     artistsClient["release-group"][":mbid"].previews.$get(
       {
         param: { mbid: encodeURIComponent(mbid) },
-        query: { artistMbid: artistMbid || undefined, deezerAlbumId: deezerAlbumId || undefined },
+        query: {
+          artistMbid: artistMbid || undefined,
+          deezerAlbumId: deezerAlbumId || undefined,
+          release: release || undefined,
+        },
       },
       { init: { signal } },
     ),

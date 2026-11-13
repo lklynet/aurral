@@ -4,7 +4,7 @@ import { useLocation, useNavigate, useParams, useSearchParams } from "react-rout
 import { AlertCircle, EyeOff, Share } from "../../components/icons";
 import AddActionButton from "../../components/AddActionButton";
 import { formatReleaseWait, isAwaitingRelease } from "../../utils/albumStatus.ts";
-import { AlbumDownloadStatus } from "../../components/AlbumDownloadStatus";
+import { AlbumDownloadStatus, AlbumEditionNote } from "../../components/AlbumDownloadStatus";
 import ReleaseWaitBadge from "../../components/ReleaseWaitBadge";
 import {
   CollectionHeader,
@@ -29,7 +29,7 @@ import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { useQueueTrackActions } from "../../hooks/useQueueTrackActions";
 import { useShareAction } from "../../hooks/useShareAction";
 import { readAlbumRouteState } from "../../navigation/albumRoute.tsx";
-import { queryKeys } from "../../queryClient.ts";
+import { queryClient, queryKeys } from "../../queryClient.ts";
 import {
   libraryAlbumLookupQueryOptions,
   releaseGroupDetailsQueryOptions,
@@ -67,6 +67,7 @@ import { OwnedTrackMark, useReleasePreviewQueue, useReleaseTracks } from "./rele
 import { useAlbumDownload } from "./useAlbumDownload.ts";
 import { useLibraryAlbumState } from "./useLibraryAlbumState.ts";
 import { useReleaseCover } from "./useReleaseCover.ts";
+import { useAlbumEditions } from "./useAlbumEditions.tsx";
 import StatePanel from "../../components/StatePanel";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
 
@@ -177,7 +178,24 @@ function AlbumPage() {
     routeSeed?.artistName ||
     libraryAlbum?.albumArtist ||
     "";
-  const title = libraryAlbum?.title || release.title || routeSeed?.title || "";
+  const editions = useAlbumEditions({
+    releaseGroupMbid,
+    libraryAlbumId: libraryAlbum?.id ?? null,
+    enabled: !libraryLoading,
+    canChoose: canAddAlbum,
+    onChosen: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: libraryQueryOptions.queryKey }),
+        albumState.reloadLibraryAlbumTracks(),
+      ]),
+  });
+  const previewingLibraryEdition = Boolean(editions.note);
+  const title =
+    (editions.visible && release.title) ||
+    libraryAlbum?.title ||
+    release.title ||
+    routeSeed?.title ||
+    "";
   const headerPending = !title && (libraryLoading || releaseDetailsQuery.isPending);
 
   const {
@@ -187,6 +205,7 @@ function AlbumPage() {
   } = useReleaseGroupTracks(releaseGroupMbid, {
     artistMbid: locationState?.artistMbid || undefined,
     deezerAlbumId: focusRelease?.deezerAlbumId ? String(focusRelease.deezerAlbumId) : undefined,
+    release: editions.previewRelease,
   });
 
   useEffect(() => {
@@ -246,6 +265,12 @@ function AlbumPage() {
       }),
     [albumTracks, libraryAlbum?.id, releaseGroupMbid, releaseTracks],
   );
+  const splitEditions = editions.visible && releaseTracks.length > 0;
+  const listed = splitEditions ? merged.filter((entry) => entry.releaseTrack) : merged;
+  const extras = splitEditions
+    ? merged.filter((entry) => !entry.releaseTrack && firstAvailableFile(entry.libraryTrack))
+    : [];
+  const entries = [...listed, ...extras];
   const hasMissingTracks = merged.some(
     (entry) => !entry.libraryTrack || !firstAvailableFile(entry.libraryTrack),
   );
@@ -310,13 +335,17 @@ function AlbumPage() {
     artistName,
     libraryAlbum,
     libraryArtist,
+    releaseMbid: editions.previewRelease,
     onLibraryAlbumRequested: albumState.markAlbumRequested,
   });
 
-  const discHeadings = albumDiscHeadings(merged);
-  const rows: TrackListRow[] = merged.map((entry, index) => {
+  const sections = [
+    ...albumDiscHeadings(listed),
+    ...extras.map((_, index) => (index ? null : "From other editions")),
+  ];
+  const rows: TrackListRow[] = entries.map((entry, index) => {
     const { releaseIndex } = entry;
-    const section = discHeadings[index];
+    const section = sections[index];
     if (!entry.libraryTrack) {
       return {
         ...releaseRows.buildReleaseTrackRow(entry.releaseTrack!, releaseIndex, {
@@ -343,7 +372,7 @@ function AlbumPage() {
       ...row,
       section,
       key: entry.key,
-      number: entry.number,
+      number: entry.releaseTrack || !splitEditions ? entry.number : null,
       subtitle:
         !hasFile && entry.releaseTrack && hasReleaseCredit(entry.releaseTrack)
           ? creditFor(entry.releaseTrack)
@@ -373,7 +402,7 @@ function AlbumPage() {
   });
   const trackParam = searchParams.get("track") || "";
   const highlightKey = trackParam
-    ? (merged.find(
+    ? (entries.find(
         (entry) =>
           entry.key === trackParam ||
           entry.libraryTrack?.mbid === trackParam ||
@@ -382,8 +411,11 @@ function AlbumPage() {
       )?.key ?? null)
     : null;
 
-  const trackCount = Math.max(merged.length, Number(availability?.total || 0));
-  const durationMs = merged.reduce(
+  const trackCount = Math.max(
+    listed.length,
+    editions.previewRelease ? 0 : Number(availability?.total || 0),
+  );
+  const durationMs = listed.reduce(
     (total, entry) =>
       total +
       (Number(entry.libraryTrack && firstAvailableFile(entry.libraryTrack)?.durationMs) ||
@@ -411,11 +443,14 @@ function AlbumPage() {
       </Tooltip>
     ) : null;
   const meta = buildAlbumHeaderMeta({
-    release,
+    release: editions.previewRelease
+      ? { ...release, "first-release-date": editions.viewing?.date ?? "" }
+      : release,
     libraryAlbum,
     trackCount,
-    availableCount,
+    availableCount: editions.previewRelease ? null : availableCount,
     durationMs,
+    edition: editions.select ? editions.viewing?.name : null,
   });
 
   useDocumentTitle(title ? (artistName ? `${title} — ${artistName}` : title) : "Album");
@@ -437,6 +472,7 @@ function AlbumPage() {
   const libraryResolving = libraryLoading || (!libraryAlbum && albumLookupQuery.isLoading);
   const showDownload =
     !libraryResolving &&
+    !previewingLibraryEdition &&
     (libraryAlbum
       ? albumState.canDownloadLibraryAlbum(hasMissingTracks)
       : canAddAlbum && Boolean(releaseGroupMbid) && !libraryDisplay.isComplete);
@@ -572,10 +608,12 @@ function AlbumPage() {
           ) : (
             <>
               {meta.map((segment, index) => (
-                <Fragment key={segment.text}>
+                <Fragment key={segment.edition ? "edition" : segment.text}>
                   {index ? " · " : null}
                   <span className="native-library-detail__meta-item">
-                    {segment.partial ? (
+                    {segment.edition ? (
+                      editions.select
+                    ) : segment.partial ? (
                       <span className="native-library-card__status" data-tone="warning">
                         {segment.text}
                         <span className="sr-only"> available</span>
@@ -603,9 +641,12 @@ function AlbumPage() {
               album={libraryAlbum}
               artist={libraryArtist}
               canManage={actions.canAddTracks}
+              edition={editions.note}
               onChanged={actions.refreshLibraryActivity}
               onSettled={albumState.reloadLibraryAlbumTracks}
             />
+          ) : editions.note ? (
+            <AlbumEditionNote edition={editions.note} />
           ) : awaitingRelease ? (
             <div className="native-library-album-status" data-tone="scheduled">
               <p className="native-library-album-status__label">
