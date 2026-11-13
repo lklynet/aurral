@@ -1,7 +1,7 @@
 {
   ".tests/api-clients/listenbrainz-submit.test.ts": 1,
   ".tests/api/image-cache.test.ts": 4,
-  ".tests/api/json-contract.test.ts": 132,
+  ".tests/api/json-contract.test.ts": 127,
   ".tests/api/link-search.test.ts": 14,
   ".tests/api/release-group-details.test.ts": 2,
   ".tests/artist-appears-on.test.ts": 12,

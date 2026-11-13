@@ -5,6 +5,7 @@ import { useModalDialog } from "../../hooks/useModalDialog.ts";
 import { formatDateTime } from "../../utils/dateTime.ts";
 import { lookupLabel, type ActivityRequest } from "../../../../lib/activity.ts";
 import { ModalBackdrop } from "../../components/ModalBackdrop";
+import { describeRequestCause } from "./activityListUtils";
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -64,6 +65,7 @@ function getRows(item: ActivityInfoItem) {
   return [
     ["Status", item.statusLabel || item.status],
     ["Type", item.upgrade ? "Quality upgrade" : formatKind(item.kind)],
+    ["Reason", item.upgrade ? null : describeRequestCause(item)],
     [
       "Download method",
       item.downloadMethodLabel ||

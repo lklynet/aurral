@@ -9,6 +9,34 @@ import { formatDate, formatTime } from "../../utils/dateTime.ts";
 export const downloadClientLabel = (request: ActivityRequest) =>
   request.sourceSummary || lookupLabel(DOWNLOAD_CLIENTS, request.source) || null;
 
+export const describeRequestCause = ({
+  cause,
+  upgrade,
+  trackName,
+  albumName,
+  requestedBy,
+}: Partial<
+  Pick<ActivityRequest, "cause" | "upgrade" | "trackName" | "albumName" | "requestedBy">
+>) => {
+  if (upgrade || cause?.kind === "upgrade")
+    return upgrade?.fromQuality ? `Upgrade from ${upgrade.fromQuality}` : "Quality upgrade";
+  switch (cause?.kind) {
+    case "flow":
+    case "playlist":
+      return cause.name ? `For ${cause.name}` : null;
+    case "missing":
+      return trackName && albumName ? `Missing from ${albumName}` : "Missing tracks";
+    case "monitoring":
+      return "Artist monitoring";
+    case "request":
+      return requestedBy?.username ? `Requested by ${requestedBy.username}` : "Requested";
+    case "share":
+      return "From a share link";
+    default:
+      return null;
+  }
+};
+
 export const isAlbumActivityRequest = (request: ActivityRequest): request is AlbumActivityRequest =>
   request.kind === "album_download" && Boolean(request.children && request.albumGrab);
 

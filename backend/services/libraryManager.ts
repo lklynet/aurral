@@ -23,7 +23,11 @@ import { readRawLibraryMetadata, type LibraryMetadata } from "./libraryMetadata.
 import type { RequestUser } from "../middleware/requestUser.ts";
 import { selectCanonicalFile } from "./canonicalFileSelector.ts";
 import { scheduleLibraryScan } from "./libraryScanWorker.ts";
-import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
+import {
+  downloadTracker,
+  type DownloadJob,
+  type JobCause,
+} from "./downloadJobs/downloadTracker.ts";
 import {
   buildIdentityKey,
   chooseLibraryAlbumEdition,
@@ -277,6 +281,7 @@ type AlbumAddOptions = {
   skipCancelledTracks?: boolean;
   edition?: string | null;
   releaseMbid?: string | null;
+  cause?: JobCause;
 };
 
 function resolveMonitoringRequest(
@@ -803,6 +808,9 @@ export class LibraryManager {
       ? new Set(options.trackIds.map(Number))
       : null;
     const requestKind = requestedTrackIds ? "track" : "album";
+    const cause =
+      options.cause ??
+      ({ kind: options.monitoringToken ? "monitoring" : "request", playlistId: null } as const);
     // A job kept from an earlier request asks for the edition asked for now.
     // One it restarts is the kind of request asked for now, and a queued job
     // a whole-album request covers becomes part of it.
@@ -910,6 +918,7 @@ export class LibraryManager {
           askForEdition(completedJob);
           return downloadTracker.setPending(completedJob.id, "Completed file is missing", {
             asRetryCycle: true,
+            cause,
           });
         }, track.id);
         if (retriedCompletedJob.skipped) return { status: "skipped" };
@@ -932,6 +941,7 @@ export class LibraryManager {
           askForEdition(retryJob);
           return downloadTracker.setPending(retryJob.id, "Retrying missing Aurral album track", {
             asRetryCycle: true,
+            cause,
           });
         }, track.id);
         if (retriedJob.skipped) return { status: "skipped" };
@@ -969,7 +979,7 @@ export class LibraryManager {
               reason: "Aurral album request",
             },
             "library",
-            { requestKind },
+            { requestKind, cause },
           ),
         track.id,
       );
@@ -1775,7 +1785,10 @@ export class LibraryManager {
   async searchAlbumMissingTracks(canonicalId: string | number) {
     const albumId = Number(canonicalId);
     return serializeMonitoringUpdate(_albumMonitoringUpdates, albumId, () =>
-      this._finishAlbum(albumId, { skipCancelledTracks: true }),
+      this._finishAlbum(albumId, {
+        skipCancelledTracks: true,
+        cause: { kind: "missing", playlistId: null },
+      }),
     );
   }
 

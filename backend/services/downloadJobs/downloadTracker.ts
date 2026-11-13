@@ -71,7 +71,13 @@ export type DownloadJobState =
   | { status: Exclude<JobStatus, "done">; finalPath: string | null };
 type DeniedRemoteSource = [source: string, key: string];
 type JobRedirect = { fromJobId: string; toJobId: string; dispatched: boolean };
-type PendingOptions = { asRetryCycle?: boolean };
+const STORED_CAUSES = ["request", "monitoring", "missing", "playlist", "share"] as const;
+export type JobCause = { kind: (typeof STORED_CAUSES)[number]; playlistId: string | null };
+export type DownloadCause = {
+  kind: JobCause["kind"] | "upgrade" | "flow";
+  playlistId: string | null;
+};
+type PendingOptions = { asRetryCycle?: boolean; cause?: JobCause };
 type QualityUpdate = {
   tier?: string | null;
   format?: string | null;
@@ -87,6 +93,7 @@ type AddJobOptions = {
   requestKind?: RequestKind;
   saved?: boolean;
   startedByPlaylist?: string | null;
+  cause?: JobCause;
 };
 type SourceCandidate<Source extends PipelinePayload["source"]> =
   Extract<PipelinePayload, { source: Source }> extends { candidates?: (infer Candidate)[] | null }
@@ -229,6 +236,11 @@ function storedJobState(row: DownloadJobsRow): DownloadJobState {
   return { status: "failed", finalPath: null };
 }
 
+const storedCause = (row: DownloadJobsRow): JobCause | null =>
+  v.is(v.picklist(STORED_CAUSES), row.cause)
+    ? { kind: row.cause, playlistId: row.cause_playlist_id || null }
+    : null;
+
 function rowToJob(row: DownloadJobsRow) {
   const job = {
     id: row.id!,
@@ -267,6 +279,7 @@ function rowToJob(row: DownloadJobsRow) {
     externalPath: row.external_path || null,
     reusedLibraryFile: row.reused_library_file === 1,
     startedByPlaylist: row.started_by_playlist || null,
+    cause: storedCause(row),
     error: row.error,
     createdAt: row.created_at,
     downloadSource: row.download_source || null,
@@ -367,9 +380,11 @@ const insertStmt = db.prepare(`
     manual_replacement_search,
     request_kind,
     reused_library_file,
-    started_by_playlist
+    started_by_playlist,
+    cause,
+    cause_playlist_id
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const updateStmt = db.prepare(`
@@ -403,7 +418,9 @@ const updateStmt = db.prepare(`
       quality_upgrade_checked_at = ?,
       upgrade_for_job_id = ?,
       manual_replacement_search = ?,
-      reused_library_file = ?
+      reused_library_file = ?,
+      cause = ?,
+      cause_playlist_id = ?
   WHERE id = ?
 `);
 
@@ -618,6 +635,15 @@ function discardReviewFiles(
     });
   });
 }
+
+export const downloadCause = (
+  job: Pick<DownloadJob, "cause" | "playlistType" | "upgradeForJobId" | "manualReplacementSearch">,
+): DownloadCause | null => {
+  if (job.manualReplacementSearch) return { kind: "request", playlistId: null };
+  if (job.upgradeForJobId) return { kind: "upgrade", playlistId: null };
+  if (job.playlistType !== "library") return { kind: "flow", playlistId: job.playlistType };
+  return job.cause;
+};
 
 export class DownloadTracker {
   declare enqueuePipeline: (payload: PipelinePayload) => unknown;
@@ -1293,6 +1319,8 @@ export class DownloadTracker {
           job.upgradeForJobId ?? null,
           job.manualReplacementSearch ? 1 : 0,
           job.reusedLibraryFile ? 1 : 0,
+          job.cause?.kind ?? null,
+          job.cause?.playlistId ?? null,
           job.id,
         );
       }
@@ -1357,6 +1385,8 @@ export class DownloadTracker {
       job.requestKind === "album" ? "album" : "track",
       job.reusedLibraryFile ? 1 : 0,
       job.startedByPlaylist ?? null,
+      job.cause?.kind ?? null,
+      job.cause?.playlistId ?? null,
     );
     this._touchRevision();
   }
@@ -1393,6 +1423,8 @@ export class DownloadTracker {
       job.upgradeForJobId ?? null,
       job.manualReplacementSearch ? 1 : 0,
       job.reusedLibraryFile ? 1 : 0,
+      job.cause?.kind ?? null,
+      job.cause?.playlistId ?? null,
       job.id,
     );
     if (ENDED_STATUSES.has(job.status)) this._dropHeldForReview(job);
@@ -1448,6 +1480,7 @@ export class DownloadTracker {
       externalPath: null,
       reusedLibraryFile: false,
       startedByPlaylist: options.startedByPlaylist ?? null,
+      cause: options.cause ?? null,
       error: null,
       createdAt: Date.now(),
       retryCycle: false,
@@ -1803,6 +1836,7 @@ export class DownloadTracker {
     job.reusedLibraryFile = false;
     job.retryCycle = asRetryCycle;
     job.error = typeof error === "string" ? error : (error && error.message) || null;
+    if (options.cause) job.cause = options.cause;
     this._update(job);
     this._applyStatusDelta(job.playlistType, previousStatus, job.status);
     this.pendingSet.add(id);

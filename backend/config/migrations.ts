@@ -214,6 +214,15 @@ const moveGotifyToWebhook: Migration = (db) => {
   );
 };
 
+const recordDownloadCauses: Migration = (db) => {
+  const hasColumn = db.prepare<[string]>(
+    "SELECT 1 FROM pragma_table_info('download_jobs') WHERE name = ?",
+  );
+  for (const column of ["cause", "cause_playlist_id"]) {
+    if (!hasColumn.get(column)) db.exec(`ALTER TABLE download_jobs ADD COLUMN ${column} TEXT`);
+  }
+};
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -227,6 +236,7 @@ export const migrations: Migration[] = [
   dropFixedSettings,
   dropUnusedSettings,
   moveGotifyToWebhook,
+  recordDownloadCauses,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

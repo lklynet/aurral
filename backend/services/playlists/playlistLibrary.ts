@@ -3,7 +3,11 @@ import { db } from "../../config/db-sqlite.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { recordTrackJobQueued } from "../aurralHistoryService.ts";
 import { cancelTrackDownload, cancelTrackDownloads } from "../albumJobs.ts";
-import { downloadTracker, type DownloadJob } from "../downloadJobs/downloadTracker.ts";
+import {
+  downloadTracker,
+  type DownloadJob,
+  type JobCause,
+} from "../downloadJobs/downloadTracker.ts";
 import { downloadWorker } from "../downloadJobs/downloadWorker.ts";
 import { jobDownloadedItsFile, reuseTrackForPlaylist } from "../downloadJobs/fileReuse.ts";
 import { removeLibraryMediaFiles } from "../libraryMediaStore.ts";
@@ -67,16 +71,20 @@ function keepFor(job: DownloadJob, startedByPlaylist: string | null) {
     downloadTracker.setStartedByPlaylist(job.id, null);
 }
 
-const requeue = (job: DownloadJob) =>
-  (job.status === "saved" && downloadTracker.setPending(job.id)) ||
+const requeue = (job: DownloadJob, cause: JobCause) =>
+  (job.status === "saved" && downloadTracker.setPending(job.id, null, { cause })) ||
   (job.status === "failed" &&
-    downloadTracker.setPending(job.id, "Requested again", { asRetryCycle: true }));
+    downloadTracker.setPending(job.id, "Requested again", { asRetryCycle: true, cause }));
 
 async function createLibraryJob(
   track: PlaylistTrack,
-  { startedByPlaylist, download }: { startedByPlaylist: string | null; download: boolean },
+  {
+    startedByPlaylist,
+    download,
+    cause,
+  }: { startedByPlaylist: string | null; download: boolean; cause: JobCause },
 ) {
-  const jobId = downloadTracker.addJob(track, LIBRARY, { saved: true });
+  const jobId = downloadTracker.addJob(track, LIBRARY, { saved: true, cause });
   if (!jobId) return null;
   try {
     const reuse = await reuseTrackForPlaylist(track, LIBRARY, {
@@ -120,6 +128,9 @@ export async function linkTracksToLibrary(
   tracks: PlaylistTrack[],
   { startedByPlaylist, download = true }: { startedByPlaylist: string | null; download?: boolean },
 ) {
+  const cause: JobCause = startedByPlaylist
+    ? { kind: "playlist", playlistId: startedByPlaylist }
+    : { kind: "request", playlistId: null };
   const index = libraryJobIndex();
   const linked: PlaylistTrack[] = [];
   const queuedJobIds: string[] = [];
@@ -133,7 +144,7 @@ export async function linkTracksToLibrary(
         : bestLibraryJob(index, track);
     if (existing) {
       keepFor(existing, startedByPlaylist);
-      if (download && existing !== referenced && requeue(existing)) {
+      if (download && existing !== referenced && requeue(existing, cause)) {
         queuedJobIds.push(existing.id);
         recordTrackJobQueued(downloadTracker.getJob(existing.id));
       }
@@ -141,7 +152,7 @@ export async function linkTracksToLibrary(
       linked.push({ ...track, canonicalJobId: existing.id });
       continue;
     }
-    const created = await createLibraryJob(track, { startedByPlaylist, download });
+    const created = await createLibraryJob(track, { startedByPlaylist, download, cause });
     if (!created) {
       linked.push(track);
       continue;

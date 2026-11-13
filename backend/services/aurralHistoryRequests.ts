@@ -12,7 +12,12 @@ import {
   flowRunQueue,
   playlistOperationQueue,
 } from "./jobs/queues.ts";
-import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
+import {
+  downloadCause,
+  downloadTracker,
+  type DownloadCause,
+} from "./downloadJobs/downloadTracker.ts";
+import { IMPORT_PROVIDER_LABELS, isNativeImportProvider } from "../../lib/importProviders.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
 import {
   MAX_AGE_MS,
@@ -314,6 +319,32 @@ export interface AlbumGrab {
   libraryAlbumId?: string | null;
 }
 
+export type ActivityCause = DownloadCause & { name: string | null; syncedFrom: string | null };
+
+const causeDescriber = () => {
+  const playlists = new Map<string, Pick<ActivityCause, "name" | "syncedFrom">>();
+  const describePlaylist = (id: string) => {
+    const playlist = flowPlaylistConfig.getStaticPlaylist(id);
+    const source = playlist?.importSource;
+    return {
+      name: playlist?.name ?? flowPlaylistConfig.getFlow(id)?.name ?? null,
+      syncedFrom: source?.syncEnabled
+        ? isNativeImportProvider(source.provider)
+          ? IMPORT_PROVIDER_LABELS[source.provider]
+          : playlist?.sourceName || null
+        : null,
+    };
+  };
+  return (cause: DownloadCause | null): ActivityCause | null => {
+    if (!cause) return null;
+    const id = cause.playlistId;
+    if (!id) return { ...cause, name: null, syncedFrom: null };
+    const described = playlists.get(id) ?? describePlaylist(id);
+    playlists.set(id, described);
+    return { ...cause, ...described };
+  };
+};
+
 export interface RequestItem {
   id: string;
   source: string;
@@ -346,6 +377,7 @@ export interface RequestItem {
   sourceFilename: string | null;
   releaseTitle: string | null;
   upgrade: TrackUpgrade | null;
+  cause: ActivityCause | null;
   inQueue: boolean;
 }
 
@@ -357,6 +389,7 @@ type HistoryRequestOptions = {
   albumGrab?: AlbumGrab | null;
   libraryAlbumId?: string | null;
   requestGroupId?: string | null;
+  cause?: ActivityCause | null;
 };
 
 export const toHistoryRequestItem = (
@@ -412,6 +445,7 @@ export const toHistoryRequestItem = (
     sourceFilename,
     releaseTitle,
     upgrade: entry.metadata?.upgrade || null,
+    cause: options.cause ?? null,
     inQueue:
       entry.status === "processing" || entry.status === "pending" || entry.status === "blocked",
   };
@@ -531,6 +565,7 @@ export const getAurralHistoryRequests = async (user: RequesterUser | null = null
       entry.metadata?.canonicalAlbumId || !albumMbid ? [] : [albumMbid],
     ),
   );
+  const describeCause = causeDescriber();
   return visible.map(({ entry, job, manifest: grab, albumMbid }) => {
     const manifest = grab ?? (job ? queuedAlbums.get(job.id) : undefined);
     if (entry.kind === "track_download" && job) {
@@ -576,6 +611,7 @@ export const getAurralHistoryRequests = async (user: RequesterUser | null = null
       libraryAlbumId,
       requestGroupId: job?.requestGroupId || manifest?.requestGroupId,
       albumGrab: manifest ? { ...manifest, libraryAlbumId: libraryAlbumId || null } : null,
+      cause: entry.kind === "track_download" && job ? describeCause(downloadCause(job)) : null,
     });
   });
 };

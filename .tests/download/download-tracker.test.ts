@@ -678,6 +678,33 @@ test("album siblings return to individual searches when the leader stops mid-gra
   }
 });
 
+test("a job keeps why it was queued across restart, and upgrades and flows say so on their own", () => {
+  const { downloadCause } = trackerModule;
+  const tracker = new DownloadTracker();
+  const track = { artistName: "The Band", trackName: "Song" };
+  const libraryId = requireFixture(
+    tracker.addJob(track, "library", {
+      saved: true,
+      cause: { kind: "playlist", playlistId: "mix" },
+    }),
+  );
+  const flowId = requireFixture(tracker.addJob(track, "flow-1"));
+  const legacyId = requireFixture(tracker.addJob(track, "library"));
+  tracker.setPending(libraryId, null, { cause: { kind: "missing", playlistId: null } });
+  tracker.setDone(flowId, "/music/song.flac");
+  const upgradeId = requireFixture(tracker.addUpgradeJob(tracker.getJob(flowId)));
+
+  const restarted = new DownloadTracker();
+  const causeOf = (id: string) => downloadCause(trackedJob(restarted, id));
+  assert.deepEqual(causeOf(libraryId), { kind: "missing", playlistId: null });
+  assert.deepEqual(causeOf(flowId), { kind: "flow", playlistId: "flow-1" });
+  assert.deepEqual(downloadCause(trackedJob(tracker, upgradeId)), {
+    kind: "upgrade",
+    playlistId: null,
+  });
+  assert.equal(causeOf(legacyId), null);
+});
+
 test("partial album fallback persists per-track mode across restart", async () => {
   const settings = dbOps.getSettings();
   dbOps.updateSettings({

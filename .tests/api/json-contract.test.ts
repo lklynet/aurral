@@ -1,6 +1,7 @@
 import { requireFixture } from "../playlists/fixtures.ts";
 import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
+import * as v from "valibot";
 import { test, beforeAll, afterAll } from "vite-plus/test";
 import { mkdir, writeFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -606,6 +607,7 @@ test("flows, activity, and review preserve their public response fields and stor
     ownerUserId: "number",
     mix: "object",
   });
+  const flowId = v.parse(v.string(), created.flow.id);
   const status = await call("/api/playlists/status");
   fields(status, {
     flows: "array",
@@ -615,13 +617,10 @@ test("flows, activity, and review preserve their public response fields and stor
     worker: "object",
     hint: "object",
   });
-  assert.ok(status.flows.some((flow: { id: string }) => flow.id === created.flow.id));
-  downloadTracker.addJob(
-    { artistName: "Flow Artist", trackName: "Flow Song", albumMbid },
-    created.flow.id,
-  );
-  downloadTracker.addJob({ artistName: "Flow Artist", trackName: "Loose Song" }, created.flow.id);
-  const flowTracks = await call(`/api/playlists/jobs/${created.flow.id}`);
+  assert.ok(status.flows.some((flow: { id: string }) => flow.id === flowId));
+  downloadTracker.addJob({ artistName: "Flow Artist", trackName: "Flow Song", albumMbid }, flowId);
+  downloadTracker.addJob({ artistName: "Flow Artist", trackName: "Loose Song" }, flowId);
+  const flowTracks = await call(`/api/playlists/jobs/${flowId}`);
   const artworkUrl = `/api/artists/release-group/${albumMbid}/cover/image`;
   assert.deepEqual(
     Object.fromEntries(
@@ -658,6 +657,31 @@ test("flows, activity, and review preserve their public response fields and stor
     title: "string",
     artistName: "string|null",
     trackName: "string|null",
+    cause: "object|null",
+  });
+  const queue = v.parse(
+    v.object({
+      cause: v.string(),
+      causes: v.array(v.looseObject({ key: v.string() })),
+      items: v.array(v.object({ cause: v.record(v.string(), v.unknown()) })),
+    }),
+    await call(`/api/requests/page?view=queue&cause=flow:${flowId}`),
+  );
+  const flowCause = queue.causes.find((group) => group.key === queue.cause);
+  assert.ok(flowCause);
+  fields(flowCause, {
+    key: "string",
+    kind: "string",
+    playlistId: "string",
+    name: "string",
+    syncedFrom: "null",
+    count: "number",
+    since: "string",
+  });
+  fields(requireFixture(queue.items[0]).cause, {
+    kind: "string",
+    playlistId: "string",
+    name: "string",
   });
   assert.equal(
     (await call(`/api/playlists/jobs/${denied.jobId}/deny`, { method: "POST" })).success,

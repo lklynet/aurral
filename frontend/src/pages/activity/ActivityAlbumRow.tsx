@@ -13,6 +13,7 @@ import {
 } from "./ActivityRequestRow";
 import type { ActivityRequest, AlbumActivityRequest } from "../../../../lib/activity.ts";
 import {
+  describeRequestCause,
   downloadClientLabel,
   formatReviewReasonSummary,
   formatTimelineTime,
@@ -62,7 +63,11 @@ export default function ActivityAlbumRow({ request, ...actions }: ActivityAlbumR
   const total = request.albumGrab.memberJobIds.length;
   const missing = Math.max(0, total - request.children.length);
   const complete = request.status === "completed";
-  const meta = [request.artistName, "Album", complete ? `${total} tracks` : request.progressLabel]
+  const meta = [
+    request.artistName,
+    describeRequestCause(request) ?? "Album",
+    complete ? `${total} tracks` : request.progressLabel,
+  ]
     .filter(Boolean)
     .join(" · ");
   const client = downloadClientLabel(request);

@@ -26,6 +26,7 @@ import ActivityAlbumRow from "./activity/ActivityAlbumRow";
 import ActivityStatusTabs from "./activity/ActivityStatusTabs";
 import ActivityMissingPage from "./activity/ActivityMissingPage";
 import ActivityInfoModal from "./activity/ActivityInfoModal";
+import ActivityCauses from "./activity/ActivityCauses";
 import { getApiErrorText } from "../utils/api/errors.ts";
 
 import { Navigate, useParams, useSearchParams } from "react-router";
@@ -51,9 +52,16 @@ const loadActivityPage = (
   {
     view,
     status,
+    cause,
     offset,
     refresh,
-  }: { view: "queue" | "history"; status: ActivityStatus | null; offset: number; refresh: boolean },
+  }: {
+    view: "queue" | "history";
+    status: ActivityStatus | null;
+    cause: string | null;
+    offset: number;
+    refresh: boolean;
+  },
   signal: AbortSignal,
 ): Promise<ActivityPageData> =>
   parseResponse(
@@ -62,6 +70,7 @@ const loadActivityPage = (
         query: {
           view,
           status: status ?? undefined,
+          cause: cause ?? undefined,
           offset: String(offset),
           limit: String(ACTIVITY_PAGE_SIZE),
           refresh: refresh ? "1" : undefined,
@@ -98,6 +107,7 @@ function ActivityPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [pageIndex, setPageIndex] = usePageParam();
   const activeStatus = normalizeActivityStatus(activeView, searchParams.get("status"));
+  const requestedCause = activeView === "queue" ? searchParams.get("cause") : null;
   const isQueueView = activeView === "queue";
   const isHistoryView = activeView === "history";
   const isMissingView = activeView === "missing";
@@ -139,8 +149,8 @@ function ActivityPage() {
   }, [activityWsConnected, refreshFromStatusEvent]);
   const pageView = isHistoryView ? "history" : "queue";
   const pageQueryKey = useMemo(
-    () => [...activityQueryKey, pageView, activeStatus, pageIndex],
-    [activityQueryKey, pageView, activeStatus, pageIndex],
+    () => [...activityQueryKey, pageView, activeStatus, requestedCause, pageIndex],
+    [activityQueryKey, pageView, activeStatus, requestedCause, pageIndex],
   );
   const activityQuery = useQuery({
     queryKey: pageQueryKey,
@@ -149,6 +159,7 @@ function ActivityPage() {
         {
           view: pageView,
           status: activeStatus,
+          cause: requestedCause,
           offset: (pageIndex - 1) * ACTIVITY_PAGE_SIZE,
           refresh: isListLikeView,
         },
@@ -188,8 +199,18 @@ function ActivityPage() {
     return buildHistoryListEntries(visibleRequests);
   }, [isListLikeView, visibleRequests]);
 
-  const setActiveStatus = (status: string | null) =>
-    setSearchParams(status ? { status } : {}, { replace: true });
+  const setFilter = (key: "status" | "cause", value: string | null) =>
+    setSearchParams(
+      (current) => {
+        const params = new URLSearchParams(current);
+        params.delete("page");
+        if (value) params.set(key, value);
+        else params.delete(key);
+        return params;
+      },
+      { replace: true },
+    );
+  const setActiveStatus = (status: string | null) => setFilter("status", status);
 
   useEffect(() => {
     if (isMissingView) return undefined;
@@ -258,7 +279,8 @@ function ActivityPage() {
   });
 
   const cancelAllMutation = useMutation({
-    mutationFn: () => parseResponse(playlistJobsClient.jobs.cancel.$post()),
+    mutationFn: (cause: string | null) =>
+      parseResponse(playlistJobsClient.jobs.cancel.$post({ query: { cause: cause ?? undefined } })),
     onError: () => setLocalError("Failed to cancel downloads."),
     onSettled: () => {
       setConfirmingCancelAll(false);
@@ -416,6 +438,12 @@ function ActivityPage() {
   return (
     <div className="activity-page">
       {pageHeader}
+      <ActivityCauses
+        causes={page?.causes ?? []}
+        active={page?.cause ?? null}
+        isAdmin={user?.role === "admin"}
+        onSelect={(cause) => setFilter("cause", cause)}
+      />
       <ActivityStatusTabs
         total={page?.total ?? 0}
         filters={page?.filters ?? []}
@@ -503,14 +531,14 @@ function ActivityPage() {
       <ActivityInfoModal item={infoRequest} onClose={() => setInfoRequest(null)} />
       <ConfirmModal
         open={confirmingCancelAll}
-        title="Cancel all downloads?"
+        title={page?.cause ? "Cancel these downloads?" : "Cancel all downloads?"}
         body={`${cancelableCount} ${cancelableCount === 1 ? "download" : "downloads"} will stop. You can retry each one from History.`}
         confirmLabel="Cancel all"
         cancelLabel="Keep"
         busyLabel="Cancelling"
         busy={cancelAllMutation.isPending}
         onCancel={() => setConfirmingCancelAll(false)}
-        onConfirm={() => cancelAllMutation.mutate()}
+        onConfirm={() => cancelAllMutation.mutate(page?.cause ?? null)}
       />
     </div>
   );

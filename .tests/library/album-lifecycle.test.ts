@@ -270,7 +270,7 @@ test("a Library requester can cancel without flow permission and cannot cancel a
   assert.equal(getJob(other).status, "pending");
 });
 
-test("cancelling all downloads stops only the active jobs the user controls", async () => {
+test("cancelling all downloads stops only the active jobs the user controls, or those of one cause", async () => {
   const fixture = createLibraryAlbum({ trackCount: 4 });
   const own = fixture.jobFor(0);
   const ownDownloading = fixture.jobFor(1);
@@ -293,7 +293,10 @@ test("cancelling all downloads stops only the active jobs the user controls", as
   assert.equal(getJob(finished).status, "done");
 
   requestUser = testUser(1, "admin");
-  const admin = await apiRequest("/api/playlists/jobs/cancel", "POST");
+  downloadTracker.setPending(other, null, { cause: { kind: "missing", playlistId: null } });
+  const upgrades = await apiRequest("/api/playlists/jobs/cancel?cause=upgrade", "POST");
+  assert.deepEqual(upgrades.body, { cancelled: 0, cleanupFailed: false });
+  const admin = await apiRequest("/api/playlists/jobs/cancel?cause=missing", "POST");
   assert.deepEqual(admin.body, { cancelled: 1, cleanupFailed: false });
   assert.equal(getJob(other).status, "cancelled");
 });

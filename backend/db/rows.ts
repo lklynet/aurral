@@ -124,6 +124,8 @@ export interface DownloadJobsRow {
   request_group_id: string | null;
   reused_library_file: number;
   started_by_playlist: string | null;
+  cause: string | null;
+  cause_playlist_id: string | null;
 }
 
 export interface DownloadJobsRevisionRow {
