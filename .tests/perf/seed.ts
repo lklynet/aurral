@@ -55,6 +55,12 @@ export function seedPerfLibrary(
     `INSERT INTO library_management (entity_kind, entity_id, monitor_mode, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?)`,
   );
+  const insertRelease = db.prepare(
+    `INSERT INTO library_release_calendar
+      (release_group_mbid, artist_id, title, release_date, release_type, present, refreshed_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'Album', 1, ?, ?, ?)`,
+  );
+  const today = Date.now();
 
   const albumIds: number[] = [];
   const trackRows: {
@@ -85,6 +91,20 @@ export function seedPerfLibrary(
       );
       insertManagement.run("artist", artistId, "none", now, now);
       insertImageLookup.run(uuid(1, artistIndex), Date.now(), Date.now());
+      if (artistIndex % 4 === 0) {
+        for (const days of [-(artistIndex % 85) - 1, (artistIndex % 120) + 1]) {
+          const releaseDate = new Date(today + days * 86_400_000).toISOString().slice(0, 10);
+          insertRelease.run(
+            uuid(5, artistIndex * 2 + (days > 0 ? 1 : 0)),
+            artistId,
+            `Perf Release ${pad(artistIndex, 5)}${days > 0 ? " upcoming" : ""}`,
+            releaseDate,
+            now,
+            now,
+            now,
+          );
+        }
+      }
       const albumCount = 4 + (artistIndex % 7);
       for (let albumOffset = 0; albumOffset < albumCount; albumOffset += 1) {
         const albumIndex = albumIds.length;

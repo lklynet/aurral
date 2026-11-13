@@ -45,6 +45,7 @@ import {
   type DiscoverSection,
 } from "../utils/discoverUtils";
 import { useDiscoverData } from "./useDiscoverData";
+import { useReleaseAlbumAction } from "./useReleaseAlbumAction.ts";
 import type { DiscoverFeedStyle, DiscoverSectionId } from "../../../lib/discoverLayout.ts";
 import { useLibraryNews } from "../hooks/useLibraryNews";
 import { formatDate, formatRelativeTime } from "../utils/dateTime.ts";
@@ -101,7 +102,6 @@ function DiscoverPage() {
     recentlyAddedPending,
     recentReleases,
     recentReleasesPending,
-    pendingRecentReleaseIds,
     error,
     libraryLookup,
     setLibraryLookup,
@@ -115,12 +115,10 @@ function DiscoverPage() {
     setNearbyLocationMode,
     appliedNearbyZip,
     setAppliedNearbyZip,
-    canAddAlbum,
-    getRecentReleaseKey,
-    handleRecentReleaseAlbumAction,
     handleDiscoveryFeedback,
     discoveryStatus,
   } = useDiscoverData();
+  const releaseAction = useReleaseAlbumAction();
 
   const {
     discoverSections,
@@ -381,7 +379,11 @@ function DiscoverPage() {
     if (id === "recentReleases") {
       if (!sectionAvailability.recentReleases) return null;
       return (
-        <DiscoverRail key="recentReleases" title="Recent & upcoming releases">
+        <DiscoverRail
+          key="recentReleases"
+          title="Recent & upcoming releases"
+          viewAllTo="/discover/releases"
+        >
           <>
             {recentReleases.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((album) => (
               <div
@@ -390,9 +392,9 @@ function DiscoverPage() {
               >
                 <AlbumCard
                   album={album}
-                  canAddAlbum={canAddAlbum}
-                  isPending={!!pendingRecentReleaseIds[getRecentReleaseKey(album)]}
-                  onAlbumAction={handleRecentReleaseAlbumAction}
+                  canAddAlbum={releaseAction.canAddAlbum}
+                  isPending={releaseAction.isPending(album)}
+                  onAlbumAction={releaseAction.onAlbumAction}
                 />
               </div>
             ))}

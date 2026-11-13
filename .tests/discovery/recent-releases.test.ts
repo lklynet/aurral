@@ -128,7 +128,7 @@ function removeCalendarArtist(artistId: number) {
   db.prepare("DELETE FROM library_artists WHERE id = ?").run(artistId);
 }
 
-test("recent missing releases can exclude future releases for Release Radar", async () => {
+test("recent missing releases leave out future releases unless asked for upcoming", async () => {
   const artist = createCalendarArtist("Release Radar Artist");
   addCalendarRelease(artist.id, "Released Album", "2026-06-11");
   addCalendarRelease(artist.id, "Future Album", "2026-08-20");
@@ -136,7 +136,6 @@ test("recent missing releases can exclude future releases for Release Radar", as
   try {
     const releases = await getRecentMissingReleases(10, {
       artists: [{ id: String(artist.id) }],
-      includeFuture: false,
       now: "2026-06-15T12:00:00Z",
     });
 
@@ -149,20 +148,22 @@ test("recent missing releases can exclude future releases for Release Radar", as
   }
 });
 
-test("recent missing releases keep upcoming albums by default for the Discover rail", async () => {
+test("upcoming releases come soonest first", async () => {
   const artist = createCalendarArtist("Upcoming Release Artist");
   addCalendarRelease(artist.id, "Released Album", "2026-06-11");
-  addCalendarRelease(artist.id, "Future Album", "2026-08-20");
+  addCalendarRelease(artist.id, "Later Album", "2026-09-20");
+  addCalendarRelease(artist.id, "Sooner Album", "2026-06-16");
 
   try {
     const releases = await getRecentMissingReleases(10, {
       artists: [{ id: String(artist.id) }],
       now: "2026-06-15T12:00:00Z",
+      when: "upcoming",
     });
 
     assert.deepEqual(
       releases.map((album) => album.albumName),
-      ["Future Album", "Released Album"],
+      ["Sooner Album", "Later Album"],
     );
   } finally {
     removeCalendarArtist(artist.id);
@@ -218,15 +219,14 @@ test("BrainzMash refresh caches full album lookups and only fetches newly discov
     albumRequests.length = 0;
     return refreshReleaseMetadata({ artists: [artist], now: Date.parse(now) });
   };
-  const visible = async (now: string) =>
-    Object.fromEntries(
-      (
-        await getRecentMissingReleases(100, {
-          artists: [{ id: String(artist.id) }],
-          now,
-        })
-      ).map((album) => [album.title, album.releaseDate]),
-    );
+  const visible = async (now: string) => {
+    const artists = [{ id: String(artist.id) }];
+    const releases = await Promise.all([
+      getRecentMissingReleases(100, { artists, now }),
+      getRecentMissingReleases(100, { artists, now, when: "upcoming" }),
+    ]);
+    return Object.fromEntries(releases.flat().map((album) => [album.title, album.releaseDate]));
+  };
 
   try {
     await refresh("2026-09-27T12:00:00Z");

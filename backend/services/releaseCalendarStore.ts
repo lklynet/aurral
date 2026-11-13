@@ -210,11 +210,13 @@ export function getReleaseCalendarEntries({
   to = null,
   limit = 100,
   artistIds = [],
+  soonestFirst = false,
 }: {
   from?: string;
   to?: string | null;
   limit?: number;
   artistIds?: unknown[];
+  soonestFirst?: boolean;
 } = {}) {
   const fromDate = String(from || "").trim();
   const toDate = String(to || "").trim();
@@ -242,6 +244,7 @@ export function getReleaseCalendarEntries({
     parameters.push(JSON.stringify(normalizedArtistIds));
   }
   parameters.push(Math.min(1000, Math.max(1, Number.parseInt(String(limit), 10) || 100)));
+  const order = soonestFirst ? "ASC" : "DESC";
 
   const rows = db
     .prepare<(string | number)[], CalendarEntryRow>(`
@@ -258,7 +261,7 @@ export function getReleaseCalendarEntries({
       SELECT *
       FROM eligible_calendar
       WHERE release_rank = 1
-      ORDER BY release_date DESC, release_group_mbid
+      ORDER BY release_date ${order}, release_group_mbid
       LIMIT ?
     ), matched_albums AS MATERIALIZED (
       SELECT
@@ -302,7 +305,7 @@ export function getReleaseCalendarEntries({
       ON media.track_id = relation.track_id
       AND (media.album_id = relation.album_id OR media.album_id IS NULL)
     GROUP BY calendar.release_group_mbid, calendar.artist_id
-    ORDER BY calendar.release_date DESC, calendar.release_group_mbid
+    ORDER BY calendar.release_date ${order}, calendar.release_group_mbid
   `)
     .all(...parameters);
 

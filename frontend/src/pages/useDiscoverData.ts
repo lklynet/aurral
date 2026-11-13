@@ -1,9 +1,8 @@
-import { describeAlbumRequestResult } from "../utils/albumAddAction";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { libraryMiscClient } from "../utils/api/clients/libraryMisc.ts";
-import { requestAlbumFromSearch, type ArtistsInLibrary } from "../utils/api/endpoints/library.ts";
+import type { ArtistsInLibrary } from "../utils/api/endpoints/library.ts";
 import { useNearbyShows } from "../hooks/useNearbyShows";
 import {
   readStoredRecentlyAdded,
@@ -16,20 +15,16 @@ import {
 import { useDiscoveryRecommendations } from "./useDiscoveryRecommendations";
 
 import { useWebSocketChannel } from "../hooks/useWebSocket";
-import { asApiError } from "../utils/api/core.ts";
-import { getApiErrorText } from "../utils/api/errors.ts";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
 import { queryClient, queryKeys } from "../queryClient.ts";
+import type { RecentRelease } from "./useReleaseAlbumAction.ts";
 
 type RecentlyAdded = InferResponseType<typeof libraryMiscClient.recent.$get, 200>;
-type RecentReleases = InferResponseType<(typeof libraryMiscClient)["recent-releases"]["$get"], 200>;
-
-export type RecentRelease = RecentReleases[number];
 
 export function useDiscoverData() {
-  const { user: authUser, hasPermission, bootstrap } = useAuth();
-  const { showSuccess, showError, showInfo } = useToast();
+  const { user: authUser, bootstrap } = useAuth();
+  const { showError } = useToast();
   const [ticketmasterConfigured, setTicketmasterConfigured] = useState(true);
   const {
     data: nearbyShowsData,
@@ -72,11 +67,7 @@ export function useDiscoverData() {
   });
   const recentlyAdded: RecentlyAdded = recentlyAddedQuery.data || [];
   const recentReleases: RecentRelease[] = recentReleasesQuery.data || [];
-  const [pendingRecentReleaseIds, setPendingRecentReleaseIds] = useState<Record<string, boolean>>(
-    {},
-  );
   const [libraryLookup, setLibraryLookup] = useState<ArtistsInLibrary>({});
-  const canAddAlbum = hasPermission("addAlbum");
 
   useEffect(() => {
     if (recentlyAddedQuery.data) writeStoredRecentlyAdded(recentlyAddedQuery.data, authUser?.id);
@@ -93,9 +84,7 @@ export function useDiscoverData() {
       });
     }
     if (msg.type !== "release_metadata_refreshed") return;
-    queryClient.invalidateQueries({
-      queryKey: queryKeys.recentReleases(authUser?.id),
-    });
+    queryClient.invalidateQueries({ queryKey: queryKeys.releases() });
   });
 
   useEffect(() => {
@@ -114,48 +103,6 @@ export function useDiscoverData() {
     }
   }, [bootstrap]);
 
-  const getRecentReleaseKey = useCallback(
-    (album: RecentRelease) => album.mbid || album.foreignAlbumId || album.id,
-    [],
-  );
-
-  const handleRecentReleaseAlbumAction = useCallback(
-    async (album: RecentRelease) => {
-      const albumKey = getRecentReleaseKey(album);
-      const albumMbid = album?.mbid || album?.foreignAlbumId;
-      const artistMbid = album?.artistMbid || album?.foreignArtistId;
-      if (!albumMbid || !artistMbid || !albumKey) return;
-      setPendingRecentReleaseIds((prev) => ({ ...prev, [albumKey]: true }));
-      try {
-        const result = await requestAlbumFromSearch({
-          albumMbid,
-          albumName: album.albumName || album.title,
-          artistMbid,
-          artistName: album.artistName,
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.recentReleases(authUser?.id),
-        });
-        const outcome = describeAlbumRequestResult(
-          result,
-          album.albumName || album.title || "album",
-        );
-        (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
-      } catch (err) {
-        showError(
-          `Could not download the album: ${
-            getApiErrorText(err, "message") ||
-            getApiErrorText(err, "error") ||
-            asApiError(err)?.message
-          }`,
-        );
-      } finally {
-        setPendingRecentReleaseIds(({ [albumKey]: _, ...prev }) => prev);
-      }
-    },
-    [authUser?.id, getRecentReleaseKey, showError, showInfo, showSuccess],
-  );
-
   return {
     authUser,
     data,
@@ -163,7 +110,6 @@ export function useDiscoverData() {
     recentlyAddedPending: recentlyAddedQuery.isPending,
     recentReleases,
     recentReleasesPending: recentReleasesQuery.isPending,
-    pendingRecentReleaseIds,
     error,
     libraryLookup,
     setLibraryLookup,
@@ -177,10 +123,7 @@ export function useDiscoverData() {
     setNearbyLocationMode,
     appliedNearbyZip,
     setAppliedNearbyZip,
-    canAddAlbum,
     discoveryStatus,
-    getRecentReleaseKey,
-    handleRecentReleaseAlbumAction,
     handleDiscoveryFeedback,
   };
 }

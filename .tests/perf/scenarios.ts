@@ -110,6 +110,15 @@ export const scenarios: Scenario[] = [
   { name: "favorites", requests: () => ["/api/library/favorites"] },
   { name: "search", requests: () => ["/api/search/library?q=perf%20track%20001&limit=20"] },
   { name: "discover recently added", requests: () => ["/api/library/recent"] },
+  { name: "discover releases", requests: () => ["/api/library/recent-releases"] },
+  {
+    name: "releases page",
+    requests: () => [
+      "/api/library/releases?when=released&limit=24",
+      "/api/library/releases?when=released&offset=24&limit=24",
+      "/api/library/releases?when=upcoming&limit=24",
+    ],
+  },
   {
     name: "discover artist",
     requests: () => [

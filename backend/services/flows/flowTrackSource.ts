@@ -1145,7 +1145,7 @@ export class FlowTrackSource {
 
   async _getRecentReleases(limit: number): Promise<RecentRelease[]> {
     const { getRecentMissingReleases } = await import("../discovery/recentReleases.ts");
-    return getRecentMissingReleases(limit, { includeFuture: false });
+    return getRecentMissingReleases(limit);
   }
 
   async getNewReleaseTracks(limit: number, context: Partial<SourceContext> = {}) {

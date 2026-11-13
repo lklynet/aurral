@@ -70,6 +70,7 @@ const TrendingPage = lazy(routeModules.trending);
 const TrendingGenrePage = lazy(routeModules.trendingGenre);
 const BrowsePlaylistDetailPage = lazy(routeModules.browsePlaylist);
 const NewsPage = lazy(routeModules.news);
+const ReleasesPage = lazy(routeModules.releases);
 const ResolveLinkPage = lazy(routeModules.resolveLink);
 const ShareImportPage = lazy(routeModules.shareImport);
 
@@ -314,6 +315,7 @@ const appRoutes = createRoutesFromElements(
         <Route path="/discover/playlists" element={<DiscoverPlaylistsPage />} />
         <Route path="/discover/playlists/:categoryId" element={<DiscoverPlaylistCategoryPage />} />
         <Route path="/discover/news" element={<NewsPage />} />
+        <Route path="/discover/releases" element={<ReleasesPage />} />
         <Route path="/discover/recommended/:view?" element={<RecommendedPage />} />
         <Route path="/discover/trending" element={<TrendingPage />} />
         <Route path="/discover/trending/genres/:genreId" element={<TrendingGenrePage />} />
