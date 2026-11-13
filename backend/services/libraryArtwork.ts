@@ -26,7 +26,7 @@ import { logger, safeLogDiagnostic } from "./logger.ts";
 import getSharp from "./sharpConfig.ts";
 import { readLibraryMetadata } from "./libraryMetadata.ts";
 import { fetchReleaseGroupCoverUrl } from "./releaseGroupCoverService.ts";
-import { resolveDeezerAlbumForPreview } from "./apiClients/deezer.ts";
+import { findDeezerAlbumCover } from "./apiClients/deezer.ts";
 
 export type LibraryArtworkKind = "album" | "artist";
 type Artwork = { buffer: Uint8Array; contentType: string };
@@ -285,8 +285,12 @@ async function findArtistPhoto(mbid: string, artistName: string): Promise<Artwor
 }
 
 async function findDeezerCover(artistName: string, albumTitle: string): Promise<ArtworkLookup> {
-  const album = await resolveDeezerAlbumForPreview({ artistName, albumTitle }).catch(() => null);
-  return album?._coverUrl ? downloadArtwork(album._coverUrl) : { artwork: null };
+  try {
+    const cover = await findDeezerAlbumCover(artistName, albumTitle);
+    return cover ? await downloadArtwork(cover) : { artwork: null };
+  } catch {
+    return { artwork: null, transient: true };
+  }
 }
 
 async function findAlbumCover(albumId: number): Promise<ArtworkLookup> {
@@ -308,11 +312,7 @@ async function findAlbumCover(albumId: number): Promise<ArtworkLookup> {
     ? await downloadArtwork(releaseGroup.imageUrl)
     : null;
   if (fromReleaseGroup?.artwork) return fromReleaseGroup;
-  // A release-group lookup that finds no link has already asked Deezer.
-  const fromDeezer =
-    !releaseGroup || releaseGroup.imageUrl
-      ? await findDeezerCover(album.artist_name, album.title)
-      : null;
+  const fromDeezer = await findDeezerCover(album.artist_name, album.title);
   if (fromDeezer?.artwork) return fromDeezer;
   return {
     artwork: null,
