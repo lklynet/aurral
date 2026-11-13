@@ -51,8 +51,11 @@ test("hovering a playlist link fetches it once and the page reuses the result", 
   assert.equal(apiRequests(requests, "/discover/playlists/deezer/42").length, 1);
 });
 
-test("hovering an album never fetches metadata from BrainzMash", async (t) => {
-  const { requests, prefetchRoute } = await setup(t, () => ({ body: {} }));
+test("a failed prefetch is not retried on the next hover", async (t) => {
+  const { requests, prefetchRoute, queryClient, queryOptions } = await setup(t, () => ({
+    status: 503,
+    body: { error: "unavailable" },
+  }));
 
   await prefetchRoute("/discover/playlists/deezer/42", { userId: 1 });
   await prefetchRoute("/discover/playlists/deezer/42", { userId: 1 });
