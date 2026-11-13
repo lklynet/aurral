@@ -54,7 +54,7 @@ export const requestUserDiscoveryRefresh = (
     delaySeconds = USER_REFRESH_DELAY_SECONDS,
   }: { reason?: string; delaySeconds?: number } = {},
 ) => {
-  if (userId == null) {
+  if (userId == null || userId <= 0) {
     return { enqueued: false, reason: "not_configured" };
   }
   const { metadata } = dbOps.getDiscoveryCache(getUserDiscoveryNamespace(userId));
