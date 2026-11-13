@@ -69,9 +69,9 @@ export default new Hono<AppEnv>().get(
       };
       rememberNearbyLocation(userId, location);
       const radiusMiles = getTicketmasterRadiusMiles();
-      const { body: discovery } = getUserDiscovery(userId, 24);
+      const { body: discovery } = getUserDiscovery(userId, 0);
       const recommendedArtists = discovery.recommendations;
-      const trendingArtists = discovery.globalTop.slice(0, 18);
+      const trendingArtists = discovery.globalTop;
       const libraryArtists = getLibraryArtistNames();
       const nearbyShows = await getNearbyShows({
         req: { ip: location.ip },

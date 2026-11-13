@@ -1,7 +1,7 @@
 import * as v from "valibot";
 import { BlockList, isIP } from "node:net";
 import { isDeepStrictEqual } from "node:util";
-import { http } from "../../lib/http.ts";
+import { http, type HttpOptions } from "../../lib/http.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import { getTicketmasterApiKey } from "./apiClients/index.ts";
@@ -157,6 +157,7 @@ const DEFAULT_RADIUS_MILES = 250;
 const EARTH_RADIUS_MILES = 3958.8;
 const EVENT_PAGE_SIZE = 200;
 const MAX_EVENT_PAGES = 5;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const TICKETMASTER_BASE_URL = "https://app.ticketmaster.com/discovery/v2";
 
 const toArtistKey = (value: unknown) =>
@@ -289,15 +290,40 @@ const toEventRecord = (event: TicketmasterEvent & { id: string }) => {
   };
 };
 
-const buildDateRange = () => {
-  const start = new Date();
-  const end = new Date(start);
-  end.setDate(end.getDate() + 90);
-  return {
-    startDateTime: `${start.toISOString().split(".")[0]}Z`,
-    endDateTime: `${end.toISOString().split(".")[0]}Z`,
-  };
+const ticketmasterTime = (now: number, days: number) =>
+  `${new Date(now + days * DAY_MS).toISOString().split(".")[0]}Z`;
+
+const showWindows = () => {
+  const now = Date.now();
+  return [
+    { startDateTime: ticketmasterTime(now, 0), endDateTime: ticketmasterTime(now, 90) },
+    { startDateTime: ticketmasterTime(now, 90), endDateTime: ticketmasterTime(now, 365) },
+  ];
 };
+
+const fetchEventPages = async (query: HttpOptions["query"], signal: AbortSignal) => {
+  const source = { service: "Ticketmaster", endpoint: "/events.json" };
+  const events: TicketmasterEvent[] = [];
+  for (let page = 0; page < MAX_EVENT_PAGES; page++) {
+    const response = await http.get(`${TICKETMASTER_BASE_URL}/events.json`, {
+      query: { ...query, page },
+      timeoutMs: 10000,
+      signal,
+    });
+    const data = readOne(ticketmasterPageSchema, response.data, source);
+    events.push(...readMany(ticketmasterEventSchema, data._embedded?.events ?? [], source));
+    if (page + 1 >= (data.page?.totalPages ?? 0)) break;
+  }
+  return events;
+};
+
+const toEventRecords = (events: TicketmasterEvent[]) => [
+  ...new Map(
+    events
+      .filter((event): event is TicketmasterEvent & { id: string } => Boolean(event?.id))
+      .map((event) => [event.id, toEventRecord(event)]),
+  ).values(),
+];
 
 const getTicketmasterLocationParams = (location: NearbyLocation, radiusMiles: number) => {
   const { latitude, longitude } = location;
@@ -474,25 +500,13 @@ const fetchTicketmasterEvents = async ({
       locale: "*",
       includeTBA: "no",
       includeTBD: "no",
-      ...buildDateRange(),
       ...getTicketmasterLocationParams(location, radiusMiles),
     };
     const listedEvents: TicketmasterEvent[] = [];
-    for (let page = 0; page < MAX_EVENT_PAGES; page++) {
-      const response = await http.get(`${TICKETMASTER_BASE_URL}/events.json`, {
-        query: { ...params, page },
-        timeoutMs: 10000,
-        signal,
-      });
-      const source = { service: "Ticketmaster", endpoint: "/events.json" };
-      const data = readOne(ticketmasterPageSchema, response.data, source);
-      listedEvents.push(...readMany(ticketmasterEventSchema, data._embedded?.events ?? [], source));
-      if (page + 1 >= (data.page?.totalPages ?? 0)) break;
+    for (const window of showWindows()) {
+      listedEvents.push(...(await fetchEventPages({ ...params, ...window }, signal)));
     }
-    const events = listedEvents
-      .filter((event): event is TicketmasterEvent & { id: string } => Boolean(event?.id))
-      .map(toEventRecord)
-      .filter((event: ReturnType<typeof toEventRecord>) => event.performerKeys.length > 0);
+    const events = toEventRecords(listedEvents).filter((event) => event.performerKeys.length > 0);
     ticketmasterEventCache.set(cacheKey, events);
     return events;
   });
@@ -643,24 +657,11 @@ const fetchArtistEvents = async (apiKey: string, artistName: string, artistKey: 
       locale: "*",
       includeTBA: "no",
       includeTBD: "no",
-      startDateTime: buildDateRange().startDateTime,
+      startDateTime: ticketmasterTime(Date.now(), 0),
     };
-    const source = { service: "Ticketmaster", endpoint: "/events.json" };
-    const listedEvents: TicketmasterEvent[] = [];
-    for (let page = 0; page < MAX_EVENT_PAGES; page++) {
-      const response = await http.get(`${TICKETMASTER_BASE_URL}/events.json`, {
-        query: { ...query, page },
-        timeoutMs: 10000,
-        signal,
-      });
-      const data = readOne(ticketmasterPageSchema, response.data, source);
-      listedEvents.push(...readMany(ticketmasterEventSchema, data._embedded?.events ?? [], source));
-      if (page + 1 >= (data.page?.totalPages ?? 0)) break;
-    }
-    const events = listedEvents
-      .filter((event): event is TicketmasterEvent & { id: string } => Boolean(event?.id))
-      .map(toEventRecord)
-      .filter((event) => event.performerKeys.includes(artistKey));
+    const events = toEventRecords(await fetchEventPages(query, signal)).filter((event) =>
+      event.performerKeys.includes(artistKey),
+    );
     artistEventCache.set(artistKey, events);
     return events;
   });
