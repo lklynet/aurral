@@ -134,3 +134,17 @@ test("served picks say whether they came through another pick and when they were
     { Direct: [1, "2026-10-01T00:00:00.000Z"], Bridged: [2, null] },
   );
 });
+
+test("discovery for the API key, which has no user account, queues no listening history refresh", () => {
+  const refreshJobs = () =>
+    db
+      .prepare<[], { queue: string }>(
+        "SELECT queue FROM jobs WHERE queue = 'discovery-user-refresh'",
+      )
+      .all();
+  getUserDiscovery(8, 0);
+  assert.equal(refreshJobs().length, 1);
+  db.prepare("DELETE FROM jobs").run();
+  getUserDiscovery(-1, 0);
+  assert.deepEqual(refreshJobs(), []);
+});
