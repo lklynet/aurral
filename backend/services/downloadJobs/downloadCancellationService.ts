@@ -4,8 +4,8 @@ import { getDownloadClient } from "../download/downloadClientSettings.ts";
 import { deemixQueueIds } from "../deemixClient.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import { isNzbSource, type UsenetClientKey } from "../usenetClientCommon.ts";
-import { nativeDownloadSource } from "../download/nativeSources.ts";
-import { pluginDownloadSource } from "../plugins/pluginDownloadSource.ts";
+import { contractSource } from "../download/nativeSources.ts";
+import type { DownloadSource } from "../download/downloadSource.ts";
 import { discardSourceWork } from "../download/sourcePipeline.ts";
 import { downloadPipelineQueue } from "../jobs/queues.ts";
 import type { DownloadProviderWorkRow } from "../../db/rows.ts";
@@ -317,46 +317,24 @@ async function cancelUsenetWork(
   return { historyItems: ids.size };
 }
 
-async function cancelYtdlpWork(payloads: CancellationPayload[], jobs: CancellationJob[]) {
-  const client = getDownloadClient("ytdlp");
-  const ids = new Set(
-    jobs
-      .filter((job) => job?.downloadClient === "ytdlp" || job?.downloadSource === "ytdlp")
-      .map((job) => normalizeId(job.id))
-      .filter(Boolean),
-  );
-  const failures: unknown[] = [];
-  for (const payload of payloads) {
-    if (payload?.source === "ytdlp") {
-      const jobId = normalizeId(payload.jobId);
-      if (jobId) ids.add(jobId);
-    }
+// A job's staging folder goes even when no step of it is queued, and a
+// queued step also removes the download its source started.
+async function cancelSourceWork(payloads: CancellationPayload[], jobs: CancellationJob[]) {
+  const work = new Map<string, { source: DownloadSource; pendingId: string | null }>();
+  for (const job of jobs) {
+    const source = contractSource(String(job?.downloadSource || job?.downloadClient || ""));
+    const jobId = normalizeId(job?.id);
+    if (source && jobId) work.set(jobId, { source, pendingId: null });
   }
-  for (const jobId of ids) {
-    await attemptProviderCleanup(
-      failures,
-      "ytdlp",
-      "Could not clean removed playlist staging",
-      { jobId },
-      () => client.cleanupStaging(jobId),
-    );
-  }
-  throwProviderCleanupFailures("ytdlp", failures);
-  return { stagingJobs: ids.size };
-}
-
-async function cancelSourceWork(payloads: CancellationPayload[]) {
-  let discarded = 0;
   for (const payload of payloads) {
-    const id = String(payload?.source ?? "");
-    const source = nativeDownloadSource(id) ?? pluginDownloadSource(id);
+    const source = contractSource(String(payload?.source ?? ""));
     const jobId = normalizeId(payload?.jobId);
-    if (!source || !jobId) continue;
     const pendingId = typeof payload?.pendingId === "string" ? payload.pendingId : null;
-    await discardSourceWork({ jobId, pendingId }, source);
-    discarded += 1;
+    if (source && jobId) work.set(jobId, { source, pendingId });
   }
-  return { discarded };
+  for (const [jobId, { source, pendingId }] of work)
+    await discardSourceWork({ jobId, pendingId }, source);
+  return { discarded: work.size };
 }
 
 function fulfilledValue<T>(result: PromiseSettledResult<T>) {
@@ -375,8 +353,7 @@ async function cancelProviderWork(
     cancelUsenetWork("sabnzbd", "SABnzbd", payloads, jobs),
     cancelUsenetWork("nzbget", "NZBGet", payloads, jobs),
     cancelUsenetWork("tidarr", "Tidarr", payloads, jobs),
-    cancelYtdlpWork(payloads, jobs),
-    cancelSourceWork(payloads),
+    cancelSourceWork(payloads, jobs),
   ]);
   const failures = results
     .filter((result) => result.status === "rejected")
@@ -384,14 +361,13 @@ async function cancelProviderWork(
   if (failures.length > 0) {
     throw new AggregateError(failures, "Could not cancel download provider work");
   }
-  const [slskd, deemix, sabnzbd, nzbget, tidarr, ytdlp, sources] = results;
+  const [slskd, deemix, sabnzbd, nzbget, tidarr, sources] = results;
   return {
     slskd: fulfilledValue(slskd),
     deemix: fulfilledValue(deemix),
     sabnzbd: fulfilledValue(sabnzbd),
     nzbget: fulfilledValue(nzbget),
     tidarr: fulfilledValue(tidarr),
-    ytdlp: fulfilledValue(ytdlp),
     sources: fulfilledValue(sources),
   };
 }

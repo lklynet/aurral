@@ -164,7 +164,7 @@ The key acts as an admin, so the plugin can do anything an admin can do in Aurra
 
 ## Download sources
 
-A download source joins the other download sources. Admins set its priority, and sources with a lower number are searched first. Aurral matches results to the request, gives the plugin an empty `directory` for each download, and checks every file the same way it checks other sources. A file that doesn't match goes to the review queue or is denied.
+A download source joins the other download sources. Admins set its priority, and sources with a lower number are searched first. Aurral matches results to the request, gives the plugin an empty `directory` for each download, and checks every file the same way it checks other sources. A file that doesn't match goes to the review queue or is denied. Manual Search lists the results of `search`, or of `searchAlbum` when the plugin only downloads albums, for a person to pick one.
 
 ```js
 export default {

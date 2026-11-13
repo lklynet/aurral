@@ -9,6 +9,7 @@ import type { DownloadJobsRevisionRow, DownloadJobsRow } from "../../db/rows.ts"
 import type { NzbSourceId } from "../usenetClientCommon.ts";
 import { downloadPipelineQueue } from "../jobs/queues.ts";
 import type { PipelinePayload } from "../downloadPipeline.ts";
+import type { DownloadSource } from "../download/downloadSource.ts";
 import {
   getQuickSearchSources,
   isAlbumGrabSourceConfigured,
@@ -95,8 +96,9 @@ type SourceCandidate<Source extends PipelinePayload["source"]> =
 type ManualSelection = { downloadClient?: string | null } & (
   | { source: "slskd"; candidate: SourceCandidate<"slskd"> }
   | { source: "deemix"; candidate: SourceCandidate<"deemix"> }
-  | { source: "ytdlp"; candidate: SourceCandidate<"ytdlp"> }
-  | { source: NzbSourceId; candidate: SourceCandidate<NzbSourceId> }
+  | { source: DownloadSource["id"]; candidate: SourceCandidate<DownloadSource["id"]> }
+  | { source: "usenet"; candidate: SourceCandidate<NzbSourceId> }
+  | { source: "tidarr"; candidate: SourceCandidate<NzbSourceId> }
 );
 const queuedStepSchema = v.object({
   jobId: v.string(),
@@ -579,7 +581,7 @@ function buildManualPayload(job: DownloadJob, selection: ManualSelection): Pipel
     return { ...step, source: selection.source, candidates: [selection.candidate] };
   if (selection.source === "deemix")
     return { ...step, source: selection.source, candidates: [selection.candidate] };
-  if (selection.source === "ytdlp")
+  if (selection.source === "usenet" || selection.source === "tidarr")
     return { ...step, source: selection.source, candidates: [selection.candidate] };
   return { ...step, source: selection.source, candidates: [selection.candidate] };
 }

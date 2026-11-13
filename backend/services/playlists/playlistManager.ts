@@ -23,7 +23,6 @@ import { AURRAL_FLOWS_DIR, PLAYLIST_FILES_DIR, resolveDownloadRoot } from "../do
 import { scheduleLibraryScan } from "../libraryScanWorker.ts";
 import { withLock } from "../jobs/queue.ts";
 import { enqueueSystemTask } from "../jobs/systemTasks.ts";
-import { getDownloadClient } from "../download/downloadClientSettings.ts";
 import { collectPlaylistFileTracks } from "./playlistFileTracks.ts";
 import {
   buildPlaylistFile,
@@ -332,12 +331,6 @@ export class PlaylistManager {
     for (const playlistType of targets) {
       keepPlaylistStarsInLibrary(playlistType);
       const flowDir = path.join(flowsRoot, playlistType);
-      const jobs = downloadTracker.getByPlaylistId(playlistType);
-      for (const job of jobs) {
-        if (job.downloadClient === "ytdlp") {
-          await getDownloadClient("ytdlp").cleanupStaging(job.id);
-        }
-      }
       try {
         const { relocateSharedFilesBeforePlaylistRemoval } =
           await import("../downloadJobs/fileReuse.ts");

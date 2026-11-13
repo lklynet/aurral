@@ -94,13 +94,14 @@ type YtdlpResult = Awaited<
 >[number];
 
 export function ytdlpResult(overrides: Partial<YtdlpResult> & Pick<YtdlpResult, "id" | "title">) {
-  return {
+  const result = {
     url: `https://example.test/${overrides.id}`,
     channel: "Artist Name",
     durationSec: 1,
     liveStatus: "not_live",
     ...overrides,
   } satisfies YtdlpResult;
+  return { ...result, artist: result.channel };
 }
 
 export function recordSourceFailures() {

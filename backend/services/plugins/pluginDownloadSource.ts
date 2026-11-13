@@ -11,6 +11,7 @@ import {
 } from "../download/downloadSource.ts";
 import {
   processSourcePipelinePayload,
+  trackQuery,
   type SourceHelpers,
   type SourcePayload,
 } from "../download/sourcePipeline.ts";
@@ -55,22 +56,35 @@ function pluginSource(plugin: InstalledPlugin): DownloadSource {
     staging: `plugins/${plugin.id}`,
     ...(manifest?.tracks !== false && {
       tracks: {
-        search: (track, upgrade) =>
-          call("downloadSource.search", { track, upgrade }, searchResults, SEARCH_TIMEOUT_MS),
-        download: (input) =>
-          call("downloadSource.download", input, trackDownloadResult, DOWNLOAD_TIMEOUT_MS, {
-            logFailures: false,
-          }),
+        search: (track, { upgrade }) =>
+          call(
+            "downloadSource.search",
+            { track: trackQuery(track), upgrade },
+            searchResults,
+            SEARCH_TIMEOUT_MS,
+          ),
+        download: ({ result, directory }) =>
+          call(
+            "downloadSource.download",
+            { result, directory },
+            trackDownloadResult,
+            DOWNLOAD_TIMEOUT_MS,
+            { logFailures: false },
+          ),
       },
     }),
     ...(manifest?.albums === true && {
       albums: {
         search: (album, upgrade) =>
           call("downloadSource.searchAlbum", { album, upgrade }, albumResults, SEARCH_TIMEOUT_MS),
-        download: (input) =>
-          call("downloadSource.downloadAlbum", input, albumDownloadResult, DOWNLOAD_TIMEOUT_MS, {
-            logFailures: false,
-          }),
+        download: ({ result, album, directory }) =>
+          call(
+            "downloadSource.downloadAlbum",
+            { result, album, directory },
+            albumDownloadResult,
+            DOWNLOAD_TIMEOUT_MS,
+            { logFailures: false },
+          ),
         ...(manifest.files && {
           files: {
             list: (id) => call("downloadSource.listFiles", { id }, fileResults, STATUS_TIMEOUT_MS),

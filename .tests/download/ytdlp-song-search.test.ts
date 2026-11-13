@@ -12,16 +12,17 @@ import {
 } from "../helpers/backendTestHarness.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
 
-const [state, { db }, { downloadTracker }, { processYtdlpPipelinePayload }] =
+const [state, { db }, { downloadTracker }, { processSourcePipelinePayload }, { ytdlpSource }] =
   await setupIsolatedBackend(
     "ytdlp-song-search",
     () => import("../../backend/config/db-sqlite.ts"),
     () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
-    () => import("../../backend/services/ytdlpOrchestrator.ts"),
+    () => import("../../backend/services/download/sourcePipeline.ts"),
+    () => import("../../backend/services/ytdlpSource.ts"),
   );
 
-type YtdlpPayload = Parameters<typeof processYtdlpPipelinePayload>[0];
-type YtdlpHelpers = Parameters<typeof processYtdlpPipelinePayload>[1];
+type YtdlpPayload = import("../../backend/services/download/sourcePipeline.ts").SourcePayload;
+type YtdlpHelpers = import("../../backend/services/download/sourcePipeline.ts").SourceHelpers;
 type SongFixture = {
   track: string;
   artists: string[];
@@ -170,7 +171,7 @@ const failSource: YtdlpHelpers = {
 };
 
 async function runPipeline(payload: YtdlpPayload) {
-  const result = await processYtdlpPipelinePayload(payload, failSource);
+  const result = await processSourcePipelinePayload(payload, ytdlpSource, failSource);
   if (result === null) return null;
   assert.equal(result.jobId, payload.jobId);
   assert.equal(result.source, "ytdlp");
@@ -482,7 +483,11 @@ test("yt-dlp does not read a song the user denied", async () => {
   const jobId = downloadTracker.addJob(track, "ytdlp-song-search");
   assert.ok(jobId != null);
   downloadTracker.recordDeniedSource(jobId, "ytdlp", "FfaeB0jZAso");
-  await processYtdlpPipelinePayload({ phase: "search", source: "ytdlp", jobId }, failSource);
+  await processSourcePipelinePayload(
+    { phase: "search", source: "ytdlp", jobId },
+    ytdlpSource,
+    failSource,
+  );
   const log = await calls();
   assert.equal(log[0], "song search The Used I Caught Fire");
   assert.deepEqual(

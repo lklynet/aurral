@@ -1,4 +1,4 @@
-import { createTrackedJob, localDownloadWorker, trackedJob } from "./fixtures.ts";
+import { createTrackedJob, localDownloadWorker, trackedJob, ytdlpResult } from "./fixtures.ts";
 import { insertJob } from "../helpers/jobs.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
@@ -28,6 +28,9 @@ const [
   sabnzbdModule,
   tidarrModule,
   nzbgetModule,
+  { processSourcePipelinePayload, stagingDir },
+  { ytdlpSource },
+  { getDownloadClient },
 ] = await setupIsolatedBackend(
   "download-cancellation",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -44,6 +47,9 @@ const [
   () => import("../../backend/services/sabnzbdClient.ts"),
   () => import("../../backend/services/tidarrClient.ts"),
   () => import("../../backend/services/nzbgetClient.ts"),
+  () => import("../../backend/services/download/sourcePipeline.ts"),
+  () => import("../../backend/services/ytdlpSource.ts"),
+  () => import("../../backend/services/download/downloadClientSettings.ts"),
 );
 
 const {
@@ -807,4 +813,43 @@ test("rotating a flow shown in the library rescans the library", async () => {
 
   assert.equal(result.empty, true);
   assert.equal(scans.mock.calls.length, 1);
+});
+
+test("cancelling a track stops its download running in Aurral and removes the download folder", async () => {
+  const jobId = createTrackedJob(
+    downloadTracker,
+    { artistName: "Artist", trackName: "Song" },
+    "library",
+  );
+  assert.ok(jobId != null);
+  const started = Promise.withResolvers<void>();
+  vi.spyOn(getDownloadClient("ytdlp"), "downloadAudio").mockImplementation(
+    (_url, { signal }) =>
+      new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(signal.reason));
+        started.resolve();
+      }),
+  );
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    const step = processSourcePipelinePayload(
+      {
+        jobId,
+        phase: "download",
+        source: "ytdlp",
+        candidateIndex: 0,
+        candidates: [{ raw: ytdlpResult({ id: "video", title: "Artist - Song" }) }],
+      },
+      ytdlpSource,
+      { failOrTryNextSource: async (_payload, _job, reason) => assert.fail(reason) },
+    );
+    await started.promise;
+    cancelDownloadJob(jobId);
+    await vi.advanceTimersByTimeAsync(1000);
+    assert.equal(await step, null);
+    await assert.rejects(fs.access(stagingDir(ytdlpSource, jobId)));
+  } finally {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  }
 });

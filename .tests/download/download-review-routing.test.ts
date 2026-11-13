@@ -17,7 +17,7 @@ import {
 import { requireFixture } from "../playlists/fixtures.ts";
 
 type UsenetPayload = Parameters<typeof processUsenetPipelinePayload>[0];
-type YtdlpPayload = Parameters<typeof processYtdlpPipelinePayload>[0];
+type YtdlpPayload = import("../../backend/services/download/sourcePipeline.ts").SourcePayload;
 type PipelinePayload = import("../../backend/services/downloadPipeline.ts").PipelinePayload;
 type DeemixPayload = Parameters<typeof processDeemixPipelinePayload>[0];
 
@@ -25,7 +25,7 @@ const [
   isolatedState,
   { downloadTracker },
   { buildResolvedJobTrack },
-  { processYtdlpPipelinePayload, isYtdlpLiveResult, hasEnoughCandidates },
+  { ytdlpSource, isYtdlpLiveResult, hasEnoughCandidates },
   { processUsenetPipelinePayload, collectDownloadedAudioFiles },
   { processDeemixPipelinePayload },
   { dbOps, userOps },
@@ -38,11 +38,12 @@ const [
   { getDownloadClient },
   { getScheduledLibraryScanJobId, scanRegistrySchema },
   { libraryScanQueue },
+  { processSourcePipelinePayload },
 ] = await setupIsolatedBackend(
   "download-review-routing",
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadUtils.ts"),
-  () => import("../../backend/services/ytdlpOrchestrator.ts"),
+  () => import("../../backend/services/ytdlpSource.ts"),
   () => import("../../backend/services/usenetOrchestrator.ts"),
   () => import("../../backend/services/deemixOrchestrator.ts"),
   () => import("../../backend/db/helpers/index.ts"),
@@ -55,6 +56,7 @@ const [
   () => import("../../backend/services/download/downloadClientSettings.ts"),
   () => import("../../backend/services/libraryScanWorker.ts"),
   () => import("../../backend/services/jobs/queues.ts"),
+  () => import("../../backend/services/download/sourcePipeline.ts"),
 );
 
 const { blockPipelineJobForReview, finalizePipelineJobSuccess } = pipelineHelpersModule;
@@ -115,8 +117,9 @@ test("yt-dlp searches a compilation track by its own artist and reverses an empt
     },
     "ytdlp-compilation",
   );
-  const next = await processYtdlpPipelinePayload(
+  const next = await processSourcePipelinePayload(
     { phase: "search", source: "ytdlp", jobId },
+    ytdlpSource,
     { failOrTryNextSource: async (_payload, _job, reason) => assert.fail(reason) },
   );
   assert.ok(isStepFrom(next, "ytdlp"));
@@ -128,7 +131,7 @@ test("yt-dlp searches a compilation track by its own artist and reverses an empt
   ]);
   assert.equal(next.phase, "download");
   assert.ok(next.candidates != null);
-  assert.deepEqual(next.candidates[0]?.raw, song);
+  assert.equal(next.candidates[0]?.raw.id, song.id);
 });
 
 test("Usenet file collection only scans the current history directory", async () => {
@@ -310,8 +313,7 @@ test("yt-dlp sends plausible duration mismatches to review", async (t) => {
   const jobId = addDurationMismatchJob("ytdlp-review");
   assert.ok(jobId != null);
   const filePath = path.join(
-    process.env.DOWNLOAD_FOLDER!,
-    ".ytdlp-staging",
+    getDownloadClient("ytdlp").stagingRoot(),
     jobId,
     "Artist Name - Correct Track.mp3",
   );
@@ -348,8 +350,7 @@ test("a flow track fails instead of waiting for review", async (t) => {
   const flow = flowPlaylistConfig.createFlow({ name: "Weekly", ownerUserId: owner.id });
   const jobId = addDurationMismatchJob(flow.id);
   const filePath = path.join(
-    process.env.DOWNLOAD_FOLDER!,
-    ".ytdlp-staging",
+    getDownloadClient("ytdlp").stagingRoot(),
     jobId,
     "Artist Name - Correct Track.mp3",
   );
@@ -383,8 +384,7 @@ test("yt-dlp auto-rejects weak title matches instead of reviewing them", async (
   assert.ok(jobId != null);
   downloadTracker.setDownloading(jobId);
   const filePath = path.join(
-    process.env.DOWNLOAD_FOLDER!,
-    ".ytdlp-staging",
+    getDownloadClient("ytdlp").stagingRoot(),
     jobId,
     "Artist Name - Wrong Track.mp3",
   );
@@ -397,7 +397,7 @@ test("yt-dlp auto-rejects weak title matches instead of reviewing them", async (
   });
 
   const sourceFailures: string[] = [];
-  const result = await processYtdlpPipelinePayload(
+  const result = await processSourcePipelinePayload(
     {
       phase: "finalize",
       source: "ytdlp" as const,
@@ -412,6 +412,7 @@ test("yt-dlp auto-rejects weak title matches instead of reviewing them", async (
       } as NonNullable<YtdlpPayload["candidate"]>,
       candidateIndex: 0,
     },
+    ytdlpSource,
     {
       failOrTryNextSource: async (payload, job, reason) => {
         sourceFailures.push(reason);
@@ -440,7 +441,7 @@ test("yt-dlp holds partially-matching identity for review", async (t) => {
   );
   assert.ok(jobId != null);
   downloadTracker.setDownloading(jobId);
-  const filePath = path.join(process.env.DOWNLOAD_FOLDER!, ".ytdlp-staging", jobId, "Correct.mp3");
+  const filePath = path.join(getDownloadClient("ytdlp").stagingRoot(), jobId, "Correct.mp3");
   await writeOneSecondMp3(filePath, { title: "Correct Tracks" });
 
   const result = await processPipelinePayload({

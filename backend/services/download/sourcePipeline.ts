@@ -47,9 +47,11 @@ import {
 } from "../trackMatching/index.ts";
 import {
   DownloadSourceError,
+  NATIVE_SOURCE_IDS,
   trackResult,
   type AlbumResult,
   type DownloadSource,
+  type ResolvedTrack,
   type TrackResult,
   type Upgrade,
 } from "./downloadSource.ts";
@@ -66,9 +68,11 @@ const MAX_POLLS = (24 * 60 * 60) / POLL_SECONDS;
 const MAX_ALBUM_CANDIDATES = 5;
 const FILED_FALLBACK_SCAN = 8;
 const FILED_GIVE_UP = 16;
+const CANCEL_CHECK_MS = 1000;
 
 type SourceCandidate =
   | ReturnType<typeof toPipelineCandidate<TrackResult>>
+  | { raw: TrackResult; resolvedAlbumName?: string | null; candidate?: never; evaluation?: never }
   | {
       raw: AlbumResult;
       resolvedAlbumName: string;
@@ -76,8 +80,9 @@ type SourceCandidate =
       candidate?: never;
       evaluation?: never;
     };
+const nativeIds: readonly string[] = NATIVE_SOURCE_IDS;
 export const isSourceContractId = (source: unknown): source is DownloadSource["id"] =>
-  typeof source === "string" && (source === "qbittorrent" || Boolean(pluginIdFromSource(source)));
+  typeof source === "string" && (nativeIds.includes(source) || Boolean(pluginIdFromSource(source)));
 
 export type SourcePayload = PipelineStep & {
   source: DownloadSource["id"];
@@ -101,8 +106,8 @@ export type SourceHelpers = {
   ) => Promise<PipelinePayload | null>;
 };
 
-const stagingDir = (source: DownloadSource, jobId: string) =>
-  path.join(resolveAurralDataDir(), "_staging", source.staging, jobId);
+export const stagingDir = (source: DownloadSource, jobId: string) =>
+  path.resolve(resolveAurralDataDir(), "_staging", source.staging, jobId);
 const cleanup = (directory: string) =>
   fs.rm(directory, { recursive: true, force: true }).catch(() => {});
 
@@ -117,12 +122,15 @@ const searchUpgrade = (payload: SourcePayload): Upgrade =>
     ? { currentTier: downloadTracker.getJob(payload.upgradeForJobId)?.qualityTier ?? null }
     : null;
 
-const resolveTrack = (payload: SourcePayload, job: DownloadJob) => ({
+export const resolveTrack = (
+  payload: Pick<SourcePayload, "track" | "upgradeForJobId">,
+  job: DownloadJob,
+) => ({
   ...buildResolvedTrack(job, payload.track),
   upgradeForJobId: payload.upgradeForJobId || null,
 });
 
-export function trackQuery(track: ReturnType<typeof buildResolvedTrack>) {
+export function trackQuery(track: ResolvedTrack) {
   return {
     artist: track.artistName ?? null,
     title: track.trackName ?? null,
@@ -138,7 +146,7 @@ export function trackQuery(track: ReturnType<typeof buildResolvedTrack>) {
   };
 }
 
-export async function albumQuery(payload: SourcePayload, job: DownloadJob) {
+export async function albumQuery(payload: Parameters<typeof attemptRelease>[0], job: DownloadJob) {
   const release: ReleaseManifest | null = await attemptRelease(payload, job);
   return {
     artist: release?.artistNames[0] ?? job.artistName ?? null,
@@ -233,18 +241,18 @@ async function handleSearch(
   if (!job || job.status === "failed" || job.status === "done") return null;
   startSearch(job, source);
   const resolvedTrack = resolveTrack(payload, job);
-  let results: TrackResult[];
-  try {
-    results = await tracks.search(trackQuery(resolvedTrack), searchUpgrade(payload));
-  } catch (error) {
-    if (!(error instanceof DownloadSourceError)) throw error;
-    return helpers.failOrTryNextSource(payload, job, `search failed: ${error.message}`);
-  }
   const denied = new Set(
     (job.deniedRemoteSources ?? [])
       .filter((entry) => Array.isArray(entry) && entry[0] === source.id)
       .map((entry) => String(entry[1] ?? "")),
   );
+  let results: TrackResult[];
+  try {
+    results = await tracks.search(resolvedTrack, { upgrade: searchUpgrade(payload), denied });
+  } catch (error) {
+    if (!(error instanceof DownloadSourceError)) throw error;
+    return helpers.failOrTryNextSource(payload, job, `search failed: ${error.message}`);
+  }
   const evaluation = await buildSourceCandidates({
     source: source.id,
     results: results.filter((result) => !denied.has(result.id)),
@@ -275,7 +283,7 @@ function trackDownloaded(payload: SourcePayload, source: DownloadSource, filePat
       downloadClient: source.id,
       releaseGuid: deniedKey(payload, source, candidate.raw.id),
       releaseTitle: candidate.raw.title,
-      remoteFilename: path.basename(filePath),
+      remoteFilename: fromAlbum(payload, source) ? path.basename(filePath) : candidate.raw.title,
     });
   return {
     ...payload,
@@ -387,6 +395,20 @@ async function downloadFailed(
   return helpers.failOrTryNextSource(payload, job, `download failed: ${error.message}`);
 }
 
+// A download that runs in Aurral stops once its step is cancelled.
+async function whileActive<T>(payload: SourcePayload, run: (signal: AbortSignal) => Promise<T>) {
+  const stop = new AbortController();
+  const check = setInterval(() => {
+    if (!isPipelinePayloadActive(payload))
+      stop.abort(new DownloadSourceError("the download was cancelled"));
+  }, CANCEL_CHECK_MS);
+  try {
+    return await run(stop.signal);
+  } finally {
+    clearInterval(check);
+  }
+}
+
 async function startDownload(
   payload: SourcePayload,
   source: DownloadSource,
@@ -396,13 +418,15 @@ async function startDownload(
   const directory = stagingDir(source, job.id);
   await cleanup(directory);
   await fs.mkdir(directory, { recursive: true });
-  if (payload.albumGrab !== true && source.tracks)
-    return source.tracks.download({ result, directory });
-  if (!source.albums)
+  const { tracks, albums } = source;
+  if (payload.albumGrab !== true && tracks)
+    return whileActive(payload, (signal) => tracks.download({ result, directory, signal }));
+  if (!albums)
     throw new DownloadSourceError(
       payload.albumGrab === true ? "can't download albums" : "can't download tracks",
     );
-  return source.albums.download({ result, album: await albumQuery(payload, job), directory });
+  const album = await albumQuery(payload, job);
+  return whileActive(payload, (signal) => albums.download({ result, album, directory, signal }));
 }
 
 async function handleDownload(
@@ -510,6 +534,7 @@ async function handlePoll(payload: SourcePayload, source: DownloadSource, helper
     if (payload.filedCount)
       return await waitForFiledAlbum({ ...payload, pollAttempts }, source, job);
     const current = await keepFiles(payload, source, job);
+    if (!source.status) throw new DownloadSourceError("can't report a pending download");
     const status = await source.status({ id: String(current.pendingId), directory });
     if (!isPipelinePayloadActive(current)) {
       await discardSourceWork(current, source);
@@ -595,7 +620,7 @@ async function handleFinalize(
   }
   const validation = await validateDownloadedTrackFile({
     request: resolvedTrack,
-    candidate: candidate?.candidate,
+    candidate: candidate?.candidate ?? candidate,
     filePath,
     source: source.id,
     options: {

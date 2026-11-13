@@ -1,4 +1,16 @@
+import { isOwnKey } from "../../../lib/ownKey.ts";
+import { pluginDownloadSource } from "../plugins/pluginDownloadSource.ts";
 import { qbittorrentSource } from "../qbittorrentSource.ts";
+import { ytdlpSource } from "../ytdlpSource.ts";
+import type { DownloadSource, NATIVE_SOURCE_IDS } from "./downloadSource.ts";
+
+const sources: Record<(typeof NATIVE_SOURCE_IDS)[number], DownloadSource> = {
+  qbittorrent: qbittorrentSource,
+  ytdlp: ytdlpSource,
+};
 
 export const nativeDownloadSource = (id: string | null | undefined) =>
-  [qbittorrentSource].find((source) => source.id === id) ?? null;
+  id && isOwnKey(sources, id) ? sources[id] : null;
+
+export const contractSource = (id: string | null | undefined) =>
+  nativeDownloadSource(id) ?? pluginDownloadSource(id);

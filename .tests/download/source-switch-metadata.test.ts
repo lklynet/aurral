@@ -1,4 +1,4 @@
-import { createTrackedJob, trackedJob } from "./fixtures.ts";
+import { createTrackedJob, trackedJob, ytdlpResult } from "./fixtures.ts";
 import { test, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -82,10 +82,13 @@ function jobMetadata(jobId: string | null) {
 
 test("a job that moves from yt-dlp to slskd names only slskd's download", async (t) => {
   useOnlySources(t, "ytdlp", "slskd");
-  vi.spyOn(getDownloadClient("ytdlp"), "downloadAudio").mockImplementation(async () => ({
-    filePath: "",
-    stagingDir: "",
-  }));
+  vi.spyOn(getDownloadClient("ytdlp"), "downloadAudio").mockImplementation(
+    async (_url, { directory }) => {
+      const filePath = path.join(directory, "video-1.m4a");
+      await writeFile(filePath, "not audio");
+      return filePath;
+    },
+  );
   const slskd = getDownloadClient("slskd");
   vi.spyOn(slskd, "enqueueBatch").mockImplementation(async ({ username }) => ({
     username,
@@ -113,14 +116,13 @@ test("a job that moves from yt-dlp to slskd names only slskd's download", async 
     candidateIndex: 0,
     candidates: [
       {
-        raw: {
+        raw: ytdlpResult({
           url: "https://youtube.test/watch?v=video-1",
           id: "video-1",
           title: "The Cure - Boys Don't Cry (Audio)",
           channel: "The Cure",
           durationSec: null,
-          liveStatus: "not_live",
-        },
+        }),
       },
     ],
   });

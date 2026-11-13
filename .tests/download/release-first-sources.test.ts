@@ -577,8 +577,7 @@ async function quickSearchDownloaded(
   assert.ok(track !== undefined);
   await downloadWorker.processJob(trackedJob(downloadTracker, track));
   const staged = path.join(
-    process.env.DOWNLOAD_FOLDER!,
-    ".ytdlp-staging",
+    getDownloadClient("ytdlp").stagingRoot(),
     track,
     `${artist} - Second.mp3`,
   );
