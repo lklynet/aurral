@@ -442,7 +442,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
             </nav>
           </div>
 
-          {newNav && playlistStatus ? (
+          {newNav && hasFlowAccess ? (
             <SidebarPlaylists
               status={playlistStatus}
               iconsOnly={isIcons}
