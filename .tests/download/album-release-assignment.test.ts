@@ -206,6 +206,63 @@ test("album assignment fills only verified sibling jobs and never reuses a file"
   }
 });
 
+test("an unverified album accepts a featured track whose first artist tag is the guest", async () => {
+  const root = await mkdtemp(join(tmpdir(), "aurral-album-featured-"));
+  try {
+    const paths = ["01. First.flac", "02. Second (feat. A Guest).flac"].map((name) =>
+      join(root, "The Band", "Album", name),
+    );
+    await mkdir(dirname(requireFixture(paths[0])), { recursive: true });
+    for (const filePath of paths) await audioFixture(filePath);
+    const parsed = new Map([
+      [paths[0], fileTags("First", 1, 200)],
+      [
+        paths[1],
+        fileTags("Second (feat. A Guest)", 2, 201, {
+          artist: "A Guest",
+          artists: ["A Guest", "The Band"],
+        }),
+      ],
+    ]);
+    const manifest = pinned(
+      "edition",
+      ["First", "Second"].map((title, index) => ({
+        title,
+        trackNumber: index + 1,
+        durationMs: 200000 + index * 1000,
+      })),
+    );
+    const jobs = ["First", "Second"].map((trackName: string, index) => ({
+      id: trackName.toLowerCase(),
+      trackName,
+      artistName: "The Band",
+      albumName: "Album",
+      durationMs: 200000 + index * 1000,
+      trackNumber: index + 1,
+    }));
+    const result = await assignDownloadedAlbumFiles({
+      jobs,
+      filePaths: paths,
+      source: "tidarr",
+      manifest,
+      parseAudio: async (filePath) => {
+        const tags = parsed.get(filePath);
+        assert.ok(tags);
+        return tags;
+      },
+    });
+    assert.deepEqual(
+      result.accepted.map(({ jobId, filePath }) => [jobId, filePath]),
+      [
+        ["first", paths[0]],
+        ["second", paths[1]],
+      ],
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("an album import refuses only the files too small to hold their length", async () => {
   const root = await mkdtemp(join(tmpdir(), "aurral-album-silence-"));
   try {
