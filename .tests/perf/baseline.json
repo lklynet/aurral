@@ -183,8 +183,8 @@
   },
   "discover album": {
     "queries": {
-      "cold": 14,
-      "warm": 3
+      "cold": 15,
+      "warm": 4
     },
     "bytes": 244,
     "scans": [],

@@ -63,6 +63,9 @@ const getCachedUrl = (cacheKey: string) => {
   return undefined;
 };
 
+export const savedReleaseGroupCoverUrl = (releaseGroupMbid: string) =>
+  getCachedUrl(`${RG_CACHE_PREFIX}${releaseGroupMbid}`) || null;
+
 const foundCover = (imageUrl: string | null | undefined) => {
   const proxiedUrl = toPublicCoverUrl(imageUrl ?? null);
   return proxiedUrl

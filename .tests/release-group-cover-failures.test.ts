@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterAll, beforeEach, test, vi } from "vite-plus/test";
+import { testClient } from "hono/testing";
 import {
   cleanupIsolatedState,
   createMockHttpServer,
@@ -30,12 +31,14 @@ const [
   { clearMetadataProviderCaches },
   { fetchReleaseGroupCoverUrl, withCoverUrls },
   { buildStableImageProxyUrl },
+  { default: releaseGroupRoutes },
 ] = await setupIsolatedBackend(
   "release-group-cover-failures",
   () => import("../backend/db/helpers/index.ts"),
   () => import("../backend/services/providers/brainzmashProvider.ts"),
   () => import("../backend/services/releaseGroupCoverService.ts"),
   () => import("../backend/services/imageProxyService.ts"),
+  () => import("../backend/routes/artists/handlers/releaseGroup.ts"),
 );
 
 beforeEach(() => {
@@ -143,7 +146,7 @@ test("an album BrainzMash has no cover for takes Deezer's, however long the disc
   assert.equal(dbOps.getImage(`rg:${mbid}`), null);
 });
 
-test("a refresh swaps a cover link that no longer loads for Deezer's, and keeps it when Deezer has none", async (t) => {
+test("a refresh swaps a cover link that no longer loads for Deezer's on the album page too, and keeps it when Deezer has none", async (t) => {
   const dead = "https://images.example/dead.jpg";
   const cover = "https://images.example/deezer-swap.jpg";
   replies.set(`/album/${mbid}`, {
@@ -175,6 +178,11 @@ test("a refresh swaps a cover link that no longer loads for Deezer's, and keeps 
   assert.equal(swapped.imageUrl, cover);
   assert.equal(dbOps.getImage(`rg:${mbid}`)?.imageUrl, cover);
   assert.equal((await fetchReleaseGroupCoverUrl(mbid)).imageUrl, cover);
+  const details = await testClient(releaseGroupRoutes).artists["release-group"][":mbid"].$get({
+    param: { mbid },
+  });
+  const album = await details.json();
+  assert.equal("coverUrl" in album && album.coverUrl, cover);
 });
 
 test("every release group carries a cover URL that needs no metadata lookup", () => {
