@@ -123,7 +123,7 @@ type SubsonicGenreFields = { genre?: string; genres?: { name: string }[] };
 type SubsonicRatingFields = { userRating?: number; averageRating?: number };
 type SubsonicSong = {
   id: string;
-  parent: string;
+  parent?: string;
   isDir: boolean;
   isVideo: boolean;
   title: string | null;
@@ -349,15 +349,16 @@ const toSong = (
       ? protocolArtist(null, trackArtistName)
       : artistValue;
   const format = String(file?.format || "mp3").toLowerCase();
+  const albumId = album ? idFor("album", album.identityKey) : undefined;
   const song: LibrarySong = {
     id: idFor("song", track.identityKey),
-    parent: album ? idFor("album", album.identityKey) : idFor("album", "unknown"),
+    parent: albumId,
     isDir: false,
     isVideo: false,
     title: track.title,
     album: album?.title || "Unknown Album",
     artist: trackArtistValue.name,
-    albumId: album ? idFor("album", album.identityKey) : undefined,
+    albumId,
     artistId: artistValue.id,
     albumArtists: [artistValue],
     artists: [trackArtistValue],
@@ -544,7 +545,6 @@ function toPlaylistSong(
         { ...owned.library, starredAt: viewer.starredAt, ratings: viewer.ratings },
         owned.track,
       ),
-      parent: idFor(kind, playlist.id),
       ...(customCoverArt && { coverArt: customCoverArt }),
     };
   }
@@ -559,7 +559,6 @@ function toPlaylistSong(
   const albumMbid = String(job.albumMbid || "").trim();
   const song: SubsonicSong = {
     id,
-    parent: idFor(kind, playlist.id),
     isDir: false,
     isVideo: false,
     title: job.trackName,

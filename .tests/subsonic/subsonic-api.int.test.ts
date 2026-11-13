@@ -1503,6 +1503,8 @@ test("exposes owned static playlists and keeps their entries playable", async ()
 
   const song = responseJson(await request("getSong", { id: playlist.entry[0].id })).song;
   assert.equal(song.title, "Flow Song");
+  assert.equal(song.parent, undefined);
+  assert.equal(song.albumId, undefined);
   const stream = await request("stream", { id: song.id });
   assert.equal(stream.response.status, 200);
   assert.equal(stream.body, "0123456789");
@@ -1516,7 +1518,6 @@ test("returns library song ids for playlist entries that exist in the library", 
   ).playlist;
   assert.equal(playlist.entry.length, 1);
   assert.match(requireFixture(playlist.entry[0]).id, /^song:/);
-  assert.equal(playlist.entry[0]?.parent, playlist.id);
   assert.equal(playlist.entry[0]?.title, "Canonical Song");
   assert.equal(playlist.entry[0]?.musicBrainzId, "33333333-3333-4333-8333-333333333333");
   const artistId = requireFixture(
@@ -1529,6 +1530,7 @@ test("returns library song ids for playlist entries that exist in the library", 
     responseJson(await request("getAlbum", { id: album.id })).album.song[0],
   );
   assert.equal(playlist.entry[0]?.id, librarySong.id);
+  assert.equal(playlist.entry[0]?.parent, librarySong.parent);
   const stream = await request("stream", { id: playlist.entry[0].id });
   assert.equal(stream.response.status, 200);
 });
