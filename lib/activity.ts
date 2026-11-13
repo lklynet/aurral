@@ -308,7 +308,7 @@ function summarizeActivityCauses(requests: ActivityRequest[]) {
       subjects: new Set<string>(),
     };
     groups.set(key, group);
-    group.count += request.children?.length || 1;
+    group.count += 1;
     if (request.requestedAt < group.since) group.since = request.requestedAt;
     const subject = causeSubject(request);
     if (subject) group.subjects.add(subject);
@@ -346,10 +346,15 @@ export function buildActivityPage(
   const viewRequests = groupAlbumGrabRequests(requests).filter((request) =>
     matchesActivityView(request, view),
   );
-  const causes = view === "queue" ? summarizeActivityCauses(viewRequests) : [];
+  const causes =
+    view === "queue"
+      ? summarizeActivityCauses(requests.filter((request) => matchesActivityView(request, view)))
+      : [];
   const cause = causes.some((group) => group.key === causeFilter) ? causeFilter : null;
   const causeRequests = cause
-    ? viewRequests.filter((request) => activityCauseKey(request.cause) === cause)
+    ? viewRequests.filter((row) =>
+        (row.children ?? [row]).some((request) => activityCauseKey(request.cause) === cause),
+      )
     : viewRequests;
   const matching = status
     ? causeRequests.filter((request) => getActivityStatus(request) === status)

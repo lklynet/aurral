@@ -212,3 +212,42 @@ test("queue pages say why downloads are queued and filter to one cause", () => {
   assert.equal(finished.cause, null);
   assert.equal(finished.matching, 7);
 });
+
+test("an album's cause groups count and filter its queued tracks one by one", () => {
+  const albumGrab = { id: "grab", memberJobIds: ["a", "b", "c"], phase: "tracks", source: null };
+  const track = (jobId: string, kind: "request" | "missing", status: string) =>
+    activityRequest({
+      id: `track-${jobId}`,
+      jobId,
+      status,
+      inQueue: status !== "completed",
+      albumName: "Album",
+      albumGrab: { ...albumGrab, fallbackReason: null, requestedAt: "2026-01-01T00:00:00Z" },
+      cause: { kind, playlistId: null, name: null, syncedFrom: null },
+    });
+  const requests = [
+    track("a", "request", "completed"),
+    track("b", "request", "pending"),
+    track("c", "missing", "pending"),
+  ];
+
+  const page = buildActivityPage(requests, { view: "queue", status: null, limit: 25 });
+  assert.deepEqual(
+    page.causes.map(({ key, count }) => [key, count]),
+    [
+      ["missing", 1],
+      ["request", 1],
+    ],
+  );
+  const missing = buildActivityPage(requests, {
+    view: "queue",
+    status: null,
+    cause: "missing",
+    limit: 25,
+  });
+  assert.equal(missing.cause, "missing");
+  assert.deepEqual(
+    missing.items.map(({ id }) => id),
+    ["grab"],
+  );
+});
