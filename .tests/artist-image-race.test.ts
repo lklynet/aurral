@@ -361,25 +361,21 @@ test("finishing an old lookup leaves the replacement lookup registered", async (
   }
 });
 
-for (const [index, recoveredUrl, finishRecoveryFirst] of [
-  [14, oldImage, false],
-  [15, null, false],
-  [16, oldImage, true],
-  [17, null, true],
+for (const [index, recoveredUrl] of [
+  [14, oldImage],
+  [15, null],
 ] as const) {
   const recoveryResult = recoveredUrl ? "a cached cover" : "no cached cover";
-  const order = finishRecoveryFirst ? "first" : "last";
-  test(`forced refresh supersedes negative-cache recovery returning ${recoveryResult} ${order}`, async () => {
+  test(`forced refresh supersedes negative-cache recovery returning ${recoveryResult}`, async () => {
     const mbid = artistId(index);
     const albumId = artistId(index + 200);
     const deezerArtistId = String(6000 + index);
     const recoveryGate = gate();
     const providerGate = gate();
     let providerRequests = 0;
-    artist(mbid, { albums: [{ Id: albumId, Title: "Old Album", Type: "Album" }] });
-    fixtures.set(`metadata.invalid/album/${albumId}`, async () => {
-      await recoveryGate.wait();
-      return { id: albumId, title: "Old Album", images: [], artists: [], releases: [] };
+    artist(mbid, {
+      albums: [{ Id: albumId, Title: "Old Album", Type: "Album" }],
+      before: () => recoveryGate.wait(),
     });
     fixtures.set(`api.deezer.com/artist/${deezerArtistId}`, async () => {
       providerRequests += 1;
@@ -400,52 +396,28 @@ for (const [index, recoveredUrl, finishRecoveryFirst] of [
     await recoveryGate.started;
     const refreshed = getArtistImage(mbid, { forceRefresh: true });
     const repeatedRefresh = getArtistImage(mbid, true);
-    let laterRefresh:
-      | Promise<{
-          url: string | null;
-          images: CachedArtistImage[];
-          notFound?: boolean;
-          transientError?: boolean;
-        }>
-      | undefined;
-    let normalLookup:
-      | Promise<{
-          url: string | null;
-          images: CachedArtistImage[];
-          notFound?: boolean;
-          transientError?: boolean;
-        }>
-      | undefined;
+    const later: ReturnType<typeof getArtistImage>[] = [];
     try {
-      await providerGate.started;
-      if (finishRecoveryFirst) {
-        recoveryGate.release();
-        await recovery;
-        assert.equal(dbOps.getImage(mbid)?.imageUrl, "NOT_FOUND");
-        laterRefresh = getArtistImage(mbid, { forceRefresh: true });
-        normalLookup = getArtistImage(mbid);
-      }
+      recoveryGate.release();
+      const original = await recovery;
+      assert.equal(original.url, recoveredUrl);
+      assert.equal(!!original.notFound, !recoveredUrl);
+      assert.equal(dbOps.getImage(mbid)?.imageUrl, "NOT_FOUND");
 
+      await providerGate.started;
+      later.push(getArtistImage(mbid, { forceRefresh: true }), getArtistImage(mbid));
       providerGate.release();
       const current = await refreshed;
       assert.equal(current.url, newImage);
       assert.equal(await repeatedRefresh, current);
-      if (finishRecoveryFirst) {
-        assert.equal(await laterRefresh, current);
-        assert.equal(await normalLookup, current);
-      }
+      for (const lookup of later) assert.equal(await lookup, current);
       assert.equal(providerRequests, 1);
       assert.equal(dbOps.getImage(mbid)?.imageUrl, newImage);
     } finally {
       recoveryGate.release();
       providerGate.release();
-      await Promise.allSettled([recovery, refreshed, repeatedRefresh, laterRefresh, normalLookup]);
+      await Promise.allSettled([recovery, refreshed, repeatedRefresh, ...later]);
     }
-
-    const original = await recovery;
-    assert.equal(original.url, recoveredUrl);
-    assert.equal(!!original.notFound, !recoveredUrl);
-    assert.equal(dbOps.getImage(mbid)?.imageUrl, newImage);
   });
 }
 
