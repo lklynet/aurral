@@ -2,7 +2,7 @@
 
 Aurral is an all-in-one, self-hosted music app. It finds music you'll love, downloads it, manages your Library, and plays it: discovery and rotating flows, playlist imports from Spotify and YouTube Music, a built-in player, and a Subsonic API for other clients, with Lidarr and every other integration optional.
 
-You can think of Aurral as a self-hosted Spotify that also replaces Lidarr.
+You can think of Aurral as a self-hosted Spotify that also gets the music, so most people never need Lidarr.
 
 ## What makes Aurral special?
 
@@ -23,6 +23,10 @@ People connect Aurral to real libraries and services users run themselves. We ma
 ### 4. Aurral first
 
 Aurral is the product. Every integration is an add-on a user may never connect, and none of them gets to make Aurral slower, flakier, or more complicated for everyone else. A small native feature that always works beats a deep integration that breaks when another app ships an update. Specialized integrations live in plugins that admins add themselves, so core stays minimal and reliable.
+
+### 5. Opinionated by design
+
+Aurral is for people who want an easy, reliable way to get music, wrapped in a modern, Spotify-like app. It does not compete with Lidarr. Lidarr power users have Lidarr, and it serves them well. Pick one good default over a setting, and leave out a feature whose only case is that Lidarr has it.
 
 ## A note from the maintainers
 
