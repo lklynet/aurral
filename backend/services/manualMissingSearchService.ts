@@ -9,7 +9,8 @@ import { getDownloadSourceStatus, getEnabledDownloadSources } from "./downloadSo
 import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import type { JsonObject } from "./jobs/queue.ts";
 import { contractSource } from "./download/nativeSources.ts";
-import { albumQuery, isSourceContractId, resolveTrack } from "./download/sourcePipeline.ts";
+import { albumOf, isSourceContractId, resolveTrack } from "./download/sourcePipeline.ts";
+import { attemptRelease } from "./releaseResolver.ts";
 import type { DownloadSource } from "./download/downloadSource.ts";
 
 const SESSION_TTL_MS = 10 * 60 * 1000;
@@ -104,13 +105,6 @@ function resultView(source: string, raw: Record<string, unknown>) {
       ].filter(Boolean),
     };
   }
-  if (source === "deemix") {
-    return {
-      title: text(raw.title) || "Untitled track",
-      subtitle: [text(raw.artist), text(raw.album)].filter(Boolean).join(" · "),
-      details: [formatDuration(raw.durationSec), "Deezer"].filter(Boolean),
-    };
-  }
   if (isSourceContractId(source)) {
     return {
       title: text(raw.title) || "Untitled result",
@@ -162,10 +156,11 @@ async function searchContractSource(source: DownloadSource, jobId: string) {
     return found.map((raw) => ({ raw, selection: { source: source.id, candidate: { raw } } }));
   }
   if (!source.albums) return [];
-  const album = await albumQuery({}, job);
+  const release = await attemptRelease({}, job);
+  const album = albumOf(release, job);
   const track = resolveTrack({}, job);
   const found = await (source.albums.manualSearch?.(album, track) ??
-    source.albums.search(album, { upgrade: null, track, denied: new Set() }));
+    source.albums.search(album, { upgrade: null, track, denied: new Set(), release }));
   return found.map((raw) => ({
     raw,
     selection: {
@@ -177,13 +172,6 @@ async function searchContractSource(source: DownloadSource, jobId: string) {
 
 async function searchSource(source: string, query: string, workContext: ManualWorkContext) {
   if (source === "slskd") return manualResults(source, await searchSlskd(query, workContext));
-  if (source === "deemix") {
-    const found = await getDownloadClient("deemix").search(query, { limit: 50 });
-    return manualResults(
-      source,
-      found.filter((entry) => entry?.readable !== false),
-    );
-  }
   const contract = contractSource(source);
   if (contract) return searchContractSource(contract, workContext.jobId);
   throw new Error("Unknown manual search source");
@@ -193,7 +181,6 @@ export function getManualDownloadSources() {
   const status = getDownloadSourceStatus();
   const sources: ManualSource[] = [];
   if (status.slskd.configured) sources.push({ id: "slskd", label: "Soulseek", source: "slskd" });
-  if (status.deemix.configured) sources.push({ id: "deemix", label: "deemix", source: "deemix" });
   for (const { id, label } of getEnabledDownloadSources()) {
     if (contractSource(id)) sources.push({ id, label, source: id });
   }

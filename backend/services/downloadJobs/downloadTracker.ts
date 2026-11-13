@@ -94,7 +94,6 @@ type SourceCandidate<Source extends PipelinePayload["source"]> =
     : never;
 type ManualSelection =
   | { source: "slskd"; candidate: SourceCandidate<"slskd"> }
-  | { source: "deemix"; candidate: SourceCandidate<"deemix"> }
   | { source: DownloadSource["id"]; candidate: SourceCandidate<DownloadSource["id"]> };
 const queuedStepSchema = v.object({
   jobId: v.string(),
@@ -573,8 +572,6 @@ function buildManualPayload(job: DownloadJob, selection: ManualSelection): Pipel
     manualSelection: true,
   };
   if (selection.source === "slskd")
-    return { ...step, source: selection.source, candidates: [selection.candidate] };
-  if (selection.source === "deemix")
     return { ...step, source: selection.source, candidates: [selection.candidate] };
   return { ...step, source: selection.source, candidates: [selection.candidate] };
 }

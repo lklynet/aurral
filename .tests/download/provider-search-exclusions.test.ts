@@ -1,4 +1,4 @@
-import { createTrackedJob, trackedJob } from "./fixtures.ts";
+import { createTrackedJob, isStepFrom, trackedJob } from "./fixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -15,7 +15,7 @@ const [
   { dbOps },
   { downloadTracker },
   { getDownloadClient },
-  deemix,
+  { deemixSource },
   { ytdlpSource },
   slskd,
   { processSourcePipelinePayload },
@@ -25,7 +25,7 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/download/downloadClientSettings.ts"),
-  () => import("../../backend/services/deemixOrchestrator.ts"),
+  () => import("../../backend/services/deemixSource.ts"),
   () => import("../../backend/services/ytdlpSource.ts"),
   () => import("../../backend/services/downloadPipeline.ts"),
   () => import("../../backend/services/download/sourcePipeline.ts"),
@@ -33,35 +33,11 @@ const [
 beforeEach(() => resetDatabase(db));
 afterAll(() => cleanupIsolatedState(state));
 
-type SearchStep = (
-  payload: {
-    phase: "search" | "finalize";
-    source: string;
-    jobId: string;
-    queueUuid?: string;
-    downloadedPath?: string;
-    candidateIndex?: number;
-    candidates?: { raw: { id: string; url: string } }[];
-  },
-  helpers: { failOrTryNextSource: (payload: unknown, job: unknown, reason: string) => unknown },
-) => Promise<{ phase: string; candidates?: { raw: { id: string } }[] | null } | null>;
-
 type SearchingClient = { search: (query: string) => Promise<unknown[]> };
 
-const searchSteps: [source: "deemix" | "ytdlp", step: SearchStep][] = [
-  ["deemix", deemix.processDeemixPipelinePayload as SearchStep],
-  [
-    "ytdlp",
-    ((payload, helpers) =>
-      processSourcePipelinePayload(
-        payload as Parameters<typeof processSourcePipelinePayload>[0],
-        ytdlpSource,
-        helpers as Parameters<typeof processSourcePipelinePayload>[2],
-      )) as SearchStep,
-  ],
-];
-
-for (const [source, processPayload] of searchSteps) {
+const sources = [deemixSource, ytdlpSource];
+for (const contract of sources) {
+  const source = contract.id;
   test(`${source} searches beyond denied results without altering denial history`, async () => {
     const jobId = createTrackedJob(
       downloadTracker,
@@ -85,15 +61,16 @@ for (const [source, processPayload] of searchSteps) {
       },
     ];
     try {
-      const result = await processPayload(
+      const result = await processSourcePipelinePayload(
         { phase: "search", source, jobId },
+        contract,
         {
           failOrTryNextSource: async (_payload, _job, reason) => {
             throw new Error(reason);
           },
         },
       );
-      assert.ok(result);
+      assert.ok(isStepFrom(result, source));
       assert.equal(result.phase, "download");
       assert.deepEqual(
         result.candidates?.map((entry) => entry.raw.id),
@@ -108,7 +85,8 @@ for (const [source, processPayload] of searchSteps) {
   });
 }
 
-for (const [source, processPayload] of searchSteps) {
+for (const contract of sources) {
+  const source = contract.id;
   test(`${source} blocks a track that fails validation from the next search`, async () => {
     const jobId = createTrackedJob(
       downloadTracker,
@@ -124,16 +102,17 @@ for (const [source, processPayload] of searchSteps) {
     if (source === "deemix")
       vi.spyOn(getDownloadClient("deemix"), "removeFromQueue").mockImplementation(async () => true);
     const helpers = { failOrTryNextSource: async () => null };
-    await processPayload(
+    await processSourcePipelinePayload(
       {
         phase: "finalize",
         source,
         jobId,
-        queueUuid: "queued",
+        pendingId: "queued",
         downloadedPath: filePath,
         candidateIndex: 0,
-        candidates: [{ raw: { id: "rejected", url: "https://track.invalid/rejected" } }],
+        candidates: [{ raw: { id: "rejected", title: "First", artist: "The Band" } }],
       },
+      contract,
       helpers,
     );
     assert.deepEqual(trackedJob(downloadTracker, jobId).deniedRemoteSources, [
@@ -149,9 +128,14 @@ for (const [source, processPayload] of searchSteps) {
         readable: true,
       })),
     );
-    const result = await processPayload({ phase: "search", source, jobId }, helpers);
+    const result = await processSourcePipelinePayload(
+      { phase: "search", source, jobId },
+      contract,
+      helpers,
+    );
+    assert.ok(isStepFrom(result, source));
     assert.deepEqual(
-      result!.candidates!.map((entry) => entry.raw.id),
+      result.candidates?.map((entry) => entry.raw.id),
       ["allowed"],
     );
   });

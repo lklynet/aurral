@@ -29,7 +29,7 @@ deemix writes files to its own download folder. Aurral must read the same files.
 
 Mount the deemix download folder in Aurral at the same path. If you cannot, add a mapping in **Settings > Downloads > Remote path mappings**, with **Applies to** set to **deemix**. Use the path that deemix reports as **Remote path**, and the path inside Aurral as **Local path**.
 
-Aurral moves each checked file into the Library folder. A file that fails the checks stays outside the Library.
+When a download finishes, Aurral takes its files from the deemix folder and moves each checked file into the Library folder. A file that fails the checks stays outside the Library. Aurral copies a file that deemix saved in the Library folder or a read-only folder, and leaves that file in place.
 
 ## Behavior
 
@@ -44,7 +44,7 @@ For a track whose album Aurral knows, Aurral first searches Deezer for that albu
 - It has no other song. A deluxe edition with a bonus track is a different release.
 - No track is a live, acoustic, remix, or other version, unless the album or track you asked for names that version, the artist is a karaoke, nightcore, or tribute act, or MusicBrainz lists the album as a live, remix, or demo release.
 
-Your account must be able to stream every track you want from that album. Aurral queues only the tracks you want, and queues the whole album only when you want every track. When no Deezer album is exactly the release, Aurral tries the next download source that can supply the release, and then searches for each track on its own.
+Aurral queues only the tracks you want, and queues the whole album only when you want every track. A track you want that your account cannot stream goes on to the next source. When no Deezer album is exactly the release, Aurral tries the next download source that can supply the release, and then searches for each track on its own.
 
 If an album download finishes with errors, Aurral assigns the finished files to their tracks. The missing and failed tracks continue through the next matching album and the other sources. One file never fills two tracks.
 
@@ -52,9 +52,7 @@ A track that fails Aurral's checks is not offered again for that request.
 
 If a file matches the requested track but its duration is very different, Aurral holds it in **Activity > Queue**. You can preview, approve, or deny it.
 
-Aurral removes a track from the deemix queue before it imports the file or holds it for review. It removes an album from the queue after it processes the album. A new request can then start a new download.
-
-If deemix finishes the same track again and the file already exists in the playlist folder, Aurral keeps the existing file. It does not create a numbered copy.
+Aurral removes a download from the deemix queue when it takes the files. A new request can then start a new download.
 
 ## Upgrades
 

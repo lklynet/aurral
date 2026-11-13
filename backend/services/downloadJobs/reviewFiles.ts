@@ -10,7 +10,7 @@ type ReviewFileJob = Pick<
   "id" | "stagingPath" | "downloadSource" | "downloadClient" | "remoteUsername"
 > & { downloadClientId?: DownloadJob["downloadClientId"] | number };
 
-function isInLibraryFolder(filePath: string) {
+export function isInLibraryFolder(filePath: string) {
   return [resolveDownloadRoot(), ...readOnlyFolderPaths()]
     .filter(Boolean)
     .some((root) => isPathInsideRoot(filePath, path.resolve(root)));
