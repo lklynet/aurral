@@ -71,25 +71,28 @@ test("default settings and unset backend config use BrainzMash metadata", async 
   vi.unstubAllEnvs();
 });
 
-test("entity request failures back off for one hour, six hours, then one day", () => {
+test("entity request failures back off for one minute, ten minutes, then one hour", () => {
   const key = "backoff:test";
-  const hour = 60 * 60 * 1000;
+  const minute = 60 * 1000;
   let now = 1_000_000;
   clearMetadataRequestStates();
 
   const first = acquireMetadataRequest(key, 120_000, now);
   assert.equal(first.acquired, true);
-  assert.equal(failMetadataRequest(key, first.acquired ? first.token : "", now), now + hour);
+  assert.equal(failMetadataRequest(key, first.acquired ? first.token : "", now), now + minute);
 
-  now += hour;
+  now += minute;
   const second = acquireMetadataRequest(key, 120_000, now);
   assert.equal(second.acquired, true);
-  assert.equal(failMetadataRequest(key, second.acquired ? second.token : "", now), now + 6 * hour);
+  assert.equal(
+    failMetadataRequest(key, second.acquired ? second.token : "", now),
+    now + 10 * minute,
+  );
 
-  now += 6 * hour;
+  now += 10 * minute;
   const third = acquireMetadataRequest(key, 120_000, now);
   assert.equal(third.acquired, true);
-  assert.equal(failMetadataRequest(key, third.acquired ? third.token : "", now), now + 24 * hour);
+  assert.equal(failMetadataRequest(key, third.acquired ? third.token : "", now), now + 60 * minute);
   clearMetadataRequestStates();
 });
 
@@ -101,7 +104,7 @@ test("an abandoned entity request enters cooldown when its lease expires", () =>
 
   const recovered = acquireMetadataRequest(key, 1_000, now + 1_001);
   assert.equal(recovered.acquired, false);
-  assert.equal(recovered.retryAfter, now + 1_001 + 60 * 60 * 1000);
+  assert.equal(recovered.retryAfter, now + 1_001 + 60 * 1000);
   clearMetadataRequestStates();
 });
 
@@ -594,6 +597,51 @@ test("transient entity failures use a persistent cooldown instead of redownloadi
     );
     assert.equal(requests, 1);
   } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("an album request already sent finishes and is cached after its caller leaves", async () => {
+  const previousSettings = dbOps.getSettings();
+  let requests = 0;
+  const arrived = Promise.withResolvers<void>();
+  const answer = Promise.withResolvers<void>();
+  const server = await createMockHttpServer(async (_request, response) => {
+    requests += 1;
+    arrived.resolve();
+    await answer.promise;
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ id: "left-album", title: "Left Album" }));
+  });
+  const caller = new AbortController();
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    const left = getAlbumByMbid("left-album", { signal: caller.signal });
+    await arrived.promise;
+    caller.abort();
+    await assert.rejects(left);
+    answer.resolve();
+
+    assert.equal((await getAlbumByMbid("left-album")).title, "Left Album");
+    assert.equal(requests, 1);
+  } finally {
+    answer.resolve();
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
     await server.close();

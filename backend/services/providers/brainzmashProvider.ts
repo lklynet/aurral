@@ -232,6 +232,15 @@ export function isMetadataCircuitError(error: unknown) {
   );
 }
 
+export function getMetadataCooldownMs(error: unknown) {
+  return isMetadataCircuitError(error) &&
+    error instanceof Error &&
+    "retryAfterMs" in error &&
+    typeof error.retryAfterMs === "number"
+    ? error.retryAfterMs
+    : null;
+}
+
 function getRetryAfterMs(error: unknown) {
   const headers = asAppError(error)?.response?.headers;
   const retryAfter = headers?.["retry-after"] ?? headers?.["Retry-After"];
@@ -470,6 +479,18 @@ function refreshMetadata<Schema extends v.GenericSchema>(
           if (leaseToken) releaseMetadataRequest(cacheKey, leaseToken);
           throw sharedSignal.reason || new Error("The operation was aborted");
         }
+        // A request BrainzMash has received is finished and cached even when every caller has left.
+        const unsent = new AbortController();
+        if (ownsPersistentRequest) {
+          sharedSignal.addEventListener(
+            "abort",
+            () => {
+              if (!providerRequestStarted) unsent.abort(sharedSignal.reason);
+            },
+            { once: true },
+          );
+        }
+        const requestSignal = ownsPersistentRequest ? unsent.signal : sharedSignal;
         try {
           const response = await providerRequestLimiter.schedule(
             async (remainingMs) => {
@@ -490,7 +511,7 @@ function refreshMetadata<Schema extends v.GenericSchema>(
                   error.code = "ETIMEDOUT";
                   throw error;
                 }
-                await delay(waitMs, undefined, { signal: sharedSignal });
+                await delay(waitMs, undefined, { signal: requestSignal });
                 const waitingCircuit = getMetadataCircuitError(baseUrl);
                 if (waitingCircuit) throw waitingCircuit;
               }
@@ -514,11 +535,11 @@ function refreshMetadata<Schema extends v.GenericSchema>(
                 headers: {
                   "User-Agent": getUserAgent(),
                 },
-                signal: sharedSignal,
+                signal: requestSignal,
               });
             },
             {
-              signal: sharedSignal,
+              signal: requestSignal,
               timeoutMs: METADATA_REQUEST_TIMEOUT_MS,
               priority: ownsPersistentRequest ? 0 : 1,
             },
@@ -531,9 +552,9 @@ function refreshMetadata<Schema extends v.GenericSchema>(
           healthState.lastFailureReason = "";
           return value;
         } catch (error) {
-          if (sharedSignal.aborted) {
+          if (requestSignal.aborted) {
             if (leaseToken) releaseMetadataRequest(cacheKey, leaseToken);
-            throw sharedSignal.reason || error;
+            throw requestSignal.reason || error;
           }
           const failure = asAppError(error);
           const status = failure?.response?.status;
@@ -542,8 +563,8 @@ function refreshMetadata<Schema extends v.GenericSchema>(
             status != null
               ? `HTTP ${status}`
               : String(failure?.code || failure?.message || "Unknown error");
-          // BrainzMash answers 429 when the same album is asked for again within
-          // a week, so only that entity waits out the Retry-After.
+          // A 429 for one album or artist is about that entity, so only it waits
+          // out the Retry-After BrainzMash sent.
           if (status === 429 && leaseToken && !isMetadataCircuitError(error)) {
             const retryAt = Date.now() + getRetryAfterMs(error);
             deferMetadataRequest(cacheKey, leaseToken, retryAt);

@@ -109,7 +109,7 @@ test("upgrading drops what only Lidarr mode read and keeps the rest", () => {
 test("upgrading fails finished downloads without a file and statuses Aurral does not read", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  migrate(db, migrations.slice(0, -1));
+  migrate(db, migrations.slice(0, -2));
   const insert = db.prepare<[string, string, string | null]>(
     `INSERT INTO download_jobs (id, artist_name, track_name, owner_id, status, final_path, created_at)
      VALUES (?, 'Artist', 'Song', 'library', ?, ?, 1)`,
@@ -129,4 +129,24 @@ test("upgrading fails finished downloads without a file and statuses Aurral does
     { id: "pending", status: "pending" },
     { id: "unknown", status: "failed" },
   ]);
+});
+
+test("upgrading lets albums that failed to load try again, and keeps rate-limit waits", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, -1));
+  const insert = db.prepare<[string, number, number]>(
+    "INSERT INTO metadata_request_state (cache_key, failure_count, retry_after, updated_at) VALUES (?, ?, ?, 1000)",
+  );
+  const day = 24 * 60 * 60 * 1000;
+  insert.run("failed", 3, 1000 + day);
+  insert.run("rate-limited", 0, 1000 + 7 * day);
+  insert.run("rate-limited-after-failing", 1, 1000 + day / 2);
+
+  migrate(db);
+
+  assert.deepEqual(
+    db.prepare("SELECT cache_key FROM metadata_request_state ORDER BY cache_key").pluck().all(),
+    ["rate-limited", "rate-limited-after-failing"],
+  );
 });
