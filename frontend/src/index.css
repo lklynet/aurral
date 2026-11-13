@@ -9794,10 +9794,6 @@ button.native-library-genre-row:focus-visible {
     align-items: flex-start;
   }
 
-  .native-library-sort .select {
-    max-width: 5.5rem;
-  }
-
   .native-library-filter-panel .select {
     min-width: 0;
     flex: 0 0 auto;

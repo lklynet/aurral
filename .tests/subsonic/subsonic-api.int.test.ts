@@ -1893,7 +1893,7 @@ test("playlist favorites resolve to the owned library track", async () => {
   }
 });
 
-test("library song responses agree on the earliest star date", async () => {
+test("library song responses agree on the earliest star date and order by it", async () => {
   const user = userOps.getUserByUsername("alice");
   assert.ok(user != null);
   const playlistSongKey = `${libraryFavoritePlaylist.id}:${libraryFavoriteJobId}`;
@@ -1901,17 +1901,45 @@ test("library song responses agree on the earliest star date", async () => {
     responseJson(await request("search3", { query: "Canonical Song" })).searchResult3.song[0],
   );
   const songKey = decodeURIComponent(song.id.slice("song:".length));
+  const flow = requireFixture(
+    responseJson(await request("getPlaylists")).playlists.playlist.find(
+      (entry: { name: string }) => entry.name === "Favorite Toggle Flow",
+    ),
+  );
+  const between = requireFixture(
+    responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry[0],
+  );
+  const separator = between.id.indexOf(":");
+  const betweenKind = between.id.slice(0, separator);
+  const betweenKey = decodeURIComponent(between.id.slice(separator + 1));
+  const betweenStar = db.prepare<[number, string, string], { created_at: number }>(
+    "SELECT created_at FROM subsonic_stars WHERE user_id = ? AND entity_kind = ? AND entity_key = ?",
+  );
+  const betweenStarredAt = betweenStar.get(user.id, betweenKind, betweenKey)?.created_at;
   const insertStar = db.prepare(
     "INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (?, ?, ?, ?)",
   );
   try {
     insertStar.run(user.id, "song", songKey, 1000);
+    db.prepare(
+      "INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (?, ?, ?, 1500) ON CONFLICT DO UPDATE SET created_at = 1500",
+    ).run(user.id, betweenKind, betweenKey);
     insertStar.run(user.id, "shared-song", playlistSongKey, 2000);
-    const starred = requireFixture(responseJson(await request("getStarred")).starred.song[0]);
+    const songs: { id: string; starred: string }[] = responseJson(await request("getStarred"))
+      .starred.song;
+    const starred = requireFixture(songs.find((entry) => entry.id === song.id));
     const direct = responseJson(await request("getSong", { id: song.id })).song;
     assert.equal(starred.starred, new Date(1000).toISOString());
     assert.equal(direct.starred, starred.starred);
+    const position = (id: string) => songs.findIndex((entry) => entry.id === id);
+    assert.ok(position(between.id) < position(song.id));
   } finally {
+    db.prepare(
+      "DELETE FROM subsonic_stars WHERE user_id = ? AND entity_kind = ? AND entity_key = ?",
+    ).run(user.id, betweenKind, betweenKey);
+    if (betweenStarredAt !== undefined) {
+      insertStar.run(user.id, betweenKind, betweenKey, betweenStarredAt);
+    }
     db.prepare(
       "DELETE FROM subsonic_stars WHERE user_id = ? AND entity_kind = ? AND entity_key = ?",
     ).run(user.id, "song", songKey);

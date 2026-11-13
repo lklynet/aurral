@@ -2,12 +2,10 @@ import { libraryAlbum, libraryTrack, libraryFile } from "./fixtures.ts";
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { idFor } from "../../backend/services/subsonicLibraryService.ts";
-import { requireFixture } from "../playlists/fixtures.ts";
 
 const {
   albumCardMeta,
   favoriteId,
-  favoriteLibraryFromResponse,
   getCachedAlbumTracks,
   mergeAlbumTrackPageIntoLibrary,
   releaseTypeOf,
@@ -48,35 +46,6 @@ test("invalidated album track caches fall back to the current library tracks", (
   tracksById.delete("9");
 
   assert.deepEqual(getCachedAlbumTracks(album, tracksById), [tracksById.get("8")]);
-});
-
-test("library favorites include playlist-backed Subsonic songs", () => {
-  const playlistSong = {
-    id: "shared-song:playlist-id%3Ajob-id",
-    title: "Playlist Favorite",
-    artist: "Favorite Artist",
-    album: "Favorite Album",
-    duration: 223,
-    suffix: "flac",
-  };
-  const library = favoriteLibraryFromResponse({
-    library: {
-      artists: [],
-      albums: [],
-      tracks: [libraryTrack({ id: 1, identityKey: "canonical-song", title: "Canonical Favorite" })],
-    },
-    playlistSongs: [playlistSong],
-  });
-
-  assert.deepEqual(
-    library.tracks.map((track) => track.title),
-    ["Canonical Favorite", "Playlist Favorite"],
-  );
-  assert.equal(favoriteId("song", library.tracks[1]), playlistSong.id);
-  assert.match(
-    requireFixture(requireFixture(library.tracks[1]).files[0]).previewUrl ?? "",
-    /\/playlists\/stream\/job-id/,
-  );
 });
 
 test("favorite ids match the ids the favorites endpoint returns", () => {

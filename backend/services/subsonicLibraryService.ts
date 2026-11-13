@@ -50,6 +50,7 @@ import {
 import type {
   LibraryAlbum,
   LibraryArtist,
+  LibraryFavorites,
   LibraryTrack,
   LibraryTrackFile,
 } from "./libraryQueryService.ts";
@@ -911,7 +912,7 @@ export function getGenres() {
 }
 
 const getStarsStmt = db.prepare<[number], StarRow>(
-  "SELECT entity_kind, entity_key, created_at FROM subsonic_stars WHERE user_id = ? ORDER BY created_at, entity_kind, entity_key",
+  "SELECT entity_kind, entity_key, created_at FROM subsonic_stars WHERE user_id = ? ORDER BY created_at DESC, entity_kind, entity_key",
 );
 const preparePlayedAlbumsStmt = (orderBy: string) =>
   db.prepare<[number, number, number], Pick<LibraryAlbumsRow, "identity_key">>(`
@@ -1484,8 +1485,8 @@ export function importFavorites(userId: number, favorites: ImportedFavorite[]) {
 const starredRows = (user: SubsonicUser): StarRow[] => (user?.id ? getStarsStmt.all(user.id) : []);
 
 const starredAtFromRows = (rows: StarRow[]) => {
-  const starredAt = new Map();
-  for (const row of rows) {
+  const starredAt = new Map<string, string>();
+  for (const row of rows.toReversed()) {
     const key = `${row.entity_kind}:${row.entity_key}`;
     if (!starredAt.has(key)) {
       starredAt.set(key, new Date(Number(row.created_at) || Date.now()).toISOString());
@@ -1527,10 +1528,16 @@ const viewerFor = (user: SubsonicUser): Viewer => ({
   ratings: ratingsFor(user),
 });
 
-export function getStarredIdentityKeys(user: SubsonicUser) {
-  return new Set(
-    libraryStarRows(user, starredRows(user)).map((row) => `${row.entity_kind}:${row.entity_key}`),
-  );
+export function getLibraryStars(user: SubsonicUser) {
+  const keys = new Set<string>();
+  const favorites: LibraryFavorites = { artist: new Map(), album: new Map(), song: new Map() };
+  for (const row of libraryStarRows(user, starredRows(user)).toReversed()) {
+    keys.add(`${row.entity_kind}:${row.entity_key}`);
+    const kind = row.entity_kind;
+    if (kind !== "artist" && kind !== "album" && kind !== "song") continue;
+    if (!favorites[kind].has(row.entity_key)) favorites[kind].set(row.entity_key, row.created_at);
+  }
+  return { keys, favorites };
 }
 
 const buildStarred = (library: IndexedLibrary, rows: StarRow[], user: SubsonicUser) => {
@@ -1574,10 +1581,13 @@ export function getStarredWithLibrary(
   const resolved = libraryStarRows(user, stored);
   // Several playlist-song stars can resolve to the same library track; render it once.
   const seen = new Set();
-  const rows = resolved.filter((row) => {
-    const key = `${row.entity_kind}:${row.entity_key}`;
-    return seen.has(key) ? false : seen.add(key);
-  });
+  const rows = resolved
+    .toReversed()
+    .filter((row) => {
+      const key = `${row.entity_kind}:${row.entity_key}`;
+      return seen.has(key) ? false : seen.add(key);
+    })
+    .toReversed();
   // A playlist song stays favorited under the id it was starred with after it resolves to the Library.
   const songIds = [
     ...new Set(

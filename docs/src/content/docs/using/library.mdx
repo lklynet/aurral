@@ -6,14 +6,14 @@ description: Browse, play, add, and remove the music in your Library.
 The Library is Aurral's index of your music. It includes the files in the Library folder and in your [read-only folders](#add-music-aurral-only-reads). Open **Library** in the sidebar to see these sections:
 
 - **Library** shows your genres, your most played, recently added, recently played, and recently released albums, a random selection to explore, your mixes, and your playlists.
-- **Favorites** shows your starred artists, albums, and tracks.
+- **Favorites** shows your starred artists, albums, and tracks, newest first.
 - **Albums** shows album artwork and how many tracks are available.
 - **Tracks** shows each track, its artist and album, and whether its file exists.
 - **Album artists** and **Artists** list the artists.
 - **Genres** opens the album list for one genre. A genre tag that lists several genres separated by `;` counts under each of them. Other separators such as `/` and `,` stay part of the genre name.
 - **Playlists** shows your static playlists. Flows have their own **Flows** item in the sidebar.
 
-To filter the current section, use the search field in the toolbar. The filter button narrows a section by genre, and Artists and Albums also by status: **Monitored**, **Not monitored**, or **Missing tracks**.
+To filter the current section, use the search field in the toolbar. Every section sorts the same ways: by name, artist, date added, recent plays, play count, or release date, and Favorites also by the date you favorited. The filter button narrows a section by genre and by status: **Monitored**, **Not monitored**, or **Missing tracks**. A track takes its album's status.
 
 ![Aurral Library](../../../../../web/screenshots/library.webp)
 
@@ -167,7 +167,7 @@ When a file changes in a watched folder, Aurral scans the changed file or folder
 
 On a new installation, Aurral scans the whole library once. After that, it scans only what changes. It does not run scheduled full scans.
 
-To scan now, select **Refresh** in Library and choose a scan:
+To scan now, select **Refresh** on the Library overview and choose a scan:
 
 - **Quick scan** checks every folder, reads new and changed files, and forgets files that are gone.
 - **Full scan** reads the tags of every file again. Use it after you retag files without changing their size or modification time, or when a quick scan does not fix stale metadata. A full scan can take a long time on a large library. It keeps running if you leave the page.

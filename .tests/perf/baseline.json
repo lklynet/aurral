@@ -55,6 +55,14 @@
     "bytes": 131386,
     "scans": []
   },
+  "library artist and track sorts": {
+    "queries": {
+      "cold": 69,
+      "warm": 66
+    },
+    "bytes": 436958,
+    "scans": []
+  },
   "library genres": {
     "queries": {
       "cold": 4,
@@ -105,10 +113,10 @@
   },
   "favorites": {
     "queries": {
-      "cold": 22,
-      "warm": 22
+      "cold": 56,
+      "warm": 53
     },
-    "bytes": 253491,
+    "bytes": 254263,
     "scans": []
   },
   "search": {

@@ -297,6 +297,13 @@ test("implements starred and frequent album lists without inventing ratings", as
       getAlbumList({ type: "starred" }, user).map((album) => album.name),
       ["New Album"],
     );
+    db.prepare(
+      "INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (?, 'album', 'test-album:Old Album', ?)",
+    ).run(user.id, Date.now() + 60_000);
+    assert.deepEqual(
+      getAlbumList({ type: "starred" }, user).map((album) => album.name),
+      ["Old Album", "New Album"],
+    );
     assert.deepEqual(
       getAlbumList({ type: "frequent" }, user).map((album) => album.name),
       ["Old Album", "New Album"],

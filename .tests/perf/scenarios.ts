@@ -69,6 +69,15 @@ export const scenarios: Scenario[] = [
       library({ kind: "tracks", page: 1, pageSize: 100, sort: "name", availableOnly: true }),
     ],
   },
+  {
+    name: "library artist and track sorts",
+    requests: () => [
+      library({ kind: "artists", page: 1, pageSize: 100, sort: "plays" }),
+      library({ kind: "artists", page: 1, pageSize: 100, sort: "released" }),
+      library({ kind: "tracks", page: 1, pageSize: 100, sort: "played", availableOnly: true }),
+      library({ kind: "tracks", page: 1, pageSize: 100, sort: "released", availableOnly: true }),
+    ],
+  },
   { name: "library genres", requests: () => [library({ kind: "genres", page: 1, pageSize: 100 })] },
   {
     name: "library genre filter",
@@ -107,7 +116,20 @@ export const scenarios: Scenario[] = [
       library({ kind: "tracks", albumId, page: 1, pageSize: 100, availableOnly: false }),
     ],
   },
-  { name: "favorites", requests: () => ["/api/library/favorites"] },
+  {
+    name: "favorites",
+    requests: () =>
+      (["artists", "albums", "tracks"] as const).map((kind) =>
+        library({
+          kind,
+          page: 1,
+          pageSize: 100,
+          sort: "favorited",
+          favorite: true,
+          ...(kind === "tracks" && { availableOnly: true }),
+        }),
+      ),
+  },
   { name: "search", requests: () => ["/api/search/library?q=perf%20track%20001&limit=20"] },
   { name: "discover recently added", requests: () => ["/api/library/recent"] },
   { name: "discover releases", requests: () => ["/api/library/recent-releases"] },
