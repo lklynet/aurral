@@ -227,17 +227,33 @@ test("an album's cause groups count and filter its queued tracks one by one", ()
     });
   const requests = [
     track("a", "request", "completed"),
-    track("b", "request", "pending"),
+    track("b", "missing", "pending"),
     track("c", "missing", "pending"),
+    activityRequest({
+      id: "solo",
+      status: "pending",
+      inQueue: true,
+      cause: { kind: "request", playlistId: null, name: null, syncedFrom: null },
+    }),
   ];
 
   const page = buildActivityPage(requests, { view: "queue", status: null, limit: 25 });
   assert.deepEqual(
     page.causes.map(({ key, count }) => [key, count]),
     [
-      ["missing", 1],
+      ["missing", 2],
       ["request", 1],
     ],
+  );
+  const requested = buildActivityPage(requests, {
+    view: "queue",
+    status: null,
+    cause: "request",
+    limit: 25,
+  });
+  assert.deepEqual(
+    requested.items.map(({ id }) => id),
+    ["solo"],
   );
   const missing = buildActivityPage(requests, {
     view: "queue",

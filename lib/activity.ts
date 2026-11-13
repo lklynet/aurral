@@ -353,7 +353,10 @@ export function buildActivityPage(
   const cause = causes.some((group) => group.key === causeFilter) ? causeFilter : null;
   const causeRequests = cause
     ? viewRequests.filter((row) =>
-        (row.children ?? [row]).some((request) => activityCauseKey(request.cause) === cause),
+        (row.children ?? [row]).some(
+          (request) =>
+            matchesActivityView(request, view) && activityCauseKey(request.cause) === cause,
+        ),
       )
     : viewRequests;
   const matching = status
