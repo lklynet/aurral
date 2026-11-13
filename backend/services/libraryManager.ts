@@ -1050,7 +1050,7 @@ export class LibraryManager {
     let releases: Awaited<ReturnType<typeof listArtistReleases>> = [];
     if (rules.catalog !== "none" || rules.newReleases) {
       try {
-        releases = await listArtistReleases(artist.mbid);
+        releases = await listArtistReleases(artist.mbid, rules);
       } catch (error) {
         const failure = asAppError(error);
         logger.warn("library", "Aurral monitoring could not load artist releases", {

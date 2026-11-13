@@ -18,6 +18,12 @@ const DAY_MS = 86_400_000;
 const stamp = (seconds: number) =>
   `[${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}.00]`;
 
+// Eden's albums take their covers from its BrainzMash, so the archive has none.
+export const coverArtArchive: Outside = {
+  hosts: ["coverartarchive.org"],
+  respond: () => undefined,
+};
+
 export const lrclib: Outside = {
   hosts: ["lrclib.net"],
   respond({ url }, music) {
