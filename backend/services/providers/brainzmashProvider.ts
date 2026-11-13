@@ -512,20 +512,10 @@ function refreshMetadata<Schema extends v.GenericSchema>(
               }
               const circuitAfterWait = getMetadataCircuitError(baseUrl);
               if (circuitAfterWait) throw circuitAfterWait;
-              const requestTimeoutMs = remainingMs - (Date.now() - admissionStarted);
-              if (requestTimeoutMs <= 0) {
-                const error: MetadataError = new Error(
-                  "Metadata provider request deadline exceeded",
-                );
-                error.code = "ETIMEDOUT";
-                throw error;
-              }
               providerRequestStarted = true;
               return http.get(`${baseUrl}${path}`, {
                 query: params,
-                timeoutMs: Number.isFinite(requestTimeoutMs)
-                  ? Math.max(1, Math.floor(requestTimeoutMs))
-                  : METADATA_REQUEST_TIMEOUT_MS,
+                timeoutMs: METADATA_REQUEST_TIMEOUT_MS,
                 bodyTimeoutMs: METADATA_RESPONSE_BODY_TIMEOUT_MS,
                 headers: {
                   "User-Agent": getUserAgent(),
@@ -561,8 +551,13 @@ function refreshMetadata<Schema extends v.GenericSchema>(
           // A 429 for one album or artist is about that entity, so only it waits
           // out the Retry-After BrainzMash sent.
           if (status === 429 && leaseToken && !isMetadataCircuitError(error)) {
-            const retryAt = Date.now() + getRetryAfterMs(error);
+            const retryAfterMs = getRetryAfterMs(error);
+            const retryAt = Date.now() + retryAfterMs;
             deferMetadataRequest(cacheKey, leaseToken, retryAt);
+            logger.info("metadata", "BrainzMash rate limited a request", {
+              path,
+              retryAfterSeconds: Math.round(retryAfterMs / 1000),
+            });
             if (fallbackValue !== undefined) return fallbackValue;
             throw createMetadataCooldownError(retryAt - Date.now());
           }
