@@ -651,6 +651,38 @@ test("a metadata request that reaches its turn a moment early by the wall clock 
   }
 });
 
+test("a shared rate limit waits out the turn another process booked, but not a clock that went back", async () => {
+  const { default: createRateLimiter } =
+    await import("../backend/services/apiClients/rateLimiter.ts");
+  const service = "http://shared-pace.invalid";
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  try {
+    const limiter = createRateLimiter(1000, { shared: service });
+    const startOnce = async () => {
+      let startedAt = 0;
+      const request = limiter.schedule(() => {
+        startedAt = Date.now();
+      });
+      await vi.runAllTimersAsync();
+      await request;
+      return startedAt;
+    };
+    assert.equal(reserveMetadataProviderRequest(service, 1000), 0);
+    const bookedAt = Date.now();
+    const startedAt = await startOnce();
+    assert.ok(startedAt - bookedAt >= 998, `started ${startedAt - bookedAt}ms after the booking`);
+
+    db.prepare("UPDATE metadata_provider_budget SET next_request_at = ? WHERE base_url = ?").run(
+      Date.now() + 60 * 60_000,
+      service,
+    );
+    const skewedAt = await startOnce();
+    assert.ok(skewedAt - startedAt <= 1000, `waited ${skewedAt - startedAt}ms on a stale booking`);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test("local request admission timeouts do not put entity metadata into cooldown", async () => {
   const previousSettings = dbOps.getSettings();
   let requests = 0;

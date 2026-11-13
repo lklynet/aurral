@@ -57,7 +57,7 @@ afterAll(async () => {
   delete process.env.BRAINZMASH_BASE_URL;
 });
 
-test("a cover the Cover Art Archive has is saved without asking BrainzMash", async () => {
+test("a cover the Cover Art Archive has is asked for once and saved without asking BrainzMash", async () => {
   const release = "33333333-3333-4333-8333-333333333333";
   archiveCover = {
     ...noArchiveCover,
@@ -67,10 +67,19 @@ test("a cover the Cover Art Archive has is saved without asking BrainzMash", asy
     },
   };
 
-  const result = await fetchReleaseGroupCoverUrl(mbid);
+  const [result, sameTime] = await Promise.all([
+    fetchReleaseGroupCoverUrl(mbid),
+    fetchReleaseGroupCoverUrl(mbid),
+  ]);
 
   const cover = `https://imagecache.lidarr.audio/v1/caa/${release}/40449613518-1200.jpg`;
   assert.equal(result.imageUrl, buildStableImageProxyUrl(cover));
+  assert.deepEqual(sameTime, result);
+  assert.equal(
+    vi.mocked(http.get).mock.calls.filter(([url]) => url.startsWith("https://coverartarchive.org/"))
+      .length,
+    1,
+  );
   assert.equal(dbOps.getImage(`rg:${mbid}`)?.imageUrl, buildStableImageProxyUrl(cover));
   assert.deepEqual(requests, []);
 });

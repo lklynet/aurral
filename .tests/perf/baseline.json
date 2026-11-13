@@ -183,7 +183,7 @@
   },
   "discover album": {
     "queries": {
-      "cold": 17,
+      "cold": 14,
       "warm": 3
     },
     "bytes": 244,
@@ -217,7 +217,7 @@
   },
   "discover search": {
     "queries": {
-      "cold": 12,
+      "cold": 9,
       "warm": 3
     },
     "bytes": 65,
@@ -369,7 +369,7 @@
   },
   "album match": {
     "queries": {
-      "cold": 28,
+      "cold": 25,
       "warm": 4
     },
     "bytes": 35,
@@ -383,7 +383,7 @@
   },
   "track match": {
     "queries": {
-      "cold": 18,
+      "cold": 16,
       "warm": 4
     },
     "bytes": 40,
@@ -397,7 +397,7 @@
   },
   "artist match": {
     "queries": {
-      "cold": 13,
+      "cold": 10,
       "warm": 4
     },
     "bytes": 12,

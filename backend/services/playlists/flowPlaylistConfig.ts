@@ -86,6 +86,7 @@ interface StoredImportSource {
   syncIntervalHours?: unknown;
   keepRemovedTracks?: unknown;
   lastSyncAt?: unknown;
+  lastSyncFailedAt?: unknown;
   lastSyncError?: unknown;
   lastSyncTrackCount?: unknown;
 }
@@ -260,6 +261,7 @@ export function normalizeImportSource(value: StoredImportSource | null | undefin
   const externalUsername = String(value.externalUsername || "").trim();
   const syncIntervalHours = Number(value.syncIntervalHours);
   const lastSyncAt = Number(value.lastSyncAt);
+  const lastSyncFailedAt = Number(value.lastSyncFailedAt);
   const hasSync =
     value.syncEnabled !== false && Number.isFinite(syncIntervalHours) && syncIntervalHours > 0;
   return {
@@ -275,6 +277,8 @@ export function normalizeImportSource(value: StoredImportSource | null | undefin
     syncIntervalHours: hasSync ? Math.min(Math.max(Math.round(syncIntervalHours), 1), 168) : 0,
     keepRemovedTracks: value.keepRemovedTracks !== false,
     lastSyncAt: Number.isFinite(lastSyncAt) && lastSyncAt > 0 ? lastSyncAt : null,
+    lastSyncFailedAt:
+      Number.isFinite(lastSyncFailedAt) && lastSyncFailedAt > 0 ? lastSyncFailedAt : null,
     lastSyncError: String(value.lastSyncError || "").trim() || null,
     lastSyncTrackCount:
       value.lastSyncTrackCount != null && Number.isFinite(Number(value.lastSyncTrackCount))

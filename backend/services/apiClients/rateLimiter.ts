@@ -1,17 +1,52 @@
 import PQueue from "p-queue";
+import { reserveMetadataProviderRequest } from "../metadataProviderBudget.ts";
 
 const createError = (message: string, code: string) => Object.assign(new Error(message), { code });
 
 type ScheduleOptions = { signal?: AbortSignal; timeoutMs?: number; priority?: number };
 
+const sleep = (ms: number, signal: AbortSignal | undefined) =>
+  new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+
+// Background workers are separate processes, so a service's pace is booked in
+// SQLite by wall clock. A booking more than one turn ahead means the clock went
+// back, and the process paces itself alone instead of waiting it out.
+async function waitForSharedTurn(service: string, intervalMs: number, signal?: AbortSignal) {
+  let waitMs;
+  while ((waitMs = reserveMetadataProviderRequest(service, intervalMs)) > 0) {
+    if (waitMs > intervalMs) return;
+    signal?.throwIfAborted();
+    await sleep(waitMs, signal);
+  }
+}
+
 export default function createRateLimiter(
   minTime: number,
-  { maxQueue = Infinity, check }: { maxQueue?: number; check?: () => void } = {},
+  {
+    maxQueue = Infinity,
+    check,
+    shared,
+  }: { maxQueue?: number; check?: () => void; shared?: string } = {},
 ) {
+  const intervalMs = Math.max(0, Number(minTime) || 0);
+  const takeTurn = async <T>(run: () => T, signal: AbortSignal | undefined) => {
+    if (shared && intervalMs > 0) await waitForSharedTurn(shared, intervalMs, signal);
+    return run();
+  };
   const queue = new PQueue({
-    interval: Math.max(0, Number(minTime) || 0),
+    interval: intervalMs,
     intervalCap: 1,
-    strict: Number(minTime) > 0,
+    strict: intervalMs > 0,
   });
 
   function schedule<T>(
@@ -36,7 +71,9 @@ export default function createRateLimiter(
     }
 
     const parsedTimeoutMs = Number(timeoutMs);
-    if (!Number.isFinite(parsedTimeoutMs)) return queue.add(() => fn(), { signal, priority });
+    if (!Number.isFinite(parsedTimeoutMs)) {
+      return queue.add(() => takeTurn(() => fn(), signal), { signal, priority });
+    }
 
     const deadline = Date.now() + Math.max(0, parsedTimeoutMs);
     const expired = new AbortController();
@@ -45,13 +82,15 @@ export default function createRateLimiter(
       Math.max(0, parsedTimeoutMs),
     );
     const signals = signal ? [signal, expired.signal] : [expired.signal];
+    const queuedSignal = AbortSignal.any(signals);
     return queue
       .add(
-        () => {
-          clearTimeout(timer);
-          return fn(deadline - Date.now());
-        },
-        { signal: AbortSignal.any(signals), priority },
+        () =>
+          takeTurn(() => {
+            clearTimeout(timer);
+            return fn(deadline - Date.now());
+          }, queuedSignal),
+        { signal: queuedSignal, priority },
       )
       .finally(() => clearTimeout(timer));
   }

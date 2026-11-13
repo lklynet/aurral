@@ -86,7 +86,7 @@ type LastfmResponse = v.InferOutput<typeof lastfmResponseSchema>;
 
 const lastfmCache = createCache<LastfmResponse>(300);
 
-const lastfmLimiter = createRateLimiter(200);
+const lastfmLimiter = createRateLimiter(200, { shared: LASTFM_API });
 
 const LASTFM_TIMEOUT_MS =
   Math.max(3000, parseInt(String(process.env.AURRAL_LASTFM_TIMEOUT_MS), 10) || 0) || 15000;

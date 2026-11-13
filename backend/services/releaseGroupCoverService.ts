@@ -26,7 +26,7 @@ type ReleaseGroupCoverOptions = {
   bypassCache?: boolean;
 };
 const RG_CACHE_PREFIX = "rg:";
-const releaseGroupRefreshRequests = new Map<
+const releaseGroupCoverRequests = new Map<
   string,
   ReturnType<typeof fetchReleaseGroupCoverUncached>
 >();
@@ -251,32 +251,22 @@ const fetchReleaseGroupCoverUncached = async (
   return { imageUrl: null, types: [], notFound: true, transientError: false };
 };
 
-export const fetchReleaseGroupCoverUrl = async (
+export const fetchReleaseGroupCoverUrl = (
   releaseGroupMbid: string,
   options: ReleaseGroupCoverOptions = {},
 ) => {
-  if (options?.bypassCache !== true) {
-    return fetchReleaseGroupCoverUncached(releaseGroupMbid, options);
-  }
-
-  const refreshKey = String(releaseGroupMbid || "").trim();
-  const existing = releaseGroupRefreshRequests.get(refreshKey);
+  const key = JSON.stringify([
+    options.bypassCache === true,
+    String(releaseGroupMbid || "").trim(),
+    options.artistName?.trim() || "",
+    options.albumTitle?.trim() || "",
+  ]);
+  const existing = releaseGroupCoverRequests.get(key);
   if (existing) return existing;
-
-  const request = fetchReleaseGroupCoverUncached(releaseGroupMbid, options);
-  releaseGroupRefreshRequests.set(refreshKey, request);
-  request.then(
-    () => {
-      if (releaseGroupRefreshRequests.get(refreshKey) === request) {
-        releaseGroupRefreshRequests.delete(refreshKey);
-      }
-    },
-    () => {
-      if (releaseGroupRefreshRequests.get(refreshKey) === request) {
-        releaseGroupRefreshRequests.delete(refreshKey);
-      }
-    },
-  );
+  const request = fetchReleaseGroupCoverUncached(releaseGroupMbid, options).finally(() => {
+    if (releaseGroupCoverRequests.get(key) === request) releaseGroupCoverRequests.delete(key);
+  });
+  releaseGroupCoverRequests.set(key, request);
   return request;
 };
 

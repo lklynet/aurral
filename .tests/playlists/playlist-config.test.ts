@@ -631,6 +631,7 @@ test("normalizes YouTube Music import sources without a schema migration", () =>
     syncIntervalHours: 12,
     keepRemovedTracks: false,
     lastSyncAt: 1234,
+    lastSyncFailedAt: null,
     lastSyncError: null,
     lastSyncTrackCount: 8,
   });

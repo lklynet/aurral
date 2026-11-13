@@ -8,7 +8,7 @@ import { createOutagePause } from "./outagePause.ts";
 import createRateLimiter from "./rateLimiter.ts";
 
 const MUSICBRAINZ_BUSY_BACKOFF_MS = 2000;
-const musicbrainzLimiter = createRateLimiter(1000);
+const musicbrainzLimiter = createRateLimiter(1000, { shared: MUSICBRAINZ_API });
 const musicbrainzPause = createOutagePause("MusicBrainz");
 
 export const artistCreditSchema = v.optional(

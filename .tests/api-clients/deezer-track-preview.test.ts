@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
 import {
+  deezerGetTrackPreview,
   getDeezerPreviewLink,
   searchDeezerTracks,
   selectDeezerTrackPreview,
@@ -114,4 +115,19 @@ test("Deezer searches ask for artist names untranslated", async () => {
 
   const [track] = await searchDeezerTracks("tove lo blood in your eyes");
   assert.equal(track?.artist?.name, "Tove Lo");
+});
+
+test("a song's Deezer preview is searched for once", async () => {
+  const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+    Response.json({
+      data: [{ id: 7, title: "Repeat", artist: { name: "Looper" }, preview: "7.mp3" }],
+    }),
+  );
+
+  const first = await deezerGetTrackPreview({ artistName: "Looper", trackName: "Repeat" });
+  const second = await deezerGetTrackPreview({ artistName: "looper ", trackName: "repeat" });
+
+  assert.equal(first?.previewTrackId, "7");
+  assert.deepEqual(second, first);
+  assert.equal(fetch.mock.calls.length, 1);
 });

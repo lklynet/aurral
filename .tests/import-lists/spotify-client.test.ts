@@ -1,6 +1,6 @@
 import { requireFixture } from "../playlists/fixtures.ts";
 import { asAppError } from "../../lib/errors.ts";
-import { test, beforeEach, afterAll } from "vite-plus/test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -330,4 +330,43 @@ test("Spotify playlist artwork uses the largest available source image", async (
   );
   globalThis.fetch = async () => jsonResponse(200, { images: [] });
   assert.equal(await spotifyClient.getPlaylistArtworkUrl(7, "playlist"), null);
+});
+
+test("Spotify asking for a short pause is waited out once, and a long one fails without retrying", async () => {
+  spotifyConnectionStore.saveConnection(7, {
+    accessToken: "valid-access-token",
+    refreshToken: "valid-refresh-token",
+    expiresAt: Date.now() + 3_600_000,
+  });
+  const slowDown = (seconds: number) =>
+    new Response("Too many requests", { status: 429, headers: { "retry-after": String(seconds) } });
+  const responses = [
+    slowDown(2),
+    jsonResponse(200, { images: [{ url: "https://images.example.test/a.jpg", width: 10 }] }),
+  ];
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    return requireFixture(responses.shift());
+  };
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
+  try {
+    const artwork = spotifyClient.getPlaylistArtworkUrl(7, "paused");
+    await vi.advanceTimersByTimeAsync(2000);
+    assert.equal(await artwork, "https://images.example.test/a.jpg");
+  } finally {
+    vi.useRealTimers();
+  }
+  assert.equal(requests, 2);
+
+  requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    return slowDown(3600);
+  };
+  await assert.rejects(
+    spotifyClient.getPlaylistArtworkUrl(7, "banned"),
+    (error) => asAppError(error)?.statusCode === 429,
+  );
+  assert.equal(requests, 1);
 });
