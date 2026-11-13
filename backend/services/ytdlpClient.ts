@@ -57,7 +57,7 @@ export const ytdlpSettings = Object.freeze({
       type: "number",
       min: 1,
       max: 1000,
-      section: "Behavior",
+      advanced: true,
     }),
     Object.freeze({
       key: "stagingPath",

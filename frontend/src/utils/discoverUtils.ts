@@ -272,10 +272,6 @@ export const normalizeDiscoveryData = (value: unknown) => {
     enrichmentStartedAt: textOrNull(value.enrichmentStartedAt),
     enrichmentCompletedAt: textOrNull(value.enrichmentCompletedAt),
     enrichmentProgressMessage: textOrNull(value.enrichmentProgressMessage),
-    discoveryMode:
-      value.discoveryMode === "safer" || value.discoveryMode === "deeper"
-        ? value.discoveryMode
-        : "balanced",
     configured: typeof value.configured === "boolean" ? value.configured : true,
   };
 };

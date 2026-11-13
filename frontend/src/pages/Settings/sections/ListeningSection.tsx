@@ -10,6 +10,7 @@ import { scrobblingClient } from "../../../utils/api/clients/scrobbling.ts";
 import { usersClient } from "../../../utils/api/clients/users.ts";
 import { DotLoader } from "../../../components/DotLoader";
 import PillToggle from "../../../components/PillToggle";
+import { Select } from "../../../components/Select";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { SettingsCommitInput, SettingsInput } from "../components/SettingsField";
 import { formatDate } from "../../../utils/dateTime.ts";
@@ -323,6 +324,51 @@ function ServiceDetail({ provider }: { provider: ScrobbleProvider }) {
   );
 }
 
+const DISCOVERY_MODE_OPTIONS = [
+  { value: "safer", label: "Safer" },
+  { value: "balanced", label: "Balanced" },
+  { value: "deeper", label: "Deeper" },
+] as const;
+
+function DiscoveryModeRow() {
+  const { user } = useAuth();
+  const { showError } = useToast();
+  const queryClient = useQueryClient();
+  const queryKey = queryKeys.discoveryPreferences(user?.id);
+  const query = useQuery({
+    queryKey,
+    queryFn: ({ signal }) =>
+      parseResponse(discoveryClient.preferences.$get(undefined, { init: { signal } })),
+  });
+  const save = useMutation({
+    mutationFn: (discoveryMode: (typeof DISCOVERY_MODE_OPTIONS)[number]["value"]) =>
+      parseResponse(discoveryClient.preferences.$post({ json: { discoveryMode } })),
+    onSuccess: ({ preferences }) => {
+      queryClient.setQueryData(queryKey, preferences);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.discovery(user?.id) });
+    },
+    onError: (error) =>
+      showError(readApiError(error).message || "Couldn't save the discovery mode"),
+  });
+  const mode = save.isPending ? save.variables : query.data?.discoveryMode;
+
+  return (
+    <SettingsRow
+      label="Mode"
+      htmlFor="listening-discovery-mode"
+      help="Safer favors familiar artists. Balanced adds variety. Deeper explores further."
+    >
+      <Select
+        id="listening-discovery-mode"
+        value={mode ?? "balanced"}
+        disabled={!query.data}
+        onChange={(discoveryMode) => save.mutate(discoveryMode)}
+        options={DISCOVERY_MODE_OPTIONS}
+      />
+    </SettingsRow>
+  );
+}
+
 function ResetTastesRow() {
   const { showSuccess, showError } = useToast();
   const [resetting, setResetting] = useState(false);
@@ -572,6 +618,7 @@ export function ListeningSection() {
         ))}
       </SettingsGroup>
       <SettingsGroup title="Discovery tastes">
+        <DiscoveryModeRow />
         <SettingsServiceRow to="listening/blocklist" name="Blocklist" status={blocklistStatus} />
         <ResetTastesRow />
       </SettingsGroup>

@@ -17,10 +17,10 @@ For an installation without Docker, install `yt-dlp` and `ffmpeg` on the host. A
 
 1. Open **Settings > Downloads > yt-dlp**.
 2. Leave **Enable yt-dlp** on. It is on by default.
-3. If necessary, set **Source priority** or **Staging path**.
+3. If necessary, set **Staging path**.
 4. Select **Test connection**. It reads one YouTube video, so it also shows when YouTube asks yt-dlp to sign in.
 
-The default priority of yt-dlp is `50`. The other sources have lower numbers, so Aurral tries them first. To get single tracks fast, give yt-dlp a lower number than the other sources. A track you download on its own then comes from yt-dlp first, and an album still starts on its release.
+yt-dlp starts last in **Settings > Downloads > Download clients**, so Aurral tries the other sources first. To get single tracks fast, drag yt-dlp above them. A track you download on its own then comes from yt-dlp first, and an album still starts on its release.
 
 ## Behavior
 

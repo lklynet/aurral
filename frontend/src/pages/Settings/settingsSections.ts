@@ -83,7 +83,7 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
   },
   listening: {
     Services: "scrobbling listening history recommendations",
-    "Discovery tastes": "reset more like this less like this",
+    "Discovery tastes": "mode safer balanced deeper reset more like this less like this",
     Blocklist: { item: "blocklist", keywords: "block unblock blocked artists genres hide" },
     "Last.fm": { item: "lastfm", keywords: "scrobbling listening history" },
     ListenBrainz: { item: "listenbrainz", keywords: "scrobbling user token listening history" },
@@ -96,7 +96,6 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
   appearance: {
     "Color scheme": "dark light system mode",
     Theme: "presets custom colors import immersive mode artwork tint",
-    Navigation: "legacy classic old sidebar v1 tabs top bar",
     "Artist pages": "YouTube music videos hide",
     Sidebar: { keywords: "environment art backdrop", when: "sidebarArt" },
   },
@@ -110,27 +109,26 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
   },
   users: {
     Users: "create edit add account permissions roles suspended disabled claim",
-    "Sign-in": "SSO SSO-only OIDC single sign-on login form",
+    "Sign-in": "SSO OIDC single sign-on login form",
     "Local network auto-login": "LAN bypass authentication",
     Google: { item: "google", keywords: "OAuth sign in client ID secret redirect" },
     "Default permissions": { item: "defaults", keywords: "new users permissions SSO register" },
   },
   library: {
-    "Library folder": "downloads path media root favorite flow tracks keep",
+    "Library folder": "downloads path media root",
     "Playlist files": "M3U Navidrome Plex Jellyfin media server playlists owner",
     "Read-only folders": "existing music never changes",
-    "Import a folder": "ingest existing music move copy hardlink fill in missing tags",
+    "Import a folder":
+      "ingest existing music move copy hardlink keep originals fill in missing tags",
     "Clean up Library": "rename organize tags files naming folders",
   },
   monitoring: {
     "Default rules":
       "monitor artists back catalogue discography new releases latest since year albums EPs singles live compilations soundtracks remixes demos DJ mixes mixtapes edition deluxe expanded top tracks popular",
-    "Missing tracks": "search again retry failed album tracks interval days schedule",
     "Removed from monitoring": "excluded deleted albums tracks allow again exclusions",
   },
   downloads: {
-    "Download clients": "add client priority sources",
-    "Review queue": "maximum wait hours held tracks deny",
+    "Download clients": "add client priority order reorder drag sources",
     "Remote path mappings": "download client path mapping remote local docker",
     slskd: { item: "slskd", keywords: "Soulseek download client" },
     NZBGet: { item: "nzbget", keywords: "Usenet download client" },
@@ -141,17 +139,15 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
     deemix: { item: "deemix", keywords: "Deezer download client bitrate" },
     Prowlarr: {
       item: "prowlarr",
-      keywords: "indexers indexer manager search usenet torrent categories",
+      keywords: "indexers indexer manager search usenet torrent priority",
     },
-    "Quality profile": {
+    Quality: {
       item: "quality",
       keywords:
-        "FLAC MP3 AAC M4A 128 192 256 320 bitrate hi-res allowed formats rank preference cutoff automatic upgrades",
+        "lossless smaller files quality profile FLAC MP3 AAC M4A 128 192 256 320 bitrate hi-res allowed formats rank preference cutoff automatic upgrades",
     },
   },
   discovery: {
-    Recommendations:
-      "refresh frequency daily weekly monthly mode safer balanced deeper artists per refresh now",
     Status: "source artwork cache clear",
     "Last.fm": { item: "lastfm", keywords: "recommendations API key shared secret" },
     Ticketmaster: {

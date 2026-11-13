@@ -1,6 +1,7 @@
 import path from "path";
 import type { IFormat } from "music-metadata";
 import type { StoredIntegrations } from "../db/helpers/settings.ts";
+import { QUALITY_PRESETS, QUALITY_TIERS } from "../../lib/qualityTiers.ts";
 
 type SlskdSettings = StoredIntegrations["slskd"];
 type ParsedAudio =
@@ -21,35 +22,19 @@ type ProfileInput = {
   intervalDays?: unknown;
 };
 
-export const QUALITY_TIERS = [
-  { id: "flac-hires", label: "FLAC hi-res", family: "flac" },
-  { id: "flac-standard", label: "FLAC standard", family: "flac" },
-  { id: "mp3-320", label: "MP3 320", family: "mp3", bitrate: 320 },
-  { id: "m4a-320", label: "AAC 320", family: "m4a", bitrate: 320 },
-  { id: "mp3-256", label: "MP3 256", family: "mp3", bitrate: 256 },
-  { id: "m4a-256", label: "AAC 256", family: "m4a", bitrate: 256 },
-  { id: "mp3-192", label: "MP3 192", family: "mp3", bitrate: 192 },
-  { id: "m4a-192", label: "AAC 192", family: "m4a", bitrate: 192 },
-  { id: "mp3-128", label: "MP3 128", family: "mp3", bitrate: 128 },
-  { id: "m4a-128", label: "AAC 128", family: "m4a", bitrate: 128 },
-];
-
 const TIER_BY_ID = new Map(QUALITY_TIERS.map((tier) => [tier.id, tier]));
 
 export function createDefaultQualityProfile(slskd: SlskdSettings = {}) {
   const preferred =
     String(slskd?.preferredFormat || "flac").toLowerCase() === "mp3" ? "mp3" : "flac";
-  const strict = slskd?.preferredFormatStrict === true;
-  const preferredIds = QUALITY_TIERS.filter((tier) => tier.family === preferred).map(
-    (tier) => tier.id,
-  );
-  const otherIds = QUALITY_TIERS.filter((tier) => tier.family !== preferred).map((tier) => tier.id);
-  const order =
-    preferred === "flac" ? QUALITY_TIERS.map((tier) => tier.id) : [...preferredIds, ...otherIds];
+  const preset = QUALITY_PRESETS[preferred === "mp3" ? "smaller" : "lossless"];
   return {
-    order,
-    enabled: strict ? preferredIds : QUALITY_TIERS.map((tier) => tier.id),
-    cutoff: preferred === "mp3" ? "mp3-320" : "flac-standard",
+    order: preset.order,
+    enabled:
+      slskd?.preferredFormatStrict === true
+        ? QUALITY_TIERS.filter((tier) => tier.family === preferred).map((tier) => tier.id)
+        : preset.enabled,
+    cutoff: preset.cutoff,
     automaticUpgrades: false,
     intervalDays: 2,
   };

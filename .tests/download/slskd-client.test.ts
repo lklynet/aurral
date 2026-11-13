@@ -824,6 +824,7 @@ test("searchQuery passes its operation deadline through creation and collection"
       res.end(
         JSON.stringify({
           state: "Completed",
+          endedAt: "2026-01-01T00:00:00Z",
           responses: [{ username: "peer", files: [{ filename: "First.flac" }] }],
         }),
       );
@@ -855,7 +856,6 @@ test("completed search cleanup failure retains ownership", async () => {
   const client = new SlskdClient({
     enabled: true,
     url: "http://service.invalid",
-    cleanupAfterRuns: true,
   });
   vi.spyOn(client, "getSearch").mockImplementation(async () => ({
     state: "Completed",

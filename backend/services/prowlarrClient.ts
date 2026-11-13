@@ -11,8 +11,8 @@ import {
   type UsenetClientKey,
 } from "./usenetClientCommon.ts";
 
-const DEFAULT_MUSIC_CATEGORIES = [3000];
-const DEFAULT_MAX_RESULTS = 60;
+const MUSIC_CATEGORY = 3000;
+const MAX_RESULTS = 60;
 
 const categoriesSchema = v.nullish(v.array(v.looseObject({ id: v.number() })));
 
@@ -104,7 +104,6 @@ type Protocol = "usenet" | "torrent";
 type ProwlarrSearchOptions = {
   protocol?: Protocol;
   indexers?: NormalizedIndexer[];
-  categories?: number[];
   type?: string;
   limit?: number;
   offset?: number;
@@ -151,18 +150,6 @@ function normalizePositiveInteger(value: unknown, fallback: number | null): numb
   return parsed;
 }
 
-function normalizeCategoryList(value: unknown) {
-  const raw = Array.isArray(value)
-    ? value
-    : String(value || "")
-        .split(",")
-        .map((entry) => entry.trim());
-  const categories = raw
-    .map((entry) => normalizeInteger(entry, null))
-    .filter((entry): entry is number => entry != null && entry > 0);
-  return categories.length > 0 ? [...new Set(categories)] : DEFAULT_MUSIC_CATEGORIES;
-}
-
 function normalizeIndexerOverrides(value: unknown): Record<string, ProwlarrIndexerOverride> {
   if (Array.isArray(value)) {
     return Object.fromEntries(
@@ -188,8 +175,6 @@ function getSettings() {
     enabled: prowlarr.enabled === true,
     url: normalizeBaseUrl(prowlarr.url),
     apiKey: String(prowlarr.apiKey || "").trim(),
-    categories: normalizeCategoryList(prowlarr.categories),
-    maxResults: normalizePositiveInteger(prowlarr.maxResults, DEFAULT_MAX_RESULTS),
     indexers: normalizeIndexerOverrides(prowlarr.indexers),
   };
 }
@@ -216,17 +201,9 @@ function buildClient() {
   return buildClientFromCredentials(url, apiKey);
 }
 
-function hasMusicCategory(supported: number[], configuredCategories = DEFAULT_MUSIC_CATEGORIES) {
-  if (supported.length === 0) return true;
-  return supported.some((id) =>
-    configuredCategories.some((category) => {
-      if (category % 1000 === 0) {
-        return id >= category && id < category + 1000;
-      }
-      return id === category;
-    }),
-  );
-}
+const hasMusicCategory = (supported: number[]) =>
+  supported.length === 0 ||
+  supported.some((id) => id >= MUSIC_CATEGORY && id < MUSIC_CATEGORY + 1000);
 
 // Aurral searches Tidarr itself, so a Tidarr indexer in Prowlarr is left out.
 const isTidarrIndexer = (indexer: ProwlarrIndexer) =>
@@ -244,9 +221,7 @@ function listMusicIndexers(
     .map((indexer) => normalizeIndexer(indexer, settings))
     .filter(
       (entry) =>
-        entry.protocol === protocol &&
-        entry.supportsSearch &&
-        hasMusicCategory(entry.categories, settings.categories),
+        entry.protocol === protocol && entry.supportsSearch && hasMusicCategory(entry.categories),
     );
 }
 
@@ -324,14 +299,12 @@ function formatHttpErrorBody(data: unknown): string {
 function buildSearchParams({
   query,
   indexerIds,
-  categories,
   type = "search",
   limit,
   offset = 0,
 }: {
   query: string;
   indexerIds?: number[];
-  categories?: unknown;
   type?: string;
   limit?: number | null;
   offset?: number;
@@ -344,9 +317,7 @@ function buildSearchParams({
       params.append("indexerIds", String(indexerId));
     }
   }
-  for (const category of normalizeCategoryList(categories)) {
-    params.append("categories", String(category));
-  }
+  params.append("categories", String(MUSIC_CATEGORY));
   if (limit != null) params.set("limit", String(limit));
   if (offset) params.set("offset", String(offset));
   return params.toString();
@@ -489,7 +460,6 @@ export class ProwlarrClient {
     if (!this.isConfigured()) {
       throw new Error("Prowlarr is not configured");
     }
-    const settings = getSettings();
     const protocol = options.protocol ?? "usenet";
     const indexers =
       Array.isArray(options.indexers) && options.indexers.length > 0
@@ -501,9 +471,8 @@ export class ProwlarrClient {
     const queryString = buildSearchParams({
       query,
       indexerIds: indexers.map((entry) => entry.id),
-      categories: options.categories || settings.categories,
       type: options.type || "search",
-      limit: normalizePositiveInteger(options.limit, settings.maxResults),
+      limit: normalizePositiveInteger(options.limit, MAX_RESULTS),
       offset: normalizeInteger(options.offset, 0),
     });
     const endpoint = `/api/v1/search?${queryString}`;

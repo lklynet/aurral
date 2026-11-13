@@ -49,7 +49,7 @@ When a Subsonic client adds a flow track or static playlist track to a playlist,
 
 Subsonic clients can edit static playlists but not flows. Editing a flow returns error `50`. A client removes songs by their positions in the playlist it last loaded. If a position no longer exists, Aurral returns error `70` and changes nothing, so the client can reload the playlist and try again.
 
-When a Subsonic client favorites a flow track, Aurral also adds it to the Library. To keep the favorite without adding the track, turn off **Favorite flow tracks** in **Settings > Library**. This setting does not affect tracks that are already in the Library.
+When a Subsonic client favorites a flow track, Aurral also adds it to the Library.
 
 ### Play history
 
@@ -104,7 +104,7 @@ Aurral writes an M3U file for each enabled flow and each static playlist to `_pl
 - When a playlist is deleted, renamed, or its flow is turned off, Aurral removes its file. Navidrome keeps the old playlist with no tracks. Delete it in Navidrome.
 - Older versions of Aurral added an **Aurral Playlists** library to Navidrome. Aurral no longer uses it, so delete it in Navidrome's library settings.
 
-By default, each file name starts with the owner's username, like `test - Road Trip`. To use the bare playlist name, turn off **Owner in file names** in **Settings > Library > Playlist files**. Playlists of different users that share a name keep the username.
+Each file is named after its playlist, like `Road Trip`. When another user already has a playlist with that name, the newer one starts with its owner's username, like `test - Road Trip`, so the older file keeps its name.
 
 ### Listening history
 

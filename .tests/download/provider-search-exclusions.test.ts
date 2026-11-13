@@ -158,7 +158,12 @@ test("slskd blocks a file that fails validation", async () => {
   await writeFile(join(root, "The Band", "First.flac"), "not audio");
   const client = getDownloadClient("slskd");
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => root);
-  vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  vi.spyOn(client, "cleanupAfterRun").mockImplementation(async () => ({
+    searchesRemoved: 0,
+    transfersRemoved: 0,
+    downloadsRemoved: false,
+    cleanedSearchIds: [],
+  }));
   const remoteFile = "Music\\The Band\\First.flac";
   await slskd.processPipelinePayload({
     phase: "finalize",

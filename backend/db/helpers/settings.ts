@@ -9,10 +9,7 @@ import {
 } from "../../services/downloadFolderConfig.ts";
 import { normalizeDateTimeFormat } from "../../config/constants.ts";
 import type { defaultData } from "../../config/constants.ts";
-import {
-  normalizeIntervalDays,
-  normalizeQualityProfile,
-} from "../../services/qualityProfileModel.ts";
+import { normalizeQualityProfile } from "../../services/qualityProfileModel.ts";
 import type { SettingsRow } from "../rows.ts";
 import type { CacheOps } from "./cache.ts";
 import type { DiscoveryCacheOps } from "./discovery.ts";
@@ -30,15 +27,12 @@ export type { StoredIntegrations } from "./integrationSettings.ts";
 
 export type SettingsPlaylistWorker = ReturnType<typeof normalizePlaylistWorkerSettings>;
 
-type SettingsMissingTrackSearch = ReturnType<typeof normalizeMissingTrackSearchSettings>;
-
 type SettingsInbox = typeof defaultData.settings.inbox;
 
 const flag = lenient(v.boolean());
 
 const securitySchema = v.looseObject({
   localNetworkBypass: lenient(v.looseObject({ enabled: flag })),
-  ssoOnly: flag,
   defaultPermissions: lenient(v.record(v.string(), v.boolean())),
 });
 
@@ -47,11 +41,6 @@ type StoredSecurity = v.InferOutput<typeof securitySchema>;
 export interface StoredPlaylistWorker {
   concurrency?: unknown;
   retryPausedPlaylistIds?: unknown;
-}
-
-interface StoredMissingTrackSearch {
-  enabled?: unknown;
-  intervalDays?: unknown;
 }
 
 const inboxSchema = v.looseObject({
@@ -77,10 +66,7 @@ export interface AppSettings {
   downloadFolderPath: string | null;
   pathMappings: ReturnType<typeof normalizePathMappings>;
   releaseTypes: string[];
-  subsonic: typeof defaultData.settings.subsonic;
   playlistWorker: SettingsPlaylistWorker;
-  missingTrackSearch: SettingsMissingTrackSearch;
-  reviewTimeoutHours: number;
   inbox: SettingsInbox;
   onboardingComplete: boolean;
 }
@@ -98,10 +84,7 @@ export interface SettingsUpdate {
   releaseTypes?: string[];
   flows?: unknown;
   staticPlaylists?: unknown;
-  subsonic?: { favoriteAutoKeep?: boolean };
   playlistWorker?: StoredPlaylistWorker;
-  missingTrackSearch?: StoredMissingTrackSearch;
-  reviewTimeoutHours?: number | string;
   onboardingComplete?: boolean;
 }
 
@@ -143,22 +126,6 @@ const deleteSettingsByPrefixStmt = db.prepare<[string]>(
 
 const readStoredSettingJson = <Schema extends v.GenericSchema>(schema: Schema, key: string) =>
   dbHelpers.readJSON(schema, getSettingStmt.get(key)?.value, key);
-
-function normalizeMissingTrackSearchSettings(raw: StoredMissingTrackSearch | null | undefined) {
-  const search: StoredMissingTrackSearch = raw && typeof raw === "object" ? raw : {};
-  return {
-    enabled: search.enabled === true,
-    intervalDays: normalizeIntervalDays(search.intervalDays, 1),
-  };
-}
-
-export const MAX_REVIEW_TIMEOUT_HOURS = 720;
-
-// Hours a song may wait in review before it is denied; 0 waits indefinitely.
-export function normalizeReviewTimeoutHours(value: unknown): number {
-  const hours = Number(value);
-  return Number.isInteger(hours) && hours >= 0 && hours <= MAX_REVIEW_TIMEOUT_HOURS ? hours : 0;
-}
 
 function normalizePlaylistWorkerSettings(raw: StoredPlaylistWorker | null | undefined) {
   const worker: StoredPlaylistWorker = raw && typeof raw === "object" ? raw : {};
@@ -276,16 +243,8 @@ export const dbOps = {
       getSettingStmt.get("releaseTypes")?.value,
       "releaseTypes",
     );
-    const subsonic =
-      readStoredSettingJson(v.looseObject({ favoriteAutoKeep: flag }), "subsonic") || {};
     const playlistWorker = normalizePlaylistWorkerSettings(
       readStoredSettingJson(v.looseObject({}), "playlistWorker"),
-    );
-    const missingTrackSearch = normalizeMissingTrackSearchSettings(
-      readStoredSettingJson(v.looseObject({}), "missingTrackSearch"),
-    );
-    const reviewTimeoutHours = normalizeReviewTimeoutHours(
-      getSettingStmt.get("reviewTimeoutHours")?.value,
     );
     const inbox =
       dbHelpers.readJSON(inboxSchema, getSettingStmt.get("inbox")?.value, "inbox") || {};
@@ -309,12 +268,7 @@ export const dbOps = {
       downloadFolderPath: downloadFolderPath || null,
       pathMappings,
       releaseTypes: releaseTypes || [],
-      subsonic: {
-        favoriteAutoKeep: subsonic.favoriteAutoKeep !== false,
-      },
       playlistWorker,
-      missingTrackSearch,
-      reviewTimeoutHours,
       inbox: {
         enabled: inbox.enabled !== false,
         releases: inbox.releases !== false,
@@ -415,30 +369,10 @@ export const dbOps = {
       if (settings.staticPlaylists !== undefined) {
         upsertSettingStmt.run("staticPlaylists", dbHelpers.stringifyJSON(settings.staticPlaylists));
       }
-      if (settings.subsonic !== undefined) {
-        upsertSettingStmt.run(
-          "subsonic",
-          dbHelpers.stringifyJSON({
-            favoriteAutoKeep: settings.subsonic.favoriteAutoKeep !== false,
-          }),
-        );
-      }
       if (settings.playlistWorker !== undefined) {
         upsertSettingStmt.run(
           "playlistWorker",
           dbHelpers.stringifyJSON(normalizePlaylistWorkerSettings(settings.playlistWorker)),
-        );
-      }
-      if (settings.missingTrackSearch !== undefined) {
-        upsertSettingStmt.run(
-          "missingTrackSearch",
-          dbHelpers.stringifyJSON(normalizeMissingTrackSearchSettings(settings.missingTrackSearch)),
-        );
-      }
-      if (settings.reviewTimeoutHours !== undefined) {
-        upsertSettingStmt.run(
-          "reviewTimeoutHours",
-          String(normalizeReviewTimeoutHours(settings.reviewTimeoutHours)),
         );
       }
       if (settings.onboardingComplete !== undefined) {

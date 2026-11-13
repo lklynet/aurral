@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import * as v from "valibot";
 import { noCache } from "../../middleware/cacheHeaders.ts";
 import { requireAdmin, requireAuth } from "../../middleware/guards.ts";
 import { validate } from "../../middleware/validate.ts";
@@ -8,10 +7,6 @@ import { appSettingsPatch, readAppSettings, saveAppSettings } from "../../servic
 import { logger } from "../../services/logger.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { playlistManager } from "../../services/playlists/playlistManager.ts";
-import {
-  getPlaylistFileSettings,
-  savePlaylistFileSettings,
-} from "../../services/playlists/playlistFiles.ts";
 
 export default new Hono<AppEnv>()
   .basePath("/settings")
@@ -37,21 +32,7 @@ export default new Hono<AppEnv>()
     }
   })
   .get("/playlist-files", requireAuth, requireAdmin, (c) =>
-    c.json({ folder: playlistManager.libraryRoot, ...getPlaylistFileSettings() }, 200),
-  )
-  .put(
-    "/playlist-files",
-    requireAuth,
-    requireAdmin,
-    validate("json", v.object({ prefixOwnerUsername: v.boolean() })),
-    (c) => {
-      const settings = c.req.valid("json");
-      if (settings.prefixOwnerUsername !== getPlaylistFileSettings().prefixOwnerUsername) {
-        savePlaylistFileSettings(settings);
-        playlistManager.requestPlaylistSync();
-      }
-      return c.json({ folder: playlistManager.libraryRoot, ...settings }, 200);
-    },
+    c.json({ folder: playlistManager.libraryRoot }, 200),
   )
   .get("/tasks", requireAuth, requireAdmin, noCache, async (c) => {
     try {

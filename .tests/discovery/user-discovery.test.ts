@@ -2,6 +2,7 @@ import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import type { hc, InferResponseType } from "hono/client";
 import type discoveryApp from "../../backend/routes/discovery/index.ts";
+import { testClient } from "hono/testing";
 import { signedInAs } from "../helpers/honoApp.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 import {
@@ -147,4 +148,23 @@ test("discovery for the API key, which has no user account, queues no listening 
   db.prepare("DELETE FROM jobs").run();
   getUserDiscovery(-1, 0);
   assert.deepEqual(refreshJobs(), []);
+});
+
+test("each user keeps their own discovery mode without changing local show settings", async () => {
+  dbOps.updateSettings({
+    integrations: { ticketmaster: { localDiscoveryIncludeTrending: false } },
+  });
+  const preferencesOf = (id: number) =>
+    testClient(signedInAs(testUser(id)).route("/", api)).discover.preferences;
+
+  const saved = await preferencesOf(1).$post({ json: { discoveryMode: "deeper" } });
+  assert.equal(saved.status, 200);
+
+  assert.deepEqual(await (await preferencesOf(1).$get()).json(), {
+    discoveryMode: "deeper",
+    localDiscoveryIncludeRecommendations: true,
+    localDiscoveryIncludeTrending: false,
+  });
+  assert.equal((await (await preferencesOf(2).$get()).json()).discoveryMode, "balanced");
+  assert.equal(discovery.getDiscoveryMode(1), "deeper");
 });

@@ -271,7 +271,7 @@ test("a search still queued in slskd at the caller's deadline reports slskd as b
   );
 });
 
-test("a search still answering at the deadline is stopped and keeps its responses", async () => {
+test("a search still answering at the deadline is stopped, keeps its responses, and is removed", async () => {
   vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], now: 1000 });
   let stopped = false;
   const stop = vi.spyOn(slskdClient, "stopSearch").mockImplementation(async () => {
@@ -305,7 +305,10 @@ test("a search still answering at the deadline is stopped and keeps its response
     stop.mock.calls.map((call) => call[0]),
     ["still-answering"],
   );
-  assert.equal(deleted.mock.calls.length, 0);
+  assert.deepEqual(
+    deleted.mock.calls.map((call) => call[0]),
+    ["still-answering"],
+  );
 });
 
 test("a search cancelled while it is stopped at the deadline returns nothing", async () => {

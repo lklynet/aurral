@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { parseResponse, type InferResponseType } from "hono/client";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Trash2 } from "../../../components/icons";
 import { ConfirmModal } from "../../../components/ConfirmModal";
 import DownloadFolderField from "../../../components/DownloadFolderField";
@@ -32,8 +32,7 @@ type ReadOnlyFolder = InferResponseType<
 
 const MODE_HELP = {
   move: "Moves files to the Library folder and removes empty source folders.",
-  copy: "Keeps source files and uses space for a second copy.",
-  hardlink: "Uses no extra space until tags change or a file is upgraded. Source files stay.",
+  keep: "Source files stay. Aurral hardlinks them when it can, which uses no extra space, and copies them otherwise.",
 };
 
 const MONITOR_HELP = {
@@ -77,40 +76,15 @@ function LibraryFolderGroup() {
           }
         />
       </SettingsRow>
-      <SettingsRow
-        label="Favorite flow tracks"
-        htmlFor="library-favorite-flow-tracks"
-        help="Favoriting a flow track adds it to the Library."
-      >
-        <PillToggle
-          id="library-favorite-flow-tracks"
-          checked={settings.subsonic?.favoriteAutoKeep !== false}
-          onChange={(event) =>
-            updateSettings({
-              ...settings,
-              subsonic: { ...settings.subsonic, favoriteAutoKeep: event.target.checked },
-            })
-          }
-          aria-label="Favorite flow tracks"
-        />
-      </SettingsRow>
     </SettingsGroup>
   );
 }
 
 function PlaylistFilesGroup() {
-  const { showError } = useServerSettings();
-  const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: queryKeys.playlistFileSettings,
     queryFn: ({ signal }) =>
       parseResponse(settingsClient["playlist-files"].$get({}, { init: { signal } })),
-  });
-  const save = useMutation({
-    mutationFn: (prefixOwnerUsername: boolean) =>
-      parseResponse(settingsClient["playlist-files"].$put({ json: { prefixOwnerUsername } })),
-    onSuccess: (next) => queryClient.setQueryData(queryKeys.playlistFileSettings, next),
-    onError: (error) => showError(errorMessage(error, "Couldn't save playlist files")),
   });
   if (query.isError) {
     return (
@@ -127,19 +101,6 @@ function PlaylistFilesGroup() {
     >
       <SettingsRow label="Folder">
         <span className="settings-row__value">{query.data.folder}</span>
-      </SettingsRow>
-      <SettingsRow
-        label="Owner in file names"
-        htmlFor="playlist-files-owner"
-        help="Adds the owner's username, like test - Road Trip."
-      >
-        <PillToggle
-          id="playlist-files-owner"
-          checked={save.isPending ? save.variables : query.data.prefixOwnerUsername}
-          disabled={save.isPending}
-          aria-label="Owner in file names"
-          onChange={(event) => save.mutate(event.target.checked)}
-        />
       </SettingsRow>
     </SettingsGroup>
   );
@@ -308,7 +269,7 @@ function ImportGroup({
 }) {
   const { showError } = useServerSettings();
   const [sourcePath, setSourcePath] = useState("");
-  const [mode, setMode] = useState<keyof typeof MODE_HELP>("copy");
+  const [mode, setMode] = useState<keyof typeof MODE_HELP>("keep");
   const [monitor, setMonitor] = useState<keyof typeof MONITOR_HELP>("tracks");
   const [fillTags, setFillTags] = useState(true);
   const [check, setCheck] = useState<{
@@ -330,8 +291,6 @@ function ImportGroup({
       .then((result) => {
         if (requestId !== requestRef.current) return;
         setCheck({ loading: false, result, error: "" });
-        if (!result.hardlink?.available)
-          setMode((current) => (current === "hardlink" ? "copy" : current));
       })
       .catch((error) => {
         if (requestId !== requestRef.current) return;
@@ -344,7 +303,6 @@ function ImportGroup({
   }, [sourcePath]);
 
   const result = check.result;
-  const hardlinkUnavailable = Boolean(result && !result.hardlink?.available);
   const folderHelp = check.loading
     ? "Checking the folder…"
     : check.error ||
@@ -356,7 +314,12 @@ function ImportGroup({
     try {
       await parseResponse(
         libraryFilesClient.files.ingest.$post({
-          json: { sourcePath: result.sourcePath, mode, monitor, fillTags },
+          json: {
+            sourcePath: result.sourcePath,
+            mode: mode === "move" ? "move" : result.hardlink?.available ? "hardlink" : "copy",
+            monitor,
+            fillTags,
+          },
         }),
       );
       await onChanged();
@@ -386,23 +349,14 @@ function ImportGroup({
           onChange={setSourcePath}
         />
       </SettingsRow>
-      <SettingsRow
-        label="Mode"
-        htmlFor="library-ingest-mode"
-        help={
-          mode === "copy" && result && hardlinkUnavailable
-            ? `${MODE_HELP.copy} Hardlink is not available: ${result.hardlink.reason}`
-            : MODE_HELP[mode]
-        }
-      >
+      <SettingsRow label="Mode" htmlFor="library-ingest-mode" help={MODE_HELP[mode]}>
         <Select
           id="library-ingest-mode"
           value={mode}
           onChange={setMode}
           options={[
+            { value: "keep", label: "Keep originals" },
             { value: "move", label: "Move" },
-            { value: "copy", label: "Copy" },
-            { value: "hardlink", label: "Hardlink", disabled: hardlinkUnavailable },
           ]}
         />
       </SettingsRow>
@@ -432,8 +386,8 @@ function ImportGroup({
       </SettingsRow>
       {result?.readOnlyFolder ? (
         <SettingsNote tone="warning">
-          {result.readOnlyFolder} is a read-only folder. Moving files takes them out of it. Copy and
-          Hardlink keep its files.
+          {result.readOnlyFolder} is a read-only folder. Moving files takes them out of it. Keep
+          originals leaves its files.
         </SettingsNote>
       ) : null}
       <LibraryFileOperation

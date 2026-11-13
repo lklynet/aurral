@@ -68,7 +68,12 @@ function mockSearch(t: import("vite-plus/test").TestContext, searches: SlskdSear
     return next;
   });
   vi.spyOn(client, "deleteSearch").mockImplementation(async () => true);
-  vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  vi.spyOn(client, "cleanupAfterRun").mockImplementation(async () => ({
+    searchesRemoved: 0,
+    transfersRemoved: 0,
+    downloadsRemoved: false,
+    cleanedSearchIds: [],
+  }));
   return { created, polled };
 }
 
@@ -240,7 +245,12 @@ test("a failed Soulseek poll moves on to the next query", async () => {
     throw new Error("slskd restarted");
   });
   vi.spyOn(client, "deleteSearch").mockImplementation(async () => true);
-  vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  vi.spyOn(client, "cleanupAfterRun").mockImplementation(async () => ({
+    searchesRemoved: 0,
+    transfersRemoved: 0,
+    downloadsRemoved: false,
+    cleanedSearchIds: [],
+  }));
   const jobId = createTrackedJob(
     downloadTracker,
     {

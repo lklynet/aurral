@@ -765,11 +765,7 @@ export class DownloadWorker {
             notifyFlowDone(playlistType, { completed, failed }, flowPath, flowName);
             const slskdClient = getDownloadClient("slskd");
             const globalStats = downloadTracker.getStats();
-            if (
-              slskdClient.isCleanupAfterRunsEnabled() &&
-              globalStats.pending === 0 &&
-              globalStats.downloading === 0
-            ) {
+            if (globalStats.pending === 0 && globalStats.downloading === 0) {
               slskdClient
                 .cleanupAfterRun()
                 .catch((err) =>

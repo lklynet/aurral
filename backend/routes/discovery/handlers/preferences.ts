@@ -5,8 +5,10 @@ import { requireAuth } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import {
+  DISCOVERY_MODES,
   getDiscoveryMode,
   getLocalDiscoveryPreferences,
+  setDiscoveryMode,
 } from "../../../services/discovery/index.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 
@@ -21,7 +23,7 @@ export default new Hono<AppEnv>()
     const localDiscoveryPreferences = getLocalDiscoveryPreferences();
     return c.json(
       {
-        discoveryMode: getDiscoveryMode(),
+        discoveryMode: getDiscoveryMode(c.var.user.id),
         localDiscoveryIncludeRecommendations: localDiscoveryPreferences.includeRecommendations,
         localDiscoveryIncludeTrending: localDiscoveryPreferences.includeTrending,
       },
@@ -31,37 +33,42 @@ export default new Hono<AppEnv>()
   .post("/preferences", requireAuth, validate("json", preferencesInput), (c) => {
     try {
       const updates = c.req.valid("json");
-      const currentSettings = dbOps.getSettings();
-      const nextSettings = {
-        integrations: {
-          ...(currentSettings.integrations || {}),
-          lastfm: {
-            ...(currentSettings.integrations?.lastfm || {}),
-            discoveryMode:
-              updates.discoveryMode === "safer" || updates.discoveryMode === "deeper"
-                ? updates.discoveryMode
-                : "balanced",
-          },
-          ticketmaster: {
-            ...(currentSettings.integrations?.ticketmaster || {}),
-            localDiscoveryIncludeRecommendations:
-              updates.localDiscoveryIncludeRecommendations !== false,
-            localDiscoveryIncludeTrending: updates.localDiscoveryIncludeTrending !== false,
-          },
-        },
+      const userId = c.var.user.id;
+      if (updates.discoveryMode != null) {
+        setDiscoveryMode(
+          userId,
+          DISCOVERY_MODES.find((mode) => mode === updates.discoveryMode) ?? "balanced",
+        );
+      }
+      const local = {
+        localDiscoveryIncludeRecommendations: updates.localDiscoveryIncludeRecommendations,
+        localDiscoveryIncludeTrending: updates.localDiscoveryIncludeTrending,
       };
-      dbOps.updateSettings(nextSettings);
-
+      if (Object.values(local).some((value) => value != null)) {
+        const currentSettings = dbOps.getSettings();
+        const ticketmaster = currentSettings.integrations?.ticketmaster || {};
+        dbOps.updateSettings({
+          integrations: {
+            ...currentSettings.integrations,
+            ticketmaster: {
+              ...ticketmaster,
+              localDiscoveryIncludeRecommendations:
+                local.localDiscoveryIncludeRecommendations ??
+                ticketmaster.localDiscoveryIncludeRecommendations,
+              localDiscoveryIncludeTrending:
+                local.localDiscoveryIncludeTrending ?? ticketmaster.localDiscoveryIncludeTrending,
+            },
+          },
+        });
+      }
+      const localDiscoveryPreferences = getLocalDiscoveryPreferences();
       return c.json(
         {
           success: true,
           preferences: {
-            discoveryMode: nextSettings.integrations?.lastfm?.discoveryMode || "balanced",
-            localDiscoveryIncludeRecommendations:
-              nextSettings.integrations?.ticketmaster?.localDiscoveryIncludeRecommendations !==
-              false,
-            localDiscoveryIncludeTrending:
-              nextSettings.integrations?.ticketmaster?.localDiscoveryIncludeTrending !== false,
+            discoveryMode: getDiscoveryMode(userId),
+            localDiscoveryIncludeRecommendations: localDiscoveryPreferences.includeRecommendations,
+            localDiscoveryIncludeTrending: localDiscoveryPreferences.includeTrending,
           },
         },
         200,
@@ -74,14 +81,11 @@ export default new Hono<AppEnv>()
     }
   })
   .post("/preferences/reset", requireAuth, (c) => {
+    setDiscoveryMode(c.var.user.id, "balanced");
     const currentSettings = dbOps.getSettings();
     dbOps.updateSettings({
       integrations: {
         ...(currentSettings.integrations || {}),
-        lastfm: {
-          ...(currentSettings.integrations?.lastfm || {}),
-          discoveryMode: "balanced",
-        },
         ticketmaster: {
           ...(currentSettings.integrations?.ticketmaster || {}),
           localDiscoveryIncludeRecommendations: true,

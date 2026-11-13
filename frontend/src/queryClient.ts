@@ -264,6 +264,7 @@ export const queryKeys = {
   logs: (filters: Record<string, string>): QueryKey => ["settings", "logs", "lines", filters],
   prowlarrIndexers: ["settings", "prowlarr-indexers"],
   tasteFeedback: (userId: MaybeId): QueryKey => ["discovery", "feedback", userId],
+  discoveryPreferences: (userId: MaybeId): QueryKey => ["discovery", "preferences", userId],
   blockedTags: (userId: MaybeId): QueryKey => ["discovery", "blocked-tags", userId],
   spotifyHistory: (userId: MaybeId): QueryKey => ["discovery", "spotify-history", userId],
   scrobbleStatus: ["scrobbling", "status"],

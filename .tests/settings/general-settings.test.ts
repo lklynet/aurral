@@ -1,4 +1,3 @@
-import { requireFixture } from "../playlists/fixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 import assert from "node:assert/strict";
@@ -10,21 +9,14 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 
-const [
-  isolatedState,
-  { db },
-  { dbOps },
-  { api },
-  { playlistManager },
-  { playbackTaskQueue, systemTaskQueue, maintenanceTaskQueue },
-] = await setupIsolatedBackend(
-  "general-settings",
-  () => import("../../backend/config/db-sqlite.ts"),
-  () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/routes/api.ts"),
-  () => import("../../backend/services/playlists/playlistManager.ts"),
-  () => import("../../backend/services/jobs/queues.ts"),
-);
+const [isolatedState, { db }, { dbOps }, { api }, { systemTaskQueue, maintenanceTaskQueue }] =
+  await setupIsolatedBackend(
+    "general-settings",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/routes/api.ts"),
+    () => import("../../backend/services/jobs/queues.ts"),
+  );
 
 beforeEach(() => {
   vi.spyOn(systemTaskQueue, "start").mockImplementation(async () => undefined);
@@ -36,83 +28,6 @@ beforeEach(() => {
 afterAll(async () => {
   db.close();
   await cleanupIsolatedState(isolatedState);
-});
-
-function pendingPlaylistSyncs() {
-  return playbackTaskQueue
-    .list()
-    .filter((job) => job.kind === "playback-playlist-sync")
-    .map((job) => job.payload);
-}
-
-function clearPendingPlaylistSyncs() {
-  for (const job of playbackTaskQueue.list()) {
-    if (job.kind === "playback-playlist-sync") playbackTaskQueue.cancel(job.id);
-  }
-}
-
-test("turning the owner prefix for playlist files on or off rewrites every playlist file", async (t: import("vite-plus/test").TestContext) => {
-  clearPendingPlaylistSyncs();
-  t.onTestFinished(clearPendingPlaylistSyncs);
-  const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
-  const save = (prefixOwnerUsername: boolean) =>
-    app.request("/settings/playlist-files", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prefixOwnerUsername }),
-    });
-
-  assert.equal((await save(true)).status, 200);
-  assert.deepEqual(pendingPlaylistSyncs(), []);
-  const response = await save(false);
-  assert.deepEqual(await response.json(), {
-    folder: playlistManager.libraryRoot,
-    prefixOwnerUsername: false,
-  });
-  assert.deepEqual(pendingPlaylistSyncs(), [
-    { kind: "playback-playlist-sync", entityIds: null, rewrite: false },
-  ]);
-});
-
-test("NZBGet leftover deletion defaults on and keeps an opt-out across partial saves", async () => {
-  const { postSettings } = captureSettingsRoutes();
-  const enabled = await postSettings({
-    integrations: { nzbget: { enabled: true, url: "http://nzbget.local", priority: 5 } },
-  });
-  assert.equal(enabled.statusCode, 200);
-  assert.ok(enabled.body != null);
-  assert.ok(enabled.body.integrations.nzbget != null);
-  assert.equal(enabled.body.integrations.nzbget.deleteLeftovers, true);
-  assert.ok(enabled.body != null);
-  assert.ok(enabled.body.integrations.nzbget != null);
-  assert.equal(enabled.body.integrations.nzbget.priority, 5);
-  await postSettings({ integrations: { nzbget: { deleteLeftovers: false } } });
-  await postSettings({ integrations: { nzbget: { nzbPriority: 10 } } });
-  assert.equal(requireFixture(dbOps.getSettings()!.integrations.nzbget).deleteLeftovers, false);
-});
-
-test("SABnzbd leftover deletion defaults on and keeps an opt-out across partial saves", async () => {
-  const { postSettings } = captureSettingsRoutes();
-  const enabled = await postSettings({
-    integrations: {
-      sabnzbd: {
-        enabled: true,
-        url: "http://sabnzbd.local",
-        apiKey: "test-key",
-        priority: 5,
-      },
-    },
-  });
-  assert.equal(enabled.statusCode, 200);
-  assert.ok(enabled.body != null);
-  assert.ok(enabled.body.integrations.sabnzbd != null);
-  assert.equal(enabled.body.integrations.sabnzbd.deleteLeftovers, true);
-  assert.ok(enabled.body != null);
-  assert.ok(enabled.body.integrations.sabnzbd != null);
-  assert.equal(enabled.body.integrations.sabnzbd.priority, 5);
-  await postSettings({ integrations: { sabnzbd: { deleteLeftovers: false } } });
-  await postSettings({ integrations: { sabnzbd: { addPaused: true } } });
-  assert.equal(requireFixture(dbOps.getSettings()!.integrations.sabnzbd).deleteLeftovers, false);
 });
 
 test("Tidarr and an indexer's known download client survive a save", async () => {
@@ -140,20 +55,6 @@ test("Tidarr and an indexer's known download client survive a save", async () =>
   assert.equal(prowlarr?.indexers?.["2"]?.downloadClient, undefined);
 });
 
-test("the maximum review wait is validated and kept across partial saves", async () => {
-  const { postSettings } = captureSettingsRoutes();
-  for (const invalid of [-1, 1.5, 721, "24"]) {
-    assert.equal(
-      (await postSettings({ reviewTimeoutHours: invalid })).statusCode,
-      400,
-      String(invalid),
-    );
-  }
-  assert.equal((await postSettings({ reviewTimeoutHours: 48 })).statusCode, 200);
-  await postSettings({ integrations: { nzbget: { nzbPriority: 10 } } });
-  assert.equal(dbOps.getSettings().reviewTimeoutHours, 48);
-});
-
 type SettingsBody = NonNullable<ReturnType<typeof dbOps.getSettings>>;
 
 function captureSettingsRoutes() {
@@ -172,27 +73,6 @@ function captureSettingsRoutes() {
   const getSettings = () => send();
   return { postSettings, getSettings };
 }
-
-test("the missing-track search setting keeps fields a save leaves out and never stores an unusable interval", async () => {
-  const { getSettings, postSettings } = captureSettingsRoutes();
-
-  await postSettings({ missingTrackSearch: { enabled: true, intervalDays: 3 } });
-  const disabled = await postSettings({ missingTrackSearch: { enabled: false } });
-  assert.equal(disabled.statusCode, 200);
-  assert.deepEqual((await getSettings()).body.missingTrackSearch, {
-    enabled: false,
-    intervalDays: 3,
-  });
-
-  for (const intervalDays of [0, -3, "soon", null]) {
-    await postSettings({ missingTrackSearch: { intervalDays } });
-    const saved = dbOps.getSettings().missingTrackSearch.intervalDays;
-    assert.ok(
-      Number.isInteger(saved) && saved >= 1,
-      `${String(intervalDays)} was stored as ${saved}`,
-    );
-  }
-});
 
 test("an integration setting Aurral can't read is ignored without losing the rest", () => {
   dbOps.setJSONSetting("integrations", {

@@ -22,37 +22,55 @@ import TooltipButton from "../../../../components/TooltipButton";
 import { SettingsInput } from "../../components/SettingsField";
 import { Select } from "../../../../components/Select";
 import { useServerSettings } from "../../SettingsProviders";
-import { SettingsGroup, SettingsPage, SettingsRow, type ServiceStatus } from "../../SettingsLayout";
+import {
+  SettingsAdvancedGroup,
+  SettingsGroup,
+  SettingsPage,
+  SettingsRow,
+  type ServiceStatus,
+} from "../../SettingsLayout";
 import type { QualityProfile } from "../../../../../../backend/db/helpers/settings.ts";
+import {
+  QUALITY_PRESETS,
+  QUALITY_TIERS,
+  qualityPresetOf,
+  type QualityPreset,
+} from "../../../../../../lib/qualityTiers.ts";
 
 type ServerSettings = ReturnType<typeof useServerSettings>;
 
-const QUALITY_TIER_LABELS: Partial<Record<string, string>> = {
-  "flac-hires": "FLAC hi-res",
-  "flac-standard": "FLAC standard",
-  "mp3-320": "MP3 320",
-  "m4a-320": "AAC 320",
-  "mp3-256": "MP3 256",
-  "m4a-256": "AAC 256",
-  "mp3-192": "MP3 192",
-  "m4a-192": "AAC 192",
-  "mp3-128": "MP3 128",
-  "m4a-128": "AAC 128",
+const PRESET_OPTIONS = [
+  {
+    value: "lossless",
+    label: "Lossless",
+    help: "FLAC first. Falls back to MP3 or AAC when FLAC isn't found.",
+  },
+  {
+    value: "smaller",
+    label: "Smaller files",
+    help: "MP3 and AAC first, best bitrate first. FLAC only when nothing else is found.",
+  },
+] satisfies { value: QualityPreset; label: string; help: string }[];
+
+const CUSTOM_OPTION = {
+  value: "custom",
+  label: "Custom",
+  help: "Your own tiers from Advanced. Pick a choice to replace them.",
 };
 
-const tierLabel = (id: string) => QUALITY_TIER_LABELS[id] || id;
+const tierLabel = (id: string) => QUALITY_TIERS.find((tier) => tier.id === id)?.label ?? id;
 
 function readQualityProfile(settings: ServerSettings["settings"]) {
   const profile: Partial<QualityProfile> = settings.qualityProfile || {};
-  const order = Array.isArray(profile.order) ? profile.order : Object.keys(QUALITY_TIER_LABELS);
+  const order = Array.isArray(profile.order) ? profile.order : QUALITY_TIERS.map((tier) => tier.id);
   const enabled = new Set(Array.isArray(profile.enabled) ? profile.enabled : order);
-  return { profile, order, enabled };
+  const preset = qualityPresetOf({ order, enabled: [...enabled], cutoff: profile.cutoff ?? "" });
+  const choice = PRESET_OPTIONS.find((option) => option.value === preset) ?? CUSTOM_OPTION;
+  return { profile, order, enabled, choice };
 }
 
 export function qualityServiceStatus(settings: ServerSettings["settings"]): ServiceStatus {
-  const { profile, enabled } = readQualityProfile(settings);
-  const cutoff = profile.cutoff === undefined ? "not set" : tierLabel(profile.cutoff);
-  return { label: `${enabled.size} allowed, cutoff ${cutoff}` };
+  return { label: readQualityProfile(settings).choice.label };
 }
 
 function QualityTier({
@@ -107,7 +125,7 @@ function QualityTier({
 
 export function QualityProfileDetail() {
   const { settings, updateSettings } = useServerSettings();
-  const { profile, order, enabled } = readQualityProfile(settings);
+  const { profile, order, enabled, choice } = readQualityProfile(settings);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -128,6 +146,13 @@ export function QualityProfileDetail() {
     });
   };
 
+  const choose = (value: string) => {
+    const preset = PRESET_OPTIONS.find((option) => option.value === value)?.value;
+    if (!preset) return;
+    const tiers = QUALITY_PRESETS[preset];
+    update({ order: [...tiers.order], enabled: [...tiers.enabled], cutoff: tiers.cutoff });
+  };
+
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
     update({
@@ -136,11 +161,23 @@ export function QualityProfileDetail() {
   };
 
   return (
-    <SettingsPage title="Quality profile" back="Downloads">
-      <SettingsGroup
-        title="Qualities"
-        note="Rank best first. Downloads use allowed qualities, and upgrades stop at the cutoff."
-      >
+    <SettingsPage title="Quality" back="Downloads">
+      <SettingsGroup>
+        <SettingsRow label="Prefer" htmlFor="quality-preset" help={choice.help}>
+          <Select
+            id="quality-preset"
+            value={choice.value}
+            onChange={choose}
+            options={[...PRESET_OPTIONS, ...(choice === CUSTOM_OPTION ? [CUSTOM_OPTION] : [])].map(
+              ({ value, label }) => ({ value, label }),
+            )}
+          />
+        </SettingsRow>
+      </SettingsGroup>
+      <SettingsAdvancedGroup>
+        <p className="settings-group__note">
+          Rank best first. Downloads use allowed qualities, and upgrades stop at the cutoff.
+        </p>
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -174,8 +211,6 @@ export function QualityProfileDetail() {
             ]}
           />
         </SettingsRow>
-      </SettingsGroup>
-      <SettingsGroup title="Upgrades">
         <SettingsRow label="Automatic upgrades" htmlFor="quality-automatic-upgrades">
           <PillToggle
             id="quality-automatic-upgrades"
@@ -202,7 +237,7 @@ export function QualityProfileDetail() {
             />
           </SettingsRow>
         ) : null}
-      </SettingsGroup>
+      </SettingsAdvancedGroup>
     </SettingsPage>
   );
 }

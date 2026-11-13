@@ -10,7 +10,6 @@ import { dbOps } from "../db/helpers/index.ts";
 import { getSettingsEncryptionKey } from "../db/helpers/settings.ts";
 import { isPathInsideRoot, resolveDownloadRoot } from "./downloadPaths.ts";
 import { logger } from "./logger.ts";
-import { getPlaylistFileSettings, savePlaylistFileSettings } from "./playlists/playlistFiles.ts";
 import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
 import { scheduleLibraryScan } from "./libraryScanWorker.ts";
 
@@ -33,7 +32,6 @@ const text = v.fallback(v.string(), "");
 const navidromeSchema = v.looseObject({ url: text, username: text, password: text });
 const plexSchema = v.looseObject({ url: text, token: text, clientId: text });
 const jellyfinSchema = v.looseObject({ url: text, apiKey: text });
-const prefixSchema = v.looseObject({ prefixOwnerUsername: v.optional(v.boolean()) });
 const recordSchema = v.record(v.string(), v.unknown());
 const pointerSchema = v.looseObject({
   playlistId: v.optional(v.nullable(v.union([v.string(), v.number()]))),
@@ -223,16 +221,7 @@ function forgetLegacyData() {
   deletePlexIdentities.run();
 }
 
-function keepOwnerPrefixChoice() {
-  if (readSetting("playlistFiles", prefixSchema)) return;
-  const navidrome: unknown = dbOps.getSettings().integrations.navidrome;
-  const choice = v.is(prefixSchema, navidrome) ? navidrome.prefixOwnerUsername : undefined;
-  if (choice === false)
-    savePlaylistFileSettings({ ...getPlaylistFileSettings(), prefixOwnerUsername: false });
-}
-
 export async function cleanUpPlaybackServers() {
-  keepOwnerPrefixChoice();
   const outcomes = {
     navidrome: await deleteAll(navidromeDeletes(pointersOf(POINTER_KEYS.navidrome))),
     plex: await deleteAll(plexDeletes(pointersOf(POINTER_KEYS.plex))),

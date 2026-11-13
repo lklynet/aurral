@@ -475,7 +475,7 @@ test("settled slskd searches no longer block playlist cancellation", async () =>
     state: "Completed, TimedOut",
     responses: [],
   }));
-  vi.spyOn(slskdClient, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  vi.spyOn(slskdClient, "deleteSearch").mockImplementation(async () => true);
   vi.spyOn(slskdClient, "cleanupAfterRun").mockImplementation(async () => ({
     searchesRemoved: 0,
     transfersRemoved: 0,

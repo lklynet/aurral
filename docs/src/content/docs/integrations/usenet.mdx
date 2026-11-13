@@ -18,7 +18,7 @@ Usenet downloads need two parts:
 6. Enter the Prowlarr URL and API key.
 7. Select **Test connection**.
 8. Select **Refresh indexers**.
-9. Turn on each indexer that Aurral can use, and set its priority.
+9. Turn on each indexer that Aurral can use.
 10. Open **Settings > Downloads**.
 11. Turn on **Enable SABnzbd** or **Enable NZBGet**.
 12. Enter the URL and credentials.
@@ -32,10 +32,10 @@ Settings save automatically after each change.
 
 - **Server URL**: the Prowlarr URL that Aurral can reach, for example `http://prowlarr:9696` in Docker.
 - **API key**: the Prowlarr API key.
-- **Music categories**: the Newznab audio categories. The default is `3000`.
-- **Result limit**: the most results for one search.
 
-After the connection test, Aurral lists the Usenet and torrent indexers from Prowlarr. Set each indexer's **Priority**, or turn it off for Aurral. A lower number has a higher priority.
+Aurral searches the Newznab audio category, `3000`, and its subcategories.
+
+After the connection test, Aurral lists the Usenet and torrent indexers from Prowlarr. Turn off any that Aurral shouldn't use. Each indexer's **Priority** is under **Advanced**, and a lower number is searched first.
 
 Each Usenet indexer also has a **Download client**. **Automatic** sends its releases to SABnzbd, or to NZBGet when SABnzbd is not connected. Choose a client to send every release from that indexer to it, even from a manual search with another client.
 
@@ -46,8 +46,6 @@ Each Usenet indexer also has a **Download client**. **Automatic** sends its rele
 - **Server URL**: the SABnzbd URL that Aurral can reach, for example `http://sabnzbd:8080` in Docker.
 - **API key**: the SABnzbd API key.
 - **Category**: the SABnzbd category for Aurral jobs. The default is `aurral`.
-- **Track priority** and **Album priority**: the order among download sources. The default track priority is `20`. See [Download source priority and fallback](#download-source-priority-and-fallback).
-- **Add NZBs paused**: sends jobs to SABnzbd paused.
 
 ## NZBGet
 
@@ -56,11 +54,7 @@ Each Usenet indexer also has a **Download client**. **Automatic** sends its rele
 - **Server URL**: the NZBGet URL that Aurral can reach, for example `http://nzbget:6789` in Docker.
 - **Username** and **Password**.
 - **Category**: the NZBGet category for Aurral jobs. The default is `aurral`.
-- **Track priority** and **Album priority**: the order among download sources. The default track priority is `20`. See [Download source priority and fallback](#download-source-priority-and-fallback).
-- **NZB priority**: the queue priority that Aurral sends to NZBGet.
-- **Delete leftover files**: deletes a download's folder once Aurral is done with it. Enabled by default.
 - **Completed download path**: the folder of finished downloads. Set it only when Aurral cannot find that folder by itself.
-- **Add NZBs paused**: sends jobs to NZBGet paused.
 
 Aurral skips NZBGet's duplicate check for the releases it sends. Upgrading tracks one at a time can grab the same album release more than once, and NZBGet would otherwise delete the repeat as a duplicate.
 
@@ -84,7 +78,7 @@ When no source has the release, Aurral searches for each track on its own. Among
 
 A release that fails to download, or that holds no file for the track, is not offered again for that track.
 
-When a download finishes, Aurral links or copies its audio files into its own folder, then removes the item from the client's history and deletes the client's copy. When a download fails or Aurral no longer needs it, Aurral removes the item from the client's queue and history. For NZBGet, turn off **Delete leftover files** to keep those files. Aurral deletes only the folder NZBGet created for the download. If a post-processing script moved the files elsewhere, Aurral leaves them and the history item in place. When two NZBGet downloads have the same name, NZBGet puts both in one folder, and Aurral removes that folder only with the last of them.
+When a download finishes, Aurral links or copies its audio files into its own folder, then removes the item from the client's history and deletes the client's copy. When a download fails or Aurral no longer needs it, Aurral removes the item from the client's queue and history. Aurral deletes only the folder NZBGet created for the download. If a post-processing script moved the files elsewhere, Aurral leaves them and the history item in place. When two NZBGet downloads have the same name, NZBGet puts both in one folder, and Aurral removes that folder only with the last of them.
 
 If a file has the requested title but its length or artist credit is a little off, Aurral holds it and tries the other releases and download sources first. If none of them verifies, the file waits in **Activity > Queue**, where you can preview, approve, or deny it. Aurral keeps that file until you approve, deny, or remove the song. Automatic upgrades never wait for review. See [Track matching](/development/track-matching/) for the rules.
 
@@ -92,26 +86,17 @@ Upgrades that start together look for their album's release together and share o
 
 ## Quality and upgrades
 
-The quality profile in **Settings > Downloads > Quality profile** sets the accepted tiers and the cutoff. Aurral reads each downloaded file before it accepts its quality. A quality rejection does not go to Queue review.
+**Settings > Downloads > Quality** sets the accepted tiers and the cutoff. Aurral reads each downloaded file before it accepts its quality. A quality rejection does not go to Queue review.
 
 Usenet can supply missing tracks and upgrades. See [Track upgrades](/using/playlists/#track-upgrades).
 
 ## Download source priority and fallback
 
-Aurral can use slskd, Usenet, Tidarr, deemix, qBittorrent, and yt-dlp together. Each source has a **Track priority** (**Source priority** for yt-dlp), and Aurral tries lower numbers first. The defaults are:
+Aurral can use slskd, Usenet, Tidarr, deemix, qBittorrent, yt-dlp, and download source plugins together. It tries them in the order of **Settings > Downloads > Download clients**. Drag a client to change the order. Until you do, the order is slskd, deemix, Tidarr, SABnzbd or NZBGet, plugins, qBittorrent, then yt-dlp.
 
-| Source            | Default priority |
-| ----------------- | ---------------- |
-| slskd             | `10`             |
-| deemix            | `15`             |
-| SABnzbd or NZBGet | `20`             |
-| Tidarr            | `20`             |
-| qBittorrent       | `30`             |
-| yt-dlp            | `50`             |
+If a source fails, Aurral tries the next source for the same track.
 
-If a source fails, Aurral tries the next source for the same track. To try another source first, give it a lower number.
-
-slskd, Usenet, Tidarr, deemix, and qBittorrent also have an optional **Album priority**. An album you download uses it, and so do upgrades that look for one release for several tracks of an album at once. Every other download uses track priority, as does a source whose album priority is empty. For example, to get albums from Usenet in one download while flow and playlist tracks come from Soulseek file by file, set slskd's album priority to `20` and Usenet's to `10`.
+Each client's **Advanced** group has the numbers behind the order: **Track priority** (**Source priority** for yt-dlp, **Priority** for a plugin), where lower numbers go first, and an optional **Album priority** for slskd, Usenet, Tidarr, deemix, and qBittorrent. An album you download uses album priority, and so do upgrades that look for one release for several tracks of an album at once. Every other download uses track priority, as does a source whose album priority is empty. For example, to get albums from Usenet in one download while flow and playlist tracks come from Soulseek file by file, set slskd's album priority to `20` and Usenet's to `10`. Dragging changes only track priority.
 
 Before Aurral searches for a single track, it looks for the exact release of the track's album on slskd, Usenet, Tidarr, deemix, and qBittorrent, in priority order. It does this for Library albums, static playlists, flows, single tracks, and quality upgrades whose album Aurral knows. **Re-search** replacements skip this step. yt-dlp cannot supply a release, so this step passes over it. When you download one track, or a playlist or flow adds one, and yt-dlp ranks above slskd, Usenet, Tidarr, deemix, and qBittorrent, Aurral searches yt-dlp for the track first and looks for the release only if yt-dlp has no match. An album you download never starts on yt-dlp.
 

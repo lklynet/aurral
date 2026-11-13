@@ -4,32 +4,20 @@ import { useState, useEffect, useCallback, useMemo, type SyntheticEvent } from "
 import {
   Activity,
   AudioWaveform,
-  AlertTriangle,
   Library,
   Menu,
-  Newspaper,
   Sparkles,
   Ticket,
   type IconComponent,
 } from "./icons";
 import { useAuth } from "../contexts/AuthContext";
 import { useDownloadWorkerActivity } from "../hooks/useDownloadWorkerActivity";
-import { DEFAULT_SHOWS_FILTER, SHOWS_FILTERS } from "../navigation/showsNavConfig";
-import {
-  ACTIVITY_VIEWS,
-  DEFAULT_ACTIVITY_VIEW,
-  buildActivityPath,
-  buildWantedPath,
-  WANTED_VIEWS,
-} from "../navigation/activityNavConfig";
-import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
-import { lastRecommendedPath, RECOMMENDED_PATH } from "../navigation/recommendedPath";
-import { isLibrarySectionPath, useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
+import { DEFAULT_SHOWS_FILTER } from "../navigation/showsNavConfig";
+import { DEFAULT_ACTIVITY_VIEW, buildActivityPath } from "../navigation/activityNavConfig";
 import { useSiteLogo } from "../hooks/useSiteLogo";
 import TooltipButton from "./TooltipButton";
 import SidebarPlayer from "./SidebarPlayer";
 import SidebarPlaylists from "./SidebarPlaylists";
-import { useLegacyNav } from "../navigation/legacyNav.ts";
 import { useSectionNav } from "../navigation/useSectionNav.ts";
 import SidebarStageBackdrop, {
   getSidebarStageBackdropEnabled,
@@ -44,16 +32,12 @@ type SidebarProps = {
   onRestorePlayer: (() => void) | null;
 };
 
-type SidebarNavView = { id: string; label: string; path?: string };
-
 type SidebarNavItem = {
   path: string;
-  basePath?: string;
   label: string;
   icon: IconComponent;
   section?: string;
   permission?: string;
-  subnav?: SidebarNavView[];
 };
 
 function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps) {
@@ -64,7 +48,6 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
     getSidebarStageBackdropEnabled(user?.id),
   );
   const stageBackdropVariant = showStageBackdrop ? resolveSidebarStageBackdropVariant() : null;
-  const newNav = !useLegacyNav();
   const sectionId = useSectionNav()?.id;
   const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessPlaylists;
   const { hasReview: hasReviewAlert, status: playlistStatus } = useDownloadWorkerActivity({
@@ -74,8 +57,6 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
     typeof window !== "undefined" ? window.matchMedia("(min-width: 768px)").matches : true,
   );
   const [ticketmasterConfigured, setTicketmasterConfigured] = useState(true);
-  const [newsConfigured, setNewsConfigured] = useState(true);
-  const { isDiscoverSectionActive } = useDiscoverRecent();
 
   useEffect(() => {
     setShowStageBackdrop(getSidebarStageBackdropEnabled(user?.id));
@@ -89,39 +70,6 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
   }, [user?.id]);
 
   const isIcons = mode === "icons" && isDesktop;
-  const isOnLibrary = isLibrarySectionPath(location.pathname, isDiscoverSectionActive);
-  const isOnShows = location.pathname.startsWith("/shows");
-  const isOnNews = location.pathname.startsWith("/discover/news");
-  const isOnWanted = location.pathname.startsWith("/activity/missing");
-  const isOnActivity = !isOnWanted && location.pathname.startsWith("/activity");
-
-  const activeShowsFilter = useMemo(() => {
-    if (!isOnShows) return null;
-    const segment = location.pathname.replace(/^\/shows\/?/, "").split("/")[0];
-    return segment || DEFAULT_SHOWS_FILTER;
-  }, [isOnShows, location.pathname]);
-
-  const activeLibraryView = useMemo(() => {
-    if (!isOnLibrary) return null;
-    const [segment = ""] = location.pathname.replace(/^\/library\/?/, "").split("/");
-    const visibleViews = LIBRARY_VIEWS.filter(
-      (view) =>
-        !view.permission || user?.role === "admin" || !!user?.permissions?.[view.permission],
-    );
-    return visibleViews.some((view) => view.id === segment) ? segment : DEFAULT_LIBRARY_VIEW;
-  }, [isOnLibrary, location.pathname, user]);
-
-  const activeActivityView = useMemo(() => {
-    if (!isOnActivity) return null;
-    const segment = location.pathname.replace(/^\/activity\/?/, "").split("/")[0];
-    return segment || DEFAULT_ACTIVITY_VIEW;
-  }, [isOnActivity, location.pathname]);
-
-  const activeWantedView = useMemo(() => {
-    if (!isOnWanted) return null;
-    return new URLSearchParams(location.search).get("tab") === "cutoff" ? "cutoff" : "missing";
-  }, [isOnWanted, location.search]);
-
   const positionSidebarTooltip = useCallback((event: SyntheticEvent<HTMLElement>) => {
     const link = event.currentTarget;
     const rect = link.getBoundingClientRect();
@@ -145,212 +93,43 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
   useEffect(() => {
     if (bootstrap) {
       setTicketmasterConfigured(!!bootstrap.ticketmasterConfigured);
-      setNewsConfigured(!!bootstrap.newsConfigured);
     }
   }, [bootstrap]);
 
-  const isNavItemActive = useCallback(
-    (item: SidebarNavItem) => {
-      if (newNav && item.section) return item.section === sectionId;
-      if (item.section === "discover") return isDiscoverSectionActive;
-      if (item.section === "library") return isOnLibrary;
-      if (item.section === "shows") return isOnShows;
-      if (item.section === "news") return isOnNews;
-      if (item.section === "activity") return isOnActivity;
-      if (item.section === "wanted") return isOnWanted;
-      return location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
-    },
-    [
-      isDiscoverSectionActive,
-      isOnActivity,
-      isOnLibrary,
-      isOnNews,
-      isOnShows,
-      isOnWanted,
-      location.pathname,
-      newNav,
-      sectionId,
-    ],
-  );
+  const isNavItemActive = (item: SidebarNavItem) =>
+    item.section
+      ? item.section === sectionId
+      : location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
 
   const navItems = useMemo(() => {
-    const allowed = (item: SidebarNavItem) =>
-      !item.permission || user?.role === "admin" || !!user?.permissions?.[item.permission];
-    if (newNav) {
-      const items: SidebarNavItem[] = [
-        { path: "/", label: "Discover", icon: Sparkles, section: "discover" },
-        { path: "/library", label: "Library", icon: Library, section: "library" },
-        { path: "/flows", label: "Flows", icon: AudioWaveform, permission: "accessPlaylists" },
-        ...(ticketmasterConfigured
-          ? [
-              {
-                path: `/shows/${DEFAULT_SHOWS_FILTER}`,
-                label: "Shows",
-                icon: Ticket,
-                section: "shows",
-              },
-            ]
-          : []),
-        {
-          path: buildActivityPath(DEFAULT_ACTIVITY_VIEW),
-          label: "Activity",
-          icon: Activity,
-          section: "activity",
-        },
-      ];
-      return items.filter(allowed);
-    }
-    const libraryViews = LIBRARY_VIEWS.filter(
-      (view) =>
-        !view.permission || user?.role === "admin" || !!user?.permissions?.[view.permission],
-    );
     const items: SidebarNavItem[] = [
-      {
-        path: "/",
-        label: "Discover",
-        icon: Sparkles,
-        section: "discover",
-      },
-      {
-        path: "/library",
-        label: "Library",
-        icon: Library,
-        section: "library",
-        subnav: libraryViews,
-      },
+      { path: "/", label: "Discover", icon: Sparkles, section: "discover" },
+      { path: "/library", label: "Library", icon: Library, section: "library" },
+      { path: "/flows", label: "Flows", icon: AudioWaveform, permission: "accessPlaylists" },
       ...(ticketmasterConfigured
         ? [
             {
               path: `/shows/${DEFAULT_SHOWS_FILTER}`,
-              basePath: "/shows",
               label: "Shows",
               icon: Ticket,
               section: "shows",
-              subnav: SHOWS_FILTERS,
             },
           ]
         : []),
-      ...(newsConfigured
-        ? [
-            {
-              path: "/discover/news",
-              label: "News",
-              icon: Newspaper,
-              section: "news",
-            },
-          ]
-        : []),
-      {
-        path: "/flows",
-        label: "Flows",
-        icon: AudioWaveform,
-        permission: "accessPlaylists",
-      },
       {
         path: buildActivityPath(DEFAULT_ACTIVITY_VIEW),
-        basePath: "/activity",
         label: "Activity",
         icon: Activity,
         section: "activity",
-        subnav: ACTIVITY_VIEWS.filter((view) => view.id !== "missing"),
-      },
-      {
-        path: buildWantedPath(),
-        label: "Wanted",
-        icon: AlertTriangle,
-        section: "wanted",
-        subnav: WANTED_VIEWS,
-        permission: "accessPlaylists",
       },
     ];
-    return items.filter(allowed);
-  }, [newNav, newsConfigured, ticketmasterConfigured, user]);
+    return items.filter(
+      (item) =>
+        !item.permission || user?.role === "admin" || !!user?.permissions?.[item.permission],
+    );
+  }, [ticketmasterConfigured, user]);
 
   const translateClass = mode === "hidden" ? "-translate-x-full" : "translate-x-0";
-
-  const renderSubnav = (item: SidebarNavItem, activeId: string | null) => {
-    if (newNav || isIcons || !isNavItemActive(item)) {
-      return null;
-    }
-    if (!item.subnav?.length && item.section !== "discover") {
-      return null;
-    }
-
-    if (item.section === "discover") {
-      const isRecommendedActive = location.pathname.startsWith(RECOMMENDED_PATH);
-      const isTrendingActive = location.pathname.startsWith("/discover/trending");
-      return (
-        <nav className="sidebar-subnav" aria-label={`${item.label} views`}>
-          <RouteLink
-            to="/discover/playlists"
-            className={`sidebar-subnav-link${location.pathname.startsWith("/discover/playlists") ? " is-active" : ""}`}
-            aria-current={location.pathname.startsWith("/discover/playlists") ? "page" : undefined}
-          >
-            Playlists
-          </RouteLink>
-          <RouteLink
-            to={lastRecommendedPath(location.pathname)}
-            className={`sidebar-subnav-link${isRecommendedActive ? " is-active" : ""}`}
-            aria-current={isRecommendedActive ? "page" : undefined}
-          >
-            Recommended
-          </RouteLink>
-          <RouteLink
-            to="/discover/trending"
-            className={`sidebar-subnav-link${isTrendingActive ? " is-active" : ""}`}
-            aria-current={isTrendingActive ? "page" : undefined}
-          >
-            Trending
-          </RouteLink>
-        </nav>
-      );
-    }
-
-    return (
-      <nav className="sidebar-subnav" aria-label={`${item.label} views`}>
-        {item.subnav!.map((entry) => {
-          const active = activeId === entry.id;
-          const targetPath =
-            entry.path ||
-            (item.section === "activity"
-              ? buildActivityPath(entry.id)
-              : `${item.basePath}/${entry.id}`);
-          const showReviewAlert =
-            item.section === "activity" && entry.id === "queue" && hasReviewAlert;
-          return (
-            <RouteLink
-              key={entry.id}
-              to={targetPath}
-              className={`sidebar-subnav-link${active ? " is-active" : ""}`}
-              aria-current={active ? "page" : undefined}
-            >
-              {showReviewAlert ? (
-                <span
-                  className="sidebar-subnav-link__alert sidebar-subnav-link__alert--review"
-                  aria-hidden="true"
-                />
-              ) : null}
-              <span>{entry.label}</span>
-            </RouteLink>
-          );
-        })}
-      </nav>
-    );
-  };
-
-  const getNavGroupClassName = (item: SidebarNavItem, active: boolean) => {
-    const classes = ["sidebar-nav-group"];
-    const hasSubnav = !newNav && (item.subnav?.length || item.section === "discover");
-    if (item.section === "discover") {
-      classes.push("sidebar-nav-group--discover");
-    }
-    if (active && hasSubnav && !isIcons) {
-      classes.push("is-expanded");
-    } else if (active) {
-      classes.push("is-active-row");
-    }
-    return classes.join(" ");
-  };
 
   return (
     <>
@@ -372,7 +151,7 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
         </RouteLink>
       </div>
       <aside
-        className={`sidebar-shell ${isIcons ? "sidebar-shell--icons" : "sidebar-shell--full"}${newNav ? " sidebar-shell--new" : ""} ${translateClass}`}
+        className={`sidebar-shell ${isIcons ? "sidebar-shell--icons" : "sidebar-shell--full"} sidebar-shell--new ${translateClass}`}
         aria-label="Primary navigation"
         style={{
           width: `${width}px`,
@@ -385,19 +164,12 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
                 const Icon = item.icon;
                 const active = isNavItemActive(item);
                 const showActivityDot = item.section === "activity" && hasReviewAlert;
-                const activeSubnavId =
-                  item.section === "library"
-                    ? activeLibraryView
-                    : item.section === "shows"
-                      ? activeShowsFilter
-                      : item.section === "activity"
-                        ? activeActivityView
-                        : item.section === "wanted"
-                          ? activeWantedView
-                          : null;
 
                 return (
-                  <div key={item.path} className={getNavGroupClassName(item, active)}>
+                  <div
+                    key={item.path}
+                    className={`sidebar-nav-group${active ? " is-active-row" : ""}`}
+                  >
                     <RouteLink
                       to={item.path}
                       onMouseEnter={(event) => {
@@ -435,14 +207,13 @@ function Sidebar({ mode, width = 208, onToggle, onRestorePlayer }: SidebarProps)
                       )}
                       {isIcons && <span className="sidebar-tooltip">{item.label}</span>}
                     </RouteLink>
-                    {renderSubnav(item, activeSubnavId)}
                   </div>
                 );
               })}
             </nav>
           </div>
 
-          {newNav && hasFlowAccess ? (
+          {hasFlowAccess ? (
             <SidebarPlaylists
               status={playlistStatus}
               iconsOnly={isIcons}

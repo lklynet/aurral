@@ -1,9 +1,8 @@
-import { useState } from "react";
 import DownloadFolderField from "../../../components/DownloadFolderField";
 import PillToggle from "../../../components/PillToggle";
 import { SettingsInput } from "./SettingsField";
 import { Select } from "../../../components/Select";
-import { SettingsGroup, SettingsRow } from "../SettingsLayout";
+import { SettingsAdvancedGroup, SettingsGroup, SettingsRow } from "../SettingsLayout";
 
 type AdapterValue = string | number | boolean;
 
@@ -73,7 +72,6 @@ export function SettingsAdapterFields({
   settings?: Record<string, unknown>;
   onChange: (patch: Record<string, AdapterValue>) => void;
 }) {
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const fields = (definition?.fields || []).filter((field) => !field.hidden);
   const advancedFields = fields.filter((field) => field.advanced);
 
@@ -151,21 +149,7 @@ export function SettingsAdapterFields({
         </SettingsGroup>
       ))}
       {advancedFields.length > 0 ? (
-        <SettingsGroup
-          title="Advanced"
-          actions={
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              aria-expanded={showAdvanced}
-              onClick={() => setShowAdvanced((current) => !current)}
-            >
-              {showAdvanced ? "Hide" : "Show"}
-            </button>
-          }
-        >
-          {showAdvanced ? advancedFields.map(renderField) : null}
-        </SettingsGroup>
+        <SettingsAdvancedGroup>{advancedFields.map(renderField)}</SettingsAdvancedGroup>
       ) : null}
     </>
   );

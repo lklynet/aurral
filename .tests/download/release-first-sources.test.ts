@@ -272,7 +272,12 @@ function mockSoulseekSearch(t: TestContext, responses: ReturnType<typeof soulsee
     responses,
   }));
   vi.spyOn(slskd, "deleteSearch").mockImplementation(async () => true);
-  vi.spyOn(slskd, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  vi.spyOn(slskd, "cleanupAfterRun").mockImplementation(async () => ({
+    searchesRemoved: 0,
+    transfersRemoved: 0,
+    downloadsRemoved: false,
+    cleanedSearchIds: [],
+  }));
   return created;
 }
 
@@ -370,7 +375,12 @@ function useQuickSources() {
     responses: [],
   }));
   vi.spyOn(slskd, "deleteSearch").mockImplementation(async () => true);
-  vi.spyOn(slskd, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  vi.spyOn(slskd, "cleanupAfterRun").mockImplementation(async () => ({
+    searchesRemoved: 0,
+    transfersRemoved: 0,
+    downloadsRemoved: false,
+    cleanedSearchIds: [],
+  }));
   return Object.assign(log, {
     ytdlpSearch,
     searched: () => searches.filter((entry, index) => entry !== searches[index - 1]),
@@ -1513,7 +1523,12 @@ test("an album source whose step fails on every retry hands the attempt to the n
   ]);
   await serveGroups(t, [group]);
   const stopped = vi.spyOn(slskd, "deleteSearch").mockImplementation(async () => true);
-  vi.spyOn(slskd, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  vi.spyOn(slskd, "cleanupAfterRun").mockImplementation(async () => ({
+    searchesRemoved: 0,
+    transfersRemoved: 0,
+    downloadsRemoved: false,
+    cleanedSearchIds: [],
+  }));
   const ids = libraryJobs(group, ["First", "Second"]);
   await downloadWorker.processJob(trackedJob(downloadTracker, ids[0]));
   const searching = {

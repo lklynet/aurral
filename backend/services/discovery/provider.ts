@@ -30,7 +30,7 @@ import { websocketService } from "../websocketService.ts";
 import {
   getLastfmDiscoveryPeriod,
   getListenbrainzRange,
-  getDiscoveryRecommendationsPerRefresh,
+  DISCOVERY_RECOMMENDATIONS_PER_REFRESH,
   getDiscoveryMode,
   getDiscoveryRecommendationPoolLimit,
   getDiscoveryNetworkConcurrency,
@@ -139,8 +139,8 @@ const fetchListenHistoryArtists = async (
 export const rerankCachedRecommendations = ({
   recommendations = [],
   feedback = [],
-  discoveryMode = getDiscoveryMode(),
-  limit = getDiscoveryRecommendationsPerRefresh(),
+  discoveryMode = "balanced",
+  limit = DISCOVERY_RECOMMENDATIONS_PER_REFRESH,
 }: {
   recommendations?: DiscoveryRecommendation[];
   feedback?: RecommendationFeedback[];
@@ -169,7 +169,7 @@ const resolveRecommendationCandidates = async (
   recommendations: DiscoveryRecommendation[],
   existingArtistKeys: Set<string>,
 ) => {
-  const perRefresh = getDiscoveryRecommendationsPerRefresh();
+  const perRefresh = DISCOVERY_RECOMMENDATIONS_PER_REFRESH;
   await resolveArtistMbids(recommendations.slice(0, perRefresh));
   return mergeResolvedRecommendations(recommendations, existingArtistKeys)
     .filter((item) => item?.id || item?.navigateTo)
@@ -206,7 +206,6 @@ const publishGlobalDiscovery = (discoveryData: DiscoveryCacheUpdate) => {
     phase: "completed",
     progress: 100,
     progressMessage: "Discovery refresh completed",
-    discoveryMode: getDiscoveryMode(),
   });
 };
 
@@ -413,7 +412,7 @@ const buildUserRecommendations = async ({
   );
 
   progress("generating_recommendations", "Finding similar artists", 50);
-  const discoveryMode = getDiscoveryMode();
+  const discoveryMode = getDiscoveryMode(userId);
   const rawRecommendations = await buildRecommendationsFromSeeds({
     seeds,
     existingArtistKeys,

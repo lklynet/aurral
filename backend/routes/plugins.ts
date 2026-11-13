@@ -116,7 +116,7 @@ export default new Hono<AppEnv>()
       v.object({
         enabled: v.optional(v.boolean()),
         settings: v.optional(v.record(v.string(), v.unknown())),
-        priority: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(100))),
+        priority: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(1000))),
         capabilities: v.optional(v.record(v.string(), v.boolean())),
       }),
     ),

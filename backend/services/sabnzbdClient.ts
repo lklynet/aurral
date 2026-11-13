@@ -33,18 +33,12 @@ export const sabnzbdSettings = Object.freeze({
     }),
     Object.freeze({ key: "category", label: "Category", type: "text", section: "Downloads" }),
     Object.freeze({
-      key: "deleteLeftovers",
-      label: "Delete leftover files",
-      type: "toggle",
-      section: "Downloads",
-    }),
-    Object.freeze({
       key: "priority",
       label: "Track priority",
       type: "number",
       min: 1,
       max: 1000,
-      section: "Downloads",
+      advanced: true,
     }),
     Object.freeze({
       key: "albumPriority",
@@ -52,15 +46,8 @@ export const sabnzbdSettings = Object.freeze({
       type: "number",
       min: 1,
       max: 1000,
-      section: "Downloads",
-      hint: "Empty uses track priority.",
-    }),
-    Object.freeze({
-      key: "addPaused",
-      label: "Add NZBs paused",
-      type: "toggle",
-      section: "Advanced",
       advanced: true,
+      hint: "Empty uses track priority.",
     }),
   ]),
   defaults: Object.freeze({
@@ -68,9 +55,7 @@ export const sabnzbdSettings = Object.freeze({
     url: "",
     apiKey: "",
     category: "aurral",
-    deleteLeftovers: true,
     priority: 20,
-    addPaused: false,
   }),
   validation: Object.freeze({ required: ["url", "apiKey"], url: ["url"] }),
   testConnection: true,
@@ -89,8 +74,6 @@ type SabnzbdConfig = {
   apiKey?: string | null;
   category?: string | null;
   priority?: number | string | null;
-  addPaused?: boolean;
-  deleteLeftovers?: boolean;
 };
 
 type SabnzbdConnection = {
@@ -156,9 +139,7 @@ function getSettings(key: SabnzbdApiClientKey, config: SabnzbdConfig | null = nu
     url: normalizeBaseUrl(sabnzbd.url),
     apiKey: String(sabnzbd.apiKey || "").trim(),
     category: String(sabnzbd.category || "aurral").trim(),
-    deleteLeftovers: sabnzbd.deleteLeftovers !== false,
     priority: normalizeInteger(sabnzbd.priority, 20),
-    addPaused: sabnzbd.addPaused === true,
   };
 }
 
@@ -283,12 +264,10 @@ export class SabnzbdClient {
     name,
     content,
     category,
-    addPaused,
   }: {
     name: string | undefined;
     content: Buffer | null | undefined;
     category?: string | null;
-    addPaused?: boolean | null;
   }) {
     const settings = this._getSettings();
     if (!content?.length) throw new Error(`${this.name} append requires an NZB file`);
@@ -298,7 +277,7 @@ export class SabnzbdClient {
       {
         nzbname: nzbName,
         cat: category ?? settings.category,
-        priority: (addPaused ?? settings.addPaused) ? -2 : -100,
+        priority: -100,
         pp: 3,
       },
       { file: buildNzbUpload(nzbName, content) },
@@ -346,8 +325,8 @@ export class SabnzbdClient {
       const result = await this.api("history", { name: "delete", value: id, del_files: 1 });
       return result?.status === true;
     };
+    if (!deleteFiles) return removeHistory();
     const settings = this._getSettings();
-    if (!deleteFiles || !settings.deleteLeftovers) return removeHistory();
     const cleanup = folderCleanup.then(async () => {
       const item = historyItem || (await this.getHistoryItem(id));
       if (item && !(await this.sharesDownloadFolder(item))) {

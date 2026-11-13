@@ -319,7 +319,7 @@ function buildBootstrapPayload(req: CredentialRequest) {
     oidcEnabled: oidcInfo.oidcEnabled,
     oidcLogoutUrl: oidcInfo.oidcLogoutUrl,
     googleLoginEnabled: isGoogleLoginEnabled(),
-    ssoOnly: settings?.security?.ssoOnly === true,
+    ssoOnly: true,
     onboardingRequired: !onboardingDone,
     dateTimeFormat: settings.dateTimeFormat,
     timestamp: new Date().toISOString(),

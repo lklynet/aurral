@@ -13,7 +13,6 @@ import {
   resolveProxyUser,
 } from "./auth.ts";
 import type { getPlaylistStatusSnapshot } from "./playlists/playlistStatusSnapshot.ts";
-import type { getDiscoveryMode } from "./discovery/helpers.ts";
 
 type DiscoveryUpdateFields = {
   isUpdating: boolean;
@@ -25,7 +24,6 @@ type DiscoveryUpdateFields = {
   reason?: string;
   provider?: string | null;
   lastUpdated?: string | null;
-  discoveryMode?: ReturnType<typeof getDiscoveryMode>;
 };
 
 export type WebSocketChannelPayload =

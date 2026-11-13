@@ -11,6 +11,7 @@ import {
   normalizeQualityProfile,
   orderAdvertisedQualityCandidates,
 } from "../../backend/services/qualityProfileModel.ts";
+import { qualityPresetOf } from "../../lib/qualityTiers.ts";
 
 test("classifies final audio from measured metadata at exact tier thresholds", () => {
   assert.equal(
@@ -62,6 +63,10 @@ test("normalizes the one global profile and migrates the old slskd preference", 
   assert.deepEqual(migrated.enabled, ["mp3-320", "mp3-256", "mp3-192", "mp3-128"]);
   assert.equal(migrated.cutoff, "mp3-320");
   assert.equal(migrated.automaticUpgrades, false);
+  assert.equal(qualityPresetOf(migrated), null);
+  assert.equal(qualityPresetOf(createDefaultQualityProfile()), "lossless");
+  assert.equal(qualityPresetOf(createDefaultQualityProfile({ preferredFormat: "mp3" })), "smaller");
+  assert.equal(qualityPresetOf({ ...createDefaultQualityProfile(), cutoff: "flac-hires" }), null);
 
   const normalized = normalizeQualityProfile({
     order: ["mp3-128", "not-a-tier", "mp3-128"],

@@ -3,7 +3,7 @@ import { getMusicDataSourceName } from "../musicDataSource/index.ts";
 import { isLockHeld } from "../jobs/queue.ts";
 import { discoveryRefreshQueue } from "../jobs/queues.ts";
 import { websocketService } from "../websocketService.ts";
-import { getDiscoveryAutoRefreshHours, getDiscoveryCache } from "./index.ts";
+import { DISCOVERY_REFRESH_MS, getDiscoveryCache } from "./index.ts";
 import { markDiscoveryRefreshRequested } from "./persistence.ts";
 
 type EnqueueDiscoveryRefreshOptions = {
@@ -28,8 +28,7 @@ export function discoveryNeedsRefresh(
   cache: Partial<ReturnType<typeof dbOps.getDiscoveryCache>> = dbOps.getDiscoveryCache(),
 ) {
   if (cache?.provider && cache.provider !== getMusicDataSourceName()) return true;
-  const refreshHours = getDiscoveryAutoRefreshHours();
-  const staleCutoff = Date.now() - refreshHours * 60 * 60 * 1000;
+  const staleCutoff = Date.now() - DISCOVERY_REFRESH_MS;
   const lastUpdatedAt = new Date(cache?.lastUpdated || "").getTime();
   if (!Number.isFinite(lastUpdatedAt) || lastUpdatedAt < staleCutoff) {
     return true;
@@ -84,9 +83,8 @@ export function enqueueDiscoveryRefresh(options: EnqueueDiscoveryRefreshOptions 
 
 export function scheduleNextDiscoveryRefresh() {
   const cache = dbOps.getDiscoveryCache();
-  const refreshMs = getDiscoveryAutoRefreshHours() * 60 * 60 * 1000;
   const base = cache.lastUpdated ? new Date(cache.lastUpdated).getTime() : Date.now();
-  const runAtMs = base + refreshMs;
+  const runAtMs = base + DISCOVERY_REFRESH_MS;
   if (runAtMs <= Date.now()) {
     return enqueueDiscoveryRefresh({ reason: "scheduled" });
   }

@@ -1,5 +1,4 @@
 import "./downloads.css";
-import { SettingsInput } from "../components/SettingsField";
 import { useServerSettings } from "../SettingsProviders";
 import { useSettingsRoute } from "../../../navigation/settingsRoute";
 import { providerStatus } from "../utils/serviceStatus";
@@ -7,7 +6,6 @@ import {
   SettingsGroup,
   SettingsNote,
   SettingsPage,
-  SettingsRow,
   SettingsServiceRow,
   useSettingsItem,
 } from "../SettingsLayout";
@@ -15,7 +13,6 @@ import {
   AddDownloadClient,
   DownloadClientDetail,
   clientConfig,
-  clientPriority,
   isClientConfigured,
   isClientEnabled,
   type DownloadClientDefinition,
@@ -24,12 +21,15 @@ import { ProwlarrDetail, prowlarrServiceStatus } from "./downloads/ProwlarrDetai
 import { QualityProfileDetail, qualityServiceStatus } from "./downloads/QualityProfileDetail";
 import { PathMappingDetail, PathMappingsTable, resolveMappingItem } from "./downloads/PathMappings";
 import { pluginStatus, usePlugins } from "./PluginsSection";
+import { DownloadSourceList, type DownloadSourceRow } from "./downloads/DownloadSources";
 
-const MAX_REVIEW_WAIT_HOURS = 720;
+const SOURCE_IDS: Partial<Record<string, string>> = { nzbget: "usenet", sabnzbd: "usenet" };
+const sourceId = (row: DownloadSourceRow) =>
+  "client" in row ? (SOURCE_IDS[row.client.key] ?? row.id) : row.id;
 
 export function DownloadsSection() {
   const data = useServerSettings();
-  const { settings, downloadClientSettings, health, updateSettings } = data;
+  const { settings, downloadClientSettings, health } = data;
   const item = useSettingsItem();
   const route = useSettingsRoute();
   const clients: DownloadClientDefinition[] = downloadClientSettings
@@ -45,6 +45,30 @@ export function DownloadsSection() {
     : (pluginList?.plugins ?? []).filter(
         (plugin) => plugin.enabled && plugin.manifest?.downloadSource,
       );
+  const sources: DownloadSourceRow[] = [
+    ...enabledClients.map((definition) => {
+      const config = clientConfig(settings, definition);
+      return {
+        id: definition.key,
+        name: definition.label,
+        to: `downloads/${definition.key}`,
+        status: providerStatus(true, isClientConfigured(definition, config, health)),
+        priority: Number(config.priority ?? definition.defaults?.priority ?? 0),
+        client: definition,
+      };
+    }),
+    ...pluginSources.map((plugin) => ({
+      id: `plugin:${plugin.id}`,
+      name: plugin.manifest?.name ?? plugin.id,
+      to: `plugins/${plugin.id}`,
+      status: pluginStatus(plugin),
+      priority: plugin.priority,
+      plugin: plugin.id,
+    })),
+  ].sort(
+    (left, right) =>
+      left.priority - right.priority || sourceId(left).localeCompare(sourceId(right)),
+  );
   const activeClient = clients.find((definition) => definition.key === item);
   const mapping = resolveMappingItem(settings, item);
 
@@ -60,9 +84,11 @@ export function DownloadsSection() {
       <SettingsGroup
         title="Download clients"
         note={
-          downloadClientSettings && enabledClients.length + pluginSources.length === 0
+          downloadClientSettings && sources.length === 0
             ? "No clients are on."
-            : undefined
+            : sources.length > 1
+              ? "Aurral tries them top to bottom."
+              : undefined
         }
         actions={
           availableClients.length > 0 ? (
@@ -81,28 +107,7 @@ export function DownloadsSection() {
             Couldn&apos;t load download clients. Refresh the page to retry.
           </SettingsNote>
         )}
-        {enabledClients.map((definition) => {
-          const config = clientConfig(settings, definition);
-          const configured = isClientConfigured(definition, config, health);
-          const status = providerStatus(true, configured);
-          const priority = clientPriority(definition, config);
-          return (
-            <SettingsServiceRow
-              key={definition.key}
-              to={`downloads/${definition.key}`}
-              name={definition.label}
-              status={configured && priority ? { ...status, label: `On, ${priority}` } : status}
-            />
-          );
-        })}
-        {pluginSources.map((plugin) => (
-          <SettingsServiceRow
-            key={plugin.id}
-            to={`plugins/${plugin.id}`}
-            name={plugin.manifest?.name ?? plugin.id}
-            status={pluginStatus(plugin)}
-          />
-        ))}
+        <DownloadSourceList rows={sources} />
       </SettingsGroup>
       <SettingsGroup title="Indexers">
         <SettingsServiceRow
@@ -114,34 +119,9 @@ export function DownloadsSection() {
       <SettingsGroup title="Quality">
         <SettingsServiceRow
           to="downloads/quality"
-          name="Quality profile"
+          name="Quality"
           status={qualityServiceStatus(settings)}
         />
-      </SettingsGroup>
-      <SettingsGroup title="Review queue">
-        <SettingsRow
-          label="Maximum wait (hours)"
-          htmlFor="downloads-review-timeout"
-          help="After this, unreviewed songs are denied and searched again. 0 waits forever."
-        >
-          <SettingsInput
-            id="downloads-review-timeout"
-            type="number"
-            min={0}
-            max={MAX_REVIEW_WAIT_HOURS}
-            step={1}
-            value={settings.reviewTimeoutHours ?? 0}
-            onChange={(event) => {
-              const raw = Number(event.target.value);
-              updateSettings({
-                ...settings,
-                reviewTimeoutHours: Number.isFinite(raw)
-                  ? Math.max(0, Math.min(MAX_REVIEW_WAIT_HOURS, Math.floor(raw)))
-                  : 0,
-              });
-            }}
-          />
-        </SettingsRow>
       </SettingsGroup>
       <SettingsGroup
         title="Remote path mappings"

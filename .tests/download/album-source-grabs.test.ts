@@ -1986,7 +1986,12 @@ test("one Soulseek batch fills two sibling jobs", async (t) => {
     async (_, id) => transfers.find((item) => item.id === id) ?? null,
   );
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => state.baseDir);
-  vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  vi.spyOn(client, "cleanupAfterRun").mockImplementation(async () => ({
+    searchesRemoved: 0,
+    transfersRemoved: 0,
+    downloadsRemoved: false,
+    cleanedSearchIds: [],
+  }));
   const queued = await processPipelinePayload({
     ...album.payload,
     source: "slskd" as const,
@@ -2102,7 +2107,12 @@ test("a Soulseek album removes the downloaded files it did not import", async (t
   useSlskd();
   const client = getDownloadClient("slskd");
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => state.baseDir);
-  vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  vi.spyOn(client, "cleanupAfterRun").mockImplementation(async () => ({
+    searchesRemoved: 0,
+    transfersRemoved: 0,
+    downloadsRemoved: false,
+    cleanedSearchIds: [],
+  }));
   const files = [album.files[0], unused];
   const remoteFiles = files.map((file, index) => ({ file, size: 0, jobId: album.ids[index] }));
   const transfers = files.map((filename, index) => ({
@@ -2130,7 +2140,12 @@ test("a Soulseek album queued before candidates said a listing proved their rele
   useSlskd();
   const client = getDownloadClient("slskd");
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => state.baseDir);
-  vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  vi.spyOn(client, "cleanupAfterRun").mockImplementation(async () => ({
+    searchesRemoved: 0,
+    transfersRemoved: 0,
+    downloadsRemoved: false,
+    cleanedSearchIds: [],
+  }));
   const legacyFinalize = async (album: {
     folder: string;
     files: string[];
@@ -2353,7 +2368,12 @@ test("a Soulseek album gives up on files left queued or crawling and keeps the o
   );
   const removed = vi.spyOn(client, "deleteTransfer").mockImplementation(async () => true);
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => album.folder);
-  vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  vi.spyOn(client, "cleanupAfterRun").mockImplementation(async () => ({
+    searchesRemoved: 0,
+    transfersRemoved: 0,
+    downloadsRemoved: false,
+    cleanedSearchIds: [],
+  }));
   const remoteFiles = album.files.map((filePath, index) => ({
     file: filePath,
     size: 0,
@@ -2428,7 +2448,12 @@ test("a track that takes the lead of a Soulseek album after the leading track la
   );
   vi.spyOn(client, "deleteTransfer").mockImplementation(async () => true);
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => album.folder);
-  vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  vi.spyOn(client, "cleanupAfterRun").mockImplementation(async () => ({
+    searchesRemoved: 0,
+    transfersRemoved: 0,
+    downloadsRemoved: false,
+    cleanedSearchIds: [],
+  }));
   const remoteFiles = album.files.map((filePath, index) => ({
     file: filePath,
     size: 0,
@@ -2487,7 +2512,12 @@ test("a Soulseek album's next folder gets its own queue window", async (t) => {
   );
   vi.spyOn(client, "deleteTransfer").mockImplementation(async () => true);
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => album.folder);
-  vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  vi.spyOn(client, "cleanupAfterRun").mockImplementation(async () => ({
+    searchesRemoved: 0,
+    transfersRemoved: 0,
+    downloadsRemoved: false,
+    cleanedSearchIds: [],
+  }));
   const folder = (user: string) => ({
     raw: {
       user,

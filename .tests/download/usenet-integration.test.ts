@@ -417,7 +417,6 @@ test("NZBGet client uses JSON-RPC append signature and exposes completed paths",
           password: "pass",
           category: "aurral",
           priority: 15,
-          nzbPriority: 50,
           completedPath: "/configured/done",
         },
       },
@@ -438,7 +437,7 @@ test("NZBGet client uses JSON-RPC append signature and exposes completed paths",
     assert.equal(appendCall.params[0], "Artist - Album.nzb");
     assert.equal(Buffer.from(appendCall.params[1], "base64").toString(), "<nzb></nzb>");
     assert.equal(appendCall.params[2], "aurral");
-    assert.equal(appendCall.params[3], 50);
+    assert.equal(appendCall.params[3], 0);
     assert.equal(appendCall.params[8], "FORCE");
 
     assert.deepEqual(await nzbgetClient.getQueueItem(42), { NZBID: 42, Status: "DOWNLOADING" });

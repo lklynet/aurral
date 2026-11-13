@@ -139,6 +139,27 @@ const nameUsenetDownloadsBySource: Migration = (db) => {
   }
 };
 
+// These settings became fixed behavior. Each user keeps the discovery mode
+// the server used.
+const dropFixedSettings: Migration = (db) =>
+  db.exec(`
+    INSERT OR IGNORE INTO settings (key, value)
+      SELECT 'user:' || users.id || ':discoveryMode', json_quote(integrations.value ->> '$.lastfm.discoveryMode')
+      FROM users, settings AS integrations
+      WHERE integrations.key = 'integrations' AND json_valid(integrations.value)
+        AND integrations.value ->> '$.lastfm.discoveryMode' IN ('safer', 'deeper');
+    UPDATE settings SET value = json_remove(value,
+        '$.lastfm.discoveryMode', '$.lastfm.discoveryAutoRefreshHours',
+        '$.lastfm.discoveryRecommendationsPerRefresh', '$.slskd.cleanupAfterRuns',
+        '$.prowlarr.categories', '$.prowlarr.maxResults', '$.nzbget.nzbPriority',
+        '$.nzbget.addPaused', '$.nzbget.deleteLeftovers', '$.sabnzbd.addPaused',
+        '$.sabnzbd.deleteLeftovers')
+      WHERE key = 'integrations' AND json_valid(value);
+    UPDATE settings SET value = json_remove(value, '$.ssoOnly')
+      WHERE key = 'security' AND json_valid(value);
+    DELETE FROM settings WHERE key IN ('missingTrackSearch', 'reviewTimeoutHours', 'subsonic', 'playlistFiles');
+  `);
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -149,6 +170,7 @@ export const migrations: Migration[] = [
   failUnreadableDownloadJobs,
   clearMetadataFailureBackoff,
   nameUsenetDownloadsBySource,
+  dropFixedSettings,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

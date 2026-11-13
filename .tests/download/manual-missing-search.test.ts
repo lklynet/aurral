@@ -486,7 +486,7 @@ test("manual Soulseek search retains ownership after an uncertain creation respo
       ...settings,
       integrations: {
         ...settings.integrations,
-        slskd: { enabled: true, url: mock.url, cleanupAfterRuns: false },
+        slskd: { enabled: true, url: mock.url },
       },
     });
     await assert.rejects(

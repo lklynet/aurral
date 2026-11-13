@@ -45,18 +45,12 @@ export const nzbgetSettings = Object.freeze({
     }),
     Object.freeze({ key: "category", label: "Category", type: "text", section: "Downloads" }),
     Object.freeze({
-      key: "deleteLeftovers",
-      label: "Delete leftover files",
-      type: "toggle",
-      section: "Downloads",
-    }),
-    Object.freeze({
       key: "priority",
       label: "Track priority",
       type: "number",
       min: 1,
       max: 1000,
-      section: "Downloads",
+      advanced: true,
     }),
     Object.freeze({
       key: "albumPriority",
@@ -64,17 +58,8 @@ export const nzbgetSettings = Object.freeze({
       type: "number",
       min: 1,
       max: 1000,
-      section: "Downloads",
-      hint: "Empty uses track priority.",
-    }),
-    Object.freeze({
-      key: "nzbPriority",
-      label: "NZB priority",
-      type: "number",
-      min: -100,
-      max: 900,
-      section: "Advanced",
       advanced: true,
+      hint: "Empty uses track priority.",
     }),
     Object.freeze({
       key: "completedPath",
@@ -84,13 +69,6 @@ export const nzbgetSettings = Object.freeze({
       advanced: true,
       placeholder: "/downloads/completed",
     }),
-    Object.freeze({
-      key: "addPaused",
-      label: "Add NZBs paused",
-      type: "toggle",
-      section: "Advanced",
-      advanced: true,
-    }),
   ]),
   defaults: Object.freeze({
     enabled: false,
@@ -98,10 +76,7 @@ export const nzbgetSettings = Object.freeze({
     username: "",
     password: "",
     category: "aurral",
-    deleteLeftovers: true,
     priority: 20,
-    nzbPriority: 0,
-    addPaused: false,
     completedPath: "",
   }),
   validation: Object.freeze({ required: ["url"], url: ["url"] }),
@@ -165,10 +140,7 @@ function getSettings(config: NzbgetConfig | null = null) {
     username: String(nzbget.username || "").trim(),
     password: String(nzbget.password || ""),
     category: String(nzbget.category || "aurral").trim(),
-    deleteLeftovers: nzbget.deleteLeftovers !== false,
     priority: normalizeInteger(nzbget.priority, 20),
-    nzbPriority: normalizeInteger(nzbget.nzbPriority, 0),
-    addPaused: nzbget.addPaused === true,
     completedPath: String(nzbget.completedPath || "").trim(),
   };
 }
@@ -295,9 +267,7 @@ export class NzbgetClient {
     name,
     content,
     category,
-    priority,
     addToTop = false,
-    addPaused,
     dupeKey = "",
     dupeScore = 0,
     dupeMode = "FORCE",
@@ -307,9 +277,7 @@ export class NzbgetClient {
     name: string | undefined;
     content: Buffer | null | undefined;
     category?: string | null;
-    priority?: number | string | null;
     addToTop?: boolean;
-    addPaused?: boolean | null;
     dupeKey?: string;
     dupeScore?: number;
     dupeMode?: string;
@@ -323,9 +291,9 @@ export class NzbgetClient {
       nzbName,
       Buffer.from(content).toString("base64"),
       category ?? settings.category,
-      normalizeInteger(priority, settings.nzbPriority),
+      0,
       addToTop === true,
-      addPaused ?? settings.addPaused,
+      false,
       String(dupeKey || ""),
       normalizeInteger(dupeScore, 0),
       String(dupeMode || "FORCE"),
@@ -372,8 +340,7 @@ export class NzbgetClient {
     }: { deleteFiles?: boolean; historyItem?: NzbgetHistoryItem | null } = {},
   ) {
     const settings = this._getSettings();
-    if (!deleteFiles || !settings.deleteLeftovers)
-      return this.editItem("HistoryFinalDelete", nzbId);
+    if (!deleteFiles) return this.editItem("HistoryFinalDelete", nzbId);
     const cleanup = folderCleanup.then(async () => {
       const item = historyItem || (await this.getHistoryItem(nzbId));
       if (item && !(await this.sharesDownloadFolder(item))) {

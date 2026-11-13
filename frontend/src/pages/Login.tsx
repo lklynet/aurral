@@ -25,9 +25,8 @@ const Login = () => {
   const { login, bootstrap } = useAuth();
   const oidcEnabled = !!bootstrap?.oidcEnabled;
   const googleEnabled = !!bootstrap?.googleLoginEnabled;
-  const ssoOnly = !!bootstrap?.ssoOnly;
   const hasSsoOption = oidcEnabled || googleEnabled;
-  const localFormVisible = !ssoOnly || !hasSsoOption || showLocalForm;
+  const localFormVisible = !hasSsoOption || showLocalForm;
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
