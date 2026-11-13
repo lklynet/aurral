@@ -1,6 +1,5 @@
 import { dbOps } from "../db/helpers/index.ts";
 import { buildStableImageProxyUrl, warmPublicImageUrl } from "./imageProxyService.ts";
-import { findReleaseGroupCoverUrl } from "./apiClients/coverArtArchive.ts";
 import {
   getDeezerArtist,
   getDeezerArtistById,
@@ -176,13 +175,6 @@ const fetchReleaseGroupCoverUncached = async (
       transientError: false,
     };
   }
-  // An album the archive has no cover of, or could not be asked about, is
-  // looked up at BrainzMash.
-  const archiveCover = await acceptCoverUrl(
-    cacheKey,
-    await findReleaseGroupCoverUrl(releaseGroupMbid).catch(() => null),
-  );
-  if (archiveCover) return archiveCover;
   const normalizedArtistName = typeof artistName === "string" ? artistName.trim() : "";
   const normalizedAlbumTitle = typeof albumTitle === "string" ? albumTitle.trim() : "";
   let sawTransientError = false;

@@ -37,7 +37,6 @@ export interface HttpOptions {
   insecureTls?: boolean;
   publicOnly?: boolean;
   keepMethodOnRedirect?: boolean;
-  redirect?: "manual";
 }
 
 export interface HttpResponse {
@@ -297,7 +296,6 @@ async function request(inputUrl: string, options: HttpOptions = {}): Promise<Htt
       response = await requestFetch(url, { ...init, redirect: "manual" });
       const location = response.headers.get("location");
       if (![301, 302, 303, 307, 308].includes(response.status) || !location) break;
-      if (options.redirect === "manual") break;
       if (!/^https?:$/u.test(new URL(location, url).protocol)) break;
       if (redirectCount === MAX_REDIRECTS) {
         throw new HttpError(
