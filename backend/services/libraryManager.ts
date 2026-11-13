@@ -2146,6 +2146,10 @@ export class LibraryManager {
           trackListComplete: true,
           edition,
           requestedRelease: selectedRelease?.id || null,
+          trackList: {
+            release: selectedRelease?.id || null,
+            recordings: tracks.map((track) => track.trackMbid),
+          },
           albumType: metadata?.type || "Album",
           secondaryTypes: metadata?.secondaryTypes || [],
           genres: metadata?.genres || [],
