@@ -10,6 +10,7 @@ body:
       value: |
         Use this form to propose new behavior for Aurral.
         Do not start implementation until a maintainer approves the direction.
+        Aurral is opinionated and prefers good defaults over new settings. Read [Aurral's direction](https://github.com/lklynet/aurral/blob/main/CONTRIBUTING.md#aurrals-direction) before you propose an option.
         You can also discuss the idea with developers and testers in the [Aurral Discord](https://discord.gg/cpPYfgVURJ).
 
   - type: checkboxes

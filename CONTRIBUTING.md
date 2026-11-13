@@ -4,6 +4,12 @@ Aurral welcomes contributions. We review every change against the project's dire
 
 Opening a pull request does not guarantee a review or a merge. We may close it, ask you to split it, defer it, or implement the idea in a different way.
 
+## Aurral's direction
+
+Aurral is opinionated. It is for people who want an easy, reliable way to get music and play it in a modern, Spotify-like app. It does not compete with Lidarr. Power users who want control over every release, profile, and setting already have Lidarr, and it serves them well.
+
+So we choose one good default over a new setting, and a feature needs a better reason than "Lidarr has it."
+
 ## Start with the right place
 
 Search existing issues and pull requests before starting work.
@@ -45,6 +51,8 @@ We are unlikely to accept:
 
 - Several new features bundled into one pull request.
 - Unapproved feature work.
+- New settings where one good default would do.
+- Features whose main case is matching Lidarr.
 - Large rewrites or opinionated refactors.
 - Drive-by formatting or unrelated cleanup.
 - New dependencies without a clear need.
