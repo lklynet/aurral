@@ -33,6 +33,7 @@ const [
   { resolveRequestUser },
   { playlistOperationQueue },
   { logger },
+  { default: importRoutes },
 ] = await setupIsolatedBackend(
   "plugins",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -52,13 +53,15 @@ const [
   () => import("../../backend/services/auth.ts"),
   () => import("../../backend/services/playlists/playlistOperationQueue.ts"),
   () => import("../../backend/services/logger.ts"),
+  () => import("../../backend/routes/playlists/handlers/imports.ts"),
 );
 
 const admin = testUser(1, { username: "admin", role: "admin" });
 const owner = testUser(2, { username: "owner", permissions: { accessPlaylists: true } });
 const stranger = testUser(3, { username: "stranger", permissions: { accessPlaylists: true } });
 
-const routes = (user: RequestUser) => signedInAs(user).route("/", pluginRoutes);
+const routes = (user: RequestUser) =>
+  signedInAs(user).route("/", pluginRoutes).route("/", importRoutes);
 const json = (method: string, body: unknown) => ({
   method,
   headers: { "Content-Type": "application/json" },
@@ -481,7 +484,10 @@ test("an import list previews links on its hosts and refuses others", async () =
   );
   await turnOn("camp");
   const preview = (url: string) =>
-    routes(owner).request("/plugins/camp/import/preview", json("POST", { url }));
+    routes(owner).request(
+      "/playlists/import/preview",
+      json("POST", { provider: "plugin:camp", externalId: url }),
+    );
 
   const response = await preview("https://glasscoast.bandcamp.com/album/lowlands");
   assert.equal(response.status, 200);
@@ -490,6 +496,7 @@ test("an import list previews links on its hosts and refuses others", async () =
   assert.equal(body.trackCount, 1);
   assert.equal(body.skipped, 1);
   assert.equal((await preview("https://example.com/list")).status, 400);
+  assert.equal((await preview("http://glasscoast.bandcamp.com/album/lowlands")).status, 400);
 });
 
 test("an import list that never changes imports once, whatever sync the request asks for", async () => {
@@ -509,9 +516,10 @@ test("an import list that never changes imports once, whatever sync the request 
   const lists = await (await routes(owner).request("/plugins/import-lists")).json();
   assert.equal(lists.importLists[0].sync, false);
   const response = await routes(owner).request(
-    "/plugins/trip/import",
+    "/playlists/import",
     json("POST", {
-      url: "https://maps.example.com/dir/portland/boise",
+      provider: "plugin:trip",
+      externalId: "https://maps.example.com/dir/portland/boise",
       name: "Portland to Boise",
       syncEnabled: true,
       syncIntervalHours: 24,

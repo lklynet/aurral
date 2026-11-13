@@ -26,31 +26,11 @@ import {
   updatePlugin,
 } from "../services/plugins/pluginService.ts";
 import { setSafeMode } from "../services/plugins/pluginStore.ts";
-import {
-  fetchPluginPlaylist,
-  listPluginImportLists,
-  pluginImportProvider,
-  PluginImportError,
-} from "../services/plugins/pluginImportList.ts";
-import { enqueueImportedPlaylist } from "../services/importLists/importPlaylist.ts";
-import { importSettings, requirePlaylistAccess } from "./playlists/handlers/utils.ts";
+import { listPluginImportLists } from "../services/plugins/pluginImportList.ts";
 
 const pluginParam = v.object({ id: v.string() });
 const reference = v.union([v.pipe(v.string(), v.minLength(1)), v.number()]);
 const httpsUrl = v.pipe(v.string(), v.trim(), v.url(), v.startsWith("https://"));
-
-async function importAnswer<Env extends AppEnv, Path extends string, In extends Input, Result>(
-  c: Context<Env, Path, In>,
-  run: () => Promise<Result>,
-) {
-  try {
-    return c.json(await run(), 200);
-  } catch (error) {
-    if (error instanceof PluginImportError)
-      return c.json({ error: error.message }, error.statusCode);
-    throw error;
-  }
-}
 
 async function answer<Env extends AppEnv, Path extends string, In extends Input, Result>(
   c: Context<Env, Path, In>,
@@ -158,61 +138,6 @@ export default new Hono<AppEnv>()
   .post("/updates", requireAuth, requireAdmin, (c) => answer(c, updateAllPlugins))
   .post("/:id/update", requireAuth, requireAdmin, validate("param", pluginParam), (c) =>
     answer(c, () => updatePluginFromSource(c.req.valid("param").id)),
-  )
-  .post(
-    "/:id/import/preview",
-    requireAuth,
-    requirePlaylistAccess,
-    validate("param", pluginParam),
-    validate("json", v.object({ url: httpsUrl })),
-    (c) =>
-      importAnswer(c, async () => {
-        const playlist = await fetchPluginPlaylist(
-          pluginImportProvider(c.req.valid("param").id),
-          c.req.valid("json").url,
-        );
-        return {
-          playlist: { id: playlist.id, name: playlist.name },
-          trackCount: playlist.tracks.length,
-          skipped: playlist.stats.incomplete,
-          previewTracks: playlist.tracks.slice(0, 3),
-        };
-      }),
-  )
-  .post(
-    "/:id/import",
-    requireAuth,
-    requirePlaylistAccess,
-    validate("param", pluginParam),
-    validate("json", v.object({ ...importSettings, url: httpsUrl })),
-    (c) =>
-      importAnswer(c, async () => {
-        const body = c.req.valid("json");
-        const provider = pluginImportProvider(c.req.valid("param").id);
-        const playlist = await fetchPluginPlaylist(provider, body.url);
-        const syncIntervalHours = playlist.sync
-          ? Math.max(0, Number(body.syncIntervalHours ?? 24) || 0)
-          : 0;
-        const result = await enqueueImportedPlaylist({
-          ownerUserId: c.var.user.id,
-          name: body.name.trim() || playlist.name,
-          sourceName: playlist.label,
-          provider,
-          externalId: playlist.id,
-          externalName: playlist.name,
-          tracks: playlist.tracks,
-          sourceStats: playlist.stats,
-          artworkUrl: playlist.artworkUrl,
-          syncEnabled: body.syncEnabled === false ? false : syncIntervalHours > 0,
-          syncIntervalHours,
-          keepRemovedTracks: body.keepRemovedTracks !== false,
-        });
-        return {
-          success: true,
-          tracksQueued: Number(result?.tracksQueued || 0),
-          queued: result?.queued === true,
-        };
-      }),
   )
   .post(
     "/:id/actions/:action",

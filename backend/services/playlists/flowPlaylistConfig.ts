@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from "crypto";
 import * as v from "valibot";
 import { dbOps } from "../../db/helpers/index.ts";
 import { getDiscoverPlaylistPreset } from "../../config/discoverPlaylistPresets.ts";
+import { isImportProvider } from "../../../lib/importProviders.ts";
 import { deletePlaylistArtworkState } from "../playlistArtworkState.ts";
 import {
   DEFAULT_FLOW_SIZE,
@@ -116,15 +117,6 @@ export interface StaticPlaylistUpdates {
   tracks?: PlaylistTrackInput[];
 }
 
-const IMPORT_SOURCE_PROVIDERS = new Set([
-  "spotify-playlist",
-  "listenbrainz-playlist",
-  "listenbrainz-createdfor",
-  "lastfm-station",
-  "youtube-music-playlist",
-  "deezer-playlist",
-  "aurral-share",
-]);
 const DAY_MS = 24 * 60 * 60 * 1000;
 let cachedFlows: FlowConfig[] | null = null;
 let cachedStaticPlaylists: StaticPlaylist[] | null = null;
@@ -262,7 +254,8 @@ const normalizeFlow = (flow: StoredFlow) => {
 export function normalizeImportSource(value: StoredImportSource | null | undefined) {
   if (!value || typeof value !== "object") return null;
   const provider = String(value.provider || "").trim();
-  if (!IMPORT_SOURCE_PROVIDERS.has(provider) && !provider.startsWith("plugin:")) return null;
+  if (!isImportProvider(provider)) return null;
+  const externalUsername = String(value.externalUsername || "").trim();
   const syncIntervalHours = Number(value.syncIntervalHours);
   const lastSyncAt = Number(value.lastSyncAt);
   const hasSync =
@@ -270,9 +263,7 @@ export function normalizeImportSource(value: StoredImportSource | null | undefin
   return {
     provider,
     externalId: String(value.externalId || "").trim() || null,
-    ...(provider === "lastfm-station" && {
-      externalUsername: String(value.externalUsername || "").trim() || null,
-    }),
+    ...(externalUsername && { externalUsername }),
     externalName: String(value.externalName || "").trim() || null,
     artworkUrl:
       typeof value.artworkUrl === "string" && /^https?:\/\//i.test(value.artworkUrl)

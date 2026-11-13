@@ -16,16 +16,7 @@ import {
   type PlaylistStatus,
 } from "../../utils/playlistStats";
 import { getApiErrorText } from "../../utils/api/errors.ts";
-
-export const SYNCABLE_IMPORT_PROVIDERS = new Set<string | null | undefined>([
-  "spotify-playlist",
-  "listenbrainz-playlist",
-  "listenbrainz-createdfor",
-  "lastfm-station",
-  "youtube-music-playlist",
-  "deezer-playlist",
-  "aurral-share",
-]);
+import { IMPORT_PROVIDER_LABELS, isNativeImportProvider } from "../../../../lib/importProviders.ts";
 
 export const SYNC_INTERVAL_OPTIONS = [
   { value: 0, label: "None" },
@@ -45,14 +36,8 @@ export function getImportedProviderLogo(provider: string | null | undefined) {
   return null;
 }
 
-export function getImportedProviderLabel(provider: string | null | undefined) {
-  if (String(provider || "").startsWith("listenbrainz-")) return "ListenBrainz";
-  if (provider === "lastfm-station") return "Last.fm";
-  if (provider === "youtube-music-playlist") return "YouTube Music";
-  if (provider === "deezer-playlist") return "Deezer";
-  if (provider === "aurral-share") return "Aurral share";
-  return "Spotify";
-}
+export const getImportedProviderLabel = (provider: string | null | undefined) =>
+  isNativeImportProvider(provider) ? IMPORT_PROVIDER_LABELS[provider] : "Spotify";
 
 export const optionMenuItem = <T extends { checked: boolean }>({ checked, ...item }: T) => ({
   ...item,
