@@ -36,7 +36,9 @@ const unlinkedArtist = {
   Albums: [],
 };
 
+const providerPaths: string[] = [];
 const providerServer = await createMockHttpServer((request, response) => {
+  providerPaths.push(request.url || "");
   response.setHeader("content-type", "application/json");
   if (request.url?.startsWith(`/artist/${linkedArtistMbid}`)) {
     response.end(JSON.stringify(linkedArtist));
@@ -70,6 +72,7 @@ const [
   { default: preview },
   { getArtistImage },
   { fetchReleaseGroupCoverUrl },
+  { listenbrainzSource },
 ] = await setupIsolatedBackend(
   "brainzmash-linked-metadata",
   () => import("../lib/http.ts"),
@@ -79,6 +82,7 @@ const [
   () => import("../backend/routes/artists/handlers/preview.ts"),
   () => import("../backend/services/imageService.ts"),
   () => import("../backend/services/releaseGroupCoverService.ts"),
+  () => import("../backend/services/musicDataSource/listenbrainz.ts"),
 );
 
 afterAll(async () => {
@@ -201,6 +205,32 @@ test("artist previews use the BrainzMash Deezer link instead of a name search", 
     ["Mustapha"],
   );
   assert.deepEqual(requests, ["https://api.deezer.com/artist/412/top"]);
+});
+
+test("top tracks use the Deezer artist linked on a saved BrainzMash artist, and never ask BrainzMash for it", async () => {
+  await getArtistByMbid(linkedArtistMbid);
+  const requests = recordExternalRequests();
+  providerPaths.length = 0;
+
+  const saved = await listenbrainzSource.getArtistTopTracks({
+    name: "Queen",
+    mbid: linkedArtistMbid,
+  });
+  const unsaved = await listenbrainzSource.getArtistTopTracks({
+    name: "Queens",
+    mbid: "78787878-7878-4787-8787-787878787878",
+  });
+
+  assert.deepEqual(
+    saved.map((track) => track.name),
+    ["Mustapha"],
+  );
+  assert.deepEqual(unsaved, []);
+  assert.deepEqual(requests, [
+    "https://api.deezer.com/artist/412/top",
+    "https://api.deezer.com/search/artist",
+  ]);
+  assert.deepEqual(providerPaths, []);
 });
 
 test("artist images fall back to the BrainzMash-linked Deezer artist", async () => {

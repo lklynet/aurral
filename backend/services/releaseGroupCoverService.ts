@@ -1,5 +1,9 @@
 import { dbOps } from "../db/helpers/index.ts";
-import { buildStableImageProxyUrl, warmPublicImageUrl } from "./imageProxyService.ts";
+import {
+  buildStableImageProxyUrl,
+  fetchRemoteImage,
+  warmPublicImageUrl,
+} from "./imageProxyService.ts";
 import {
   getDeezerArtist,
   getDeezerArtistById,
@@ -59,12 +63,21 @@ const getCachedUrl = (cacheKey: string) => {
   return undefined;
 };
 
+export const savedReleaseGroupCoverUrl = (releaseGroupMbid: string) =>
+  getCachedUrl(`${RG_CACHE_PREFIX}${releaseGroupMbid}`) || null;
+
 const foundCover = (imageUrl: string | null | undefined) => {
   const proxiedUrl = toPublicCoverUrl(imageUrl ?? null);
   return proxiedUrl
     ? { imageUrl: proxiedUrl, types: ["Front"], notFound: false, transientError: false }
     : null;
 };
+
+const isDeadLink = (imageUrl: string) =>
+  fetchRemoteImage(imageUrl).then(
+    () => false,
+    () => true,
+  );
 
 const fetchDeezerAlbumCover = async ({
   artistName = "",
@@ -121,6 +134,7 @@ const fetchReleaseGroupCoverUncached = async (
     };
   }
   let sawTransientError = false;
+  let deadCover: ReturnType<typeof foundCover> = null;
   let deezerArtistId = null;
   let deezerArtistName = artistName.trim();
   let deezerAlbumTitle = albumTitle.trim();
@@ -130,7 +144,9 @@ const fetchReleaseGroupCoverUncached = async (
     deezerArtistName ||= album.artists[0]?.name || "";
     deezerAlbumTitle ||= album.title;
     const cover = foundCover(selectAlbumCover(album.images)?.url);
-    if (cover) {
+    if (cover && bypassCache && (await isDeadLink(cover.imageUrl))) {
+      deadCover = cover;
+    } else if (cover) {
       dbOps.setImage(cacheKey, cover.imageUrl);
       return cover;
     }
@@ -149,7 +165,11 @@ const fetchReleaseGroupCoverUncached = async (
     deezerArtistId,
     albumTitle: deezerAlbumTitle,
   });
-  if (deezerCover) return deezerCover;
+  if (deezerCover) {
+    if (deadCover) dbOps.setImage(cacheKey, deezerCover.imageUrl);
+    return deezerCover;
+  }
+  if (deadCover) return deadCover;
   if (sawTransientError) {
     return { imageUrl: null, types: [], notFound: false, transientError: true };
   }
