@@ -135,16 +135,18 @@ test("upgrading lets albums that failed to load try again, and keeps rate-limit 
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
   migrate(db, migrations.slice(0, -1));
-  const insert = db.prepare<[string, number]>(
-    "INSERT INTO metadata_request_state (cache_key, failure_count, retry_after) VALUES (?, ?, 9999999999999)",
+  const insert = db.prepare<[string, number, number]>(
+    "INSERT INTO metadata_request_state (cache_key, failure_count, retry_after, updated_at) VALUES (?, ?, ?, 1000)",
   );
-  insert.run("failed", 2);
-  insert.run("rate-limited", 0);
+  const day = 24 * 60 * 60 * 1000;
+  insert.run("failed", 3, 1000 + day);
+  insert.run("rate-limited", 0, 1000 + 7 * day);
+  insert.run("rate-limited-after-failing", 1, 1000 + 7 * day);
 
   migrate(db);
 
   assert.deepEqual(
     db.prepare("SELECT cache_key FROM metadata_request_state ORDER BY cache_key").pluck().all(),
-    ["rate-limited"],
+    ["rate-limited", "rate-limited-after-failing"],
   );
 });

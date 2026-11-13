@@ -558,8 +558,8 @@ function refreshMetadata<Schema extends v.GenericSchema>(
             status != null
               ? `HTTP ${status}`
               : String(failure?.code || failure?.message || "Unknown error");
-          // BrainzMash answers 429 when the same album is asked for again within
-          // a week, so only that entity waits out the Retry-After.
+          // A 429 for one album or artist is about that entity, so only it waits
+          // out the Retry-After BrainzMash sent.
           if (status === 429 && leaseToken && !isMetadataCircuitError(error)) {
             const retryAt = Date.now() + getRetryAfterMs(error);
             deferMetadataRequest(cacheKey, leaseToken, retryAt);

@@ -85,8 +85,12 @@ const failUnreadableDownloadJobs: Migration = (db) =>
   `);
 
 // Album fetches that failed once used to wait up to a day before trying again.
+// A longer wait is one BrainzMash asked for, so it stays.
 const clearMetadataFailureBackoff: Migration = (db) =>
-  db.exec("DELETE FROM metadata_request_state WHERE failure_count > 0");
+  db.exec(`
+    DELETE FROM metadata_request_state
+    WHERE failure_count > 0 AND retry_after - updated_at <= 24 * 60 * 60 * 1000;
+  `);
 
 export const migrations: Migration[] = [
   createAurral3Schema,
