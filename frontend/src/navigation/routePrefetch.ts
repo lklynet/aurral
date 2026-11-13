@@ -8,7 +8,6 @@ import {
   playlistShelfQueryOptions,
   playlistJobsQueryOptions,
   playlistStatusQueryOptions,
-  releaseGroupDetailsQueryOptions,
   trendingChartsQueryOptions,
   trendingGenreQueryOptions,
 } from "../queryOptions.ts";
@@ -121,13 +120,8 @@ const ROUTES = [
   {
     path: "/album/:ref",
     module: routeModules.album,
-    queries: async ({ ref }: Params<string>, { search }: RouteContext) => {
-      const album = parseAlbumRef(ref);
-      if (!album) return [];
-      const library = await libraryView({ albumId: ref }, search);
-      if (album.kind === "library") return library;
-      return [...library, prefetchable(releaseGroupDetailsQueryOptions(album.releaseGroupMbid))];
-    },
+    queries: ({ ref }: Params<string>, { search }: RouteContext) =>
+      parseAlbumRef(ref) ? libraryView({ albumId: ref }, search) : [],
   },
   {
     path: "/library/artist/:artistId",

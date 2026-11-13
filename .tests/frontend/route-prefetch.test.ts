@@ -57,14 +57,14 @@ test("a failed prefetch is not retried on the next hover", async (t) => {
     body: { error: "unavailable" },
   }));
 
-  await prefetchRoute("/album/rg-1");
-  await prefetchRoute("/album/rg-1");
-  assert.equal(apiRequests(requests, "/artists/release-group/rg-1").length, 1);
+  await prefetchRoute("/discover/playlists/deezer/42", { userId: 1 });
+  await prefetchRoute("/discover/playlists/deezer/42", { userId: 1 });
+  assert.equal(apiRequests(requests, "/discover/playlists/deezer/42").length, 1);
 
   await assert.rejects(
-    queryClient.fetchQuery(queryOptions.releaseGroupDetailsQueryOptions("rg-1")),
+    queryClient.fetchQuery(queryOptions.browsePlaylistQueryOptions(1, "deezer", "42")),
   );
-  assert.equal(apiRequests(requests, "/artists/release-group/rg-1").length, 2);
+  assert.equal(apiRequests(requests, "/discover/playlists/deezer/42").length, 2);
 });
 
 test("no prefetch runs while the tab is hidden or for links outside the app", async (t) => {
@@ -104,7 +104,7 @@ test("a library album prefetch matches the page query whatever its list state", 
   assert.equal(requests.length, prefetched);
 });
 
-test("an album linked by MBID prefetches its library view too", async (t) => {
+test("an album linked by MBID prefetches its library view and no metadata", async (t) => {
   const mbid = "98c84b94-3445-4dcc-ad01-9e5e3e1271e2";
   const { requests, prefetchRoute, queryClient } = await setup(t, (url) => ({
     body: url.pathname.includes("/library") ? { tracks: [], total: 0 } : { id: mbid },
@@ -112,7 +112,7 @@ test("an album linked by MBID prefetches its library view too", async (t) => {
   const { libraryViewQueryOptions } = await import("../../frontend/src/utils/libraryViewQuery.ts");
 
   await prefetchRoute(`/album/${mbid}`);
-  assert.equal(apiRequests(requests, `/artists/release-group/${mbid}`).length, 1);
+  assert.deepEqual(apiRequests(requests, "/artists/"), []);
   const prefetched = requests.length;
 
   await queryClient.fetchQuery(libraryViewQueryOptions({ preview: false, albumId: mbid }));
