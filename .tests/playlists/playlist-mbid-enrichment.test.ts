@@ -14,8 +14,7 @@ const [
   { flowPlaylistConfig },
   { downloadTracker },
   { playlistManager },
-  { playlistMbidEnrichmentQueue: queue },
-  { enrichStaticPlaylistMbids, schedulePlaylistMbidEnrichmentForMissingPlaylists },
+  { enrichStaticPlaylistMbids },
 ] = await setupIsolatedBackend(
   "playlist-mbid-enrichment",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -23,7 +22,6 @@ const [
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
-  () => import("../../backend/services/jobs/queues.ts"),
   () => import("../../backend/services/playlistMbidEnrichmentService.ts"),
 );
 
@@ -161,7 +159,7 @@ test("enrichStaticPlaylistMbids handles resolveTrackContext throwing by falling 
   assert.ok(!storedTrack.artistMbid);
 });
 
-test("enrichStaticPlaylistMbids stops retrying the same unavailable album within one sweep", async () => {
+test("enrichStaticPlaylistMbids stops retrying the same unavailable album within one run", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Unavailable album",
     tracks: ["First", "Second", "Third"].map((trackName) => ({
@@ -233,67 +231,4 @@ test("enrichStaticPlaylistMbids does not re-resolve complete tracks", async () =
 
   assert.equal(resolverCalls, 0);
   assert.equal(result.changed, false);
-});
-
-test("enrichStaticPlaylistMbids can reconcile complete tracks once when explicitly requested", async () => {
-  const playlist = flowPlaylistConfig.createStaticPlaylist({
-    name: "Needs artist repair",
-    tracks: [
-      {
-        artistName: "Radiohead",
-        trackName: "Creep",
-        artistMbid: "wrong-artist-mbid",
-        albumMbid: "pablo-honey-mbid",
-        trackMbid: "creep-mbid",
-      },
-    ],
-  });
-
-  const result = await enrichStaticPlaylistMbids(playlist.id, {
-    reconcileArtistMbids: true,
-    resolveTrackContext: async (track) =>
-      resolved(track, {
-        artistMbid: "radiohead-mbid",
-      }),
-  });
-
-  assert.equal(result.changed, true);
-  assert.equal(
-    flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks?.[0]?.artistMbid,
-    "radiohead-mbid",
-  );
-});
-
-test("startup artist reconciliation is scheduled only once", () => {
-  const playlist = flowPlaylistConfig.createStaticPlaylist({
-    name: "One-time artist repair",
-    tracks: [
-      {
-        artistName: "Radiohead",
-        trackName: "Creep",
-        artistMbid: "radiohead-mbid",
-        albumMbid: "pablo-honey-mbid",
-        trackMbid: "creep-mbid",
-      },
-    ],
-  });
-
-  const first = schedulePlaylistMbidEnrichmentForMissingPlaylists({
-    reason: "startup",
-    reconcileArtistMbids: true,
-  });
-  const second = schedulePlaylistMbidEnrichmentForMissingPlaylists({
-    reason: "startup",
-    reconcileArtistMbids: true,
-  });
-
-  const getPlaylistId = (jobId: number) => {
-    const payload = queue.getJob(jobId)?.payload;
-    return payload ? JSON.parse(payload).playlistId : undefined;
-  };
-  assert.ok(first.some((jobId) => getPlaylistId(jobId) === playlist.id));
-  assert.ok(!second.some((jobId) => getPlaylistId(jobId) === playlist.id));
-  for (const jobId of [...first, ...second]) {
-    queue.cancel(jobId);
-  }
 });

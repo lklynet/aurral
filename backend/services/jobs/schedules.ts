@@ -1,10 +1,8 @@
 import { db } from "../../config/db-sqlite.ts";
 import type { JobSchedulesRow } from "../../db/rows.ts";
 import type { EnqueueOptions } from "./queue.ts";
-import { playlistMbidEnrichmentQueue } from "./queues.ts";
 import { enqueueSystemTask, SYSTEM_TASK_SCHEDULES, systemTaskQueueFor } from "./systemTasks.ts";
 
-const HOUR = 60 * 60_000;
 const MISSED_RUN_GRACE_MS = 5 * 60_000;
 
 type FireOptions = Pick<EnqueueOptions<object>, "dedupeKey" | "priority" | "maxAttempts" | "runAt">;
@@ -38,23 +36,7 @@ function systemSchedule({
   };
 }
 
-export const SCHEDULES: Schedule[] = [
-  ...SYSTEM_TASK_SCHEDULES.map(systemSchedule),
-  {
-    name: "playlist-mbid-enrichment-sweep",
-    queue: playlistMbidEnrichmentQueue.name,
-    kind: "playlist-mbid-enrichment-sweep",
-    payload: { kind: "playlist-mbid-enrichment-sweep", reason: "schedule" },
-    intervalMs: 6 * HOUR,
-    priority: 0,
-    maxAttempts: 4,
-    fire: (options) =>
-      playlistMbidEnrichmentQueue.enqueue(
-        { kind: "playlist-mbid-enrichment-sweep", reason: "schedule" },
-        options,
-      ),
-  },
-];
+export const SCHEDULES: Schedule[] = SYSTEM_TASK_SCHEDULES.map(systemSchedule);
 
 const scheduleByName = new Map(SCHEDULES.map((schedule) => [schedule.name, schedule]));
 

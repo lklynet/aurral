@@ -1,3 +1,4 @@
+import pMap from "p-map";
 import * as v from "valibot";
 import { isOwnKey } from "../../../lib/ownKey.ts";
 import { http, isTransientNetworkError } from "../../../lib/http.ts";
@@ -125,6 +126,7 @@ const providerRequestLimiter = createRateLimiter(METADATA_REQUEST_MIN_INTERVAL_M
   maxQueue: METADATA_MAX_QUEUED_REQUESTS,
 });
 const METADATA_MAX_RETRIES = 1;
+const ALBUM_LIST_CONCURRENCY = 8;
 
 export function clearMetadataProviderCaches() {
   metadataHotCache.flushAll();
@@ -607,7 +609,11 @@ async function request<Schema extends v.GenericSchema>(
   schema: Schema,
   path: string,
   params: MetadataParams = {},
-  { signal, forceRefresh = false }: MetadataRequestOptions = {},
+  {
+    signal,
+    forceRefresh = false,
+    keepStale,
+  }: MetadataRequestOptions & { keepStale?: (value: v.InferOutput<Schema>) => boolean } = {},
 ): Promise<v.InferOutput<Schema>> {
   const baseUrl = getMetadataBaseUrl();
   const cacheKey = `${baseUrl}${path}:${JSON.stringify(params)}`;
@@ -616,7 +622,7 @@ async function request<Schema extends v.GenericSchema>(
   }
   const cached = await readCachedMetadata(cacheKey, schema);
   if (cached && !forceRefresh) {
-    if (cached.stale) {
+    if (cached.stale && !keepStale?.(cached.value)) {
       void refreshMetadata(schema, cacheKey, path, params, { fallbackValue: cached.value }).catch(
         () => {},
       );
@@ -960,6 +966,13 @@ export async function resolveAlbumByArtistAndTitle({
   return null;
 }
 
+// A release date in the past does not change, so a list that reads an album
+// for its date takes a cached one at any age instead of refreshing it.
+function wasReleased(album: v.InferOutput<typeof albumSchema>) {
+  const date = String(album.releasedate || "").trim();
+  return date !== "" && date < new Date().toISOString().slice(0, date.length);
+}
+
 export async function listArtistAlbums(
   artistMbid: string,
   {
@@ -1000,22 +1013,18 @@ export async function listArtistAlbums(
     Number.isFinite(Number(hydrateLimit)) && Number(hydrateLimit) >= 0
       ? Math.min(100, Math.floor(Number(hydrateLimit)))
       : 30;
-  await Promise.all(
-    albums.slice(0, safeHydrateLimit).map(async (album) => {
+  await pMap(
+    albums.slice(0, safeHydrateLimit),
+    async (album) => {
       try {
-        const needsDate = !album.firstReleaseDate;
-        const needsRating = includeTrackCounts;
-        if (!needsDate && !needsRating) return;
-
-        const hydrated = await getAlbumByMbid(album.id, { signal });
-        if (needsDate) {
-          album.firstReleaseDate = hydrated.releaseDate || album.firstReleaseDate;
-        }
-        if (needsRating) {
-          album.rating = hydrated.rating || null;
-        }
+        const hydrated = toNormalizedAlbum(
+          await request(albumSchema, `/album/${album.id}`, {}, { signal, keepStale: wasReleased }),
+        );
+        album.firstReleaseDate = hydrated.releaseDate;
+        if (includeTrackCounts) album.rating = hydrated.rating || null;
       } catch {}
-    }),
+    },
+    { concurrency: ALBUM_LIST_CONCURRENCY },
   );
 
   return albums.map((album) => ({
