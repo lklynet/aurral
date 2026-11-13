@@ -78,12 +78,13 @@ volumes:
 # Navidrome
 environment:
   ND_DATAFOLDER: /config
+  ND_CONFIGFILE: /config/navidrome.toml
 volumes:
   - /srv/media:/data:ro
   - ./navidrome:/config
 ```
 
-Navidrome keeps its database in `/data` by default. `ND_DATAFOLDER` moves it out of the media mount, so Navidrome never scans its own database.
+Navidrome keeps its database in `/data` by default. `ND_DATAFOLDER` moves it out of the media mount, so Navidrome never scans its own database. If Navidrome already has a data folder, mount that folder at `/config` to keep your users and playlists.
 
 ### Setup
 

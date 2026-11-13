@@ -121,6 +121,7 @@ services:
   navidrome:
     environment:
       ND_DATAFOLDER: /config
+      ND_CONFIGFILE: /config/navidrome.toml
     volumes:
       - ${MEDIA_ROOT:-/srv/media}:/data:ro
       - ./navidrome:/config
