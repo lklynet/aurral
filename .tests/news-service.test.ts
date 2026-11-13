@@ -3,7 +3,7 @@ import { signedInAs } from "./helpers/honoApp.ts";
 import { testUser } from "./helpers/userFixtures.ts";
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
-import { http } from "../lib/http.ts";
+import { http, type HttpResponse } from "../lib/http.ts";
 import {
   cleanupIsolatedState,
   resetDatabase,
@@ -30,7 +30,8 @@ const [
   () => import("../backend/services/inboxService.ts"),
 );
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 const TAGGED_FEED = "https://tagged.test/feed";
 const UNTAGGED_FEED = "https://untagged.test/feed";
 
@@ -141,7 +142,9 @@ test("fetches RSS feed articles under the feed's configured name", async () => {
     data: '<feed><title>Feed Name</title><entry><title>Artist One news</title><link href="https://example.test/story"/><summary>News</summary></entry></feed>',
   }));
 
-  const [article] = await rssNews.fetchRssFeed({ name: "Feed", url: "https://example.test/rss" });
+  const {
+    articles: [article],
+  } = await rssNews.fetchRssFeed({ name: "Feed", url: "https://example.test/rss" });
   assert.ok(article);
   assert.equal(article.title, "Artist One news");
   assert.equal(article.url, "https://example.test/story");
@@ -234,7 +237,7 @@ test("keeps stories after they leave a feed and shows new matches right after a 
   assert.deepEqual(await getTitles(), ["Wet Leg announce tour"]);
 
   responses[UNTAGGED_FEED] = rss([story("Wet Leg share new single")]);
-  await newsService.refreshNewsFeeds();
+  await newsService.refreshNewsFeeds(Date.now() + 4 * HOUR_MS);
 
   assert.deepEqual(await getTitles(), ["Wet Leg share new single", "Wet Leg announce tour"]);
 });
@@ -268,18 +271,19 @@ test("pages through matched stories", async (t) => {
   assert.equal(second.hasMore, false);
 });
 
-test("keeps cached stories and warns when every feed fails", async (t) => {
+test("keeps cached stories, warns when every feed fails, and backs off a failing feed", async (t) => {
   configureFeeds([UNTAGGED_FEED]);
   const responses: Record<string, string> = { [UNTAGGED_FEED]: rss([story("Cached story")]) };
-  serveFeeds(t, responses);
-  await newsService.refreshNewsFeeds();
+  const requests = serveFeeds(t, responses);
+  const start = Date.now();
+  await newsService.refreshNewsFeeds(start);
   assert.equal(
     (await newsService.getNewsForUser({ userId: null, mode: "top" })).refresh.warning,
     null,
   );
 
   delete responses[UNTAGGED_FEED];
-  await newsService.refreshNewsFeeds();
+  await newsService.refreshNewsFeeds(start + 4 * HOUR_MS);
   const result = await newsService.getNewsForUser({ userId: null, mode: "top" });
 
   assert.deepEqual(
@@ -287,6 +291,46 @@ test("keeps cached stories and warns when every feed fails", async (t) => {
     ["Cached story"],
   );
   assert.match(requireFixture(result.refresh.warning), /could not be refreshed/);
+
+  responses[UNTAGGED_FEED] = rss([story("Cached story")]);
+  await newsService.refreshNewsFeeds(start + 9 * HOUR_MS);
+  assert.equal(requests.mock.calls.length, 2);
+});
+
+test("checks a feed every few hours and sends its validators so an unchanged feed returns 304", async () => {
+  configureFeeds([UNTAGGED_FEED]);
+  const lastModified = "Fri, 13 Nov 2026 16:25:07 GMT";
+  const requests: (Record<string, string> | undefined)[] = [];
+  vi.spyOn(http, "get").mockImplementation(async (_url, options) => {
+    requests.push(options?.headers);
+    const notModified: HttpResponse = {
+      status: 304,
+      statusText: "Not Modified",
+      headers: {},
+      data: "",
+    };
+    if (requests.length > 1) return notModified;
+    return {
+      status: 200,
+      statusText: "OK",
+      headers: { etag: '"v1"', "last-modified": lastModified },
+      data: rss([story("Cached story")]),
+    };
+  });
+  const start = Date.now();
+
+  await newsService.refreshNewsFeeds(start);
+  await newsService.refreshNewsFeeds(start + HOUR_MS);
+  assert.equal(requests.length, 1);
+
+  await newsService.refreshNewsFeeds(start + 4 * HOUR_MS);
+  await newsService.refreshNewsFeeds(start + 8 * HOUR_MS);
+  assert.equal(requests.length, 3);
+  for (const headers of requests.slice(1)) {
+    assert.equal(headers?.["If-None-Match"], '"v1"');
+    assert.equal(headers?.["If-Modified-Since"], lastModified);
+  }
+  assert.deepEqual(await getTitles({ mode: "top" }), ["Cached story"]);
 });
 
 test("looks up a missing story image once", async () => {
@@ -311,7 +355,7 @@ test("looks up a missing story image once", async () => {
   });
 
   await newsService.refreshNewsFeeds();
-  await newsService.refreshNewsFeeds();
+  await newsService.refreshNewsFeeds(Date.now() + 4 * HOUR_MS);
   const [article] = (await newsService.getNewsForUser({ userId: null, mode: "top" })).articles;
   assert.ok(article);
 
