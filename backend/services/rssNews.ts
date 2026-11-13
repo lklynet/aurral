@@ -102,14 +102,29 @@ export const parseRssFeed = (xml: string, feed: RssFeedInput) => {
     .map((item) => normalizeRssArticle(item, source));
 };
 
-export async function fetchRssFeed(feed: RssFeedInput, { signal }: { signal?: AbortSignal } = {}) {
+type FeedValidators = { etag?: string; lastModified?: string };
+
+export async function fetchRssFeed(
+  feed: RssFeedInput,
+  { signal, etag, lastModified }: FeedValidators & { signal?: AbortSignal } = {},
+) {
   const response = await http.get(feed.url, {
     publicOnly: true,
     signal,
     timeoutMs: 10000,
-    headers: { Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml" },
+    okStatus: (status) => (status >= 200 && status < 300) || status === 304,
+    headers: {
+      Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml",
+      ...(etag && { "If-None-Match": etag }),
+      ...(lastModified && { "If-Modified-Since": lastModified }),
+    },
   });
-  return parseRssFeed(String(response.data || ""), feed);
+  const notModified = response.status === 304;
+  return {
+    articles: notModified ? [] : parseRssFeed(String(response.data || ""), feed),
+    etag: response.headers.etag || (notModified ? etag : undefined),
+    lastModified: response.headers["last-modified"] || (notModified ? lastModified : undefined),
+  };
 }
 
 export async function fetchArticleImage(articleUrl: string) {

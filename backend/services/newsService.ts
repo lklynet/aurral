@@ -12,7 +12,10 @@ import createCache from "./apiClients/simpleCache.ts";
 import type { NewsArticlesRow } from "../db/rows.ts";
 
 const REFRESH_STATE_KEY = "news:refreshState";
-const ARTICLE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+const ARTICLE_TTL_MS = 30 * 24 * HOUR_MS;
+const FEED_CHECK_INTERVAL_MS = 3 * HOUR_MS;
+const MAX_FEED_BACKOFF_MS = 24 * HOUR_MS;
 const MAX_ARTICLES = 5000;
 const MAX_IMAGE_LOOKUPS = 40;
 
@@ -69,6 +72,29 @@ export function invalidateNewsResponseCache() {
 }
 
 type NewsFeed = ReturnType<typeof getEnabledFeeds>[number];
+
+const refreshStateSchema = v.looseObject({
+  checkedAt: v.optional(v.number()),
+  feeds: v.optional(
+    v.record(
+      v.string(),
+      v.object({
+        etag: v.optional(v.string()),
+        lastModified: v.optional(v.string()),
+        nextCheckAt: v.number(),
+        failures: v.number(),
+      }),
+    ),
+    {},
+  ),
+});
+
+const readRefreshState = () =>
+  dbOps.getJSONSetting(REFRESH_STATE_KEY, refreshStateSchema) ?? { feeds: {} };
+
+const nextFeedCheckAt = (now: number, failures: number) =>
+  now +
+  Math.min(FEED_CHECK_INTERVAL_MS * 2 ** failures * (1 + Math.random() / 4), MAX_FEED_BACKOFF_MS);
 
 const getEnabledFeeds = (settings: ReturnType<typeof getNewsSettings>) =>
   settings.enabled
@@ -202,20 +228,16 @@ export async function getNewsForUser({
 } = {}) {
   const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 60)));
   const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
-  const feedUrls = getEnabledFeeds(getNewsSettings()).map((feed) => feed.url);
+  const feeds = getEnabledFeeds(getNewsSettings());
+  const feedUrls = feeds.map((feed) => feed.url);
   const matches = await getArticleMatches(userId);
   const ids = selectActiveArticleIds.all(JSON.stringify(feedUrls)).map((row) => row.id);
   const candidates = mode === "top" ? ids : ids.filter((id) => matches.has(id));
   const pageIds = candidates.slice(safeOffset, safeOffset + safeLimit);
-  const state =
-    dbOps.getJSONSetting(
-      REFRESH_STATE_KEY,
-      v.looseObject({
-        checkedAt: v.optional(v.number()),
-        failedFeeds: v.optional(v.array(v.string())),
-        allFailed: v.optional(v.boolean()),
-      }),
-    ) || {};
+  const state = readRefreshState();
+  const failedFeeds = feeds
+    .filter((feed) => (state.feeds[feed.url]?.failures ?? 0) > 0)
+    .map((feed) => feed.name);
   return {
     articles: selectArticlesByIds
       .all(JSON.stringify(pageIds))
@@ -223,8 +245,11 @@ export async function getNewsForUser({
     hasMore: safeOffset + safeLimit < candidates.length,
     refresh: {
       checkedAt: state.checkedAt || null,
-      failedFeeds: Array.isArray(state.failedFeeds) ? state.failedFeeds : [],
-      warning: state.allFailed ? "RSS feeds could not be refreshed. Showing cached stories." : null,
+      failedFeeds,
+      warning:
+        feeds.length > 0 && failedFeeds.length === feeds.length
+          ? "RSS feeds could not be refreshed. Showing cached stories."
+          : null,
     },
   };
 }
@@ -244,21 +269,37 @@ async function lookupMissingImages() {
   })();
 }
 
-export async function refreshNewsFeeds() {
+export async function refreshNewsFeeds(now = Date.now()) {
   const settings = getNewsSettings();
-  const feeds = getEnabledFeeds(settings);
-  const results = await mapWithConcurrency(feeds, 3, async (feed: NewsFeed) => {
+  const state = readRefreshState();
+  const dueFeeds = getEnabledFeeds(settings).filter(
+    (feed) => (state.feeds[feed.url]?.nextCheckAt ?? 0) <= now,
+  );
+  if (dueFeeds.length === 0) return;
+  const results = await mapWithConcurrency(dueFeeds, 3, async (feed: NewsFeed) => {
     try {
-      return { feed, articles: await fetchRssFeed(feed) };
+      return { feed, fetched: await fetchRssFeed(feed, state.feeds[feed.url]) };
     } catch {
-      return { feed, articles: null };
+      return { feed, fetched: null };
     }
   });
-  const now = Date.now();
+  const configuredUrls = new Set(settings.feeds.map((feed) => feed.url));
+  const feedStates = Object.fromEntries(
+    Object.entries(state.feeds).filter(([url]) => configuredUrls.has(url)),
+  );
+  for (const { feed, fetched } of results) {
+    const previous = state.feeds[feed.url];
+    const failures = fetched ? 0 : (previous?.failures ?? 0) + 1;
+    feedStates[feed.url] = {
+      etag: fetched ? fetched.etag : previous?.etag,
+      lastModified: fetched ? fetched.lastModified : previous?.lastModified,
+      nextCheckAt: nextFeedCheckAt(now, failures),
+      failures,
+    };
+  }
   const oldestPublishedAt = now - ARTICLE_TTL_MS;
-  const failedFeeds = results.filter((result) => !result.articles).map(({ feed }) => feed.name);
   db.transaction(() => {
-    for (const article of results.flatMap((result) => result.articles || [])) {
+    for (const article of results.flatMap((result) => result.fetched?.articles || [])) {
       const publishedAt = Math.min(new Date(article.publishedAt || now).getTime() || now, now);
       if (publishedAt < oldestPublishedAt) continue;
       upsertArticle.run({
@@ -273,11 +314,7 @@ export async function refreshNewsFeeds() {
       JSON.stringify(settings.feeds.map((feed) => feed.url)),
     );
     trimArticles.run(MAX_ARTICLES);
-    dbOps.setJSONSetting(REFRESH_STATE_KEY, {
-      checkedAt: now,
-      failedFeeds,
-      allFailed: feeds.length > 0 && failedFeeds.length === feeds.length,
-    });
+    dbOps.setJSONSetting(REFRESH_STATE_KEY, { checkedAt: now, feeds: feedStates });
   })();
   await lookupMissingImages();
   invalidateNewsResponseCache();
