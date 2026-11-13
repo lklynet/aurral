@@ -82,17 +82,35 @@ export async function syncStaticPlaylistImportHere({
   const ownerUserId = playlist.ownerUserId ?? user?.id;
   try {
     const externalPlaylistId = String(playlist.importSource?.externalId || "").trim();
-    const {
-      tracks,
-      stats,
-      excluded = [],
-      artworkUrl,
-    } = await requireImportList(playlist.importSource.provider).fetch({
-      userId: ownerUserId,
-      externalId: externalPlaylistId,
-      externalUsername: playlist.importSource?.externalUsername,
-      forceRefresh: true,
-    });
+    const list = requireImportList(playlist.importSource.provider);
+    const source = await list
+      .fetch({
+        userId: ownerUserId,
+        externalId: externalPlaylistId,
+        externalUsername: playlist.importSource?.externalUsername,
+        forceRefresh: true,
+      })
+      .catch((error: unknown) => {
+        if (list.rotating && asAppError(error)?.code === "PLAYLIST_NOT_FOUND") return null;
+        throw error;
+      });
+    if (!source) {
+      flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
+        importSource: {
+          ...playlist.importSource,
+          lastSyncAt: Date.now(),
+          lastSyncFailedAt: null,
+          lastSyncError: null,
+        },
+      });
+      logger.info("playlist-import", "Playlist source is empty for now, so its tracks stay", {
+        provider: playlist.importSource.provider,
+        playlistId: playlist.id,
+        externalPlaylistId,
+      });
+      return { skipped: true, reason: "source-empty" };
+    }
+    const { tracks, stats, excluded = [], artworkUrl } = source;
     const syncImportSource = {
       ...(artworkUrl && { artworkUrl }),
       lastSyncAt: Date.now(),

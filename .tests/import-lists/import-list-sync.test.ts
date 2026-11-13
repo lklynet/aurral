@@ -356,6 +356,23 @@ test("a synced Aurral share follows the sender's latest snapshot until they stop
   );
 });
 
+test("a synced mix keeps its tracks without an error while its slot is empty", async () => {
+  const errors = vi.spyOn(logger, "error").mockImplementation(() => {});
+  vi.spyOn(logger, "info").mockImplementation(() => {});
+  const playlist = createSyncedPlaylist("Best of Gone", 7, "aurral-mix", "artist-999");
+
+  await runScheduledSync();
+
+  const kept = flowPlaylistConfig.getStaticPlaylist(playlist.id);
+  assert.deepEqual(
+    kept?.tracks.map((track) => track.trackName),
+    [oldTrack.trackName],
+  );
+  assert.equal(kept?.importSource?.lastSyncError, null);
+  assert.ok(Number(kept?.importSource?.lastSyncAt) > lastSyncAt);
+  assert.equal(errors.mock.calls.length, 0);
+});
+
 test("a sync keeps the IDs Aurral already found for tracks still in the playlist", async () => {
   const info = vi.spyOn(logger, "info").mockImplementation(() => {});
   connectSpotify(7, "working-token");

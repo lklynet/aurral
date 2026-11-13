@@ -32,7 +32,7 @@ export function getImportedProviderLogo(provider: string | null | undefined) {
   if (provider === "youtube-music-playlist") return youtubeMusicLogo;
   if (provider === "deezer-playlist") return deezerLogo;
   if (provider === "spotify-playlist") return spotifyLogo;
-  if (provider === "aurral-share") return "/arralogo.svg";
+  if (String(provider || "").startsWith("aurral-")) return "/arralogo.svg";
   return null;
 }
 

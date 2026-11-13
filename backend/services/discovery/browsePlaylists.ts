@@ -1,10 +1,6 @@
-import { randomUUID } from "crypto";
 import * as v from "valibot";
 import { db } from "../../config/db-sqlite.ts";
 import { toQueueTracks } from "../queueTracks.ts";
-import { playlistOperationQueue } from "../playlists/playlistOperationQueue.ts";
-import { normalizePlaylistTrack } from "../playlists/playlistTracks.ts";
-import { resolveLibraryTracks } from "../libraryTrackLookup.ts";
 import {
   getDiscoveryPlaylist,
   getDiscoveryPlaylists,
@@ -12,16 +8,22 @@ import {
 } from "./discoveryPlaylists.ts";
 import {
   addEditorialPlaylistToLibrary,
+  addSyncedPlaylist,
+  findLibraryPlaylist,
   getEditorialPlaylist,
   getEditorialShelf,
-  pickAvailableName,
 } from "./editorialPlaylists.ts";
+import { getAurralPlaylist, importAurralPlaylist, withOwnedTracks } from "./aurralPlaylists.ts";
 import { getUserMix, getUserMixes, type Mix } from "./mixes.ts";
 import { browseCoverTemplate, browseCoverUrl, type BrowseCover } from "./browseCovers.ts";
-import { BROWSE_PROVIDERS, type BrowseProvider } from "../../../lib/browsePlaylists.ts";
+import {
+  BROWSE_IMPORT_PROVIDERS,
+  BROWSE_PROVIDERS,
+  type BrowseProvider,
+} from "../../../lib/browsePlaylists.ts";
 import { getDeezerArtistPlaylists, type ShelfScope } from "../importLists/deezerPlaylists.ts";
 import type { RequestUser } from "../../middleware/requestUser.ts";
-import type { LibraryArtistsRow, LibraryMediaFilesRow } from "../../db/rows.ts";
+import type { LibraryArtistsRow } from "../../db/rows.ts";
 
 export const browseProviderSchema = v.picklist(BROWSE_PROVIDERS);
 
@@ -36,41 +38,6 @@ type BrowsePlaylist = {
   artworkUrl: string | null;
   trackCount: number;
 };
-
-type QueueTrack = ReturnType<typeof toQueueTracks>[number];
-
-const notFound = (message: string) =>
-  Object.assign(new Error(message), { statusCode: 404, code: "PLAYLIST_NOT_FOUND" });
-
-const fromQueueTrack = (track: QueueTrack) => ({
-  artistName: track.artist,
-  trackName: track.title,
-  albumName: track.album,
-  durationMs: track.durationMs,
-  preview_url: null,
-  artworkUrl: track.artworkUrl,
-  deezerAlbumId: null,
-  owned: track,
-});
-
-function withOwnedTracks(tracks: CatalogTrack[]) {
-  const matches = resolveLibraryTracks(tracks);
-  const owned = new Map(
-    toQueueTracks(matches.flatMap((match) => (match ? [match.track.id] : []))).map((track) => [
-      track.libraryTrackId,
-      track,
-    ]),
-  );
-  return tracks.map((track, index) => {
-    const match = matches[index];
-    return { ...track, owned: (match && owned.get(match.track.id)) || null };
-  });
-}
-
-const ownedFileStmt = db.prepare<[number, number], Pick<LibraryMediaFilesRow, "path">>(
-  `SELECT path FROM library_media_files
-   WHERE track_id = ? AND album_id = ? AND available = 1 AND source != 'flow' LIMIT 1`,
-);
 
 const artistStmt = db.prepare<[number], Pick<LibraryArtistsRow, "name" | "mbid">>(
   "SELECT name, mbid FROM library_artists WHERE id = ?",
@@ -170,64 +137,28 @@ export async function getBrowsePlaylist(user: RequestUser, provider: BrowseProvi
     const playlist = await getEditorialPlaylist(user, id);
     return { ...playlist, provider, tracks: withOwnedTracks(playlist.tracks) };
   }
-  if (provider === "discovery") {
-    const playlist = getDiscoveryPlaylist(user.id, id);
-    if (!playlist) throw notFound("This playlist isn't available anymore");
-    return {
-      provider,
-      id: playlist.id,
-      name: playlist.name,
-      description: playlist.description,
-      curator: AURRAL,
-      artworkUrl: browseCoverUrl(provider, playlist.id, discoveryCover(playlist)),
-      tracks: withOwnedTracks(playlist.tracks),
-      libraryPlaylistId: null,
-    };
-  }
-  const mix = await getUserMix(user.id, id);
-  if (!mix) throw notFound("This mix isn't available anymore");
-  const tracks = toQueueTracks(mix.trackIds).map(fromQueueTrack);
-  const [cover] = mixCovers([mix]);
+  const playlist = await getAurralPlaylist(provider, user.id, id);
+  const cover =
+    playlist.provider === "discovery" ? discoveryCover(playlist) : mixCovers([playlist])[0];
   return {
     provider,
-    id: mix.id,
-    name: mix.name,
-    description: mix.description,
+    id: playlist.id,
+    name: playlist.name,
+    description: playlist.description,
     curator: AURRAL,
-    artworkUrl: cover ? browseCoverUrl(provider, mix.id, cover) : null,
-    tracks,
-    libraryPlaylistId: null,
+    artworkUrl: cover ? browseCoverUrl(provider, playlist.id, cover) : null,
+    tracks: playlist.tracks,
+    libraryPlaylistId:
+      findLibraryPlaylist(user.id, id, BROWSE_IMPORT_PROVIDERS[provider])?.id || null,
   };
 }
 
 export async function saveBrowsePlaylist(user: RequestUser, provider: BrowseProvider, id: string) {
   if (provider === "deezer") return addEditorialPlaylistToLibrary(user, id);
-  const playlist = await getBrowsePlaylist(user, provider, id);
-  const name = pickAvailableName(user.id, playlist.name, AURRAL);
-  const playlistId = randomUUID();
-  const tracks = playlist.tracks.flatMap((track) => {
-    const normalized = normalizePlaylistTrack(track);
-    if (!normalized) return [];
-    const file =
-      track.owned && ownedFileStmt.get(track.owned.libraryTrackId, track.owned.libraryAlbumId);
-    return [file ? { ...normalized, path: file.path } : normalized];
-  });
-  await playlistOperationQueue.enqueuePayload({
-    kind: "static-playlist-create",
-    label: "static-playlist:create",
-    playlistId,
-    name,
+  return addSyncedPlaylist(user, {
+    provider: BROWSE_IMPORT_PROVIDERS[provider],
+    externalId: id,
     sourceName: AURRAL,
-    description: playlist.description,
-    tracks,
-    ownerUserId: user.id,
-    downloadMissing: provider === "discovery",
+    load: () => importAurralPlaylist(provider, user.id, id),
   });
-  return {
-    playlistId,
-    name,
-    alreadyAdded: false as const,
-    tracksQueued:
-      provider === "discovery" ? playlist.tracks.filter((track) => !track.owned).length : 0,
-  };
 }

@@ -57,7 +57,7 @@ export default function DiscoverPlaylistsPage() {
     .filter((category) => category.group === "decade")
     .flatMap((category) => category.playlists.slice(0, 1));
   const loading = madeForYou.isPending || shelf.isPending;
-  const lead = madeForYou.data?.discovery[0] ?? shelf.data?.forYou[0] ?? browse[0]?.playlists[0];
+  const lead = madeForYou.data?.playlists[0] ?? shelf.data?.forYou[0] ?? browse[0]?.playlists[0];
   const tint = useCollectionTint(resolveAuthenticatedApiAssetUrl(lead?.artworkUrl));
 
   return (
@@ -66,7 +66,11 @@ export default function DiscoverPlaylistsPage() {
       style={tint ? { "--collection-tint": tint } : undefined}
     >
       <h1 className="page-title discover-playlists-page__title">Playlists</h1>
-      <DiscoverPlaylistSection title="Made for you" playlists={madeForYou.data?.discovery} />
+      <DiscoverPlaylistSection
+        title="Made for you"
+        playlists={madeForYou.data?.playlists}
+        viewAllTo={playlistCategoryPath("made-for-you")}
+      />
       <DiscoverPlaylistSection
         title="Your genres"
         playlists={shelf.data?.forYou}

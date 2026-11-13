@@ -349,13 +349,11 @@
   },
   "subsonic playlists": {
     "queries": {
-      "cold": 129,
+      "cold": 49,
       "warm": 49
     },
-    "bytes": 431712,
-    "scans": [
-      "library_artists"
-    ]
+    "bytes": 417280,
+    "scans": []
   },
   "subsonic edit playlist": {
     "queries": {

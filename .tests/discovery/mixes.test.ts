@@ -4,17 +4,25 @@ import { beforeEach, test, vi } from "vite-plus/test";
 import { resetDatabase, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 
-const [, { db }, store, { getUserMixes, clearUserMixes }, subsonic, browse, covers, operations] =
-  await setupIsolatedBackend(
-    "discovery-mixes",
-    () => import("../../backend/config/db-sqlite.ts"),
-    () => import("../../backend/services/libraryMediaStore.ts"),
-    () => import("../../backend/services/discovery/mixes.ts"),
-    () => import("../../backend/services/subsonicLibraryService.ts"),
-    () => import("../../backend/services/discovery/browsePlaylists.ts"),
-    () => import("../../backend/services/discovery/browseCovers.ts"),
-    () => import("../../backend/services/playlists/playlistOperationQueue.ts"),
-  );
+const [
+  ,
+  { db },
+  store,
+  { getUserMixes, clearUserMixes },
+  browse,
+  covers,
+  operations,
+  { requireImportList },
+] = await setupIsolatedBackend(
+  "discovery-mixes",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/discovery/mixes.ts"),
+  () => import("../../backend/services/discovery/browsePlaylists.ts"),
+  () => import("../../backend/services/discovery/browseCovers.ts"),
+  () => import("../../backend/services/playlists/playlistOperationQueue.ts"),
+  () => import("../../backend/services/importLists/importPlaylist.ts"),
+);
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.UTC(2026, 10, 5, 12);
@@ -127,15 +135,17 @@ test("listening mixes rank Library tracks by when and how often they were played
   assert.equal(drawn, reused);
   assert.ok((await fs.stat(drawn)).size > 0);
 
-  const repeat = await subsonic.getSubsonicMixPlaylist("mix:on-repeat", testUser(userId));
-  assert.equal(repeat?.entry[0]?.title, "Boards 0");
-  await assert.rejects(
-    subsonic.updateSubsonicPlaylist(testUser(userId), { playlistId: "mix:on-repeat", name: "x" }),
-    { code: "SUBSONIC_PLAYLIST_READ_ONLY" },
-  );
-
+  vi.spyOn(Date, "now").mockReturnValue(NOW);
   const enqueue = vi.spyOn(operations.playlistOperationQueue, "enqueuePayload");
   await browse.saveBrowsePlaylist(testUser(userId), "mix", "on-repeat");
+  assert.partialDeepStrictEqual(enqueue.mock.calls[0]?.[0], {
+    importSource: {
+      provider: "aurral-mix",
+      externalId: "on-repeat",
+      syncEnabled: true,
+      keepRemovedTracks: true,
+    },
+  });
   const saved = enqueue.mock.calls[0]?.[0]?.tracks;
   assert.ok(Array.isArray(saved));
   assert.deepEqual(
@@ -144,6 +154,11 @@ test("listening mixes rank Library tracks by when and how often they were played
       .map((track) => (track && typeof track === "object" && "path" in track ? track.path : null)),
     ["/music/Boards/0.flac", "/music/Boards/1.flac"],
   );
+
+  caribou.tracks.forEach((track) => play(String(track.id), track.title, "Caribou", 30, 1));
+  clearUserMixes();
+  const synced = await requireImportList("aurral-mix").fetch({ userId, externalId: "on-repeat" });
+  assert.equal(synced.tracks[0]?.artistName, "Caribou");
 });
 
 test("Daily Mixes group the most played artists by shared genre", async () => {

@@ -11,6 +11,7 @@ import {
   youtubeMusicPlaylistClient,
 } from "./youtubeMusicPlaylists.ts";
 import { getDeezerPlaylist } from "./deezerPlaylists.ts";
+import { importAurralPlaylist } from "../discovery/aurralPlaylists.ts";
 import { normalizeImportSource } from "../playlists/flowPlaylistConfig.ts";
 import { normalizePlaylistTrack, type PlaylistTrack } from "../playlists/playlistTracks.ts";
 import { loadRemoteShare } from "../shareLinks/remote.ts";
@@ -57,9 +58,12 @@ type ImportReference = {
 
 // A source Aurral imports playlists from, natively or through a plugin.
 // Sync skips a source that needs an account the owner has disconnected.
+// A rotating source fills slots that empty and refill, so while a slot is
+// empty its synced playlist keeps the tracks it has.
 export type ImportList = {
   label: string;
   sync: boolean;
+  rotating?: boolean;
   isConnected?: (userId: number) => boolean;
   fetch: (reference: ImportReference) => Promise<ImportedPlaylist>;
 };
@@ -118,6 +122,14 @@ const nativeImportLists = {
   },
   "deezer-playlist": {
     fetch: async ({ externalId }) => ({ ...(await getDeezerPlaylist(externalId)), id: externalId }),
+  },
+  "aurral-discovery": {
+    rotating: true,
+    fetch: ({ userId, externalId }) => importAurralPlaylist("discovery", userId, externalId),
+  },
+  "aurral-mix": {
+    rotating: true,
+    fetch: ({ userId, externalId }) => importAurralPlaylist("mix", userId, externalId),
   },
   "aurral-share": {
     fetch: async ({ externalId }) => {
