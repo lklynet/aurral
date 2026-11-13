@@ -1,8 +1,15 @@
 import { test, vi } from "vite-plus/test";
+import { testClient } from "hono/testing";
 import assert from "node:assert/strict";
 import { http } from "../../lib/http.ts";
 
-import { buildShowsResponseCacheKey } from "../../backend/routes/discovery/handlers/shows.ts";
+import showsApp, {
+  buildShowsResponseCacheKey,
+} from "../../backend/routes/discovery/handlers/shows.ts";
+import { dbOps } from "../../backend/db/helpers/index.ts";
+import { reloadDiscoveryPersistedCache } from "../../backend/services/discovery/persistence.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import {
   getArtistShows,
   getNearbyShows,
@@ -271,9 +278,10 @@ test("searches Ticketmaster by postal code when the location has no coordinates"
   );
 });
 
-test("matches shows from every Ticketmaster results page, not just the nearest", async (t: import("vite-plus/test").TestContext) => {
+test("matches shows from every Ticketmaster results page in the near and later date windows", async (t: import("vite-plus/test").TestContext) => {
   withTicketmasterKey(t);
-  const requestedPages: unknown[] = [];
+  const windowStarts: unknown[] = [];
+  const requestedPages: [number, number][] = [];
   vi.spyOn(http, "get").mockImplementation(async (url, options = {}) => {
     if (url.includes("zippopotam")) {
       return ok({
@@ -281,8 +289,22 @@ test("matches shows from every Ticketmaster results page, not just the nearest",
       });
     }
     if (url.includes("ticketmaster.com")) {
+      const start = options.query?.startDateTime;
+      if (!windowStarts.includes(start)) windowStarts.push(start);
+      const window = windowStarts.indexOf(start);
       const page = Number(options.query?.page);
-      requestedPages.push(page);
+      requestedPages.push([window, page]);
+      if (window === 1) {
+        return ok({
+          _embedded: {
+            events: [
+              ticketmasterEvent("festival", "2027-05-07", ["Library Band", "Far Band"]),
+              ticketmasterEvent("far", "2026-11-05", ["Far Band"]),
+            ],
+          },
+          page: { number: 0, totalPages: 1 },
+        });
+      }
       const events = [
         [ticketmasterEvent("nearby", "2026-11-03", ["Library Band"])],
         [ticketmasterEvent("filler", "2026-11-04", ["Someone Else"])],
@@ -300,9 +322,51 @@ test("matches shows from every Ticketmaster results page, not just the nearest",
 
   assert.deepEqual(
     result.shows.map(({ id }) => id),
-    ["nearby", "far"],
+    ["nearby", "far", "festival"],
   );
-  assert.deepEqual(requestedPages, [0, 1, 2]);
+  assert.deepEqual(requestedPages, [
+    [0, 0],
+    [0, 1],
+    [0, 2],
+    [1, 0],
+  ]);
+});
+
+test("matches shows for every recommended and trending artist, not just the top of the list", async (t: import("vite-plus/test").TestContext) => {
+  withTicketmasterKey(t);
+  const recommended = Array.from({ length: 30 }, (_, index) => `Recommended ${index + 1}`);
+  const trending = Array.from({ length: 20 }, (_, index) => `Trending ${index + 1}`);
+  dbOps.updateDiscoveryCache({
+    recommendations: recommended.map((name) => ({ name })),
+    globalTop: trending.map((name) => ({ name })),
+  });
+  reloadDiscoveryPersistedCache();
+  vi.spyOn(http, "get").mockImplementation(async (url) => {
+    if (url.includes("zippopotam")) {
+      return ok({ places: [{ "place name": "Chicago", latitude: "41.88", longitude: "-87.62" }] });
+    }
+    if (url.includes("ticketmaster.com")) {
+      return ok({
+        _embedded: {
+          events: [...recommended, ...trending].map((name) =>
+            ticketmasterEvent(name, "2026-11-03", [name]),
+          ),
+        },
+      });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  });
+
+  const response = await testClient(signedInAs(testUser(31)).route("/", showsApp))[
+    "nearby-shows"
+  ].$get({ query: { zip: "60601", country: "US" } });
+  const body = await response.json();
+  assert.ok("shows" in body);
+
+  assert.deepEqual(
+    body.shows.flatMap(({ artistNames }) => artistNames).sort(),
+    [...recommended, ...trending].sort(),
+  );
 });
 
 test("lists an artist's own dates and pins the nearest one within the search radius", async (t: import("vite-plus/test").TestContext) => {
