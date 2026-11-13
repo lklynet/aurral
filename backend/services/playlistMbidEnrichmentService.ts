@@ -1,4 +1,3 @@
-import * as v from "valibot";
 import { staticPlaylistJobs } from "./playlists/playlistJobs.ts";
 import { playlistMbidEnrichmentQueue } from "./jobs/queues.ts";
 import {
@@ -16,11 +15,8 @@ import {
   tracksShareMembership,
   type PlaylistTrack,
 } from "./playlists/playlistTracks.ts";
-import { dbOps } from "../db/helpers/index.ts";
 
 const PLAYLIST_MBID_ENRICHMENT_DELAY_SECONDS = 20;
-const ARTIST_MBID_RECONCILIATION_KEY = "playlistArtistMbidReconciliationVersion";
-const ARTIST_MBID_RECONCILIATION_VERSION = 1;
 
 type TrackMetadata = JobFields<
   | "artistMbid"
@@ -50,10 +46,6 @@ function hasMissingJobMbid(track: TrackMetadata, jobs: DownloadJob[]) {
   return (Array.isArray(jobs) ? jobs : [])
     .filter((job) => tracksShareMembership(job, track))
     .some((job) => isMissingMbid(job));
-}
-
-function hasMissingPlaylistMbids(playlist: StaticPlaylist) {
-  return (Array.isArray(playlist?.tracks) ? playlist.tracks : []).some(isMissingMbid);
 }
 
 function mergeMissingString(
@@ -167,16 +159,9 @@ async function buildResolution(
   track: PlaylistTrack,
   jobs: DownloadJob[],
   resolveTrackContext: typeof resolveTrackSearchContext,
-  reconcileArtistMbids = false,
   groupState: { unavailable: boolean } | null = null,
 ) {
-  const shouldResolve =
-    isMissingMbid(track) ||
-    (reconcileArtistMbids && hasValue(track?.albumMbid)) ||
-    hasMissingJobMbid(track, jobs);
-  if (!shouldResolve) {
-    return null;
-  }
+  if (!isMissingMbid(track) && !hasMissingJobMbid(track, jobs)) return null;
 
   const originalTrack = normalizePlaylistTrack(track);
   if (!originalTrack) return null;
@@ -234,12 +219,10 @@ export function schedulePlaylistMbidEnrichment(
     reason = "playlist-update",
     delaySeconds = PLAYLIST_MBID_ENRICHMENT_DELAY_SECONDS,
     priority = 0,
-    reconcileArtistMbids = false,
   }: {
     reason?: string;
     delaySeconds?: number;
     priority?: number;
-    reconcileArtistMbids?: boolean;
   } = {},
 ) {
   const safePlaylistId = String(playlistId || "").trim();
@@ -249,56 +232,18 @@ export function schedulePlaylistMbidEnrichment(
       kind: "playlist-mbid-enrichment",
       playlistId: safePlaylistId,
       reason,
-      reconcileArtistMbids: reconcileArtistMbids === true,
       requestedAt: Date.now(),
     },
     { delayMs: delaySeconds * 1000, priority },
   );
 }
 
-export function schedulePlaylistMbidEnrichmentForMissingPlaylists({
-  reason = "sweep",
-  reconcileArtistMbids = false,
-} = {}) {
-  const shouldReconcileArtistMbids =
-    reconcileArtistMbids === true &&
-    (dbOps.getJSONSetting(ARTIST_MBID_RECONCILIATION_KEY, v.number()) ?? 0) <
-      ARTIST_MBID_RECONCILIATION_VERSION;
-  const jobIds = [];
-  for (const playlist of flowPlaylistConfig.getStaticPlaylists()) {
-    const jobs = staticPlaylistJobs(playlist);
-    const hasMissingConfig = hasMissingPlaylistMbids(playlist);
-    const hasMissingJobs = (Array.isArray(playlist?.tracks) ? playlist.tracks : []).some((track) =>
-      hasMissingJobMbid(track, jobs),
-    );
-    const hasAlbumMbids = (Array.isArray(playlist?.tracks) ? playlist.tracks : []).some((track) =>
-      hasValue(track?.albumMbid),
-    );
-    if (!hasMissingConfig && !hasMissingJobs && !(shouldReconcileArtistMbids && hasAlbumMbids)) {
-      continue;
-    }
-    const jobId = schedulePlaylistMbidEnrichment(playlist.id, {
-      reason,
-      delaySeconds: 0,
-      priority: -5,
-      reconcileArtistMbids: shouldReconcileArtistMbids,
-    });
-    if (jobId != null) jobIds.push(jobId);
-  }
-  if (shouldReconcileArtistMbids) {
-    dbOps.setJSONSetting(ARTIST_MBID_RECONCILIATION_KEY, ARTIST_MBID_RECONCILIATION_VERSION);
-  }
-  return jobIds;
-}
-
 export async function enrichStaticPlaylistMbids(
   playlistId: string | null | undefined,
   {
     resolveTrackContext = resolveTrackSearchContext,
-    reconcileArtistMbids = false,
   }: {
     resolveTrackContext?: typeof resolveTrackSearchContext;
-    reconcileArtistMbids?: boolean;
   } = {},
 ) {
   const safePlaylistId = String(playlistId || "").trim();
@@ -329,15 +274,7 @@ export async function enrichStaticPlaylistMbids(
       const results = [];
       for (const track of tracks) {
         if (groupState.unavailable) break;
-        results.push(
-          await buildResolution(
-            track,
-            snapshotJobs,
-            resolver,
-            reconcileArtistMbids === true,
-            groupState,
-          ),
-        );
+        results.push(await buildResolution(track, snapshotJobs, resolver, groupState));
       }
       return results;
     },
