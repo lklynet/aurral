@@ -10,7 +10,7 @@ import {
   findLibraryTracksForAlbum,
 } from "../libraryReadModel.ts";
 import { getLibraryForArtistReferences } from "../libraryQueryService.ts";
-import { getLibraryMediaFile } from "../libraryMediaStore.ts";
+import { getLibraryFileIds, getLibraryMediaFile } from "../libraryMediaStore.ts";
 import { classifyLibraryFileQuality } from "../qualityProfile.ts";
 import { scheduleLibraryScan as scheduleLibraryScanJob } from "../libraryScanWorker.ts";
 import {
@@ -909,6 +909,20 @@ async function refreshPlaylistAfterReuse(
   }
 }
 
+const ID_KEYS = ["artistMbid", "albumMbid", "trackMbid"] as const;
+
+// A reused file's IDs are already known, to the Library or to the download it
+// came from, so they are not looked up again.
+function knownIds(track: DownloadTrackInput, source: ReuseSource) {
+  const library = getLibraryFileIds(source.sourcePath);
+  return Object.fromEntries(
+    ID_KEYS.flatMap((key) => {
+      const known = library?.[key] || source.sourceJob?.[key];
+      return track[key] || !known ? [] : [[key, known]];
+    }),
+  );
+}
+
 export async function reuseTrackForPlaylist(
   track: DownloadTrackInput,
   playlistType: string,
@@ -968,6 +982,7 @@ export async function reuseTrackForPlaylist(
     source.externalPath || null,
     { reusedLibraryFile: noPlaylistDownloadedFile(finalPath, jobId) },
   );
+  downloadTracker.updateMetadata(jobId, knownIds(track, source));
   console.log(
     `[FileReuse] Reused ${source.sourceType} track for ${playlistType}: ${track.artistName} - ${track.trackName}`,
   );
