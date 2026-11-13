@@ -688,7 +688,6 @@ async function cleanupSuccessfulRunArtifacts(
   payload: SlskdPayload,
   transfer: SlskdTransfer | null | undefined,
 ) {
-  if (!slskdClient.isCleanupAfterRunsEnabled()) return;
   const searchIds = getPayloadSearchIds(payload);
   const transferId = readTransferId(transfer);
   const candidate = getPayloadCandidate(payload);
@@ -1569,22 +1568,20 @@ async function handleFinalize(payload: SlskdPayload, helpers: SlskdHelpers) {
         await cleanupEmptyAncestors(path.dirname(filePath), slskdRoot).catch(() => {});
       }
     }
-    if (slskdClient.isCleanupAfterRunsEnabled()) {
-      const transfers = (payload.albumTransfers || [])
-        .map((transfer) => ({
-          username: payload.candidate?.raw?.user,
-          transferId: readTransferId(transfer),
-        }))
-        .filter((entry) => entry.username && entry.transferId);
-      await slskdClient
-        .cleanupAfterRun({ searchIds: getPayloadSearchIds(payload), transfers })
-        .catch((error: unknown) =>
-          logger.warn("slskd", "Album transfer cleanup failed", {
-            jobId: job.id,
-            reason: safeLogDiagnostic(error),
-          }),
-        );
-    }
+    const transfers = (payload.albumTransfers || [])
+      .map((transfer) => ({
+        username: payload.candidate?.raw?.user,
+        transferId: readTransferId(transfer),
+      }))
+      .filter((entry) => entry.username && entry.transferId);
+    await slskdClient
+      .cleanupAfterRun({ searchIds: getPayloadSearchIds(payload), transfers })
+      .catch((error: unknown) =>
+        logger.warn("slskd", "Album transfer cleanup failed", {
+          jobId: job.id,
+          reason: safeLogDiagnostic(error),
+        }),
+      );
     return next;
   }
   const playlistRoot = resolveDownloadRoot();

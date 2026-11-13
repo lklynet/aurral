@@ -12,7 +12,7 @@ const [isolatedState, recommendationPipeline, discoveryIndex] = await setupIsola
 
 const { mergeRetainedRecommendationPool, serveRecommendations } = recommendationPipeline;
 const {
-  getDiscoveryRecommendationsPerRefresh,
+  DISCOVERY_RECOMMENDATIONS_PER_REFRESH,
   getDiscoveryRecommendationPoolLimit,
   rerankCachedRecommendations,
 } = discoveryIndex;
@@ -21,7 +21,7 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-const PER_REFRESH = getDiscoveryRecommendationsPerRefresh();
+const PER_REFRESH = DISCOVERY_RECOMMENDATIONS_PER_REFRESH;
 const POOL_LIMIT = getDiscoveryRecommendationPoolLimit();
 
 const artists = createDiscoveryArtistBatcher();

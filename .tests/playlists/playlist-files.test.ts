@@ -158,7 +158,6 @@ test("renaming, disabling, or deleting removes the old file", async () => {
 });
 
 test("a rename that takes another playlist's file name moves that playlist's file too", async () => {
-  dbOps.setJSONSetting("playlistFiles", { prefixOwnerUsername: false });
   const renamed = flowPlaylistConfig.createStaticPlaylist({ name: "Old" });
   const other = flowPlaylistConfig.createStaticPlaylist({ name: "Mix?" });
   await addDownloadedTrack(other.id, "Song B");
@@ -172,25 +171,23 @@ test("a rename that takes another playlist's file name moves that playlist's fil
   assert.doesNotMatch(await fs.readFile(path.join(libraryRoot, "Mix_.m3u"), "utf8"), /Song B/);
 });
 
-test("names stay unique when the owner prefix is off", () => {
+test("names stay unique, and the oldest owner of a name keeps it bare", () => {
   const ana = userOps.createUser("ana", "hash")!.id;
   const bo = userOps.createUser("bo", "hash")!.id;
   const entities = [
-    { id: "1", name: "Mix", ownerUserId: ana },
-    { id: "2", name: "mix", ownerUserId: bo },
-    { id: "3", name: "Solo", ownerUserId: ana },
-    { id: "4", name: "Solo", ownerUserId: ana },
-    { id: "5", name: "Solo (2)", ownerUserId: ana },
+    { id: "1", name: "mix", ownerUserId: bo, createdAt: 2 },
+    { id: "2", name: "Mix", ownerUserId: ana, createdAt: 1 },
+    { id: "3", name: "Solo", ownerUserId: ana, createdAt: 3 },
+    { id: "4", name: "Solo", ownerUserId: ana, createdAt: 4 },
+    { id: "5", name: "Solo (2)", ownerUserId: ana, createdAt: 5 },
   ];
+  const names = playlistDisplayNames(entities);
 
   assert.deepEqual(
-    [...playlistDisplayNames(entities, { prefixOwnerUsername: false }).values()],
-    ["ana - Mix", "bo - mix", "Solo", "Solo (2)", "Solo (2) (2)"],
+    entities.map((entity) => names.get(entity.id)),
+    ["bo - mix", "Mix", "Solo", "Solo (2)", "Solo (2) (2)"],
   );
-  assert.deepEqual(
-    [...playlistDisplayNames(entities, { prefixOwnerUsername: true }).values()],
-    ["ana - Mix", "bo - mix", "ana - Solo", "ana - Solo (2)", "ana - Solo (2) (2)"],
-  );
+  assert.equal(playlistDisplayNames(entities.slice(0, 1)).get("1"), "mix");
 });
 
 const defaultSections = () => [

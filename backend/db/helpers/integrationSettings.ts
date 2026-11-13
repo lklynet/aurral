@@ -31,9 +31,6 @@ export const integrationSettingsSchema = v.looseObject({
     apiKey: text,
     apiSecret: text,
     discoveryPeriod: text,
-    discoveryAutoRefreshHours: count,
-    discoveryRecommendationsPerRefresh: count,
-    discoveryMode: text,
   }),
   slskd: service({
     enabled: flag,
@@ -43,7 +40,6 @@ export const integrationSettingsSchema = v.looseObject({
     albumPriority: count,
     preferredFormat: text,
     preferredFormatStrict: flag,
-    cleanupAfterRuns: flag,
   }),
   prowlarr: service({
     enabled: flag,
@@ -58,8 +54,6 @@ export const integrationSettingsSchema = v.looseObject({
         }),
       ),
     ),
-    categories: lenient(listOf(number)),
-    maxResults: count,
   }),
   nzbget: service({
     enabled: flag,
@@ -69,20 +63,15 @@ export const integrationSettingsSchema = v.looseObject({
     category: text,
     priority: count,
     albumPriority: count,
-    nzbPriority: count,
-    addPaused: flag,
     completedPath: text,
-    deleteLeftovers: flag,
   }),
   sabnzbd: service({
     enabled: flag,
     url: text,
     apiKey: text,
     category: text,
-    deleteLeftovers: flag,
     priority: count,
     albumPriority: count,
-    addPaused: flag,
   }),
   tidarr: service({
     enabled: flag,

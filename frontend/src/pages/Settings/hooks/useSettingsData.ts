@@ -19,9 +19,6 @@ type Toast = ReturnType<typeof useToast>["showSuccess"];
 
 const defaultSettings = {
   dateTimeFormat: "browser",
-  subsonic: {
-    favoriteAutoKeep: true,
-  },
   downloadFolderPath: "",
   pathMappings: [],
   quality: "standard",
@@ -54,20 +51,12 @@ const defaultSettings = {
     automaticUpgrades: false,
     intervalDays: 2,
   },
-  missingTrackSearch: {
-    enabled: false,
-    intervalDays: 1,
-  },
-  reviewTimeoutHours: 0,
   releaseTypes: allReleaseTypes,
   integrations: {
     lastfm: {
       apiKey: "",
       apiSecret: "",
       discoveryPeriod: "1month",
-      discoveryAutoRefreshHours: 168,
-      discoveryRecommendationsPerRefresh: 200,
-      discoveryMode: "balanced",
     },
     slskd: {
       enabled: true,
@@ -76,36 +65,28 @@ const defaultSettings = {
       priority: 10,
       preferredFormat: "flac",
       preferredFormatStrict: false,
-      cleanupAfterRuns: false,
     },
     prowlarr: {
       enabled: false,
       url: "",
       apiKey: "",
       indexers: {},
-      categories: [3000],
-      maxResults: 60,
     },
     nzbget: {
-      deleteLeftovers: true,
       enabled: false,
       url: "",
       username: "",
       password: "",
       category: "aurral",
       priority: 20,
-      nzbPriority: 0,
-      addPaused: false,
       completedPath: "",
     },
     sabnzbd: {
-      deleteLeftovers: true,
       enabled: false,
       url: "",
       apiKey: "",
       category: "aurral",
       priority: 20,
-      addPaused: false,
     },
     tidarr: {
       enabled: false,

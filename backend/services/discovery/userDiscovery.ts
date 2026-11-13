@@ -1,6 +1,6 @@
 import { dbOps } from "../../db/helpers/index.ts";
 import { getMusicDataSourceName } from "../musicDataSource/index.ts";
-import { getDiscoveryAutoRefreshHours, getDiscoveryMode } from "./helpers.ts";
+import { DISCOVERY_REFRESH_MS, getDiscoveryMode } from "./helpers.ts";
 import {
   getBlockedArtistKeys,
   getDiscoveryFeedback,
@@ -73,9 +73,8 @@ const ensureUserRefresh = (
   const refreshState = getDiscoveryRefreshState(userCache.metadata);
   if (refreshState.pending || refreshState.running) return;
   const lastUpdatedMs = Date.parse(userCache.lastUpdated || "") || 0;
-  const staleMs = getDiscoveryAutoRefreshHours() * 60 * 60 * 1000;
   const finishedAt = Number(userCache.metadata?.refreshFinishedAt) || 0;
-  const needsRefresh = !lastUpdatedMs || Date.now() - lastUpdatedMs > staleMs;
+  const needsRefresh = !lastUpdatedMs || Date.now() - lastUpdatedMs > DISCOVERY_REFRESH_MS;
   if (!needsRefresh || Date.now() - finishedAt < FAILED_REFRESH_BACKOFF_MS) return;
   requestUserDiscoveryRefresh(userId, {
     reason: lastUpdatedMs ? "stale" : "missing",
@@ -149,7 +148,7 @@ export function getUserDiscovery(userId: number | null, limit = 50, offset = 0) 
   const blockedKeys = getBlockedArtistKeys(feedbackUserId, feedback);
   const blockedTags = getBlockedTagKeys(userId);
   const library = getLibraryArtistKeys();
-  const discoveryMode = getDiscoveryMode();
+  const discoveryMode = getDiscoveryMode(userId);
   const isVisible = (artist: VisibleArtist) =>
     !matchesArtistKeys(artist, library.keys) &&
     !matchesArtistKeys(artist, blockedKeys) &&

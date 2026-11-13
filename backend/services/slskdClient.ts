@@ -217,7 +217,7 @@ export const slskdSettings = Object.freeze({
       type: "number",
       min: 1,
       max: 1000,
-      section: "Behavior",
+      advanced: true,
     }),
     Object.freeze({
       key: "albumPriority",
@@ -225,14 +225,8 @@ export const slskdSettings = Object.freeze({
       type: "number",
       min: 1,
       max: 1000,
-      section: "Behavior",
+      advanced: true,
       hint: "Empty uses track priority.",
-    }),
-    Object.freeze({
-      key: "cleanupAfterRuns",
-      label: "Clean up after runs",
-      type: "toggle",
-      section: "Behavior",
     }),
   ]),
   defaults: Object.freeze({
@@ -240,7 +234,6 @@ export const slskdSettings = Object.freeze({
     url: "",
     apiKey: "",
     priority: 10,
-    cleanupAfterRuns: false,
   }),
   validation: Object.freeze({ required: ["url"], url: ["url"] }),
   testConnection: true,
@@ -276,11 +269,6 @@ function getSettings(config: SlskdConfig | null = null) {
     .replace(/\/+$/, "");
   const apiKey = String(slskd.apiKey || "").trim();
   return { url, apiKey, slskd };
-}
-
-export function isSlskdCleanupAfterRunsEnabled(config: SlskdConfig | null = null) {
-  const slskd = getSettings(config).slskd || {};
-  return slskd.cleanupAfterRuns === true;
 }
 
 function buildClientFromCredentials(url: string, apiKey: string) {
@@ -569,11 +557,7 @@ class SearchMonitor {
   }
 
   async finish(data: SlskdSearch | null): Promise<{ done: true; data: SlskdSearch | null }> {
-    if (isSearchComplete(data) && !this.client.isCleanupAfterRunsEnabled()) {
-      this.onSearchSettled?.(this.searchId);
-    } else {
-      await this.stop();
-    }
+    await this.stop();
     return { done: true, data };
   }
 
@@ -710,10 +694,6 @@ export class SlskdClient {
 
   updateConfig(config: SlskdConfig | null = null) {
     this._config = config;
-  }
-
-  isCleanupAfterRunsEnabled() {
-    return isSlskdCleanupAfterRunsEnabled(this._config);
   }
 
   isConfigured() {

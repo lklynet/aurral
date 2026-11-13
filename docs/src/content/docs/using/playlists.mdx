@@ -79,17 +79,18 @@ For setup, see:
 - [Navidrome](/integrations/navidrome/), [Plex](/integrations/plex/), and [Jellyfin](/integrations/jellyfin/)
 - [yt-dlp](/integrations/ytdlp/), [slskd](/integrations/slskd/), [Tidarr](/integrations/tidarr/), [deemix](/integrations/deemix/), and [Usenet](/integrations/usenet/)
 
-## Quality profile
+## Quality
 
-The quality profile sets which audio files Aurral accepts. One profile applies to every download. Only an admin can change it, in **Settings > Downloads > Quality profile**.
+Quality sets which audio files Aurral accepts. One setting applies to every download. Only an admin can change it, in **Settings > Downloads > Quality**:
 
-The list order sets the rank of each tier. Put the best quality at the top. Turn on each tier that Aurral can accept, and choose one enabled tier as the cutoff.
+- **Lossless**, the default, gets FLAC first and falls back to MP3 or AAC. Upgrades stop at FLAC standard.
+- **Smaller files** gets MP3 and AAC first, best bitrate first, and FLAC only when nothing else is found. Upgrades stop at MP3 320.
+
+Both accept every tier. To pick tiers yourself, open **Advanced**. The list order sets the rank of each tier. Put the best quality at the top. Turn on each tier that Aurral can accept, and choose one enabled tier as the cutoff. Quality then shows **Custom** until you pick a choice again.
 
 - An enabled tier at or above the cutoff is **Preferred**.
 - An enabled tier below the cutoff is **Upgrade**.
 - A disabled or unknown tier is **Below floor**.
-
-The default profile accepts all tiers, with **FLAC standard** as the cutoff.
 
 | Tier                      | Rule for the downloaded file                 |
 | ------------------------- | -------------------------------------------- |
@@ -113,7 +114,7 @@ An existing file stays available when it is below the cutoff. Aurral replaces it
 
 If an upgrade search for a track is already queued, Aurral says so. Any user who can open the playlist can start these searches. Manual searches work when automatic upgrades are off.
 
-To schedule upgrades, turn on **Automatic upgrades** in the quality profile. It is off by default. **Upgrade interval** sets the days between checks for each track, from 1 to 365. The default is 2 days. Automatic upgrades cover every monitored Library track in the Library folder, including music that Aurral did not download.
+To schedule upgrades, turn on **Automatic upgrades** under **Advanced** in **Settings > Downloads > Quality**. It is off by default. **Upgrade interval** sets the days between checks for each track, from 1 to 365. The default is 2 days. Automatic upgrades cover every monitored Library track in the Library folder, including music that Aurral did not download.
 
 Upgrade downloads wait behind downloads of missing tracks. Aurral searches slskd, Usenet, deemix, and qBittorrent for upgrades, in track priority order, or album priority order when it looks for one release for several tracks at once. It first looks for the release of the track's album and takes only that track from it. Upgrades that start together for several tracks of one album look for their release once, even when the tracks are in different playlists. Automatic upgrades and **Search all** start all upgrades of an album together. They skip the playlists of a suspended or disabled user until the account is active again. An upgrade that starts while another one downloads a release of the same album waits for that download, for up to 30 minutes. If no source has the release, it searches for the track alone. It stops at the first source that gives a valid, better file. It then waits for the next interval before it tries that track again. Aurral does not use yt-dlp for upgrades.
 

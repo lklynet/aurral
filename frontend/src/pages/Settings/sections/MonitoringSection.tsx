@@ -3,9 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { DotLoader } from "../../../components/DotLoader";
 import { MonitoringRulesFields } from "../../../components/MonitoringRulesFields";
-import PillToggle from "../../../components/PillToggle";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
-import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts";
 import type { MonitoringExclusion } from "../../../../../backend/services/monitoringStore.ts";
 import { libraryMonitoringClient } from "../../../utils/api/clients/libraryMonitoring.ts";
 import { slowLibraryFetch } from "../../../utils/api/endpoints/library.ts";
@@ -16,19 +14,16 @@ import {
   describeMonitoringRules,
   plural,
 } from "../../../utils/monitoringRules.ts";
-import { SettingsInput } from "../components/SettingsField";
 import { useServerSettings } from "../SettingsProviders";
 import {
   SettingsActions,
   SettingsGroup,
   SettingsNote,
   SettingsPage,
-  SettingsRow,
   SettingsServiceRow,
   useSettingsItem,
 } from "../SettingsLayout";
 
-type MissingTrackSearch = Partial<NonNullable<AppSettings["missingTrackSearch"]>>;
 type MonitoringDefaults = InferResponseType<
   typeof libraryMonitoringClient.monitoring.defaults.$get,
   200
@@ -208,64 +203,6 @@ function DefaultRulesGroup() {
   );
 }
 
-function MissingTracksGroup() {
-  const { settings, updateSettings } = useServerSettings();
-  const [intervalDraft, setIntervalDraft] = useState<string | null>(null);
-  const missingTrackSearch: MissingTrackSearch = settings.missingTrackSearch || {};
-  const enabled = missingTrackSearch.enabled === true;
-  const update = (patch: MissingTrackSearch) =>
-    updateSettings({ ...settings, missingTrackSearch: { ...missingTrackSearch, ...patch } });
-
-  return (
-    <SettingsGroup title="Missing tracks">
-      <SettingsRow
-        label="Search again for missing tracks"
-        htmlFor="missing-track-search"
-        help="Retries missing tracks from monitored albums."
-      >
-        <PillToggle
-          id="missing-track-search"
-          checked={enabled}
-          aria-label="Search again for missing tracks"
-          onChange={(event) => update({ enabled: event.target.checked })}
-        />
-      </SettingsRow>
-      <SettingsRow
-        label="Search interval"
-        htmlFor="missing-track-search-interval"
-        help="Days after the last search or download, checked daily. Cancelled albums need Retry."
-      >
-        <SettingsInput
-          id="missing-track-search-interval"
-          type="number"
-          min="1"
-          max="365"
-          value={intervalDraft ?? missingTrackSearch.intervalDays ?? 1}
-          disabled={!enabled}
-          onChange={(event) => {
-            setIntervalDraft(event.target.value);
-            if (event.target.value !== "" && event.target.validity.valid) {
-              update({ intervalDays: Number(event.target.value) });
-            }
-          }}
-          onBlur={(event) => {
-            const days = Math.round(Number(event.target.value));
-            if (
-              event.target.value !== "" &&
-              Number.isFinite(days) &&
-              !event.target.validity.valid
-            ) {
-              const { min, max } = event.target;
-              update({ intervalDays: Math.min(Number(max), Math.max(Number(min), days)) });
-            }
-            setIntervalDraft(null);
-          }}
-        />
-      </SettingsRow>
-    </SettingsGroup>
-  );
-}
-
 function RemovedGroup() {
   const { showError } = useServerSettings();
   const query = useQuery({
@@ -356,7 +293,6 @@ export function MonitoringSection() {
   return (
     <SettingsPage title="Monitoring">
       <DefaultRulesGroup />
-      <MissingTracksGroup />
       <RemovedGroup />
     </SettingsPage>
   );

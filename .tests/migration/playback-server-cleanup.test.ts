@@ -18,7 +18,6 @@ const [
   cleanup,
   { downloadTracker },
   { resolveDownloadRoot },
-  { getPlaylistFileSettings },
   { normalizePathMappings },
 ] = await setupIsolatedBackend(
   "playback-server-cleanup",
@@ -29,7 +28,6 @@ const [
   () => import("../../backend/services/playbackServerCleanup.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadPaths.ts"),
-  () => import("../../backend/services/playlists/playlistFiles.ts"),
   () => import("../../backend/services/pathMappings.ts"),
 );
 
@@ -65,7 +63,6 @@ test("removes old server playlists and retained files, retrying a server that is
         url: "http://navidrome.test",
         username: "admin",
         password: secret("password"),
-        prefixOwnerUsername: false,
       },
       jellyfin: { url: "http://jellyfin.test", apiKey: secret("key"), userId: "admin" },
     },
@@ -119,7 +116,6 @@ test("removes old server playlists and retained files, retrying a server that is
   );
   assert.equal(cleanup.hasLegacyPlaybackServerData(), false);
   assert.equal(userIdentityOps.countForUser(user.id), 0);
-  assert.deepEqual(getPlaylistFileSettings(), { prefixOwnerUsername: false });
 });
 
 test("path mappings for retired media servers are dropped instead of applying everywhere", () => {

@@ -3,7 +3,6 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import * as v from "valibot";
 import { dbOps } from "../db/helpers/index.ts";
-import { MAX_REVIEW_TIMEOUT_HOURS } from "../db/helpers/settings.ts";
 import { readIntegrationSettings } from "../db/helpers/integrationSettings.ts";
 import type { AppSettings, StoredIntegrations } from "../db/helpers/settings.ts";
 import { DATE_TIME_FORMATS, defaultData } from "../config/constants.ts";
@@ -31,16 +30,13 @@ const asObject = (value: unknown) => (v.is(objectValue, value) ? value : undefin
 export const appSettingsPatch = v.object({
   quality: v.optional(v.string()),
   qualityProfile: v.optional(v.unknown()),
-  subsonic: v.optional(v.unknown()),
   releaseTypes: v.optional(v.array(v.string())),
   integrations: v.optional(objectValue),
   downloadFolderPath: v.optional(v.nullable(v.string())),
   pathMappings: v.optional(v.unknown()),
   security: v.optional(objectValue),
-  missingTrackSearch: v.optional(v.unknown()),
   inbox: v.optional(objectValue),
   dateTimeFormat: v.optional(v.unknown()),
-  reviewTimeoutHours: v.optional(v.unknown()),
 });
 
 const INTEGRATION_KEYS = [
@@ -171,18 +167,6 @@ function normalizeIntegrationPatch(
     }
     nextProwlarr.enabled = nextProwlarr.enabled === true;
     nextProwlarr.apiKey = typeof nextProwlarr.apiKey === "string" ? nextProwlarr.apiKey.trim() : "";
-    const categories: unknown = nextProwlarr.categories;
-    nextProwlarr.categories = (
-      Array.isArray(categories)
-        ? categories.map((entry: unknown) => Number.parseInt(String(entry), 10))
-        : String(categories || "")
-            .split(",")
-            .map((entry) => Number.parseInt(entry.trim(), 10))
-    ).filter((entry) => Number.isFinite(entry) && entry > 0);
-    if (nextProwlarr.categories.length === 0) {
-      nextProwlarr.categories = [3000];
-    }
-    nextProwlarr.maxResults = clampedInteger(nextProwlarr.maxResults, 10, 200, 60);
     const indexers = asObject(nextProwlarr.indexers) ?? {};
     nextProwlarr.indexers = Object.fromEntries(
       Object.entries(indexers)
@@ -229,9 +213,6 @@ function normalizeIntegrationPatch(
     nextNzbget.category = String(nextNzbget.category || "aurral").trim() || "aurral";
     nextNzbget.priority = clampedInteger(nextNzbget.priority, 1, 1000, 20);
     nextNzbget.albumPriority = optionalPriority(nextNzbget.albumPriority);
-    nextNzbget.nzbPriority = clampedInteger(nextNzbget.nzbPriority, -100, 900, 0);
-    nextNzbget.addPaused = nextNzbget.addPaused === true;
-    nextNzbget.deleteLeftovers = nextNzbget.deleteLeftovers !== false;
     nextNzbget.completedPath =
       typeof nextNzbget.completedPath === "string" ? nextNzbget.completedPath.trim() : "";
     integrations.nzbget = nextNzbget;
@@ -255,7 +236,6 @@ function normalizeIntegrationPatch(
     nextSlskd.enabled = nextSlskd.enabled === true;
     nextSlskd.priority = clampedInteger(nextSlskd.priority, 1, 1000, 10);
     nextSlskd.albumPriority = optionalPriority(nextSlskd.albumPriority);
-    nextSlskd.cleanupAfterRuns = nextSlskd.cleanupAfterRuns === true;
     integrations.slskd = nextSlskd;
   }
 
@@ -276,10 +256,8 @@ function normalizeIntegrationPatch(
     nextSabnzbd.apiKey = typeof nextSabnzbd.apiKey === "string" ? nextSabnzbd.apiKey.trim() : "";
     nextSabnzbd.enabled = nextSabnzbd.enabled === true;
     nextSabnzbd.category = String(nextSabnzbd.category || "aurral").trim() || "aurral";
-    nextSabnzbd.deleteLeftovers = nextSabnzbd.deleteLeftovers !== false;
     nextSabnzbd.priority = clampedInteger(nextSabnzbd.priority, 1, 1000, 20);
     nextSabnzbd.albumPriority = optionalPriority(nextSabnzbd.albumPriority);
-    nextSabnzbd.addPaused = nextSabnzbd.addPaused === true;
     integrations.sabnzbd = nextSabnzbd;
   }
 
@@ -384,16 +362,13 @@ export async function saveAppSettings(input: v.InferOutput<typeof appSettingsPat
   const {
     quality,
     qualityProfile,
-    subsonic,
     releaseTypes,
     integrations,
     downloadFolderPath,
     pathMappings,
     security,
-    missingTrackSearch,
     inbox,
     dateTimeFormat,
-    reviewTimeoutHours,
   } = input;
 
   if (
@@ -401,17 +376,6 @@ export async function saveAppSettings(input: v.InferOutput<typeof appSettingsPat
     (typeof dateTimeFormat !== "string" || !DATE_TIME_FORMATS.includes(dateTimeFormat))
   ) {
     return { error: "Invalid date and time format" };
-  }
-  if (
-    reviewTimeoutHours !== undefined &&
-    (typeof reviewTimeoutHours !== "number" ||
-      !Number.isInteger(reviewTimeoutHours) ||
-      reviewTimeoutHours < 0 ||
-      reviewTimeoutHours > MAX_REVIEW_TIMEOUT_HOURS)
-  ) {
-    return {
-      error: `reviewTimeoutHours must be a whole number from 0 to ${MAX_REVIEW_TIMEOUT_HOURS}`,
-    };
   }
 
   const libraryFolder = path.resolve(resolveDownloadRoot());
@@ -444,10 +408,7 @@ export async function saveAppSettings(input: v.InferOutput<typeof appSettingsPat
   if (unreadable.length) {
     return { error: `Aurral can't save these integration settings: ${unreadable.join(", ")}` };
   }
-  const normalizedSubsonic = Array.isArray(subsonic) ? undefined : asObject(subsonic);
-  const currentSubsonic = currentSettings.subsonic || defaultData.settings.subsonic;
   const localNetworkBypass = asObject(security?.localNetworkBypass);
-  const missingTrackSearchPatch = asObject(missingTrackSearch);
   const updatedSettings = {
     ...currentSettings,
     dateTimeFormat:
@@ -464,16 +425,6 @@ export async function saveAppSettings(input: v.InferOutput<typeof appSettingsPat
             asObject(integrations?.slskd),
           )
         : currentSettings.qualityProfile,
-    subsonic: normalizedSubsonic
-      ? {
-          ...currentSubsonic,
-          ...normalizedSubsonic,
-          favoriteAutoKeep:
-            normalizedSubsonic.favoriteAutoKeep !== undefined
-              ? normalizedSubsonic.favoriteAutoKeep !== false
-              : currentSubsonic.favoriteAutoKeep !== false,
-        }
-      : currentSubsonic,
     downloadFolderPath:
       downloadFolderPath !== undefined
         ? downloadFolderPath
@@ -516,11 +467,6 @@ export async function saveAppSettings(input: v.InferOutput<typeof appSettingsPat
                 defaultData.settings.security.localNetworkBypass,
           }
         : currentSettings.security || defaultData.settings.security,
-    missingTrackSearch: missingTrackSearchPatch
-      ? { ...currentSettings.missingTrackSearch, ...missingTrackSearchPatch }
-      : currentSettings.missingTrackSearch,
-    reviewTimeoutHours:
-      reviewTimeoutHours !== undefined ? reviewTimeoutHours : currentSettings.reviewTimeoutHours,
   };
 
   if (updatedSettings?.integrations?.musicbrainz) {

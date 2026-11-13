@@ -109,7 +109,7 @@ test("upgrading drops what only Lidarr mode read and keeps the rest", () => {
 test("upgrading fails finished downloads without a file and statuses Aurral does not read", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  migrate(db, migrations.slice(0, -3));
+  migrate(db, migrations.slice(0, 6));
   const insert = db.prepare<[string, string, string | null]>(
     `INSERT INTO download_jobs (id, artist_name, track_name, owner_id, status, final_path, created_at)
      VALUES (?, 'Artist', 'Song', 'library', ?, ?, 1)`,
@@ -134,7 +134,7 @@ test("upgrading fails finished downloads without a file and statuses Aurral does
 test("upgrading lets albums that failed to load try again, and keeps rate-limit waits", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  migrate(db, migrations.slice(0, -2));
+  migrate(db, migrations.slice(0, 7));
   const insert = db.prepare<[string, number, number]>(
     "INSERT INTO metadata_request_state (cache_key, failure_count, retry_after, updated_at) VALUES (?, ?, ?, 1000)",
   );
@@ -154,7 +154,7 @@ test("upgrading lets albums that failed to load try again, and keeps rate-limit 
 test("upgrading names a Usenet job's download by its client and its turned-down releases by album", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  migrate(db, migrations.slice(0, -1));
+  migrate(db, migrations.slice(0, 8));
   const insert = db.prepare<[string, string, string, string | null, string | null]>(
     `INSERT INTO download_jobs (id, artist_name, track_name, owner_id, status, download_source,
        download_client, download_client_id, denied_remote_sources, created_at)
@@ -205,4 +205,46 @@ test("upgrading names a Usenet job's download by its client and its turned-down 
       },
     ],
   );
+});
+
+test("upgrading drops settings that became fixed and keeps each user's discovery mode", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, 9));
+  db.exec(`
+    INSERT INTO users (id, username, password_hash) VALUES (1, 'test', ''), (2, 'listener', '');
+  `);
+  const setting = (key: string, value: unknown) =>
+    db
+      .prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
+      .run(key, JSON.stringify(value));
+  setting("integrations", {
+    lastfm: { apiKey: "key", discoveryMode: "deeper", discoveryAutoRefreshHours: 24 },
+    nzbget: { url: "http://nzbget.test", addPaused: true, deleteLeftovers: false },
+    prowlarr: { url: "http://prowlarr.test", categories: [3010], maxResults: 10 },
+  });
+  setting("security", { ssoOnly: true, localNetworkBypass: { enabled: true } });
+  setting("missingTrackSearch", { enabled: false, intervalDays: 3 });
+  setting("reviewTimeoutHours", 0);
+  setting("subsonic", { favoriteAutoKeep: false });
+  setting("playlistFiles", { prefixOwnerUsername: false });
+
+  migrate(db);
+
+  const read = (key: string): unknown =>
+    JSON.parse(
+      db.prepare<[string], string>("SELECT value FROM settings WHERE key = ?").pluck().get(key) ??
+        "null",
+    );
+  assert.deepEqual(read("integrations"), {
+    lastfm: { apiKey: "key" },
+    nzbget: { url: "http://nzbget.test" },
+    prowlarr: { url: "http://prowlarr.test" },
+  });
+  assert.deepEqual(read("security"), { localNetworkBypass: { enabled: true } });
+  assert.equal(read("user:1:discoveryMode"), "deeper");
+  assert.equal(read("user:2:discoveryMode"), "deeper");
+  for (const key of ["missingTrackSearch", "reviewTimeoutHours", "subsonic", "playlistFiles"]) {
+    assert.equal(read(key), null, key);
+  }
 });

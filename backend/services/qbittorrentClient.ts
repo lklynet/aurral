@@ -39,7 +39,7 @@ export const qbittorrentSettings = Object.freeze({
       type: "number",
       min: 1,
       max: 1000,
-      section: "Downloads",
+      advanced: true,
     }),
     Object.freeze({
       key: "albumPriority",
@@ -47,7 +47,7 @@ export const qbittorrentSettings = Object.freeze({
       type: "number",
       min: 1,
       max: 1000,
-      section: "Downloads",
+      advanced: true,
       hint: "Empty uses track priority.",
     }),
   ]),

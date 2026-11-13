@@ -15,7 +15,6 @@ import { classifyQualityJob } from "../qualityProfileService.ts";
 import { withDownloadStepLock } from "./downloadLocks.ts";
 import { discardReviewFile } from "./reviewFiles.ts";
 import { logger } from "../logger.ts";
-import { dbOps } from "../../db/helpers/index.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { recordTrackJobFailed } from "../aurralHistoryService.ts";
 
@@ -133,14 +132,15 @@ export async function denyBlockedJob(
   return { status: 200 };
 }
 
-// A song held for review longer than the configured wait, or whose file is
-// gone, is searched again instead of waiting for a decision indefinitely.
+const REVIEW_WAIT_MS = 3 * 24 * 60 * 60 * 1000;
+
+// A song held for review longer than three days, or whose file is gone, is
+// searched again instead of waiting for a decision indefinitely.
 export async function retryStaleReviews(now = Date.now()) {
-  const hours = dbOps.getSettings().reviewTimeoutHours;
-  const cutoff = hours ? now - hours * 60 * 60 * 1000 : null;
+  const cutoff = now - REVIEW_WAIT_MS;
   let retried = 0;
   for (const job of downloadTracker.getByStatus("blocked")) {
-    const expired = cutoff !== null && job.completedAt != null && job.completedAt <= cutoff;
+    const expired = job.completedAt != null && job.completedAt <= cutoff;
     const options = !(await reviewFileExists(job))
       ? { reason: "Review file is gone", fileGone: true }
       : expired

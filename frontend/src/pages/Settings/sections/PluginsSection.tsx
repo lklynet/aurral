@@ -14,6 +14,7 @@ import { SettingsCommitInput, SettingsInput, SettingsTextarea } from "../compone
 import { useSettingsRoute } from "../../../navigation/settingsRoute.tsx";
 import {
   SettingsActions,
+  SettingsAdvancedGroup,
   SettingsGroup,
   SettingsNote,
   SettingsPage,
@@ -75,7 +76,7 @@ export function pluginStatus(plugin: Plugin): ServiceStatus {
       ? { label: "Turned off", tone: "error" }
       : { label: "Off", tone: "muted" };
   if (!plugin.ready) return { label: "Needs setup", tone: "error" };
-  return { label: plugin.manifest?.downloadSource ? `On, priority ${plugin.priority}` : "On" };
+  return { label: "On" };
 }
 
 function CapabilityList({ plugin }: { plugin: Inspected["plugins"][number] }) {
@@ -332,7 +333,7 @@ function PluginDetail({ plugin }: { plugin: Plugin }) {
         </SettingsGroup>
       ) : null}
       {manifest.downloadSource ? (
-        <SettingsGroup title="Downloads">
+        <SettingsAdvancedGroup>
           <SettingsRow
             label="Priority"
             htmlFor={`plugin-${plugin.id}-priority`}
@@ -342,15 +343,15 @@ function PluginDetail({ plugin }: { plugin: Plugin }) {
               id={`plugin-${plugin.id}-priority`}
               type="number"
               min={1}
-              max={100}
+              max={1000}
               value={String(plugin.priority)}
               onCommit={(next) => {
                 const priority = Math.round(Number(next));
-                if (priority >= 1 && priority <= 100) save.mutate({ priority });
+                if (priority >= 1 && priority <= 1000) save.mutate({ priority });
               }}
             />
           </SettingsRow>
-        </SettingsGroup>
+        </SettingsAdvancedGroup>
       ) : null}
       <PluginManage plugin={plugin} />
     </SettingsPage>

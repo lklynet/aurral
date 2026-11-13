@@ -227,10 +227,6 @@ const originalWorkerStart = downloadWorker.start;
 
 beforeAll(() => {
   setDownloadSourceConfigured(true);
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    missingTrackSearch: { enabled: true, intervalDays: 1 },
-  });
   downloadWorker.start = async () => {};
 });
 
@@ -580,37 +576,13 @@ test("searching an album after it was unmonitored queues nothing", async () => {
   assert.equal(albumJobs(albumMbid).length, 1);
 });
 
-test("the stored interval and switch control the run", async () => {
-  const settings = dbOps.getSettings();
-  const withinInterval = createAlbum({ lastSearchedAt: Date.now() - 2 * DAY_MS });
-  const pastInterval = createAlbum({ lastSearchedAt: Date.now() - 4 * DAY_MS });
-  try {
-    dbOps.updateSettings({ ...settings, missingTrackSearch: { enabled: false, intervalDays: 3 } });
-    assert.equal(await runMissingTrackSearch(), 0);
-    assert.equal(albumJobs(pastInterval.albumMbid).length, 0);
+test("an album is searched again once a day has passed since its last search", async () => {
+  const withinDay = createAlbum({ lastSearchedAt: Date.now() - 12 * HOUR_MS });
+  const pastDay = createAlbum({ lastSearchedAt: Date.now() - 2 * DAY_MS });
 
-    dbOps.updateSettings({ ...settings, missingTrackSearch: { enabled: true, intervalDays: 3 } });
-    assert.equal(await runMissingTrackSearch(), 1);
-    assert.equal(albumJobs(withinInterval.albumMbid).length, 0);
-    assert.equal(albumJobs(pastInterval.albumMbid).length, 1);
-  } finally {
-    dbOps.updateSettings(settings);
-  }
-});
-
-test("a fresh install does not search until the search is turned on", async () => {
-  const { album, albumMbid } = createAlbum();
-  const settings = dbOps.getSettings();
-  db.prepare("DELETE FROM settings WHERE key = 'missingTrackSearch'").run();
-  dbOps.invalidateSettingsCache();
-  try {
-    assert.equal(await runMissingTrackSearch(), 0);
-  } finally {
-    dbOps.updateSettings(settings);
-  }
-
-  assert.equal(albumJobs(albumMbid).length, 0);
-  assert.equal(searchTime(album.id), null);
+  assert.equal(await runMissingTrackSearch(), 1);
+  assert.equal(albumJobs(withinDay.albumMbid).length, 0);
+  assert.equal(albumJobs(pastDay.albumMbid).length, 1);
 });
 
 test("without a download source nothing is queued or marked as searched", async () => {
@@ -632,8 +604,6 @@ test("an album asked for before it comes out waits, then is searched once when i
     releaseDate: utcDay(releasedAt),
     tracks: ["missing", "missing"],
   });
-  const settings = dbOps.getSettings();
-  dbOps.updateSettings({ ...settings, missingTrackSearch: { enabled: false, intervalDays: 1 } });
   try {
     await libraryManager.addAlbum(artist.id, requireFixture(albumMbid), album.title, {});
     assert.equal(albumJobs(albumMbid).length, 0);
@@ -649,7 +619,6 @@ test("an album asked for before it comes out waits, then is searched once when i
     assert.equal(await runMissingTrackSearch(), 0);
   } finally {
     vi.useRealTimers();
-    dbOps.updateSettings(settings);
   }
 });
 

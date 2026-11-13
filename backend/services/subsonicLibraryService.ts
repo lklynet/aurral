@@ -1038,8 +1038,6 @@ const resolveSubsonicTrack = (user: SubsonicUser, value: string) => {
   return normalized ? { kind: "song", track: normalized, libraryTrack: track } : null;
 };
 
-const favoriteAutoKeepEnabled = () => dbOps.getSettings()?.subsonic?.favoriteAutoKeep !== false;
-
 const playlistSongKind = (playlistId: string) =>
   flowPlaylistConfig.getFlow(playlistId) ? "flow-song" : "shared-song";
 
@@ -1287,17 +1285,15 @@ export async function starMany(
     )
   )
     return false;
-  if (favoriteAutoKeepEnabled()) {
-    const linked = await linkTracksToLibrary(
-      playlistSongs.flatMap((song) => (song ? [song.track] : [])),
-      { startedByPlaylist: null },
-    );
-    if (linked.tracks.some((track) => !track.canonicalJobId)) {
-      await discardLibraryJobs(linked.createdJobIds);
-      return false;
-    }
-    keepSongsInLibrary(parsed.flatMap((target) => (target.kind === "song" ? [target.key] : [])));
+  const linked = await linkTracksToLibrary(
+    playlistSongs.flatMap((song) => (song ? [song.track] : [])),
+    { startedByPlaylist: null },
+  );
+  if (linked.tracks.some((track) => !track.canonicalJobId)) {
+    await discardLibraryJobs(linked.createdJobIds);
+    return false;
   }
+  keepSongsInLibrary(parsed.flatMap((target) => (target.kind === "song" ? [target.key] : [])));
   const addStars = db.transaction(() => {
     let changed = false;
     for (const target of parsed) {

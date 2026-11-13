@@ -1,7 +1,6 @@
 import { allReleaseTypes } from "./constants";
 import { normalizeDateTimeFormat } from "../../utils/dateTime.ts";
 import type {
-  AppSettings,
   QualityProfile,
   StoredIntegrations,
 } from "../../../../backend/db/helpers/settings.ts";
@@ -20,30 +19,11 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
   const metadata: NonNullable<StoredIntegrations["metadata"]> =
     savedSettings.integrations?.metadata || {};
   const news = savedSettings.integrations?.news;
-  const parsedAutoRefreshHours = parseInt(String(lastfm.discoveryAutoRefreshHours), 10);
-  const normalizedAutoRefreshHours = [24, 168, 720].includes(parsedAutoRefreshHours)
-    ? parsedAutoRefreshHours
-    : 168;
-  const parsedRecommendationsPerRefresh = parseInt(
-    String(lastfm.discoveryRecommendationsPerRefresh),
-    10,
-  );
-  const normalizedRecommendationsPerRefresh = Number.isFinite(parsedRecommendationsPerRefresh)
-    ? Math.min(500, Math.max(50, parsedRecommendationsPerRefresh))
-    : 200;
   const qualityProfile: Partial<QualityProfile> | undefined = savedSettings.qualityProfile;
-  const missingTrackSearch: Partial<AppSettings["missingTrackSearch"]> | undefined =
-    savedSettings.missingTrackSearch;
   return {
     ...savedSettings,
     dateTimeFormat: normalizeDateTimeFormat(savedSettings.dateTimeFormat),
-    subsonic: {
-      favoriteAutoKeep: savedSettings.subsonic?.favoriteAutoKeep !== false,
-    },
     downloadFolderPath: String(savedSettings.downloadFolderPath || "").trim(),
-    reviewTimeoutHours: Number.isInteger(savedSettings.reviewTimeoutHours)
-      ? savedSettings.reviewTimeoutHours
-      : 0,
     pathMappings: Array.isArray(savedSettings.pathMappings) ? savedSettings.pathMappings : [],
     inbox: {
       enabled: savedSettings.inbox?.enabled !== false,
@@ -56,7 +36,6 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
     releaseTypes: savedSettings.releaseTypes || allReleaseTypes,
     quality: savedSettings.quality || "standard",
     qualityProfile,
-    missingTrackSearch,
     security: {
       ...(savedSettings.security || {}),
       localNetworkBypass: {
@@ -67,12 +46,6 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
       lastfm: {
         apiKey: "",
         discoveryPeriod: "1month",
-        discoveryAutoRefreshHours: normalizedAutoRefreshHours,
-        discoveryRecommendationsPerRefresh: normalizedRecommendationsPerRefresh,
-        discoveryMode:
-          lastfm.discoveryMode === "safer" || lastfm.discoveryMode === "deeper"
-            ? lastfm.discoveryMode
-            : "balanced",
         ...lastfm,
       },
       news: {
@@ -100,7 +73,6 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
         priority: 10,
         preferredFormat: "flac",
         preferredFormatStrict: false,
-        cleanupAfterRuns: false,
         ...(savedSettings.integrations?.slskd || {}),
       },
       prowlarr: {
@@ -108,31 +80,24 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
         url: "",
         apiKey: "",
         indexers: {},
-        categories: [3000],
-        maxResults: 60,
         ...(savedSettings.integrations?.prowlarr || {}),
       },
       nzbget: {
-        deleteLeftovers: true,
         enabled: false,
         url: "",
         username: "",
         password: "",
         category: "aurral",
         priority: 20,
-        nzbPriority: 0,
-        addPaused: false,
         completedPath: "",
         ...(savedSettings.integrations?.nzbget || {}),
       },
       sabnzbd: {
-        deleteLeftovers: true,
         enabled: false,
         url: "",
         apiKey: "",
         category: "aurral",
         priority: 20,
-        addPaused: false,
         ...(savedSettings.integrations?.sabnzbd || {}),
       },
       tidarr: {

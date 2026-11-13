@@ -35,7 +35,6 @@ import { useAudioQueue } from "../contexts/audioQueueContext";
 import { SettingsLink, readSettingsPath, withoutSettingsParam } from "../navigation/settingsRoute";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { useSectionNav } from "../navigation/useSectionNav.ts";
-import { useLegacyNav } from "../navigation/legacyNav.ts";
 import { isLibrarySectionPath, useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
 import { isRecord } from "../../../lib/isRecord.ts";
 
@@ -112,7 +111,6 @@ function Layout({ children, headerActions }: LayoutProps) {
   const scrolledPageRef = useRef<{ pathname: string; search: string } | null>(null);
   const sectionNav = useSectionNav();
   const sectionRoot = sectionNav?.root ? sectionNav : null;
-  const newNav = !useLegacyNav();
   const { isDiscoverSectionActive } = useDiscoverRecent();
   const sectionBarRef = useRef<HTMLElement>(null);
   const { authRequired, canLogOut, logout, user, bootstrap } = useAuth();
@@ -166,7 +164,7 @@ function Layout({ children, headerActions }: LayoutProps) {
   const isActive = useCallback(
     (path: string) => {
       if (path === "/") {
-        return isDiscoverSectionActive || (newNav && location.pathname === "/discover/news");
+        return isDiscoverSectionActive || location.pathname === "/discover/news";
       }
       if (path.startsWith("/shows")) {
         return location.pathname.startsWith("/shows");
@@ -182,7 +180,7 @@ function Layout({ children, headerActions }: LayoutProps) {
       }
       return location.pathname === path;
     },
-    [isDiscoverSectionActive, location.pathname, newNav],
+    [isDiscoverSectionActive, location.pathname],
   );
 
   const mobilePrimaryItems = [
@@ -374,7 +372,7 @@ function Layout({ children, headerActions }: LayoutProps) {
   }, [location.pathname]);
 
   useEffect(() => {
-    if (!newNav || !sectionRoot) return undefined;
+    if (!sectionRoot) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
       const step = event.key === "[" ? -1 : event.key === "]" ? 1 : 0;
       if (!step || event.defaultPrevented || event.isComposing) return;
@@ -394,7 +392,7 @@ function Layout({ children, headerActions }: LayoutProps) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [newNav, navigate, sectionRoot]);
+  }, [navigate, sectionRoot]);
 
   useEffect(() => {
     const activeChip = sectionBarRef.current?.querySelector('[aria-current="page"]');
@@ -481,7 +479,6 @@ function Layout({ children, headerActions }: LayoutProps) {
       data-sidebar-mode={sidebarMode}
       data-resizing={isResizing || undefined}
       data-player-docked={!playerMinimized || undefined}
-      data-nav={newNav ? "new" : undefined}
       style={{
         "--sidebar-width": `${sidebarWidth}px`,
       }}
@@ -532,7 +529,7 @@ function Layout({ children, headerActions }: LayoutProps) {
             </button>
           ) : null}
 
-          {newNav && sectionNav ? (
+          {sectionNav ? (
             <nav className="app-topbar-tabs" aria-label={sectionNav.label}>
               {sidebarMode === "icons" ? (
                 <span className="app-topbar-tabs__title">{sectionNav.title}</span>

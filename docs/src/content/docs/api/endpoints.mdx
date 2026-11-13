@@ -282,8 +282,8 @@ include `albumGrab.libraryAlbumId`.
 | `GET`    | `/api/discover/spotify-import`                | The current user's imported Spotify history summary, or `null`                                                   |
 | `PUT`    | `/api/discover/spotify-import`                | Replace the current user's imported Spotify history with `{ artists }` totals                                    |
 | `DELETE` | `/api/discover/spotify-import`                | Remove the current user's imported Spotify history                                                               |
-| `GET`    | `/api/discover/preferences`                   | Discovery preferences                                                                                            |
-| `POST`   | `/api/discover/preferences`                   | Update discovery preferences                                                                                     |
+| `GET`    | `/api/discover/preferences`                   | Your discovery mode and the server's local show preferences                                                      |
+| `POST`   | `/api/discover/preferences`                   | Update the fields you send: your discovery mode, or the local show preferences                                   |
 | `POST`   | `/api/discover/preferences/reset`             | Reset discovery preferences                                                                                      |
 | `POST`   | `/api/discover/refresh`                       | Refresh discovery data                                                                                           |
 | `POST`   | `/api/discover/clear`                         | Clear artwork links, cached image files, Library artwork copies, and metadata-provider caches                    |
@@ -452,8 +452,7 @@ Every route in this section requires an administrator.
 | `POST` | `/api/settings/download-clients/:key/test` | Test a download client                                                         |
 | `POST` | `/api/settings/gotify/test`                | Test Gotify                                                                    |
 | `POST` | `/api/settings/webhook/test`               | Test one webhook configuration                                                 |
-| `GET`  | `/api/settings/playlist-files`             | Read the playlist file folder and naming setting                               |
-| `PUT`  | `/api/settings/playlist-files`             | Change the owner prefix in playlist file names                                 |
+| `GET`  | `/api/settings/playlist-files`             | Read the playlist file folder                                                  |
 | `GET`  | `/api/backup`                              | Download a backup zip. Requires a password entered in the last 15 minutes      |
 | `POST` | `/api/backup/restore`                      | Restore a backup zip sent as the request body, then restart                    |
 

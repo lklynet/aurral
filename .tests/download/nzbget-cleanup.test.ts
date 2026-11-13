@@ -202,7 +202,7 @@ test("a folder that is already gone is not an error", async () => {
   await remove();
 });
 
-test("the client keeps the history item when files cannot be removed, and honors the opt-out", async () => {
+test("the client keeps the history item when files cannot be removed", async () => {
   const client = new NzbgetClient({ completedPath: root });
   const rpc = vi.spyOn(client, "rpc").mockImplementation(async () => true);
   vi.spyOn(client, "listGroups").mockImplementation(async () => []);
@@ -219,13 +219,6 @@ test("the client keeps the history item when files cannot be removed, and honors
     /not inside NZBGet/,
   );
   assert.equal(rpc.mock.calls.length, 0);
-  client.updateConfig({ completedPath: root, deleteLeftovers: false });
-  assert.equal(
-    await client.deleteHistoryItem(42, { deleteFiles: true, historyItem: { DestDir: folder() } }),
-    true,
-  );
-  assert.equal(await exists(folder()), true);
-  assert.deepEqual(rpc.mock.calls[0], ["editqueue", ["HistoryFinalDelete", "", [42]]]);
 });
 
 test("the last of two downloads sharing a folder removes it, even when both finish at once", async () => {
@@ -271,12 +264,10 @@ test("category-specific completed directories are read from NZBGet configuration
 async function pipelineFixture(
   t: TestContext,
   {
-    deleteLeftovers = true,
     durationMs = 1000,
     queue = [],
     others = [],
   }: {
-    deleteLeftovers?: boolean;
     durationMs?: number;
     queue?: Awaited<ReturnType<InstanceType<typeof NzbgetClient>["listGroups"]>>;
     others?: Awaited<ReturnType<InstanceType<typeof NzbgetClient>["history"]>>;
@@ -289,7 +280,6 @@ async function pipelineFixture(
         url: "http://127.0.0.1:9",
         completedPath: root,
         category: "aurral",
-        deleteLeftovers,
       },
     },
   });
@@ -386,14 +376,6 @@ test("NZBGet lets go of a finished download once Aurral has its files, and the i
   assert.equal(await exists(folder()), false);
   assert.equal(historyDeletes(deleted), 1);
   assert.deepEqual(await keptByAurral(), []);
-});
-
-test("turning off Delete leftover files keeps the rest of the album", async (t) => {
-  const { jobId, payload, deleted } = await pipelineFixture(t, { deleteLeftovers: false });
-  await finish(payload);
-  assert.equal(trackedJob(downloadTracker, jobId).status, "done");
-  assert.equal(await exists(path.join(folder(), "Unwanted.flac")), true);
-  assert.equal(historyDeletes(deleted), 1);
 });
 
 test("an import that fails keeps the files Aurral was handed, and its retry imports them", async (t) => {

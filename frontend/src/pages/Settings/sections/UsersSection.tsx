@@ -220,23 +220,10 @@ function UsersGroup({ users }: { users: ReturnType<typeof useSettingsUsers> }) {
 
 function SignInGroup() {
   const { settings } = useServerSettings();
-  const saveSecurity = useSaveSecurity();
   const google: GoogleSettings = settings.integrations.google ?? {};
 
   return (
     <SettingsGroup title="Sign-in">
-      <SettingsRow
-        label="SSO-only"
-        htmlFor="users-sso-only"
-        help="Hide the password form behind a link when another sign-in method is on."
-      >
-        <PillToggle
-          id="users-sso-only"
-          checked={settings.security.ssoOnly === true}
-          aria-label="SSO-only"
-          onChange={(event) => void saveSecurity({ ssoOnly: event.target.checked })}
-        />
-      </SettingsRow>
       <SettingsServiceRow
         to="users/google"
         name="Google"

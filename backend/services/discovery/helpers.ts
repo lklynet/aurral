@@ -1,6 +1,7 @@
 import { isOwnKey } from "../../../lib/ownKey.ts";
 import { randomUUID } from "crypto";
 import pMap, { pMapSkip } from "p-map";
+import * as v from "valibot";
 import { dbOps } from "../../db/helpers/index.ts";
 import type { ArtistMatchFields } from "./artistKeys.ts";
 
@@ -21,25 +22,10 @@ export const DISCOVERY_QUALITY_ENRICHED = "enriched";
 const DISCOVERY_NETWORK_CONCURRENCY = 6;
 const DISCOVERY_CANDIDATE_MULTIPLIER = 2.5;
 const DISCOVERY_RECOMMENDATIONS_MAX = 500;
-const DISCOVERY_RECOMMENDATIONS_DEFAULT = 200;
+export const DISCOVERY_RECOMMENDATIONS_PER_REFRESH = 200;
+export const DISCOVERY_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const getDiscoveryRecommendationPoolLimit = () => DISCOVERY_RECOMMENDATIONS_MAX;
-
-export const getDiscoveryRecommendationsPerRefresh = () => {
-  const settings = dbOps.getSettings();
-  const parsed = parseInt(
-    String(settings.integrations?.lastfm?.discoveryRecommendationsPerRefresh),
-    10,
-  );
-  if (!Number.isFinite(parsed)) return DISCOVERY_RECOMMENDATIONS_DEFAULT;
-  return Math.min(DISCOVERY_RECOMMENDATIONS_MAX, Math.max(50, parsed));
-};
-
-export const getDiscoveryAutoRefreshHours = () => {
-  const settings = dbOps.getSettings();
-  const parsed = parseInt(String(settings.integrations?.lastfm?.discoveryAutoRefreshHours), 10);
-  return [24, 168, 720].includes(parsed) ? parsed : 168;
-};
 
 export const getLastfmDiscoveryPeriod = () => {
   const settings = dbOps.getSettings();
@@ -47,13 +33,17 @@ export const getLastfmDiscoveryPeriod = () => {
   return p && LASTFM_PERIODS.includes(p) ? p : "1month";
 };
 
-export const getDiscoveryMode = () => {
-  const settings = dbOps.getSettings();
-  const value = String(settings.integrations?.lastfm?.discoveryMode || "balanced")
-    .trim()
-    .toLowerCase();
-  return value === "safer" || value === "deeper" ? value : "balanced";
-};
+export const DISCOVERY_MODES = ["safer", "balanced", "deeper"] as const;
+export type DiscoveryMode = (typeof DISCOVERY_MODES)[number];
+const discoveryModeSchema = v.picklist(DISCOVERY_MODES);
+const discoveryModeKey = (userId: number) => `user:${userId}:discoveryMode`;
+
+export const getDiscoveryMode = (userId: number | null): DiscoveryMode =>
+  (userId != null && dbOps.getJSONSetting(discoveryModeKey(userId), discoveryModeSchema)) ||
+  "balanced";
+
+export const setDiscoveryMode = (userId: number, mode: DiscoveryMode) =>
+  dbOps.setJSONSetting(discoveryModeKey(userId), mode);
 
 export const getLocalDiscoveryPreferences = () => {
   const settings = dbOps.getSettings();
@@ -103,7 +93,7 @@ export const getSourceFailureRatio = (health: { success: number; failure: number
 };
 
 export const getDiscoveryRecommendationSeedLimit = () =>
-  Math.max(32, Math.min(56, Math.ceil(getDiscoveryRecommendationsPerRefresh() / 4)));
+  Math.max(32, Math.min(56, Math.ceil(DISCOVERY_RECOMMENDATIONS_PER_REFRESH / 4)));
 
 export const getSimilarArtistSampling = (failureRatio: number) => {
   if (failureRatio >= 0.5) {
@@ -112,7 +102,7 @@ export const getSimilarArtistSampling = (failureRatio: number) => {
   if (failureRatio >= 0.3) {
     return { similarLimit: 20, maxPerSeed: 14 };
   }
-  const target = getDiscoveryRecommendationsPerRefresh();
+  const target = DISCOVERY_RECOMMENDATIONS_PER_REFRESH;
   const maxPerSeed = Math.min(24, Math.max(16, Math.ceil(target / 9)));
   return {
     similarLimit: Math.min(40, Math.max(25, maxPerSeed + 12)),
@@ -127,7 +117,7 @@ export const getSecondHopArtistSampling = (failureRatio: number) => {
   if (failureRatio >= 0.3) {
     return { seedLimit: 16, similarLimit: 10, maxPerSeed: 5 };
   }
-  const target = getDiscoveryRecommendationsPerRefresh();
+  const target = DISCOVERY_RECOMMENDATIONS_PER_REFRESH;
   return {
     seedLimit: Math.min(40, Math.max(25, Math.ceil(target / 6))),
     similarLimit: 15,
@@ -136,11 +126,11 @@ export const getSecondHopArtistSampling = (failureRatio: number) => {
 };
 
 export const getSecondHopRecommendationLimit = () =>
-  Math.ceil(getDiscoveryRecommendationsPerRefresh() * 0.35);
+  Math.ceil(DISCOVERY_RECOMMENDATIONS_PER_REFRESH * 0.35);
 
 export const getCandidateTagHydrationLimit = (count: number, failureRatio: number, depth = 1) => {
   if (count <= 0) return 0;
-  const target = getDiscoveryRecommendationsPerRefresh();
+  const target = DISCOVERY_RECOMMENDATIONS_PER_REFRESH;
   if (failureRatio >= 0.5) return Math.min(count, depth >= 2 ? 0 : 40);
   if (failureRatio >= 0.3) {
     return Math.min(count, depth >= 2 ? 24 : Math.max(80, Math.ceil(target * 0.75)));
@@ -156,7 +146,7 @@ const getDiscoveryCandidateLimit = () =>
     getDiscoveryRecommendationPoolLimit(),
     Math.max(
       160,
-      Math.ceil(getDiscoveryRecommendationsPerRefresh() * DISCOVERY_CANDIDATE_MULTIPLIER),
+      Math.ceil(DISCOVERY_RECOMMENDATIONS_PER_REFRESH * DISCOVERY_CANDIDATE_MULTIPLIER),
     ),
   );
 

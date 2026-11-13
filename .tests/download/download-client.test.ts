@@ -12,7 +12,7 @@ import {
   buildQueueUuid,
   describeBitrateSupport,
 } from "../../backend/services/deemixClient.ts";
-import { QUALITY_TIERS } from "../../backend/services/qualityProfileModel.ts";
+import { QUALITY_TIERS } from "../../lib/qualityTiers.ts";
 
 function client(key: string, configured: boolean) {
   const updates: unknown[] = [];

@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useId, useRef, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { AlertCircle, ChevronLeft, ChevronRight, X } from "../../components/icons";
 import { DotLoader } from "../../components/DotLoader";
 import TooltipButton from "../../components/TooltipButton";
@@ -205,6 +213,27 @@ export function SettingsGroup({
         {children}
       </div>
     </section>
+  );
+}
+
+export function SettingsAdvancedGroup({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <SettingsGroup
+      title="Advanced"
+      actions={
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+        >
+          {open ? "Hide" : "Show"}
+        </button>
+      }
+    >
+      {open ? children : null}
+    </SettingsGroup>
   );
 }
 

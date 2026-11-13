@@ -4,31 +4,17 @@ import path from "node:path";
 import { dbOps, userOps } from "../../db/helpers/index.ts";
 
 export const PLAYLIST_FILE_EXTENSION = ".m3u";
-export const PLAYLIST_FILE_SETTINGS_KEY = "playlistFiles";
 const WRITTEN_FILES_KEY = "playlistFileNames";
 
-const playlistFileSettingsSchema = v.looseObject({
-  prefixOwnerUsername: v.optional(v.boolean()),
-});
 const writtenFilesSchema = v.record(v.string(), v.string());
 
-export type PlaylistFileSettings = { prefixOwnerUsername: boolean };
 export type PlaylistFileTrack = {
   path: string;
   title: string;
   artist: string;
   durationMs?: number;
 };
-type NamedEntity = { id: string; name: string; ownerUserId?: number | null };
-
-export function getPlaylistFileSettings(): PlaylistFileSettings {
-  const stored = dbOps.getJSONSetting(PLAYLIST_FILE_SETTINGS_KEY, playlistFileSettingsSchema);
-  return { prefixOwnerUsername: stored?.prefixOwnerUsername !== false };
-}
-
-export function savePlaylistFileSettings(settings: PlaylistFileSettings) {
-  dbOps.setJSONSetting(PLAYLIST_FILE_SETTINGS_KEY, settings);
-}
+type NamedEntity = { id: string; name: string; ownerUserId?: number | null; createdAt: number };
 
 export const sanitizePlaylistFileName = (value: string) =>
   value.replace(/[<>:"/\\|?*]/g, "_").trim();
@@ -40,23 +26,19 @@ function prefixedName(entity: NamedEntity) {
 
 const fileKey = (name: string) => sanitizePlaylistFileName(name).toLowerCase();
 
-// Every playlist needs its own file. Without the owner prefix, playlists of
-// different users that share a name keep the prefix, and any name still taken
-// gets a number.
-export function playlistDisplayNames(
-  entities: readonly NamedEntity[],
-  { prefixOwnerUsername }: PlaylistFileSettings = getPlaylistFileSettings(),
-) {
-  const owners = new Map<string, Set<number | null>>();
-  for (const entity of entities) {
-    const key = fileKey(entity.name);
-    owners.set(key, (owners.get(key) ?? new Set()).add(entity.ownerUserId ?? null));
-  }
+// Every playlist needs its own file, and a file keeps its name when another
+// user later picks the same one: the oldest owner of a name keeps it bare,
+// newer owners get their username, and any name still taken gets a number.
+export function playlistDisplayNames(entities: readonly NamedEntity[]) {
+  const firstOwner = new Map<string, number | null>();
   const names = new Map<string, string>();
   const taken = new Set<string>();
-  for (const entity of entities) {
-    const shared = owners.get(fileKey(entity.name))!.size > 1;
-    const name = prefixOwnerUsername || shared ? prefixedName(entity) : entity.name;
+  const oldestFirst = [...entities].sort((left, right) => left.createdAt - right.createdAt);
+  for (const entity of oldestFirst) {
+    const key = fileKey(entity.name);
+    const owner = entity.ownerUserId ?? null;
+    if (!firstOwner.has(key)) firstOwner.set(key, owner);
+    const name = firstOwner.get(key) === owner ? entity.name : prefixedName(entity);
     let candidate = name;
     for (let count = 2; taken.has(fileKey(candidate)); count += 1) candidate = `${name} (${count})`;
     taken.add(fileKey(candidate));

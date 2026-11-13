@@ -45,19 +45,6 @@ export function isClientConfigured(
   return (definition.validation?.required || []).every((key) => String(config[key] || "").trim());
 }
 
-export function clientPriority(
-  definition: DownloadClientDefinition,
-  config: Record<string, unknown>,
-) {
-  if (!definition.fields.some((field) => field.key === "priority")) return null;
-  const priority = config.priority ?? definition.defaults?.priority;
-  if (priority == null) return null;
-  const albumPriority = config.albumPriority;
-  return albumPriority == null || albumPriority === ""
-    ? `priority ${priority}`
-    : `tracks ${priority}, albums ${albumPriority}`;
-}
-
 function missingRequiredFields(
   definition: DownloadClientDefinition,
   config: Record<string, unknown>,

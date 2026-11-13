@@ -107,7 +107,7 @@
   ".tests/settings/webhook-test.test.ts": 2,
   ".tests/share/share-links.test.ts": 124,
   ".tests/streaming-links-songlink.test.ts": 1,
-  ".tests/subsonic/subsonic-api.int.test.ts": 60,
+  ".tests/subsonic/subsonic-api.int.test.ts": 57,
   ".tests/subsonic/subsonic-schema.int.test.ts": 87,
   ".tests/subsonic/subsonic.int.test.ts": 53,
   ".tests/track-matching/fixture-corpus.ts": 1,

@@ -707,7 +707,12 @@ test("Soulseek tries the other candidates before sending a file to review", asyn
   const root = path.join(isolatedState.baseDir, "slskd-held");
   const client = getDownloadClient("slskd");
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => root);
-  vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  vi.spyOn(client, "cleanupAfterRun").mockImplementation(async () => ({
+    searchesRemoved: 0,
+    transfersRemoved: 0,
+    downloadsRemoved: false,
+    cleanedSearchIds: [],
+  }));
   const candidate = (name: string) => ({
     raw: { user: name, file: `Music\\Artist Name\\${name}.mp3`, size: 0 },
   });
@@ -772,7 +777,12 @@ test("a yt-dlp file waits for review while the next source is tried", async (t) 
   const root = path.join(isolatedState.baseDir, "ytdlp-held-slskd");
   const client = getDownloadClient("slskd");
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => root);
-  vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  vi.spyOn(client, "cleanupAfterRun").mockImplementation(async () => ({
+    searchesRemoved: 0,
+    transfersRemoved: 0,
+    downloadsRemoved: false,
+    cleanedSearchIds: [],
+  }));
   const peer = (name: string) => ({
     raw: { user: "peer", file: `Music\\Artist Name\\${name}.mp3`, size: 0 },
   });
@@ -1016,7 +1026,12 @@ test("a download is tagged after it reaches the Library, so a slow download fold
   });
   const slskd = getDownloadClient("slskd");
   vi.spyOn(slskd, "getDownloadDirectory").mockImplementation(async () => slskdRoot);
-  vi.spyOn(slskd, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  vi.spyOn(slskd, "cleanupAfterRun").mockImplementation(async () => ({
+    searchesRemoved: 0,
+    transfersRemoved: 0,
+    downloadsRemoved: false,
+    cleanedSearchIds: [],
+  }));
   await failFfmpegIn(t, slowFolder);
   const addJob = (trackName: string, trackNumber: number) => {
     const jobId = createTrackedJob(

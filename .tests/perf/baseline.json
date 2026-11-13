@@ -129,8 +129,8 @@
   },
   "discover releases": {
     "queries": {
-      "cold": 25,
-      "warm": 17
+      "cold": 26,
+      "warm": 18
     },
     "bytes": 19539,
     "scans": [
@@ -139,8 +139,8 @@
   },
   "releases page": {
     "queries": {
-      "cold": 24,
-      "warm": 24
+      "cold": 27,
+      "warm": 27
     },
     "bytes": 44475,
     "scans": [
@@ -241,7 +241,7 @@
   },
   "playlists": {
     "queries": {
-      "cold": 39,
+      "cold": 36,
       "warm": 19
     },
     "bytes": 4737,
@@ -361,7 +361,7 @@
   },
   "album match": {
     "queries": {
-      "cold": 35,
+      "cold": 32,
       "warm": 4
     },
     "bytes": 35,

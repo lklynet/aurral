@@ -95,8 +95,8 @@ test("uses a SABnzbd path mapping scoped to the category folder", async () => {
   assert.equal(await exists(folder()), false);
 });
 
-test("keeps history when cleanup is unsafe and honors the opt-out", async () => {
-  const client = new SabnzbdClient({ category: "aurral", deleteLeftovers: true });
+test("keeps history when cleanup is unsafe", async () => {
+  const client = new SabnzbdClient({ category: "aurral" });
   const api = vi.spyOn(client, "api").mockImplementation(async (mode, params = {}) => {
     if (mode === "queue") return { queue: { slots: [] } };
     if (mode === "history" && params.name === "delete") return { status: true };
@@ -122,20 +122,10 @@ test("keeps history when cleanup is unsafe and honors the opt-out", async () => 
     api.mock.calls.some(([, params]) => params?.name === "delete"),
     false,
   );
-
-  client.updateConfig({ category: "aurral", deleteLeftovers: false });
-  assert.equal(
-    await client.deleteHistoryItem("job", {
-      deleteFiles: true,
-      historyItem: { nzo_id: "job", storage: folder() },
-    }),
-    true,
-  );
-  assert.equal(await exists(folder()), true);
 });
 
 test("the last history item sharing a completed folder removes it", async () => {
-  const client = new SabnzbdClient({ category: "aurral", deleteLeftovers: true });
+  const client = new SabnzbdClient({ category: "aurral" });
   const history = ["first", "second"].map((nzo_id) => ({ nzo_id, storage: folder() }));
   vi.spyOn(client, "getDownloadDirectories").mockImplementation(async () => ({
     completedPath: "",
@@ -168,7 +158,7 @@ test("the last history item sharing a completed folder removes it", async () => 
 
 test("case-sensitive SABnzbd folders are not treated as shared", async () => {
   if (process.platform === "win32") return;
-  const client = new SabnzbdClient({ category: "aurral", deleteLeftovers: true });
+  const client = new SabnzbdClient({ category: "aurral" });
   vi.spyOn(client, "api").mockImplementation(async (mode) => {
     if (mode === "queue") {
       return { queue: { slots: [{ nzo_id: "other", storage: "/complete/album" }] } };

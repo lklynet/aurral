@@ -5,7 +5,7 @@ description: Download tracks and albums from Soulseek through slskd.
 
 slskd is a Soulseek client. Aurral uses it to download tracks for flows, playlists, and Aurral albums. For an Aurral album, Aurral can download one whole folder at once when the folder fits the requested release.
 
-Aurral stops its active search when it has enough suitable results, reaches its time limit, or the download is cancelled or removed. When Aurral starts, it also stops the searches it left running for downloads that a restart removed. This also applies when **Clean up after runs** is off; that setting controls retention of completed searches and transfers.
+Aurral stops its active search when it has enough suitable results, reaches its time limit, or the download is cancelled or removed. When Aurral starts, it also stops the searches it left running for downloads that a restart removed. Aurral removes its finished searches and transfers from slskd, and leaves the ones it did not start.
 
 ![Aurral history with slskd downloads](../../../../../web/screenshots/history.webp)
 
@@ -25,10 +25,7 @@ If slskd runs on Windows and reports host paths such as `N:\...`, mount the pare
 
 ## Options
 
-- **Track priority** and **Album priority** set the order among download sources. The default track priority is `10`. See [Download source priority and fallback](/integrations/usenet/#download-source-priority-and-fallback).
-- **Clean up after runs** clears finished slskd transfers when a flow or playlist run ends.
-
-To choose the accepted FLAC, MP3, and AAC tiers, open **Settings > Downloads > Quality profile**. See [Quality profile](/using/playlists/#quality-profile).
+To choose between lossless and smaller files, open **Settings > Downloads > Quality**. See [Quality](/using/playlists/#quality).
 
 slskd can supply missing tracks and upgrades. Aurral reads each downloaded file before it accepts the quality.
 

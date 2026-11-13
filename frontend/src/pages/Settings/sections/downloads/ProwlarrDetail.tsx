@@ -10,7 +10,13 @@ import { Select } from "../../../../components/Select";
 import { providerStatus } from "../../utils/serviceStatus";
 import { useServerSettings } from "../../SettingsProviders";
 import type { UsenetClientKey } from "../../../../../../backend/services/usenetClientCommon.ts";
-import { SettingsActions, SettingsGroup, SettingsPage, SettingsRow } from "../../SettingsLayout";
+import {
+  SettingsActions,
+  SettingsAdvancedGroup,
+  SettingsGroup,
+  SettingsPage,
+  SettingsRow,
+} from "../../SettingsLayout";
 import { readApiError } from "../../../../utils/api/errors.ts";
 
 type ServerSettings = ReturnType<typeof useServerSettings>;
@@ -49,7 +55,6 @@ export function ProwlarrDetail() {
   const [testing, setTesting] = useState(false);
   const [testStatus, setTestStatus] = useState<TestStatus | null>(null);
   const prowlarr = readProwlarr(settings);
-  const [categories, setCategories] = useState(() => (prowlarr.categories || [3000]).join(","));
   const connected = health?.prowlarrConfigured === true;
   const indexersQuery = useQuery({
     queryKey: queryKeys.prowlarrIndexers,
@@ -178,38 +183,6 @@ export function ProwlarrDetail() {
           </button>
         </SettingsActions>
       </SettingsGroup>
-      <SettingsGroup title="Search">
-        <SettingsRow
-          label="Music categories"
-          htmlFor="prowlarr-categories"
-          help="Category IDs, separated by commas."
-        >
-          <SettingsInput
-            id="prowlarr-categories"
-            type="text"
-            value={categories}
-            onChange={(event) => {
-              setCategories(event.target.value);
-              update({
-                categories: event.target.value
-                  .split(",")
-                  .map((entry) => parseInt(entry.trim(), 10))
-                  .filter((entry) => Number.isFinite(entry)),
-              });
-            }}
-          />
-        </SettingsRow>
-        <SettingsRow label="Result limit" htmlFor="prowlarr-max-results">
-          <SettingsInput
-            id="prowlarr-max-results"
-            type="number"
-            min="10"
-            max="200"
-            value={prowlarr.maxResults ?? 60}
-            onChange={(event) => update({ maxResults: toNumber(event.target.value, 60) })}
-          />
-        </SettingsRow>
-      </SettingsGroup>
       <SettingsGroup
         title="Indexers"
         actions={
@@ -237,7 +210,6 @@ export function ProwlarrDetail() {
                 <tr>
                   <th scope="col">Indexer</th>
                   <th scope="col">Type</th>
-                  <th scope="col">Priority</th>
                   <th scope="col">Download client</th>
                   <th scope="col" className="settings-table__actions">
                     Use
@@ -256,22 +228,6 @@ export function ProwlarrDetail() {
                         ) : null}
                       </td>
                       <td>{indexer.protocol === "torrent" ? "Torrent" : "Usenet"}</td>
-                      <td>
-                        <SettingsInput
-                          className="downloads-priority"
-                          type="number"
-                          min="1"
-                          max="1000"
-                          aria-label={`${indexer.name} priority`}
-                          value={state.priority}
-                          onChange={(event) =>
-                            updateIndexer(indexer.id, {
-                              ...state,
-                              priority: toNumber(event.target.value, indexer.priority || 25),
-                            })
-                          }
-                        />
-                      </td>
                       <td>
                         {indexer.protocol === "torrent" ? (
                           "qBittorrent"
@@ -313,6 +269,33 @@ export function ProwlarrDetail() {
           </div>
         )}
       </SettingsGroup>
+      {indexers.length > 0 ? (
+        <SettingsAdvancedGroup>
+          <p className="settings-group__note">Indexers with a lower priority are searched first.</p>
+          {indexers.map((indexer) => {
+            const state = indexerState(indexer);
+            const id = `prowlarr-indexer-${indexer.id}-priority`;
+            return (
+              <SettingsRow key={indexer.id} label={indexer.name} htmlFor={id}>
+                <SettingsInput
+                  id={id}
+                  className="downloads-priority"
+                  type="number"
+                  min="1"
+                  max="1000"
+                  value={state.priority}
+                  onChange={(event) =>
+                    updateIndexer(indexer.id, {
+                      ...state,
+                      priority: toNumber(event.target.value, indexer.priority || 25),
+                    })
+                  }
+                />
+              </SettingsRow>
+            );
+          })}
+        </SettingsAdvancedGroup>
+      ) : null}
     </SettingsPage>
   );
 }

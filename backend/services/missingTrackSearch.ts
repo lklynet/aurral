@@ -1,7 +1,6 @@
 import { db } from "../config/db-sqlite.ts";
 import type { LibraryAlbumsRow, LibraryTracksRow } from "../db/rows.ts";
 import type { DownloadJob } from "./downloadJobs/downloadTracker.ts";
-import { dbOps } from "../db/helpers/index.ts";
 import { ACTIVE_JOB_STATUSES, indexAlbumJobs, jobMatchesTrack } from "./albumJobs.ts";
 import { recordMissingTrackSearch } from "./aurralHistoryService.ts";
 import { AURRAL_ALBUM_CONDITION, monitoredTrackCondition } from "./monitoring.ts";
@@ -35,10 +34,7 @@ const MISSING_TRACK_CONDITION = `
   )
 `;
 
-const candidateAlbumsStmt = db.prepare<
-  [{ dueBefore: number | null; today: string }],
-  CandidateAlbum
->(`
+const candidateAlbumsStmt = db.prepare<[{ dueBefore: number; today: string }], CandidateAlbum>(`
   SELECT
     album.id,
     album.title,
@@ -57,7 +53,7 @@ const candidateAlbumsStmt = db.prepare<
     AND COALESCE(album.mbid, album.release_group_mbid) IS NOT NULL
     AND (album.release_date IS NULL OR substr(album.release_date, 1, 10) <= :today)
     AND (
-      (:dueBefore IS NOT NULL AND COALESCE(management.last_missing_search_at, 0) <= :dueBefore)
+      COALESCE(management.last_missing_search_at, 0) <= :dueBefore
       OR substr(album.release_date, 1, 10) > date(
         MAX(COALESCE(management.last_missing_search_at, 0), management.created_at) / 1000,
         'unixepoch'
@@ -96,11 +92,9 @@ function hasSearchableMissingTrack(album: CandidateAlbum, jobs: DownloadJob[]) {
   });
 }
 
-// An album added before its release date is searched once it comes out,
-// even when the scheduled missing-track search is off.
-function selectDueAlbums(intervalDays: number | null) {
+function selectDueAlbums() {
   const now = Date.now();
-  const dueBefore = intervalDays === null ? null : now - intervalDays * DAY_MS;
+  const dueBefore = now - DAY_MS;
   const albums = candidateAlbumsStmt.all({ dueBefore, today: utcDay(now) });
   const jobsForAlbum = indexAlbumJobs(
     albums.flatMap((album) => [album.releaseGroupMbid, album.mbid]),
@@ -116,7 +110,7 @@ function selectDueAlbums(intervalDays: number | null) {
     })
     .filter(
       ({ album, jobs, lastActivityAt }) =>
-        ((dueBefore !== null && lastActivityAt <= dueBefore) ||
+        (lastActivityAt <= dueBefore ||
           releasedSince(album.releaseDate, Math.max(lastActivityAt, album.addedAt), now)) &&
         !jobs.some(isActiveOrCancelled),
     )
@@ -155,9 +149,8 @@ async function searchAlbumMissingTracks(album: CandidateAlbum) {
 }
 
 export async function runMissingTrackSearch() {
-  const settings = dbOps.getSettings().missingTrackSearch;
   if (!isAnyDownloadSourceConfigured()) return 0;
-  const dueAlbums = selectDueAlbums(settings.enabled ? settings.intervalDays : null);
+  const dueAlbums = selectDueAlbums();
   for (const album of dueAlbums) await searchAlbumMissingTracks(album);
   return dueAlbums.length;
 }
