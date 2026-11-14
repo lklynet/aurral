@@ -14,6 +14,7 @@ const DEEZER_WIDTHS = [120, 250, 500, 1000];
 const LIDARR_COVER =
   /^(https?:\/\/imagecache\.lidarr\.audio\/v1\/caa\/[^/?#]+\/[^/?#]+)-(?:250|500|1200)(\.[a-z]+)$/i;
 const LIDARR_COVER_WIDTHS = [250, 500, 1200];
+const ARTIST_PHOTO = /^https?:\/\/tadb\.brainzmash\.cc\/images\/media\/artist\/thumb\/[^/?#]+$/i;
 const AURRAL_COVER =
   /\/api\/(?:playlists\/(?:artwork\/[^/?#]+|flow-templates\/[^/?#]+\/cover)|discover\/playlists\/[^/?#]+\/[^/?#]+\/cover)(?:\?|$)/;
 const AURRAL_COVER_WIDTH = 1000;
@@ -39,6 +40,13 @@ export function imageSizes(url: string): ImageSize[] {
       url: `${lidarrCover[1]}-${width}${lidarrCover[2]}`,
       width,
     }));
+  }
+  if (ARTIST_PHOTO.test(url)) {
+    return [
+      { url: `${url}/small`, width: 240 },
+      { url: `${url}/medium`, width: 360 },
+      { url, width: 700 },
+    ];
   }
   if (AURRAL_COVER.test(url)) {
     return [
