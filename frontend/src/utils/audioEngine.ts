@@ -46,6 +46,16 @@ const LEVELING_TARGET_LUFS = -14;
 const LOUDNESS_HEADER = "X-Aurral-Loudness";
 const HAVE_METADATA = 1;
 
+function mountPlaybackNode(node: HTMLAudioElement) {
+  node.preload = "auto";
+  node.setAttribute("playsinline", "");
+  node.setAttribute("webkit-playsinline", "");
+  node.setAttribute("aria-hidden", "true");
+  if (typeof document !== "undefined" && document.body && !node.isConnected) {
+    document.body.append(node);
+  }
+}
+
 export function levelingGain(lufs: number) {
   return Math.min(1, 10 ** ((LEVELING_TARGET_LUFS - lufs) / 20));
 }
@@ -70,9 +80,12 @@ function sameSource(
   return entry?.src === src && String(entry.format) === String(format);
 }
 
-export function createAudioEngine(createNode: () => HTMLAudioElement = () => new Audio()) {
+export function createAudioEngine(
+  createNode: () => HTMLAudioElement = () => new Audio(),
+  mountNode: (node: HTMLAudioElement) => void = mountPlaybackNode,
+) {
   const node = createNode();
-  node.preload = "auto";
+  mountNode(node);
   let current: AudioEntry | null = null;
   let preloaded: PreloadEntry | null = null;
   let volume = 1;
