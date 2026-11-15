@@ -6,6 +6,7 @@ import { validate } from "../middleware/validate.ts";
 import type { AppEnv, RequestUser } from "../middleware/requestUser.ts";
 import { getAurralHistoryRequests } from "../services/aurralHistoryRequests.ts";
 import { downloadTracker } from "../services/downloadJobs/downloadTracker.ts";
+import { dbOps } from "../db/helpers/index.ts";
 import { hasPermission } from "../services/auth.ts";
 import {
   ACTIVITY_VIEW_IDS,
@@ -112,7 +113,7 @@ export default new Hono<AppEnv>()
         (!page.cause || activityCauseKey(request.cause) === page.cause) &&
         (canCancelAny || (user != null && String(request.requestedBy?.id) === String(user.id))),
     ).length;
-    return c.json({ ...page, cancelable }, 200);
+    return c.json({ ...page, cancelable, paused: dbOps.getSettings().playlistWorker.paused }, 200);
   });
 
 export const invalidateRequestsCache = () => {

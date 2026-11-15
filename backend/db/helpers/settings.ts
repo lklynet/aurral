@@ -41,6 +41,7 @@ type StoredSecurity = v.InferOutput<typeof securitySchema>;
 export interface StoredPlaylistWorker {
   concurrency?: unknown;
   retryPausedPlaylistIds?: unknown;
+  paused?: unknown;
 }
 
 const inboxSchema = v.looseObject({
@@ -137,6 +138,7 @@ function normalizePlaylistWorkerSettings(raw: StoredPlaylistWorker | null | unde
   return {
     concurrency,
     retryPausedPlaylistIds,
+    paused: worker.paused === true,
   };
 }
 

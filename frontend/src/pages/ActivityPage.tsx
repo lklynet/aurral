@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { requestsClient } from "../utils/api/clients/requests.ts";
 import { playlistJobsClient } from "../utils/api/clients/playlistJobs.ts";
+import { playlistWorkerClient } from "../utils/api/clients/playlistWorker.ts";
 import { getStagingStreamUrl } from "../utils/api/playlistUrls.ts";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -31,7 +32,7 @@ import { getApiErrorText } from "../utils/api/errors.ts";
 
 import { Navigate, useParams, useSearchParams } from "react-router";
 import RouteLink from "../components/RouteLink";
-import { AlertCircle, Music, X } from "../components/icons";
+import { AlertCircle, Music, Pause, Play, X } from "../components/icons";
 import { SkeletonActivityList, SkeletonStatus } from "../components/Skeletons";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import {
@@ -93,7 +94,8 @@ const HISTORY_EMPTY_STATE = {
 function ActivityPage() {
   const { view: viewParam } = useParams();
   const { user } = useAuth();
-  const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessPlaylists;
+  const isAdmin = user?.role === "admin";
+  const hasFlowAccess = isAdmin || !!user?.permissions?.accessPlaylists;
   const [localError, setLocalError] = useState<string | null>(null);
   const [reviewingJobs, setReviewingJobs] = useState<Record<string, "approve" | "deny">>({});
   const [controllingJobs, setControllingJobs] = useState<Record<string, "cancel" | "retry">>({});
@@ -175,6 +177,7 @@ function ActivityPage() {
   });
   const page = activityQuery.data;
   const cancelableCount = page?.cancelable ?? 0;
+  const paused = page?.paused ?? false;
   const loading = activityQuery.isPending;
   const error =
     localError || getApiErrorText(activityQuery.error, "message") || activityQuery.error?.message;
@@ -286,6 +289,14 @@ function ActivityPage() {
       setConfirmingCancelAll(false);
       void queryClient.invalidateQueries({ queryKey: activityQueryKey });
     },
+  });
+
+  const pauseMutation = useMutation({
+    mutationFn: (pause: boolean) =>
+      parseResponse(playlistWorkerClient.worker.settings.$put({ json: { paused: pause } })),
+    onError: (_, pause) =>
+      setLocalError(pause ? "Failed to pause downloads." : "Failed to resume downloads."),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: activityQueryKey }),
   });
 
   const reviewBlockedJob = async (jobId: string | null | undefined, action: "approve" | "deny") => {
@@ -441,7 +452,7 @@ function ActivityPage() {
       <ActivityCauses
         causes={page?.causes ?? []}
         active={page?.cause ?? null}
-        isAdmin={user?.role === "admin"}
+        isAdmin={isAdmin}
         onSelect={(cause) => setFilter("cause", cause)}
       />
       <ActivityStatusTabs
@@ -450,18 +461,41 @@ function ActivityPage() {
         active={activeStatus}
         onChange={setActiveStatus}
         action={
-          isQueueView && cancelableCount > 0 ? (
-            <button
-              type="button"
-              className="btn btn-secondary activity-toolbar__action"
-              onClick={() => setConfirmingCancelAll(true)}
-            >
-              <X aria-hidden="true" />
-              <span>Cancel all</span>
-            </button>
+          isQueueView && (isAdmin || cancelableCount > 0) ? (
+            <div className="activity-toolbar__group activity-toolbar__group--end">
+              {isAdmin && (
+                <button
+                  type="button"
+                  className={`btn ${paused ? "btn-primary" : "btn-secondary"} activity-toolbar__action`}
+                  aria-label={paused ? "Resume downloads" : "Pause downloads"}
+                  disabled={pauseMutation.isPending}
+                  onClick={() => pauseMutation.mutate(!paused)}
+                >
+                  {paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
+                  <span>{paused ? "Resume" : "Pause"}</span>
+                </button>
+              )}
+              {cancelableCount > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-secondary activity-toolbar__action"
+                  onClick={() => setConfirmingCancelAll(true)}
+                >
+                  <X aria-hidden="true" />
+                  <span>Cancel all</span>
+                </button>
+              )}
+            </div>
           ) : null
         }
       />
+
+      {isQueueView && paused && (
+        <p className="activity-paused" role="status">
+          <Pause aria-hidden="true" />
+          Downloads are paused. Tracks already downloading will finish.
+        </p>
+      )}
 
       {error && (
         <StatePanel

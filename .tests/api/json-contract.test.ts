@@ -662,6 +662,8 @@ test("flows, activity, and review preserve their public response fields and stor
   const queue = v.parse(
     v.object({
       cause: v.string(),
+      cancelable: v.number(),
+      paused: v.boolean(),
       causes: v.array(v.looseObject({ key: v.string() })),
       items: v.array(v.object({ cause: v.record(v.string(), v.unknown()) })),
     }),
@@ -697,4 +699,19 @@ test("flows, activity, and review preserve their public response fields and stor
   fields(await call("/api/playlists/jobs/missing/approve", { method: "POST", status: 404 }), {
     error: "string",
   });
+  const pause = async (paused: boolean) =>
+    v.parse(
+      v.looseObject({}),
+      await call("/api/playlists/worker/settings", { method: "PUT", body: { paused } }),
+    );
+  const queuePaused = async () =>
+    v.parse(v.object({ paused: v.boolean() }), await call("/api/requests/page?view=queue")).paused;
+  fields(await pause(true), { success: "boolean", settings: "object" });
+  assert.equal(await queuePaused(), true);
+  fields(v.parse(v.looseObject({}), await call("/api/playlists/jobs/cancel", { method: "POST" })), {
+    cancelled: "number",
+    cleanupFailed: "boolean",
+  });
+  await pause(false);
+  assert.equal(await queuePaused(), false);
 });
