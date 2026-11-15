@@ -59,17 +59,23 @@ class FakeAudio extends EventTarget {
 
 function setup() {
   const nodes: FakeAudio[] = [];
-  const engine = createAudioEngine(() => {
-    const node = new FakeAudio();
-    nodes.push(node);
-    return node as unknown as HTMLAudioElement;
-  });
+  const mounted: FakeAudio[] = [];
+  const engine = createAudioEngine(
+    () => {
+      const node = new FakeAudio();
+      nodes.push(node);
+      return node as unknown as HTMLAudioElement;
+    },
+    (node) => {
+      mounted.push(node as unknown as FakeAudio);
+    },
+  );
   engine.setLeveling(false);
-  return { engine, nodes };
+  return { engine, mounted, nodes };
 }
 
-test("the active audio element stays alive when the next track starts", () => {
-  const { engine, nodes } = setup();
+test("the active audio element stays mounted when the next track starts", () => {
+  const { engine, mounted, nodes } = setup();
   let firstStarted = 0;
   let secondStarted = 0;
 
@@ -92,6 +98,7 @@ test("the active audio element stays alive when the next track starts", () => {
   });
 
   assert.equal(nodes.length, 1);
+  assert.deepEqual(mounted, [active]);
   assert.equal(nodes[0], active);
   assert.equal(active.src, "/api/tracks/second");
   assert.equal(active.playCalls, 2);
