@@ -1,4 +1,11 @@
 export const API_CONTRACT: { version: number; features: string[] } = {
   version: 2,
-  features: ["libraryStatusFilter", "albumEditions", "activityCauses", "librarySorts"],
+  features: [
+    "libraryStatusFilter",
+    "albumEditions",
+    "activityCauses",
+    "librarySorts",
+    "queueCancelAll",
+    "queuePause",
+  ],
 };

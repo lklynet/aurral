@@ -333,10 +333,11 @@ export class DownloadWorker {
     return {
       concurrency: this._normalizeConcurrency(raw.concurrency),
       retryPausedPlaylistIds: this._normalizeRetryPausedPlaylistIds(raw.retryPausedPlaylistIds),
+      paused: raw.paused === true,
     };
   }
 
-  updateWorkerSettings(nextSettings: Partial<WorkerSettings> = {}) {
+  async updateWorkerSettings(nextSettings: Partial<WorkerSettings> = {}) {
     const base = this.getWorkerSettings();
     const normalized = {
       concurrency:
@@ -344,8 +345,10 @@ export class DownloadWorker {
           ? base.concurrency
           : this._normalizeConcurrency(nextSettings.concurrency),
       retryPausedPlaylistIds: this._normalizeRetryPausedPlaylistIds(base.retryPausedPlaylistIds),
+      paused: nextSettings.paused ?? base.paused,
     };
     dbOps.updateSettings({ playlistWorker: normalized });
+    if (base.paused && !normalized.paused) await startWorkerIfPending();
     return normalized;
   }
 
@@ -377,19 +380,23 @@ export class DownloadWorker {
     return { tracksQueued: primaryTracks.length, jobIds };
   }
 
+  _hasStartableWork() {
+    return !this.getWorkerSettings().paused && Boolean(downloadTracker.getNextPending());
+  }
+
   hasWork() {
     return (
       this.activeJobs.size > 0 ||
       this.blockedPlaylistTypes.size > 0 ||
       Boolean(this.reuseRepairInFlight) ||
-      (this.running && Boolean(downloadTracker.getNextPending()))
+      (this.running && this._hasStartableWork())
     );
   }
 
   _maybeStopWhenIdle() {
     if (!this.running) return;
     if (this.activeJobs.size > 0) return;
-    if (downloadTracker.getNextPending()) return;
+    if (this._hasStartableWork()) return;
     this._requestStop();
   }
 
@@ -466,7 +473,7 @@ export class DownloadWorker {
   }
 
   async start() {
-    if (this.running) {
+    if (this.running || this.getWorkerSettings().paused) {
       return;
     }
 
@@ -477,7 +484,11 @@ export class DownloadWorker {
 
     this.processLoop = () => {
       if (!this.running) return;
-      const { concurrency } = this.getWorkerSettings();
+      const { concurrency, paused } = this.getWorkerSettings();
+      if (paused) {
+        this._maybeStopWhenIdle();
+        return;
+      }
       while (this.activeCount < concurrency) {
         if (this.activeCount + countSearchingPipelineJobs() >= concurrency) {
           this._scheduleProcessIn(SEARCH_SLOT_RECHECK_MS);
@@ -685,6 +696,7 @@ export class DownloadWorker {
       )
         return;
       if (!unreachable && !metadataUnreachable) this._endReleaseWaits(job);
+      if (this.getWorkerSettings().paused) return;
       if (!downloadTracker.enqueueDownloadPipeline(job.id, { release })) {
         throw new Error("Failed to enqueue the download pipeline");
       }
@@ -713,6 +725,7 @@ export class DownloadWorker {
     if (!isAnyDownloadSourceConfigured()) throw new Error(getDownloadSourceNotConfiguredMessage());
     const { manifest: release } = await readReleaseManifest(job.albumMbid, job.releaseMbid);
     this._assertJobCanContinue(job, runGeneration);
+    if (this.getWorkerSettings().paused) return;
     if (downloadTracker.enqueueDownloadPipeline(job.id, { release })) return;
     if (
       downloadTracker.getJob(job.id)?.status !== "pending" ||

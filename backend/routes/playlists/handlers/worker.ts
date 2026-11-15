@@ -16,6 +16,7 @@ import type { AppEnv } from "../../../middleware/requestUser.ts";
 
 const workerSettings = v.object({
   concurrency: v.optional(v.union([v.number(), v.string()])),
+  paused: v.optional(v.boolean()),
 });
 
 export default new Hono<AppEnv>()
@@ -29,7 +30,7 @@ export default new Hono<AppEnv>()
     requireAdmin,
     validate("json", workerSettings),
     async (c) => {
-      const { concurrency } = c.req.valid("json");
+      const { concurrency, paused } = c.req.valid("json");
       if (concurrency !== undefined) {
         const parsed = Number(concurrency);
         if (!Number.isInteger(parsed) || parsed < 1 || parsed > 3) {
@@ -38,6 +39,7 @@ export default new Hono<AppEnv>()
       }
       const settings = await downloadWorker.updateWorkerSettings({
         concurrency: concurrency === undefined ? undefined : Number(concurrency),
+        paused,
       });
       return c.json({ success: true, settings }, 200);
     },

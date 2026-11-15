@@ -714,7 +714,7 @@ test("a track waiting for its release after its quick search does not hold back 
   enqueuePipelineStep(waiting, {});
 
   const worker = new DownloadWorker(state.baseDir);
-  worker.updateWorkerSettings({ concurrency: 1 });
+  await worker.updateWorkerSettings({ concurrency: 1 });
   const dispatched = vi.spyOn(worker, "processJob").mockImplementation(async () => {});
   vi.spyOn(worker, "scheduleReuseLinkRepair").mockImplementation(() => {});
   await worker.start();
@@ -726,6 +726,24 @@ test("a track waiting for its release after its quick search does not hold back 
   } finally {
     worker.stop();
     await stopDownloadPipelineWorker();
+  }
+});
+
+test("a track the worker picked up before a pause stays pending instead of starting", async (t) => {
+  useQuickSources();
+  const group = album("paused", "Paused Band", [{ id: "paused-release", tracks: ["First"] }]);
+  await serveGroups(t, [group]);
+  const [track] = libraryJobs(group, ["First"]);
+  assert.ok(track !== undefined);
+  const pause = (paused: boolean) =>
+    dbOps.updateSettings({ playlistWorker: { ...dbOps.getSettings().playlistWorker, paused } });
+  pause(true);
+  try {
+    await downloadWorker.processJob(trackedJob(downloadTracker, track));
+    assert.equal(queued(track), undefined);
+    assert.equal(trackedJob(downloadTracker, track).status, "pending");
+  } finally {
+    pause(false);
   }
 });
 

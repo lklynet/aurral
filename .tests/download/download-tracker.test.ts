@@ -1098,7 +1098,7 @@ test("a track queued while its playlist is being edited starts the worker, waits
 
 test("a worker starts no more searches than its concurrency allows", async () => {
   const worker = new DownloadWorker(isolatedState.baseDir);
-  worker.updateWorkerSettings({ concurrency: 1 });
+  await worker.updateWorkerSettings({ concurrency: 1 });
   const dispatched = vi.spyOn(worker, "processJob").mockImplementation(async () => {});
   vi.spyOn(worker, "scheduleReuseLinkRepair").mockImplementation(() => {});
   db.prepare("DELETE FROM jobs WHERE queue = 'download-pipeline'").run();
@@ -1115,7 +1115,7 @@ test("a worker starts no more searches than its concurrency allows", async () =>
   await worker.start();
   try {
     assert.equal(dispatched.mock.calls.length, 0);
-    worker.updateWorkerSettings({ concurrency: 2 });
+    await worker.updateWorkerSettings({ concurrency: 2 });
     worker.processLoop?.();
     assert.deepEqual(
       dispatched.mock.calls.map((call) => call[0].id),

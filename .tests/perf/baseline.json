@@ -4,7 +4,7 @@
       "cold": 13,
       "warm": 13
     },
-    "bytes": 1466,
+    "bytes": 1564,
     "scans": []
   },
   "library home": {
@@ -262,7 +262,7 @@
       "cold": 12,
       "warm": 12
     },
-    "bytes": 248,
+    "bytes": 278,
     "scans": [
       "download_jobs"
     ]

@@ -368,7 +368,7 @@ The routes call a static playlist a shared playlist.
 | `DELETE` | `/api/playlists/jobs/completed`                                      | Delete completed jobs                                                                                 |
 | `DELETE` | `/api/playlists/jobs/all`                                            | Delete all jobs                                                                                       |
 | `GET`    | `/api/playlists/worker/settings`                                     | Get worker settings                                                                                   |
-| `PUT`    | `/api/playlists/worker/settings`                                     | Update worker settings                                                                                |
+| `PUT`    | `/api/playlists/worker/settings`                                     | Update worker settings; `paused: true` holds queued downloads until set back to `false`               |
 | `POST`   | `/api/playlists/worker/start`                                        | Start the worker                                                                                      |
 | `POST`   | `/api/playlists/worker/stop`                                         | Stop the worker                                                                                       |
 | `POST`   | `/api/playlists/reset`                                               | Reset selected flow playlists                                                                         |

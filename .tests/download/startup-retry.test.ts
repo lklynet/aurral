@@ -14,7 +14,7 @@ const [
   { dbOps },
   { flowPlaylistConfig },
   { downloadTracker },
-  { downloadWorker, startWorkerIfPending },
+  { DownloadWorker, downloadWorker, startWorkerIfPending },
 ] = await setupIsolatedBackend(
   "startup-retry",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -120,4 +120,54 @@ test("running out of work leaves downloads the pipeline owns running", async () 
 
   assert.equal(downloadTracker.getJob(lastId)?.status, "failed");
   assert.equal(downloadTracker.getJob(inPipelineId)?.status, "downloading");
+});
+
+test("a paused queue finishes the running track, starts no other, and keeps the pause", async () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Paused",
+    tracks: [
+      { artistName: "Artist", trackName: "Running" },
+      { artistName: "Artist", trackName: "Waiting" },
+    ],
+  });
+  const runningId = createTrackedJob(
+    downloadTracker,
+    { artistName: "Artist", trackName: "Running" },
+    playlist.id,
+  );
+  const waitingId = createTrackedJob(
+    downloadTracker,
+    { artistName: "Artist", trackName: "Waiting" },
+    playlist.id,
+  );
+  await downloadWorker.updateWorkerSettings({ concurrency: 1 });
+
+  await downloadWorker.start();
+  await downloadWorker.updateWorkerSettings({ paused: true });
+  await downloadWorker.waitForIdle();
+
+  assert.equal(downloadTracker.getJob(runningId)?.status, "failed");
+  assert.equal(downloadTracker.getJob(waitingId)?.status, "pending");
+  assert.equal(downloadWorker.running, false);
+  assert.ok(downloadWorker instanceof DownloadWorker);
+  assert.equal(downloadWorker.hasWork(), false);
+
+  await downloadWorker.updateWorkerSettings({ concurrency: 2 });
+  dbOps.invalidateSettingsCache();
+  await downloadWorker.start();
+  await startWorkerIfPending();
+  assert.equal(downloadWorker.getWorkerSettings().paused, true);
+  assert.equal(downloadWorker.running, false);
+
+  let starts = 0;
+  const originalStart = downloadWorker.start;
+  downloadWorker.start = async () => {
+    starts += 1;
+  };
+  try {
+    await downloadWorker.updateWorkerSettings({ paused: false });
+  } finally {
+    downloadWorker.start = originalStart;
+  }
+  assert.equal(starts, 1);
 });
