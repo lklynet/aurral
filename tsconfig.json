@@ -26,6 +26,7 @@
     ".tests/**/*",
     "scripts",
     "eden",
+    "hub",
     "*.config.ts"
   ],
   "exclude": ["**/node_modules", "**/dist", "backend/data*"]

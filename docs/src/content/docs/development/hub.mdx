@@ -1,0 +1,30 @@
+---
+title: The hub
+description: aurral.org's API for accounts and community features, and how to run your own.
+---
+
+The hub is the API behind aurral.org's community features. It is a Hono app on Cloudflare Workers in `hub/`, and it stores its data in D1. Aurral works without it. See [ADR 0014](https://github.com/lklynet/aurral/blob/main/docs/architecture/0014-accounts-and-the-hub.md) for what it stores and why.
+
+## Run it locally
+
+```bash
+pnpm eden up --with hub
+```
+
+This applies the migrations to a local D1 database in `.eden/hub` and serves the hub on wrangler's local runtime. `pnpm eden status` prints the address. The hub's tests use the same runtime through `hub/testing.ts`.
+
+## Change the database
+
+Add a numbered file to `hub/migrations`. Never edit a migration that has shipped. Migrations only add: a released Aurral and every fork call the hub deployed from `main`, so the hub keeps answering the routes and fields they read. Routes live under `/v1`.
+
+## Deploy
+
+The Hub workflow applies migrations and deploys the preview environment on every push to `main` that changes `hub/`. The preview runs on workers.dev with its own database. Production deploys only when a maintainer runs the workflow with **production**. Both need the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets, with permission to edit Workers, D1, and the zone's Workers routes.
+
+## Run your own
+
+A fork that wants its own community features runs its own hub. Hubs don't talk to each other.
+
+1. Create a D1 database with `pnpm exec wrangler d1 create <name>` in `hub/`.
+2. In `hub/wrangler.jsonc`, set the `database_id` and replace the route with your domain.
+3. Run `pnpm exec wrangler d1 migrations apply DB --remote --env ""`, then `pnpm exec wrangler deploy --env ""`.

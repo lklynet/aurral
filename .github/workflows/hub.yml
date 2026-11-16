@@ -1,0 +1,58 @@
+name: Hub
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - hub/**
+      - .github/workflows/hub.yml
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Where to deploy
+        type: choice
+        options: [preview, production]
+        default: preview
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hub-${{ github.event_name == 'workflow_dispatch' && inputs.target || 'preview' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'preview' }}
+    if: github.repository == 'lklynet/aurral'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER_SEND_METRICS: "false"
+      TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'preview' }}
+    defaults:
+      run:
+        working-directory: hub
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: voidzero-dev/setup-vp@cab1ab9eaff52d4857875f4f2c016e36af8f2c76 # v1.22.0
+        with:
+          node-version-file: .nvmrc
+          cache: true
+          run-install: |
+            - args: ["--frozen-lockfile", "--filter", "aurral-hub"]
+
+      - name: Create the preview database once
+        if: env.TARGET == 'preview'
+        run: vp exec wrangler d1 info aurral-hub-preview || vp exec wrangler d1 create aurral-hub-preview
+
+      - name: Apply migrations
+        run: vp exec wrangler d1 migrations apply DB --remote --env "${TARGET/production/}"
+
+      - name: Deploy
+        run: vp exec wrangler deploy --env "${TARGET/production/}"
