@@ -200,6 +200,7 @@ export function normalizePlaylistQueueTrack(
       libraryAlbumId: track.libraryAlbumId,
       favoriteId: track.favoriteId,
       recordHistory: track?.recordHistory !== false,
+      isPreview: track.isPreview,
     },
     overrides,
   );
