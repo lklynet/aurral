@@ -357,6 +357,11 @@ button.artist-track__text {
   color: var(--aurral-text-muted);
 }
 
+.artist-track__title > .preview-chip {
+  font-weight: 400;
+  line-height: 1.25rem;
+}
+
 @media (hover: hover) and (pointer: fine) and (min-width: 768px) {
   .artist-track:hover {
     background: var(--aurral-surface-hover);

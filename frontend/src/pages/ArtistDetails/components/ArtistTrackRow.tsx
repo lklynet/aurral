@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Pause, Play } from "../../../components/icons";
+import PreviewChip from "../../../components/PreviewChip";
 import { PlayingIndicator } from "../../../components/TrackList";
 import TooltipButton from "../../../components/TooltipButton";
 
@@ -20,6 +21,7 @@ export function ArtistTrackRow({
   playing,
   loading = false,
   onPlay,
+  previewOnly = false,
   menu = null,
 }: {
   number: ReactNode;
@@ -31,9 +33,16 @@ export function ArtistTrackRow({
   playing: boolean;
   loading?: boolean;
   onPlay: (() => void) | null;
+  previewOnly?: boolean;
   menu?: ReactNode;
 }) {
-  const playLabel = playing ? `Pause ${title}` : `Play ${title}`;
+  const playLabel = playing ? `Pause ${title}` : previewOnly ? `Preview ${title}` : `Play ${title}`;
+  const titleText = (
+    <span className="artist-track__title">
+      {previewOnly ? <PreviewChip /> : null}
+      {title}
+    </span>
+  );
   const indicator = active ? <PlayingIndicator row={{ playing, loading }} /> : null;
   return (
     <div
@@ -64,12 +73,12 @@ export function ArtistTrackRow({
       ) : null}
       {onPlay ? (
         <button type="button" className="artist-track__text" onClick={onPlay} tabIndex={-1}>
-          <span className="artist-track__title">{title}</span>
+          {titleText}
           {subtitle ? <span className="artist-track__subtitle">{subtitle}</span> : null}
         </button>
       ) : (
         <span className="artist-track__text">
-          <span className="artist-track__title">{title}</span>
+          {titleText}
           {subtitle ? <span className="artist-track__subtitle">{subtitle}</span> : null}
         </span>
       )}

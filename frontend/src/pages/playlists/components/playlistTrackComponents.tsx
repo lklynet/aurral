@@ -49,7 +49,7 @@ export type PlaylistPanelTrack = Pick<
   PlaylistTrackRow,
   "id" | "artistName" | "trackName" | "status" | "streamUrl"
 > &
-  Partial<PlaylistTrackRow> & { resolvesLinks?: boolean };
+  Partial<PlaylistTrackRow> & { resolvesLinks?: boolean; isPreview?: boolean };
 
 export type PlaylistTrackTarget =
   | { mode: "new"; name: string }
@@ -728,6 +728,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
       onPlay:
         showPlaybackControls && (canPlay || !showTrackStatus) ? () => handlePlayTrack(track) : null,
       playDisabled: !canPlay,
+      previewOnly: track.isPreview === true && Boolean(track.streamUrl),
       badge: availability ? (
         <TooltipButton
           className="flow-page__track-availability-indicator"
