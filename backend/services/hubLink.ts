@@ -120,5 +120,5 @@ export async function revokeHubLink(payload: unknown) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ instanceId, secret, tokenHash: task.output.tokenHash }),
   });
-  if (response.status >= 500) throw new Error(`aurral.org answered ${response.status}`);
+  if (!response.ok) throw new Error(`aurral.org answered ${response.status}`);
 }

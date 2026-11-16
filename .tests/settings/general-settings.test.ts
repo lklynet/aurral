@@ -74,6 +74,15 @@ function captureSettingsRoutes() {
   return { postSettings, getSettings };
 }
 
+test("turning aurral.org accounts off survives a save and later saves", async () => {
+  const { postSettings } = captureSettingsRoutes();
+  await postSettings({
+    security: { localNetworkBypass: { enabled: false }, aurralAccounts: false },
+  });
+  await postSettings({ dateTimeFormat: "24h" });
+  assert.equal(dbOps.getSettings().security.aurralAccounts, false);
+});
+
 test("an integration setting Aurral can't read is ignored without losing the rest", () => {
   dbOps.setJSONSetting("integrations", {
     slskd: { url: "http://slskd.test", priority: { high: true } },
