@@ -32,14 +32,12 @@ type AudioEntry = {
 type PreloadEntry = {
   src: string;
   format: string[];
-  node: HTMLAudioElement;
   loudness: Loudness | null;
 };
 
 type Loudness = {
   controller: AbortController;
-  lufs: number | null | undefined;
-  ready: Promise<void>;
+  lufs: Promise<number | null>;
 };
 
 const IDLE_SNAPSHOT: AudioSnapshot = {
@@ -79,19 +77,13 @@ function sameSource(
 
 function fetchLoudness(src: string): Loudness {
   const controller = new AbortController();
-  const loudness: Loudness = {
-    controller,
-    lufs: undefined,
-    ready: fetch(src, { method: "HEAD", credentials: "same-origin", signal: controller.signal })
-      .then((response) => {
-        const lufs = Number.parseFloat(response.headers.get(LOUDNESS_HEADER) ?? "");
-        loudness.lufs = Number.isFinite(lufs) ? lufs : null;
-      })
-      .catch(() => {
-        loudness.lufs = null;
-      }),
-  };
-  return loudness;
+  const lufs = fetch(src, { method: "HEAD", credentials: "same-origin", signal: controller.signal })
+    .then((response) => {
+      const value = Number.parseFloat(response.headers.get(LOUDNESS_HEADER) ?? "");
+      return Number.isFinite(value) ? value : null;
+    })
+    .catch(() => null);
+  return { controller, lufs };
 }
 
 export function createAudioEngine(createNode: () => HTMLAudioElement = () => new Audio()) {
@@ -103,6 +95,7 @@ export function createAudioEngine(createNode: () => HTMLAudioElement = () => new
   let muted = false;
   let leveling = true;
   let snapshot: AudioSnapshot = IDLE_SNAPSHOT;
+  let playAttempt = 0;
   const listeners = new Set<() => void>();
 
   const readSnapshot = (): AudioSnapshot => {
@@ -136,18 +129,15 @@ export function createAudioEngine(createNode: () => HTMLAudioElement = () => new
   };
 
   const levelWhenKnown = (entry: AudioEntry) => {
-    const loudness = entry.loudness;
-    if (!loudness) return;
-    const apply = () => {
-      if (loudness.lufs == null || current !== entry || entry.started) return;
-      entry.gain = levelingGain(loudness.lufs);
+    void entry.loudness?.lufs.then((lufs) => {
+      if (lufs === null || current !== entry || entry.started) return;
+      entry.gain = levelingGain(lufs);
       applyVolume();
-    };
-    if (loudness.lufs === undefined) void loudness.ready.then(apply);
-    else apply();
+    });
   };
 
   const attemptPlay = (entry: AudioEntry) => {
+    const attempt = ++playAttempt;
     let request: Promise<void>;
     try {
       request = node.play();
@@ -158,7 +148,7 @@ export function createAudioEngine(createNode: () => HTMLAudioElement = () => new
       return;
     }
     request.catch(() => {
-      if (current !== entry) return;
+      if (current !== entry || attempt !== playAttempt) return;
       entry.wantsPlay = false;
       entry.loading = false;
       entry.playing = false;
@@ -240,8 +230,6 @@ export function createAudioEngine(createNode: () => HTMLAudioElement = () => new
   const discardPreload = () => {
     if (!preloaded) return;
     preloaded.loudness?.controller.abort();
-    preloaded.node.removeAttribute("src");
-    preloaded.node.load();
     preloaded = null;
   };
 
@@ -301,13 +289,8 @@ export function createAudioEngine(createNode: () => HTMLAudioElement = () => new
     preload({ src, format }: { src: string; format: string[] }) {
       if (!src || sameSource(current, src, format) || sameSource(preloaded, src, format)) return;
       discardPreload();
-      const preloadNode = createNode();
-      preloadNode.preload = "auto";
-      preloadNode.muted = true;
-      preloaded = { src, format, node: preloadNode, loudness: null };
+      preloaded = { src, format, loudness: null };
       requestLoudness(preloaded);
-      preloadNode.src = src;
-      preloadNode.load();
     },
     discardPreload,
     play() {

@@ -24,6 +24,7 @@ class FakeAudio extends EventTarget {
   played = emptyRanges;
   error = null;
   playCalls = 0;
+  playRejections: (() => void)[] = [];
 
   load() {
     this.readyState = 0;
@@ -34,7 +35,9 @@ class FakeAudio extends EventTarget {
   play() {
     this.playCalls += 1;
     this.paused = false;
-    return Promise.resolve();
+    return new Promise<void>((_resolve, reject) => {
+      this.playRejections.push(() => reject(new DOMException("Interrupted", "AbortError")));
+    });
   }
 
   pause() {
@@ -71,6 +74,8 @@ function setup() {
   engine.setLeveling(false);
   return { engine, nodes };
 }
+
+const flushPromises = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 const state = (engine: ReturnType<typeof createAudioEngine>) => {
   const { isPlaying, isStarting } = engine.getSnapshot();
@@ -110,7 +115,7 @@ test("the active audio element stays mounted when the next track starts", () => 
   assert.equal(secondStarted, 1);
 });
 
-test("a preloaded track still starts on the persistent active element", () => {
+test("preloading the next track adds no audio element", () => {
   const { engine, nodes } = setup();
 
   engine.load({
@@ -124,16 +129,12 @@ test("a preloaded track still starts on the persistent active element", () => {
   assert.ok(active);
   active.start();
   engine.preload({ src: "/api/tracks/second", format: ["flac"] });
-  const preloader = nodes[1];
-  assert.ok(preloader);
 
   active.finish();
 
-  assert.equal(nodes[0], active);
+  assert.equal(nodes.length, 1);
   assert.equal(active.src, "/api/tracks/second");
   assert.equal(active.playCalls, 2);
-  assert.equal(preloader.playCalls, 0);
-  assert.equal(preloader.src, "");
 });
 
 test("the persistent element keeps normal pause, resume, seek, volume, and mute behavior", () => {
@@ -167,7 +168,7 @@ test("the persistent element keeps normal pause, resume, seek, volume, and mute 
   assert.equal(state(engine), "idle");
 });
 
-test("playback state stays truthful through every kind of pause", () => {
+test("playback state stays truthful through every kind of pause", async () => {
   const { engine, nodes } = setup();
   const seen: string[] = [];
   engine.subscribe(() => {
@@ -202,6 +203,8 @@ test("playback state stays truthful through every kind of pause", () => {
   engine.play();
   assert.equal(state(engine), "starting");
   active.dispatchEvent(new Event("pause"));
+  active.playRejections.at(-2)?.();
+  await flushPromises();
   assert.equal(state(engine), "starting");
   active.dispatchEvent(new Event("playing"));
   assert.equal(state(engine), "playing");
@@ -210,30 +213,52 @@ test("playback state stays truthful through every kind of pause", () => {
   assert.equal(state(engine), "idle");
 });
 
-test("a preloaded track is levelled from its first second", async (t) => {
+test("a queued track is levelled only when its loudness arrives before it plays", async (t) => {
   vi.stubGlobal("window", {
     location: { href: "https://aurral.test/", origin: "https://aurral.test" },
   });
+  const answers: (() => void)[] = [];
   vi.stubGlobal(
     "fetch",
-    async () => new Response(null, { headers: { "X-Aurral-Loudness": "-6.0" } }),
+    () =>
+      new Promise<Response>((resolve) => {
+        answers.push(() =>
+          resolve(new Response(null, { headers: { "X-Aurral-Loudness": "-6.0" } })),
+        );
+      }),
   );
   t.onTestFinished(() => {
     vi.unstubAllGlobals();
   });
-  const { engine, nodes } = setup();
-  engine.setLeveling(true);
-  engine.setVolume(0.5);
+  const levelled = 0.5 * levelingGain(-6);
 
-  engine.load({ src: "https://aurral.test/api/tracks/first", format: ["flac"] });
-  const active = nodes[0];
-  assert.ok(active);
-  active.start();
-  engine.preload({ src: "https://aurral.test/api/tracks/second", format: ["flac"] });
-  await new Promise((resolve) => setImmediate(resolve));
+  for (const [answeredAt, volume] of [
+    ["before the track loads", levelled],
+    ["while it is starting", levelled],
+    ["after it started", 0.5],
+  ] as const) {
+    answers.length = 0;
+    const { engine, nodes } = setup();
+    engine.setLeveling(true);
+    engine.setVolume(0.5);
+    engine.load({ src: "https://aurral.test/api/tracks/first", format: ["flac"] });
+    const active = nodes[0];
+    assert.ok(active);
+    active.start();
+    engine.preload({ src: "https://aurral.test/api/tracks/second", format: ["flac"] });
+    const answerSecond = answers[1];
+    assert.ok(answerSecond);
 
-  engine.load({ src: "https://aurral.test/api/tracks/second", format: ["flac"] });
-  active.start();
+    if (answeredAt === "before the track loads") answerSecond();
+    await flushPromises();
+    engine.load({ src: "https://aurral.test/api/tracks/second", format: ["flac"] });
+    if (answeredAt === "while it is starting") answerSecond();
+    await flushPromises();
+    active.start();
+    if (answeredAt === "after it started") answerSecond();
+    await flushPromises();
 
-  assert.equal(active.volume, 0.5 * levelingGain(-6));
+    assert.equal(answers.length, 2, answeredAt);
+    assert.equal(active.volume, volume, answeredAt);
+  }
 });
