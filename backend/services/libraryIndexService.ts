@@ -1,6 +1,7 @@
 import path from "node:path";
 import { db } from "../config/db-sqlite.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { isServiceUnavailable } from "../../lib/http.ts";
 import type { LibraryArtistsRow, DownloadJobsRow } from "../db/rows.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
 import { createPathScopeMatcher, scanMusicRoot, scanMusicRoots } from "./libraryFileScanner.ts";
@@ -187,6 +188,12 @@ async function canonicalizeArtistNames(
   }
 }
 
+function logProviderUnavailable(message: string, error: unknown) {
+  logger[isServiceUnavailable(error) ? "info" : "warn"]("library", message, {
+    message: asAppError(error)?.message || String(error),
+  });
+}
+
 async function resolveUnmatchedLibraryArtists() {
   let changed = false;
   for (const artist of getUnresolvedLibraryArtists()) {
@@ -194,10 +201,10 @@ async function resolveUnmatchedLibraryArtists() {
     try {
       mbid = await matchLibraryArtist(artist.name, artist.albums);
     } catch (error) {
-      const failure = asAppError(error);
-      logger.warn("library", "Stopped matching unmatched artists; metadata provider unavailable", {
-        message: failure?.message || String(error),
-      });
+      logProviderUnavailable(
+        "Stopped matching unmatched artists; metadata provider unavailable",
+        error,
+      );
       break;
     }
     if (mbid && assignLibraryArtistMbid(artist.id, mbid)) changed = true;
@@ -229,9 +236,10 @@ async function matchUntaggedLibraryAlbums(retry: boolean) {
       });
     } catch (error) {
       if (asAppError(error)?.code === "ERR_METADATA_COOLDOWN") continue;
-      logger.warn("library", "Stopped matching untagged albums; metadata provider unavailable", {
-        message: asAppError(error)?.message || String(error),
-      });
+      logProviderUnavailable(
+        "Stopped matching untagged albums; metadata provider unavailable",
+        error,
+      );
       break;
     }
     if (!releaseGroup) noteLibraryAlbumLookup(album.id, album.basis);
@@ -283,9 +291,10 @@ async function completeLibraryTrackLists() {
       changed = true;
   });
   if (unavailable) {
-    logger.warn("library", "Stopped listing album tracks; metadata provider unavailable", {
-      message: asAppError(unavailable)?.message || String(unavailable),
-    });
+    logProviderUnavailable(
+      "Stopped listing album tracks; metadata provider unavailable",
+      unavailable,
+    );
   }
   return changed;
 }

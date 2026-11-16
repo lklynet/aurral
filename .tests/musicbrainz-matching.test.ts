@@ -23,16 +23,25 @@ vi.mock("../backend/services/metadataProviderBudget.ts", async (importOriginal) 
   reserveMetadataProviderRequest: () => 0,
 }));
 
-const [isolatedState, { db }, { dbOps }, libraryStore, provider, indexService, artistMatch] =
-  await setupIsolatedBackend(
-    "musicbrainz-matching",
-    () => import("../backend/config/db-sqlite.ts"),
-    () => import("../backend/db/helpers/index.ts"),
-    () => import("../backend/services/libraryMediaStore.ts"),
-    () => import("../backend/services/providers/brainzmashProvider.ts"),
-    () => import("../backend/services/libraryIndexService.ts"),
-    () => import("../backend/services/artistMatch.ts"),
-  );
+const [
+  isolatedState,
+  { db },
+  { dbOps },
+  libraryStore,
+  provider,
+  indexService,
+  artistMatch,
+  { logger },
+] = await setupIsolatedBackend(
+  "musicbrainz-matching",
+  () => import("../backend/config/db-sqlite.ts"),
+  () => import("../backend/db/helpers/index.ts"),
+  () => import("../backend/services/libraryMediaStore.ts"),
+  () => import("../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../backend/services/libraryIndexService.ts"),
+  () => import("../backend/services/artistMatch.ts"),
+  () => import("../backend/services/logger.ts"),
+);
 
 const GRUNGE = "66666666-6666-4666-8666-666666666601";
 const SIXTIES = "66666666-6666-4666-8666-666666666602";
@@ -347,10 +356,16 @@ test("an untagged album no release group holds is looked up again when asked or 
 test("an untagged album whose lookup is cooling down does not hold up the others", async () => {
   const cooling = untaggedAlbum("Bleach", ["Blew"]);
   const matched = untaggedAlbum("Nevermind", ["Smells Like Teen Spirit", "In Bloom"]);
+  const info = vi.spyOn(logger, "info");
+  const warn = vi.spyOn(logger, "warn");
+  const stopped = (spy: typeof info) =>
+    spy.mock.calls.filter(([, message]) => String(message).startsWith("Stopped matching"));
 
   await scan();
   await scan();
 
   assert.equal(albumRow(cooling)?.release_group_mbid, null);
   assert.equal(albumRow(matched)?.release_group_mbid, NEVERMIND);
+  assert.equal(stopped(info).length, 1);
+  assert.equal(stopped(warn).length, 0);
 });
