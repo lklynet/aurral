@@ -709,7 +709,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
       active: isCurrent,
       playing: isCurrent && isRunning,
       loading: isCurrent && isLoading,
-      previewOnly: track.isPreview === true,
+      previewOnly: track.isPreview === true && Boolean(track.streamUrl),
       missing: showPlaybackControls && (!canPlay || (!showTrackStatus && track.status === "saved")),
       status:
         !showTrackStatus &&
