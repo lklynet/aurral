@@ -12,6 +12,7 @@ import { readMany } from "../integrationData.ts";
 import { runSharedInflight, type InflightRequests } from "../sharedInflight.ts";
 import { logger } from "../logger.ts";
 import { asAppError } from "../../../lib/errors.ts";
+import { isServiceUnavailable } from "../../../lib/http.ts";
 import type { ArtistCredit } from "../../../lib/artistCredit.ts";
 
 type ArtistAlbum = Awaited<ReturnType<typeof listMetadataArtistAlbums>>[number];
@@ -397,10 +398,14 @@ export async function musicbrainzGetReleaseTrackCredits(
     signal?.throwIfAborted();
     const credits = new Map<string, ArtistCredit>();
     musicbrainzReleaseCreditsCache.set(releaseMbid, credits, RELEASE_CREDITS_RETRY_SECONDS);
-    logger.warn("musicbrainz", "Release track credits lookup failed", {
-      releaseMbid,
-      message: asAppError(error)?.message,
-    });
+    logger[isServiceUnavailable(error) ? "info" : "warn"](
+      "musicbrainz",
+      "Release track credits lookup failed",
+      {
+        releaseMbid,
+        message: asAppError(error)?.message,
+      },
+    );
     return credits;
   }
 }
