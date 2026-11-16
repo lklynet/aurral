@@ -45,6 +45,11 @@ const LEGAL = html`<p class="muted">
   <a href="/terms">Terms</a>
 </p>`;
 
+const LEAVE = html`<form method="post" action="/account/sign-out">
+    <button class="button">Sign out</button>
+  </form>
+  <a class="button danger link" href="/account/delete">Delete account</a>`;
+
 export const signInPage = (providers: { id: string; label: string }[], failed: boolean) =>
   layout(
     "Sign in",
@@ -85,7 +90,8 @@ export const handlePage = (value = "", problem: Exclude<HandleClaim, "claimed"> 
         />
         ${problem ? html`<p class="error" role="alert">${HANDLE_ERRORS[problem]}</p>` : ""}
         <button class="button primary">Continue</button>
-      </form>`,
+      </form>
+      ${LEAVE}`,
   );
 
 export const accountPage = (handle: string, provider: string) =>
@@ -95,19 +101,16 @@ export const accountPage = (handle: string, provider: string) =>
       <p class="muted">Signed in with ${provider}</p>
       <h2>Linked servers</h2>
       <p class="muted">None yet. Link one from Settings in Aurral.</p>
-      <form method="post" action="/account/sign-out">
-        <button class="button">Sign out</button>
-      </form>
-      <a class="button danger link" href="/account/delete">Delete account</a>`,
+      ${LEAVE}`,
   );
 
-export const deletePage = (handle: string) =>
+export const deletePage = (handle: string | null) =>
   layout(
     "Delete account",
-    html`<h1>Delete @${handle}?</h1>
+    html`<h1>Delete ${handle ? `@${handle}` : "your account"}?</h1>
       <p class="muted">
-        This deletes your aurral.org account and unlinks every server. @${handle} can't be claimed
-        by anyone for 90 days.
+        This deletes your aurral.org account and unlinks every server.
+        ${handle ? `@${handle} can't be claimed by anyone for 90 days.` : ""}
       </p>
       <form method="post" action="/account/delete">
         <button class="button danger">Delete account</button>

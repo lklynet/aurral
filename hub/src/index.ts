@@ -37,8 +37,14 @@ const forwardCookies = (c: Context<Env>, headers: Headers) => {
   for (const cookie of headers.getSetCookie()) c.header("set-cookie", cookie, { append: true });
 };
 
-const sessionOf = (c: Context<Env>) =>
-  authFor(c.env).api.getSession({ headers: c.req.raw.headers });
+async function sessionOf(c: Context<Env>) {
+  const { headers, response } = await authFor(c.env).api.getSession({
+    headers: c.req.raw.headers,
+    returnHeaders: true,
+  });
+  forwardCookies(c, headers);
+  return response;
+}
 
 const account = new Hono<Env>()
   .use(async (c, next) => {
@@ -106,8 +112,8 @@ const account = new Hono<Env>()
   })
   .get("/delete", async (c) => {
     const session = await sessionOf(c);
-    const handle = session && (await handleOf(c.env.DB, session.user.id));
-    return handle ? c.html(deletePage(handle)) : c.redirect("/account");
+    if (!session) return c.redirect("/account");
+    return c.html(deletePage(await handleOf(c.env.DB, session.user.id)));
   })
   .post("/delete", async (c) => {
     const session = await sessionOf(c);

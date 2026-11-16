@@ -194,6 +194,20 @@ test("handles follow the rules, belong to one account, and stay held after the a
   assert.equal(await claimHandle(db, "b", "lee_k", deletedAt + HANDLE_HOLD_MS), "claimed");
 });
 
+test("visiting the account page renews a session that is close to expiring", async () => {
+  await reset();
+  const jar = await signInWithGitHub();
+  const soon = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+  await db.prepare("UPDATE sessions SET expires_at = ?").bind(soon).run();
+  const page = await hub.request(
+    `${ORIGIN}/account`,
+    { headers: { cookie: cookieHeader(jar) } },
+    env,
+  );
+  const renewed = page.headers.getSetCookie().find((cookie) => cookie.includes("session_token="));
+  assert.match(renewed ?? "", /Max-Age=604800/);
+});
+
 test("account forms refuse posts from another origin", async () => {
   const jar = await signInWithGitHub();
   const post = (origin: string) =>
