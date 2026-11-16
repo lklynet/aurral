@@ -119,6 +119,10 @@ This section applies only when `AUTH_PROXY_ENABLED` or `AUTH_PROXY_HEADER` is se
 - For Jellyfin, install the Playback Reporting plugin. It records plays only from the day it is installed.
 - Select **Sync now** to import new plays at once. Aurral also checks every hour.
 
+## Playback stops on Android when the screen is locked
+
+Android can stop a browser's audio in the background to save battery. If music cuts out at the start of the next track while your phone is locked, open Android **Settings > Apps**, select the browser that you use Aurral in, open **Battery**, and choose **Unrestricted**. This also covers Aurral when it is installed on your home screen. Some phones call this setting **No restrictions**.
+
 ## Docker memory rises while tasks run
 
 Library scans, discovery refreshes, playlist downloads, and other tasks run in their own background processes. Aurral starts each process when it has work and stops it about a minute after the work finishes, so `docker stats` rises during tasks and falls back when Aurral is idle. **Settings > Status > Tasks** shows a stopped process as **Standby**.
