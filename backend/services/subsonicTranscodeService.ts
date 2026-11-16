@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { parseFile } from "music-metadata";
+import * as v from "valibot";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { asAppError } from "../../lib/errors.ts";
 import { sendAudioFile } from "./audioFileStream.ts";
@@ -11,9 +12,33 @@ const OUTPUT_FORMATS = {
   aac: { codec: "aac", container: "adts", contentType: "audio/aac", maxBitrate: 512 },
 };
 
-type OutputFormat = keyof typeof OUTPUT_FORMATS;
-type SubsonicStreamFormat = "" | "raw" | OutputFormat;
-type StreamOptions = { format: SubsonicStreamFormat; maxBitRate: number; timeOffset?: number };
+export const streamFormat = v.pipe(
+  v.string(),
+  v.toLowerCase(),
+  v.picklist(["", "raw", "mp3", "opus", "aac"]),
+);
+export const streamBitRate = v.pipe(
+  v.string(),
+  v.regex(/^\d*$/),
+  v.transform(Number),
+  v.check((kbps) => Number.isSafeInteger(kbps) && (kbps === 0 || kbps >= 8)),
+);
+export const streamOffset = v.pipe(
+  v.string(),
+  v.transform(Number),
+  v.check((seconds) => Number.isFinite(seconds) && seconds >= 0),
+);
+export const streamQuery = v.object({
+  format: v.optional(streamFormat, ""),
+  maxBitRate: v.optional(streamBitRate, ""),
+  timeOffset: v.optional(streamOffset, ""),
+});
+
+type StreamOptions = {
+  format: v.InferOutput<typeof streamFormat>;
+  maxBitRate: number;
+  timeOffset?: number;
+};
 
 const isMissing = (error: unknown) => {
   const code = asAppError(error)?.code;

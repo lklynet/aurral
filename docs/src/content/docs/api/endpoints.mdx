@@ -119,8 +119,8 @@ WebSocket connections.
 | `GET`    | `/api/library/favorites`                                 | Read the current user's library favorites                                                                                                                                                                                                              |
 | `POST`   | `/api/library/favorites`                                 | Add or remove a library favorite. Requires a user session                                                                                                                                                                                              |
 | `GET`    | `/api/library/playback-queue`                            | Build one page of a playback queue. Optional `page`, and `pageSize` from 1 to 100                                                                                                                                                                      |
-| `GET`    | `/api/library/stream/:albumId/:trackId`                  | Stream a Library track                                                                                                                                                                                                                                 |
-| `GET`    | `/api/library/file-stream/:albumId/:trackId`             | Stream an album track file                                                                                                                                                                                                                             |
+| `GET`    | `/api/library/stream/:albumId/:trackId`                  | Stream a Library track. Optional `format`, `maxBitRate`, and `timeOffset` convert it, as in Subsonic `stream`                                                                                                                                          |
+| `GET`    | `/api/library/file-stream/:albumId/:trackId`             | Stream an album track file. Optional `format`, `maxBitRate`, and `timeOffset` convert it, as in Subsonic `stream`                                                                                                                                      |
 | `GET`    | `/api/library/lookup/:mbid`                              | Check whether an artist is in the library                                                                                                                                                                                                              |
 | `POST`   | `/api/library/lookup/batch`                              | Check multiple artists                                                                                                                                                                                                                                 |
 | `POST`   | `/api/library/albums/lookup/batch`                       | Check multiple albums                                                                                                                                                                                                                                  |
@@ -326,53 +326,53 @@ The prefix is `/api/playlists`.
 
 The routes call a static playlist a shared playlist.
 
-| Method   | Path                                                                 | Purpose                                                                                               |
-| -------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `GET`    | `/api/playlists/status`                                              | Download worker, flow, and static playlist status                                                     |
-| `GET`    | `/api/playlists/jobs`                                                | List Library and accessible flow and playlist jobs                                                    |
-| `GET`    | `/api/playlists/jobs/:playlistId`                                    | List jobs for a flow or static playlist                                                               |
-| `POST`   | `/api/playlists/jobs/cancel`                                         | Cancel every pending or downloading song you can control                                              |
-| `POST`   | `/api/playlists/jobs/:jobId/cancel`                                  | Cancel a pending or downloading song without changing its monitoring                                  |
-| `POST`   | `/api/playlists/research-missing`                                    | Re-search every missing track in Wanted                                                               |
-| `GET`    | `/api/playlists/jobs/:jobId/manual-search/sources`                   | List the download clients available for a manual search                                               |
-| `POST`   | `/api/playlists/jobs/:jobId/manual-search`                           | Search one download client for a track. Send `sourceId`, and `mode` set to `missing` or `replacement` |
-| `POST`   | `/api/playlists/jobs/:jobId/manual-search/select`                    | Queue one result from a manual search                                                                 |
-| `POST`   | `/api/playlists/start/:flowId`                                       | Run a flow                                                                                            |
-| `GET`    | `/api/playlists/flow-templates`                                      | List flow templates                                                                                   |
-| `POST`   | `/api/playlists/flows`                                               | Create a flow, optionally from a template with `templateId`                                           |
-| `PUT`    | `/api/playlists/flows/:flowId`                                       | Update a flow                                                                                         |
-| `DELETE` | `/api/playlists/flows/:flowId`                                       | Delete a flow                                                                                         |
-| `PUT`    | `/api/playlists/flows/:flowId/enabled`                               | Enable or disable a flow                                                                              |
-| `POST`   | `/api/playlists/flows/:flowId/static-playlist`                       | Save completed flow tracks as a static playlist                                                       |
-| `POST`   | `/api/playlists/flows/:flowId/tracks/:jobId/research`                | Research a flow track again                                                                           |
-| `GET`    | `/api/playlists/flows/:flowId/lidarr-import-list`                    | Create or read the Lidarr feed token and item count                                                   |
-| `GET`    | `/api/playlists/artwork/:playlistId`                                 | Get playlist artwork                                                                                  |
-| `PUT`    | `/api/playlists/artwork/:playlistId`                                 | Upload playlist artwork                                                                               |
-| `DELETE` | `/api/playlists/artwork/:playlistId`                                 | Delete playlist artwork                                                                               |
-| `POST`   | `/api/playlists/artwork/:playlistId/generate`                        | Generate playlist artwork                                                                             |
-| `GET`    | `/api/playlists/stream/:jobId`                                       | Stream a playlist track                                                                               |
-| `GET`    | `/api/playlists/staging-stream/:jobId`                               | Stream a staged track                                                                                 |
-| `POST`   | `/api/playlists/static-playlists`                                    | Create a static playlist                                                                              |
-| `PUT`    | `/api/playlists/static-playlists/:playlistId`                        | Update a static playlist                                                                              |
-| `PUT`    | `/api/playlists/static-playlists/:playlistId/record-history`         | Enable or disable listening history for a static playlist                                             |
-| `PUT`    | `/api/playlists/static-playlists/:playlistId/track-availability`     | Show or hide track availability for a static playlist, with `{ "enabled": true \| false }`            |
-| `DELETE` | `/api/playlists/static-playlists/:playlistId`                        | Delete a static playlist                                                                              |
-| `POST`   | `/api/playlists/static-playlists/:playlistId/tracks`                 | Add a static playlist track                                                                           |
-| `DELETE` | `/api/playlists/static-playlists/:playlistId/tracks/:jobId`          | Delete a static playlist track                                                                        |
-| `POST`   | `/api/playlists/static-playlists/:playlistId/tracks/:jobId/research` | Research a static playlist track                                                                      |
-| `POST`   | `/api/playlists/quality-upgrades/:playlistId/:jobId`                 | Search for a track upgrade                                                                            |
-| `POST`   | `/api/playlists/quality-upgrades`                                    | Search for upgrades for every cutoff-unmet track in Wanted                                            |
-| `POST`   | `/api/playlists/static-playlists/:playlistId/sync`                   | Sync a static playlist                                                                                |
-| `POST`   | `/api/playlists/jobs/:jobId/approve`                                 | Approve a download held for review                                                                    |
-| `POST`   | `/api/playlists/jobs/:jobId/deny`                                    | Deny a download held for review                                                                       |
-| `DELETE` | `/api/playlists/jobs/completed`                                      | Delete completed jobs                                                                                 |
-| `DELETE` | `/api/playlists/jobs/all`                                            | Delete all jobs                                                                                       |
-| `GET`    | `/api/playlists/worker/settings`                                     | Get worker settings                                                                                   |
-| `PUT`    | `/api/playlists/worker/settings`                                     | Update worker settings; `paused: true` holds queued downloads until set back to `false`               |
-| `POST`   | `/api/playlists/worker/start`                                        | Start the worker                                                                                      |
-| `POST`   | `/api/playlists/worker/stop`                                         | Stop the worker                                                                                       |
-| `POST`   | `/api/playlists/reset`                                               | Reset selected flow playlists                                                                         |
-| `POST`   | `/api/playlists/playlist/:playlistType/create`                       | Queue a rewrite of every flow and static playlist file                                                |
+| Method   | Path                                                                 | Purpose                                                                                                        |
+| -------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/playlists/status`                                              | Download worker, flow, and static playlist status                                                              |
+| `GET`    | `/api/playlists/jobs`                                                | List Library and accessible flow and playlist jobs                                                             |
+| `GET`    | `/api/playlists/jobs/:playlistId`                                    | List jobs for a flow or static playlist                                                                        |
+| `POST`   | `/api/playlists/jobs/cancel`                                         | Cancel every pending or downloading song you can control                                                       |
+| `POST`   | `/api/playlists/jobs/:jobId/cancel`                                  | Cancel a pending or downloading song without changing its monitoring                                           |
+| `POST`   | `/api/playlists/research-missing`                                    | Re-search every missing track in Wanted                                                                        |
+| `GET`    | `/api/playlists/jobs/:jobId/manual-search/sources`                   | List the download clients available for a manual search                                                        |
+| `POST`   | `/api/playlists/jobs/:jobId/manual-search`                           | Search one download client for a track. Send `sourceId`, and `mode` set to `missing` or `replacement`          |
+| `POST`   | `/api/playlists/jobs/:jobId/manual-search/select`                    | Queue one result from a manual search                                                                          |
+| `POST`   | `/api/playlists/start/:flowId`                                       | Run a flow                                                                                                     |
+| `GET`    | `/api/playlists/flow-templates`                                      | List flow templates                                                                                            |
+| `POST`   | `/api/playlists/flows`                                               | Create a flow, optionally from a template with `templateId`                                                    |
+| `PUT`    | `/api/playlists/flows/:flowId`                                       | Update a flow                                                                                                  |
+| `DELETE` | `/api/playlists/flows/:flowId`                                       | Delete a flow                                                                                                  |
+| `PUT`    | `/api/playlists/flows/:flowId/enabled`                               | Enable or disable a flow                                                                                       |
+| `POST`   | `/api/playlists/flows/:flowId/static-playlist`                       | Save completed flow tracks as a static playlist                                                                |
+| `POST`   | `/api/playlists/flows/:flowId/tracks/:jobId/research`                | Research a flow track again                                                                                    |
+| `GET`    | `/api/playlists/flows/:flowId/lidarr-import-list`                    | Create or read the Lidarr feed token and item count                                                            |
+| `GET`    | `/api/playlists/artwork/:playlistId`                                 | Get playlist artwork                                                                                           |
+| `PUT`    | `/api/playlists/artwork/:playlistId`                                 | Upload playlist artwork                                                                                        |
+| `DELETE` | `/api/playlists/artwork/:playlistId`                                 | Delete playlist artwork                                                                                        |
+| `POST`   | `/api/playlists/artwork/:playlistId/generate`                        | Generate playlist artwork                                                                                      |
+| `GET`    | `/api/playlists/stream/:jobId`                                       | Stream a playlist track. Optional `format`, `maxBitRate`, and `timeOffset` convert it, as in Subsonic `stream` |
+| `GET`    | `/api/playlists/staging-stream/:jobId`                               | Stream a staged track                                                                                          |
+| `POST`   | `/api/playlists/static-playlists`                                    | Create a static playlist                                                                                       |
+| `PUT`    | `/api/playlists/static-playlists/:playlistId`                        | Update a static playlist                                                                                       |
+| `PUT`    | `/api/playlists/static-playlists/:playlistId/record-history`         | Enable or disable listening history for a static playlist                                                      |
+| `PUT`    | `/api/playlists/static-playlists/:playlistId/track-availability`     | Show or hide track availability for a static playlist, with `{ "enabled": true \| false }`                     |
+| `DELETE` | `/api/playlists/static-playlists/:playlistId`                        | Delete a static playlist                                                                                       |
+| `POST`   | `/api/playlists/static-playlists/:playlistId/tracks`                 | Add a static playlist track                                                                                    |
+| `DELETE` | `/api/playlists/static-playlists/:playlistId/tracks/:jobId`          | Delete a static playlist track                                                                                 |
+| `POST`   | `/api/playlists/static-playlists/:playlistId/tracks/:jobId/research` | Research a static playlist track                                                                               |
+| `POST`   | `/api/playlists/quality-upgrades/:playlistId/:jobId`                 | Search for a track upgrade                                                                                     |
+| `POST`   | `/api/playlists/quality-upgrades`                                    | Search for upgrades for every cutoff-unmet track in Wanted                                                     |
+| `POST`   | `/api/playlists/static-playlists/:playlistId/sync`                   | Sync a static playlist                                                                                         |
+| `POST`   | `/api/playlists/jobs/:jobId/approve`                                 | Approve a download held for review                                                                             |
+| `POST`   | `/api/playlists/jobs/:jobId/deny`                                    | Deny a download held for review                                                                                |
+| `DELETE` | `/api/playlists/jobs/completed`                                      | Delete completed jobs                                                                                          |
+| `DELETE` | `/api/playlists/jobs/all`                                            | Delete all jobs                                                                                                |
+| `GET`    | `/api/playlists/worker/settings`                                     | Get worker settings                                                                                            |
+| `PUT`    | `/api/playlists/worker/settings`                                     | Update worker settings; `paused: true` holds queued downloads until set back to `false`                        |
+| `POST`   | `/api/playlists/worker/start`                                        | Start the worker                                                                                               |
+| `POST`   | `/api/playlists/worker/stop`                                         | Stop the worker                                                                                                |
+| `POST`   | `/api/playlists/reset`                                               | Reset selected flow playlists                                                                                  |
+| `POST`   | `/api/playlists/playlist/:playlistType/create`                       | Queue a rewrite of every flow and static playlist file                                                         |
 
 Cancelling a song needs `accessPlaylists` and access to its playlist, or the user who
 requested the Library download. Other users get `403`. The track stays

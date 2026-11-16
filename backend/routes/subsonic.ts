@@ -7,7 +7,12 @@ import { APP_NAME, APP_VERSION } from "../config/constants.ts";
 import { getSettingsEncryptionKey } from "../db/helpers/settings.ts";
 import { hasPermission, resolveSubsonicTokenUser, resolveUser } from "../services/auth.ts";
 import { getPlayQueue, getPlayQueueByIndex, savePlayQueue } from "../services/playQueueService.ts";
-import { streamSubsonicAudio } from "../services/subsonicTranscodeService.ts";
+import {
+  streamBitRate,
+  streamFormat,
+  streamOffset,
+  streamSubsonicAudio,
+} from "../services/subsonicTranscodeService.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { getLyricsBySongId } from "../services/lyricsService.ts";
 import { sendAudioFile } from "../services/audioFileStream.ts";
@@ -360,23 +365,6 @@ const formParameters = (c: Context<AppEnv>) =>
   c.req.header("content-type")?.includes("application/x-www-form-urlencoded")
     ? c.req.parseBody({ all: true })
     : {};
-
-const streamFormat = v.pipe(
-  v.string(),
-  v.toLowerCase(),
-  v.picklist(["", "raw", "mp3", "opus", "aac"]),
-);
-const streamBitRate = v.pipe(
-  v.string(),
-  v.regex(/^\d*$/),
-  v.transform(Number),
-  v.check((kbps) => Number.isSafeInteger(kbps) && (kbps === 0 || kbps >= 8)),
-);
-const streamOffset = v.pipe(
-  v.string(),
-  v.transform(Number),
-  v.check((seconds) => Number.isFinite(seconds) && seconds >= 0),
-);
 
 async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string) {
   // OpenSubsonic formPost: parameters may arrive in a urlencoded body; query wins on conflicts.
