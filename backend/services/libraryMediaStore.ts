@@ -1394,8 +1394,8 @@ function removeEmptyLibraryAlbum(album: LibraryAlbumsRow, tracks: LibraryAlbumTr
   deleteLibraryAlbumRow(album.id, album.artist_id);
 }
 
-// An album nobody asked for lists its release's tracks and the songs it has
-// files for.
+// An album lists its release's tracks and the songs it has files for. One
+// somebody asked for keeps its songs until it lists a release.
 function dropUnfiledAlbumTracks() {
   const links = db
     .prepare<[], { albumId: number; trackId: number }>(
@@ -1403,7 +1403,8 @@ function dropUnfiledAlbumTracks() {
      FROM library_album_tracks AS link
      JOIN library_albums AS album ON album.id = link.album_id
      JOIN library_tracks AS track ON track.id = link.track_id
-     WHERE NOT ${ALBUM_IS_OWNED}
+     WHERE (NOT ${ALBUM_IS_OWNED} OR (json_valid(album.metadata_json)
+         AND json_extract(album.metadata_json, '$.trackList.release') IS NOT NULL))
        AND NOT EXISTS (
          SELECT 1 FROM library_media_files AS media
          WHERE media.track_id = link.track_id AND (media.album_id = link.album_id OR media.album_id IS NULL)

@@ -1635,6 +1635,53 @@ test("a file at a listed song's place is that song, keeping its own title when t
   });
 });
 
+test("a song an owned album does not list leaves it when its file is retagged as a listed song", async (t: import("vite-plus/test").TestContext) => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-owned-retag-"));
+  const artist = `Owned Retag ${process.pid}`;
+  const title = `Owned Retag ${process.pid}`;
+  const album = listedAlbum(artist, uuid("dddddddd", 30), title, 300, [
+    "One",
+    "Sabre Dance (extended)",
+  ]);
+  t.onTestFinished(async () => {
+    removeArtistsNamed(artist);
+    await rm(root, { recursive: true, force: true });
+  });
+  await withReleaseGroups({ [album.releaseGroup]: album.group }, async () => {
+    await album.file(root, "One");
+    const other = await taggedTrack(
+      root,
+      artist,
+      title,
+      album,
+      "Sabre Dance",
+      2,
+      uuid("c7c7c7c7", 1),
+    );
+    await scanConfiguredLibrary({ musicRoot: root, includeReadOnly: false });
+    setLibraryManagement({
+      entityKind: "album",
+      entityId: requireValue(
+        db
+          .prepare<[string], Rows.LibraryAlbumsRow["id"]>(
+            "SELECT id FROM library_albums WHERE title = ?",
+          )
+          .pluck()
+          .get(title),
+      ),
+      monitorMode: "monitored",
+    });
+    await rm(other);
+    await album.file(root, "Sabre Dance (extended)");
+    await scanConfiguredLibrary({ musicRoot: root, includeReadOnly: false });
+
+    assert.deepEqual(albumListing(title), [
+      ["One", "have"],
+      ["Sabre Dance (extended)", "have"],
+    ]);
+  });
+});
+
 test("a file is the listed song its recording is, before another whose title it shares at its place", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-recording-first-"));
   const artist = `Recording First List ${process.pid}`;
