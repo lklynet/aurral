@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { LinkProps } from "react-router";
 import { Download, Music, Pause, Play } from "./icons";
 import AddActionButton from "./AddActionButton";
 import { DotLoader } from "./DotLoader";
@@ -15,6 +16,8 @@ import { normalizeStreamQueueTrack } from "../utils/audioQueue";
 import {
   getSearchResultKey,
   getSearchResultLink,
+  getTrackAlbumLink,
+  getTrackArtistLink,
   type SearchItem,
 } from "../utils/searchNavigation";
 import { trackDownloadActionLabel } from "../utils/trackDownloadLabel.ts";
@@ -127,6 +130,15 @@ export function SongDownload({
   );
 }
 
+function TextLink({ link, text }: { link: Pick<LinkProps, "to" | "state"> | null; text: string }) {
+  if (!link) return text;
+  return (
+    <RouteLink to={link.to} state={link.state} className="search-song__link">
+      {text}
+    </RouteLink>
+  );
+}
+
 function SongRow({
   song,
   query,
@@ -138,6 +150,8 @@ function SongRow({
   const link = getSearchResultLink(song, { query });
   const title = song.title || "";
   const album = song.albumTitle || "";
+  const artistLink = getTrackArtistLink(song);
+  const albumLink = album ? getTrackAlbumLink(song) : null;
   const queueItems = playback
     ? [
         {
@@ -167,11 +181,18 @@ function SongRow({
           {song.inLibrary ? <SearchLibraryCheck size="sm" /> : null}
         </span>
         <span className="search-song__artist">
-          {song.artistName}
-          {album ? <span className="search-song__artist-album"> · {album}</span> : null}
+          <TextLink link={artistLink} text={song.artistName || ""} />
+          {album ? (
+            <span className="search-song__artist-album">
+              {" · "}
+              <TextLink link={albumLink} text={album} />
+            </span>
+          ) : null}
         </span>
       </div>
-      <span className="search-song__album">{album}</span>
+      <span className="search-song__album">
+        {album ? <TextLink link={albumLink} text={album} /> : null}
+      </span>
       <span className="search-song__time">{formatDuration(song.durationMs)}</span>
       <span className="search-song__actions">
         {canDownload && !song.inLibrary ? <SongDownload song={song} /> : null}
