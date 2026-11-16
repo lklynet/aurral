@@ -220,8 +220,9 @@ test("a queued track is levelled only when its loudness arrives before it plays"
   const answers: (() => void)[] = [];
   vi.stubGlobal(
     "fetch",
-    () =>
-      new Promise<Response>((resolve) => {
+    (_url: string, { signal }: RequestInit) =>
+      new Promise<Response>((resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(signal.reason));
         answers.push(() =>
           resolve(new Response(null, { headers: { "X-Aurral-Loudness": "-6.0" } })),
         );

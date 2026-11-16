@@ -256,9 +256,9 @@ export function createAudioEngine(createNode: () => HTMLAudioElement = () => new
       autoplay?: boolean;
       startAt?: number;
     }) {
-      const warmed = sameSource(preloaded, src, format) ? preloaded : null;
-      const loudness = warmed?.loudness ?? null;
-      if (warmed) warmed.loudness = null;
+      const upcoming = sameSource(preloaded, src, format) ? preloaded : null;
+      const loudness = upcoming?.loudness ?? null;
+      if (upcoming) upcoming.loudness = null;
       discardPreload();
       current?.loudness?.controller.abort();
       const entry: AudioEntry = {
@@ -280,9 +280,9 @@ export function createAudioEngine(createNode: () => HTMLAudioElement = () => new
       levelWhenKnown(entry);
       if (!node.isConnected) document.body.append(node);
       node.muted = muted;
-      applyVolume();
       node.src = src;
       node.load();
+      applyVolume();
       if (autoplay) attemptPlay(entry);
       emit();
     },
