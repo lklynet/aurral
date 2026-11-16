@@ -611,9 +611,9 @@ export function ThemeSettings({
             }
           },
         },
+        duration: 8000,
       },
       "success",
-      8000,
     );
   };
 

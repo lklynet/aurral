@@ -82,9 +82,9 @@ export default function WrappedAnnouncement() {
         onClose: () => {
           if (!closedByApp) setHidden(true);
         },
+        duration: Infinity,
       },
       "info",
-      Infinity,
     );
     return () => {
       closedByApp = true;

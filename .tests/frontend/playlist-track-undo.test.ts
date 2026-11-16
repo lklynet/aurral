@@ -4,9 +4,10 @@ import { requireFixture } from "../playlists/fixtures.ts";
 
 type ToastApi = ReturnType<typeof import("../../frontend/src/contexts/ToastContext.tsx").useToast>;
 type ToastMessage = Parameters<ToastApi["addToast"]>[0];
-type ToastRecord = import("../../frontend/src/components/Toast.tsx").ToastItem & {
+type ToastRecord = import("../../frontend/src/components/Toast.tsx").ToastContent & {
+  id: string;
+  type: import("../../frontend/src/components/Toast.tsx").ToastType;
   open: boolean;
-  onClose?: () => void;
 };
 
 const json = (value: unknown, status: number = 200) =>
@@ -24,9 +25,9 @@ const until = async (condition: () => boolean) => {
 
 const createToasts = () => {
   const toasts: ToastRecord[] = [];
-  const add = (type: ToastRecord["type"], message: ToastMessage, duration?: number) => {
+  const add = (type: ToastRecord["type"], message: ToastMessage) => {
     const content = typeof message === "string" ? { message } : message;
-    const toast = { id: String(toasts.length + 1), type, duration, open: true, ...content };
+    const toast = { id: String(toasts.length + 1), type, open: true, ...content };
     toasts.push(toast);
     return toast.id;
   };
@@ -38,8 +39,7 @@ const createToasts = () => {
   };
   return {
     toasts,
-    addToast: (content: ToastMessage, type: ToastRecord["type"], duration?: number) =>
-      add(type, content, duration),
+    addToast: (content: ToastMessage, type: ToastRecord["type"] = "info") => add(type, content),
     removeToast: close,
     showSuccess: (message: ToastMessage) => add("success", message),
     showError: (message: ToastMessage) => add("error", message),

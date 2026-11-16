@@ -92,7 +92,7 @@ export function createPlaylistTrackChanges(toast: ReturnType<typeof useToast>) {
     await queryClient.invalidateQueries({ queryKey: queryKeys.playlistStatus }).catch(() => {});
     release(change.key);
     if (success) toast.showSuccess(success);
-    if (error) toast.showError(error, 8000);
+    if (error) toast.showError({ message: error, duration: 8000 });
   };
 
   const report = (change: TrackChange, result: OperationStatus | undefined) => {
@@ -164,10 +164,10 @@ export function createPlaylistTrackChanges(toast: ReturnType<typeof useToast>) {
       });
     }
     if (response?.rejected?.length) {
-      toast.showError(
-        `Could not ${change.action === "move" ? "move" : "remove"} ${trackCountLabel(response.rejected.length)}. ${response.rejected[0]?.message}`,
-        8000,
-      );
+      toast.showError({
+        message: `Could not ${change.action === "move" ? "move" : "remove"} ${trackCountLabel(response.rejected.length)}. ${response.rejected[0]?.message}`,
+        duration: 8000,
+      });
     }
     if (!response?.queued) return settle(change);
     return follow(change, response.operationId);
@@ -230,9 +230,9 @@ export function createPlaylistTrackChanges(toast: ReturnType<typeof useToast>) {
           message: `Removed ${change.label} from ${change.sourceName}`,
           action: { label: "Undo", onClick: () => undo(key) },
           onClose: () => commit(key),
+          duration: UNDO_DURATION_MS,
         },
         "success",
-        UNDO_DURATION_MS,
       );
       if (find(key)) update(key, { toastId });
     },

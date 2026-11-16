@@ -29,9 +29,9 @@ export default function StarPrompt() {
               onClick: () =>
                 window.open("https://github.com/lklynet/aurral", "_blank", "noopener,noreferrer"),
             },
+            duration: Infinity,
           },
           "info",
-          Infinity,
         );
       })
       .catch(() => {});

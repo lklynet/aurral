@@ -303,9 +303,8 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
   const stop = () => {
     const undo = clearQueue();
     addToast(
-      { message: "Queue cleared", action: { label: "Undo", onClick: undo } },
+      { message: "Queue cleared", action: { label: "Undo", onClick: undo }, duration: 8000 },
       "success",
-      8000,
     );
   };
   const minimize = () => {

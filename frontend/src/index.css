@@ -14364,10 +14364,6 @@ button.section-show-all {
   color: var(--aurral-warning);
 }
 
-.app-toast--loading .app-toast__icon {
-  color: var(--aurral-text-muted);
-}
-
 .app-toast .app-toast__icon--large {
   color: var(--aurral-text);
 }

@@ -188,9 +188,8 @@ export function UpNextQueue({ className = "" }: { className?: string }) {
   const handleClear = () => {
     const undo = clearUpcoming();
     addToast(
-      { message: "Up next cleared", action: { label: "Undo", onClick: undo } },
+      { message: "Up next cleared", action: { label: "Undo", onClick: undo }, duration: 8000 },
       "success",
-      8000,
     );
   };
 
