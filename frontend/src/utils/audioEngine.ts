@@ -25,7 +25,7 @@ type AudioEntry = {
   started: boolean;
   handlers: AudioHandlers | null;
   gain: number | null;
-  gainRequest: AbortController | null;
+  loudness: Loudness | null;
   tracker: ReturnType<typeof createPlayTracker>;
 };
 
@@ -33,6 +33,13 @@ type PreloadEntry = {
   src: string;
   format: string[];
   node: HTMLAudioElement;
+  loudness: Loudness | null;
+};
+
+type Loudness = {
+  controller: AbortController;
+  lufs: number | null | undefined;
+  ready: Promise<void>;
 };
 
 const IDLE_SNAPSHOT: AudioSnapshot = {
@@ -45,16 +52,6 @@ const IDLE_SNAPSHOT: AudioSnapshot = {
 const LEVELING_TARGET_LUFS = -14;
 const LOUDNESS_HEADER = "X-Aurral-Loudness";
 const HAVE_METADATA = 1;
-
-function mountPlaybackNode(node: HTMLAudioElement) {
-  node.preload = "auto";
-  node.setAttribute("playsinline", "");
-  node.setAttribute("webkit-playsinline", "");
-  node.setAttribute("aria-hidden", "true");
-  if (typeof document !== "undefined" && document.body && !node.isConnected) {
-    document.body.append(node);
-  }
-}
 
 export function levelingGain(lufs: number) {
   return Math.min(1, 10 ** ((LEVELING_TARGET_LUFS - lufs) / 20));
@@ -80,12 +77,26 @@ function sameSource(
   return entry?.src === src && String(entry.format) === String(format);
 }
 
-export function createAudioEngine(
-  createNode: () => HTMLAudioElement = () => new Audio(),
-  mountNode: (node: HTMLAudioElement) => void = mountPlaybackNode,
-) {
+function fetchLoudness(src: string): Loudness {
+  const controller = new AbortController();
+  const loudness: Loudness = {
+    controller,
+    lufs: undefined,
+    ready: fetch(src, { method: "HEAD", credentials: "same-origin", signal: controller.signal })
+      .then((response) => {
+        const lufs = Number.parseFloat(response.headers.get(LOUDNESS_HEADER) ?? "");
+        loudness.lufs = Number.isFinite(lufs) ? lufs : null;
+      })
+      .catch(() => {
+        loudness.lufs = null;
+      }),
+  };
+  return loudness;
+}
+
+export function createAudioEngine(createNode: () => HTMLAudioElement = () => new Audio()) {
   const node = createNode();
-  mountNode(node);
+  node.preload = "auto";
   let current: AudioEntry | null = null;
   let preloaded: PreloadEntry | null = null;
   let volume = 1;
@@ -100,7 +111,7 @@ export function createAudioEngine(
     return {
       isLoading: current.loading,
       isPlaying: current.playing,
-      isStarting: current.loading && current.wantsPlay,
+      isStarting: current.wantsPlay && !current.playing,
       duration: Number.isFinite(duration) ? duration : 0,
     };
   };
@@ -118,25 +129,22 @@ export function createAudioEngine(
     node.volume = current ? volumeFor(current) : volume;
   };
 
-  const requestGain = (entry: AudioEntry) => {
-    if (!leveling || entry.gainRequest || !isOwnStream(entry.src)) return;
-    const request = new AbortController();
-    entry.gainRequest = request;
-    fetch(entry.src, { method: "HEAD", credentials: "same-origin", signal: request.signal })
-      .then((response) => {
-        const lufs = Number.parseFloat(response.headers.get(LOUDNESS_HEADER) ?? "");
-        if (
-          !Number.isFinite(lufs) ||
-          request.signal.aborted ||
-          current !== entry ||
-          entry.started
-        ) {
-          return;
-        }
-        entry.gain = levelingGain(lufs);
-        applyVolume();
-      })
-      .catch(() => {});
+  const requestLoudness = (entry: { src: string; loudness: Loudness | null }) => {
+    if (leveling && !entry.loudness && isOwnStream(entry.src)) {
+      entry.loudness = fetchLoudness(entry.src);
+    }
+  };
+
+  const levelWhenKnown = (entry: AudioEntry) => {
+    const loudness = entry.loudness;
+    if (!loudness) return;
+    const apply = () => {
+      if (loudness.lufs == null || current !== entry || entry.started) return;
+      entry.gain = levelingGain(loudness.lufs);
+      applyVolume();
+    };
+    if (loudness.lufs === undefined) void loudness.ready.then(apply);
+    else apply();
   };
 
   const attemptPlay = (entry: AudioEntry) => {
@@ -196,8 +204,9 @@ export function createAudioEngine(
     emit();
   });
   node.addEventListener("pause", () => {
-    if (!current) return;
+    if (!current || node.ended || !node.paused) return;
     current.playing = false;
+    current.wantsPlay = false;
     emit();
   });
   node.addEventListener("ended", () => {
@@ -230,6 +239,7 @@ export function createAudioEngine(
 
   const discardPreload = () => {
     if (!preloaded) return;
+    preloaded.loudness?.controller.abort();
     preloaded.node.removeAttribute("src");
     preloaded.node.load();
     preloaded = null;
@@ -258,8 +268,11 @@ export function createAudioEngine(
       autoplay?: boolean;
       startAt?: number;
     }) {
+      const warmed = sameSource(preloaded, src, format) ? preloaded : null;
+      const loudness = warmed?.loudness ?? null;
+      if (warmed) warmed.loudness = null;
       discardPreload();
-      current?.gainRequest?.abort();
+      current?.loudness?.controller.abort();
       const entry: AudioEntry = {
         src,
         format,
@@ -271,16 +284,17 @@ export function createAudioEngine(
         started: false,
         handlers: { onEnd, onStart, onPlayed, onLoadError },
         gain: null,
-        gainRequest: null,
+        loudness,
         tracker: createPlayTracker(),
       };
       current = entry;
+      requestLoudness(entry);
+      levelWhenKnown(entry);
+      if (!node.isConnected) document.body.append(node);
       node.muted = muted;
       applyVolume();
       node.src = src;
       node.load();
-      requestGain(entry);
-      seekToStart(entry);
       if (autoplay) attemptPlay(entry);
       emit();
     },
@@ -290,7 +304,8 @@ export function createAudioEngine(
       const preloadNode = createNode();
       preloadNode.preload = "auto";
       preloadNode.muted = true;
-      preloaded = { src, format, node: preloadNode };
+      preloaded = { src, format, node: preloadNode, loudness: null };
+      requestLoudness(preloaded);
       preloadNode.src = src;
       preloadNode.load();
     },
@@ -342,7 +357,11 @@ export function createAudioEngine(
     },
     setLeveling(enabled: boolean) {
       leveling = enabled;
-      if (current) requestGain(current);
+      if (current) {
+        requestLoudness(current);
+        levelWhenKnown(current);
+      }
+      if (preloaded) requestLoudness(preloaded);
       applyVolume();
     },
     setMuted(nextMuted: boolean) {
@@ -351,7 +370,7 @@ export function createAudioEngine(
     },
     unload() {
       discardPreload();
-      current?.gainRequest?.abort();
+      current?.loudness?.controller.abort();
       current = null;
       node.pause();
       node.removeAttribute("src");
