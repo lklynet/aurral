@@ -329,6 +329,17 @@ button.artist-track__text {
   white-space: nowrap;
 }
 
+.artist-track__title > .preview-chip {
+  display: none;
+  float: right;
+  margin-left: 0.75rem;
+}
+
+.artist-track.is-active .artist-track__title > .preview-chip,
+.artist-track:focus-within .artist-track__title > .preview-chip {
+  display: inline-block;
+}
+
 .artist-track__subtitle {
   margin-top: 0.125rem;
   overflow: hidden;
@@ -364,6 +375,10 @@ button.artist-track__text {
 
   .artist-track:hover .artist-track__play {
     opacity: 1;
+  }
+
+  .artist-track:hover .artist-track__title > .preview-chip {
+    display: inline-block;
   }
 
   .artist-track:hover .artist-track__lead:has(.artist-track__play) .artist-track__number {
