@@ -4,6 +4,7 @@ import {
   Clock,
   Eye,
   Info,
+  ListFilter,
   Pause,
   Play,
   RotateCcw,
@@ -33,6 +34,7 @@ export type ActivityRowActionProps = {
   onDeny: (jobId: string | null | undefined) => void;
   onCancel: (jobId: string | null | undefined) => void;
   onRetry: (jobId: string | null | undefined) => void;
+  onManualSearch: (request: ActivityRequest) => void;
   onPreview: (request: ActivityRequest) => void;
   onInfo?: (request: ActivityRequest) => void;
 };
@@ -107,6 +109,7 @@ export function ActivityRowActions({
   onDeny,
   onCancel,
   onRetry,
+  onManualSearch,
   onPreview,
   onInfo,
 }: Omit<ActivityRowActionProps, "jobErrors"> & { request: ActivityRequest }) {
@@ -125,6 +128,11 @@ export function ActivityRowActions({
     !!request.jobId &&
     ["pending", "processing", "failed", "cancelled"].includes(request.status) &&
     !blocked;
+  const canManualSearch =
+    request.kind === "track_download" &&
+    !!request.jobId &&
+    request.status === "failed" &&
+    !request.upgrade;
   const isThisPlaying = currentTrack?.id === String(request.jobId) && isPlaying;
 
   return (
@@ -175,6 +183,16 @@ export function ActivityRowActions({
           ) : (
             <X aria-hidden="true" />
           )}
+        </TooltipButton>
+      ) : null}
+      {canManualSearch ? (
+        <TooltipButton
+          className="native-library-icon-button"
+          onClick={() => onManualSearch(request)}
+          disabled={Boolean(activeControl)}
+          label="Choose a download manually"
+        >
+          <ListFilter aria-hidden="true" />
         </TooltipButton>
       ) : null}
       {canRetry ? (
