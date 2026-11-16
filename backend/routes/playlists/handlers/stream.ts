@@ -3,6 +3,8 @@ import { sendAudioFile } from "../../../services/audioFileStream.ts";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.ts";
 import { requireStreamAuth } from "../../../middleware/guards.ts";
 import { noCache } from "../../../middleware/cacheHeaders.ts";
+import { validate } from "../../../middleware/validate.ts";
+import { streamQuery, streamSubsonicAudio } from "../../../services/subsonicTranscodeService.ts";
 import { canAccessPlaylistType, requirePlaylistAccessIfSignedIn } from "./utils.ts";
 import { sendViaNode } from "../../shared/sendViaNode.ts";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
@@ -25,23 +27,30 @@ const canAccessJob = (user: RequestUser | undefined, job: DownloadJob) =>
 
 export default new Hono<AppEnv>()
   .basePath("/playlists")
-  .get("/stream/:jobId", noCache, requireStreamAuth, requirePlaylistAccessIfSignedIn, async (c) => {
-    const job = downloadTracker.getJob(c.req.param("jobId"));
-    if (!job || !canAccessJob(c.get("user"), job)) {
-      return c.json({ error: "Track not found" }, 404);
-    }
-    if (job.status === "saved") {
-      const link = await deezerGetTrackPreview(job)
-        .then((preview) => preview && getDeezerPreviewLink(preview.previewTrackId))
-        .catch(() => null);
-      return link ? c.redirect(link, 302) : c.json({ error: "No preview for this track" }, 404);
-    }
-    if (job.status !== "done") {
-      return c.json({ error: "Track is not ready to stream" }, 400);
-    }
-    const sent = await sendViaNode(c, sendAudioFile, job.finalPath);
-    return sent || c.json({ error: "Track file missing" }, 404);
-  })
+  .get(
+    "/stream/:jobId",
+    noCache,
+    requireStreamAuth,
+    requirePlaylistAccessIfSignedIn,
+    validate("query", streamQuery),
+    async (c) => {
+      const job = downloadTracker.getJob(c.req.param("jobId"));
+      if (!job || !canAccessJob(c.get("user"), job)) {
+        return c.json({ error: "Track not found" }, 404);
+      }
+      if (job.status === "saved") {
+        const link = await deezerGetTrackPreview(job)
+          .then((preview) => preview && getDeezerPreviewLink(preview.previewTrackId))
+          .catch(() => null);
+        return link ? c.redirect(link, 302) : c.json({ error: "No preview for this track" }, 404);
+      }
+      if (job.status !== "done") {
+        return c.json({ error: "Track is not ready to stream" }, 400);
+      }
+      const sent = await sendViaNode(c, streamSubsonicAudio, job.finalPath, c.req.valid("query"));
+      return sent || c.json({ error: "Track file missing" }, 404);
+    },
+  )
   .get(
     "/staging-stream/:jobId",
     noCache,

@@ -7,6 +7,7 @@ import { parseBuffer } from "music-metadata";
 import sharp from "sharp";
 import { mkdir, mkdtemp, rm, stat, writeFile, readFile, symlink } from "node:fs/promises";
 import path from "node:path";
+import * as v from "valibot";
 
 import {
   cleanupIsolatedState,
@@ -710,6 +711,30 @@ test("transcodes requested formats and bitrate limits while preserving raw strea
     assert.match(metadata.format.codec, /MPEG/);
     assert.ok(metadata.format.bitrate != null);
     assert.ok(metadata.format.bitrate <= 129000);
+    const [libraryTrack] = v.parse(
+      v.array(v.object({ streamPath: v.string() })),
+      await (
+        await apiFetch(
+          `/api/library/tracks?readPath=library&releaseGroupMbid=22222222-2222-4222-8222-222222222222`,
+        )
+      ).json(),
+    );
+    const libraryStream = `/api${requireFixture(libraryTrack).streamPath}`;
+    for (const streamPath of [
+      libraryStream,
+      libraryStream.replace("/stream/", "/file-stream/"),
+      `/api/playlists/stream/${libraryFavoriteJobId}`,
+    ]) {
+      const original = await apiFetch(streamPath);
+      assert.equal(original.headers.get("content-type"), originalType);
+      assert.deepEqual(Buffer.from(await original.arrayBuffer()), flac);
+      const mp3 = await apiFetch(`${streamPath}?format=mp3&maxBitRate=128`);
+      assert.match(mp3.headers.get("content-type")!, /^audio\/mpeg/);
+      assert.notDeepEqual(Buffer.from(await mp3.arrayBuffer()), flac);
+      const above = await apiFetch(`${streamPath}?maxBitRate=10000`);
+      assert.deepEqual(Buffer.from(await above.arrayBuffer()), flac);
+      assert.equal((await apiFetch(`${streamPath}?format=wav`)).status, 400);
+    }
     for (const [format, mime, codec] of [
       ["mp3", "audio/mpeg", /MPEG/],
       ["opus", "audio/ogg", /Opus/],
