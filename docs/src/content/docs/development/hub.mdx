@@ -11,7 +11,7 @@ The hub is the API behind aurral.org's community features. It is a Hono app on C
 pnpm eden up --with hub
 ```
 
-This applies the migrations to a local D1 database in `.eden/hub` and serves the hub on wrangler's local runtime. `pnpm eden status` prints the address. The hub's tests use the same runtime through `hub/testing.ts`.
+This applies the migrations to a local D1 database in `.eden/hub` and serves the hub on wrangler's local runtime. Its account pages sign in through Eden's OIDC stand-in, as `ada` or `grace`. `pnpm eden status` prints the address. The hub's tests use the same runtime through `hub/testing.ts`.
 
 ## Change the database
 
@@ -26,5 +26,7 @@ The Hub workflow applies migrations and deploys the preview environment on every
 A fork that wants its own community features runs its own hub. Hubs don't talk to each other.
 
 1. Create a D1 database with `pnpm exec wrangler d1 create <name>` in `hub/`.
-2. In `hub/wrangler.jsonc`, set the `database_id` and replace the route with your domain.
-3. Run `pnpm exec wrangler d1 migrations apply DB --remote --env ""`, then `pnpm exec wrangler deploy --env ""`.
+2. In `hub/wrangler.jsonc`, set the `database_id`, replace the domain in the routes, and set `HUB_ORIGIN` to your origin.
+3. Create a GitHub OAuth app, a Discord application, or both, with the callback `<origin>/v1/auth/callback/github` or `/discord`.
+4. Set the secrets with `pnpm exec wrangler secret put <name> --env ""`: `AUTH_SECRET` (a long random string), plus `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`, or `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET`. Sign-in shows only the providers you set.
+5. Run `pnpm exec wrangler d1 migrations apply DB --remote --env ""`, then `pnpm exec wrangler deploy --env ""`.
