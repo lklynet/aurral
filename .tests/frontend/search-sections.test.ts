@@ -1,7 +1,12 @@
 import { describe, test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
-import { buildSearchSections, type SearchItem } from "../../frontend/src/utils/searchNavigation.ts";
+import {
+  buildSearchSections,
+  getTrackAlbumLink,
+  getTrackArtistLink,
+  type SearchItem,
+} from "../../frontend/src/utils/searchNavigation.ts";
 import { getSearchAlbumState } from "../../frontend/src/pages/searchPageUtils.ts";
 
 const libraryAlbum = {
@@ -137,5 +142,29 @@ describe("getSearchAlbumState", () => {
     const state = getSearchAlbumState(album, downloading);
     assert.equal(state.kind, kind);
     if (label) assert.deepEqual(state, { kind, label });
+  });
+});
+
+describe("song artist and album links", () => {
+  test.each([
+    { song: track({ source: "deezer", artistMbid: "a-rh" }), to: "/artist/a-rh" },
+    { song: track({ source: "deezer" }), to: "/go/artist?name=Radiohead" },
+    { song: track({ source: "library" }), to: "/go/library-artist?name=Radiohead" },
+  ])("$song.source artist $song.artistMbid opens $to", ({ song, to }) => {
+    assert.equal(getTrackArtistLink(song)?.to, to);
+  });
+
+  test.each([
+    { song: track({ source: "library", libraryAlbumId: "7" }), to: "/album/7" },
+    {
+      song: track({ source: "deezer", artistMbid: "a-rh", albumMbid: "rg-ph", trackMbid: "t-1" }),
+      to: "/album/rg-ph?track=t-1",
+    },
+    {
+      song: track({ source: "deezer", deezerAlbumId: "9" }),
+      to: "/go/album?artist=Radiohead&name=Pablo+Honey&deezer=9&track=Creep",
+    },
+  ])("$song.source album opens $to", ({ song, to }) => {
+    assert.equal(getTrackAlbumLink(song)?.to, to);
   });
 });
