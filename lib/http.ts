@@ -82,6 +82,9 @@ export const waitBeforeRetry = (retryCount: number) =>
 export const isTransientNetworkError = (error: unknown) =>
   error instanceof HttpError && !error.response && TRANSIENT_NETWORK_CODES.has(error.code ?? "");
 
+export const isServiceUnavailable = (error: unknown) =>
+  error instanceof HttpError && (!error.response || error.response.status >= 500);
+
 type RequestFailure = {
   method: string;
   url: string;
