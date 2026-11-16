@@ -1,11 +1,4 @@
-import { Howl } from "howler";
 import { createPlayTracker } from "./playTracker.ts";
-
-declare module "howler" {
-  interface Howl {
-    _sounds?: { _node?: HTMLAudioElement | null }[];
-  }
-}
 
 type AudioSnapshot = {
   isLoading: boolean;
@@ -27,16 +20,24 @@ type AudioEntry = {
   wantsPlay: boolean;
   startAt: number;
   loaded: boolean;
-  failed: boolean;
+  loading: boolean;
+  playing: boolean;
+  started: boolean;
   handlers: AudioHandlers | null;
   gain: number | null;
-  gainRequest: AbortController | null;
-  howl: Howl;
-  node: HTMLAudioElement | null;
-  onMediaEvent: () => void;
-  onEnded: () => void;
-  onTimeUpdate: () => void;
-  onSeeking: () => void;
+  loudness: Loudness | null;
+  tracker: ReturnType<typeof createPlayTracker>;
+};
+
+type PreloadEntry = {
+  src: string;
+  format: string[];
+  loudness: Loudness | null;
+};
+
+type Loudness = {
+  controller: AbortController;
+  lufs: Promise<number | null>;
 };
 
 const IDLE_SNAPSHOT: AudioSnapshot = {
@@ -48,6 +49,7 @@ const IDLE_SNAPSHOT: AudioSnapshot = {
 
 const LEVELING_TARGET_LUFS = -14;
 const LOUDNESS_HEADER = "X-Aurral-Loudness";
+const HAVE_METADATA = 1;
 
 export function levelingGain(lufs: number) {
   return Math.min(1, 10 ** ((LEVELING_TARGET_LUFS - lufs) / 20));
@@ -61,45 +63,54 @@ function isOwnStream(src: string) {
   }
 }
 
-const HOWL_EVENTS = ["load", "loaderror", "play", "playerror", "pause", "stop", "end", "seek"];
-const MEDIA_EVENTS = ["playing", "pause", "waiting", "seeked", "canplay", "durationchange"];
-
-function mediaNode(howl: Howl) {
-  return howl?._sounds?.[0]?._node ?? null;
-}
-
-function readSnapshot(entry: AudioEntry | null): AudioSnapshot {
-  const howl = entry?.howl;
-  if (!howl || howl.state() === "unloaded") return IDLE_SNAPSHOT;
-  const isLoading = howl.state() === "loading";
-  const duration = howl.duration();
-  return {
-    isLoading,
-    isPlaying: howl.playing(),
-    isStarting: isLoading && entry.wantsPlay,
-    duration: Number.isFinite(duration) ? duration : 0,
-  };
-}
-
 function sameSnapshot(a: AudioSnapshot, b: AudioSnapshot) {
   return (Object.keys(IDLE_SNAPSHOT) as (keyof AudioSnapshot)[]).every((key) => a[key] === b[key]);
 }
 
-function sameSource(entry: AudioEntry | null, src: string, format: string[]): entry is AudioEntry {
+function sameSource(
+  entry: Pick<AudioEntry, "src" | "format"> | PreloadEntry | null,
+  src: string,
+  format: string[],
+) {
   return entry?.src === src && String(entry.format) === String(format);
 }
 
-export function createAudioEngine() {
+function fetchLoudness(src: string): Loudness {
+  const controller = new AbortController();
+  const lufs = fetch(src, { method: "HEAD", credentials: "same-origin", signal: controller.signal })
+    .then((response) => {
+      const value = Number.parseFloat(response.headers.get(LOUDNESS_HEADER) ?? "");
+      return Number.isFinite(value) ? value : null;
+    })
+    .catch(() => null);
+  return { controller, lufs };
+}
+
+export function createAudioEngine(createNode: () => HTMLAudioElement = () => new Audio()) {
+  const node = createNode();
+  node.preload = "auto";
   let current: AudioEntry | null = null;
-  let preloaded: AudioEntry | null = null;
+  let preloaded: PreloadEntry | null = null;
   let volume = 1;
   let muted = false;
   let leveling = true;
   let snapshot: AudioSnapshot = IDLE_SNAPSHOT;
+  let playAttempt = 0;
   const listeners = new Set<() => void>();
 
+  const readSnapshot = (): AudioSnapshot => {
+    if (!current) return IDLE_SNAPSHOT;
+    const duration = node.duration;
+    return {
+      isLoading: current.loading,
+      isPlaying: current.playing,
+      isStarting: current.wantsPlay && !current.playing,
+      duration: Number.isFinite(duration) ? duration : 0,
+    };
+  };
+
   const emit = () => {
-    const next = readSnapshot(current);
+    const next = readSnapshot();
     if (sameSnapshot(next, snapshot)) return;
     snapshot = next;
     for (const listener of listeners) listener();
@@ -107,103 +118,118 @@ export function createAudioEngine() {
 
   const volumeFor = (entry: AudioEntry) => volume * (leveling ? (entry.gain ?? 1) : 1);
 
-  const applyVolume = (entry: AudioEntry | null) => {
-    entry?.howl.volume(volumeFor(entry));
+  const applyVolume = () => {
+    node.volume = current ? volumeFor(current) : volume;
   };
 
-  const requestGain = (entry: AudioEntry) => {
-    if (!leveling || entry.gainRequest || !isOwnStream(entry.src)) return;
-    const request = new AbortController();
-    entry.gainRequest = request;
-    fetch(entry.src, { method: "HEAD", credentials: "same-origin", signal: request.signal })
-      .then((response) => {
-        const lufs = Number.parseFloat(response.headers.get(LOUDNESS_HEADER) ?? "");
-        if (!Number.isFinite(lufs) || request.signal.aborted || entry.node?.played.length) return;
-        entry.gain = levelingGain(lufs);
-        applyVolume(entry);
-      })
-      .catch(() => {});
-  };
-
-  const createEntry = ({ src, format }: { src: string; format: string[] }) => {
-    const entry = {
-      src,
-      format,
-      wantsPlay: false,
-      startAt: 0,
-      loaded: false,
-      failed: false,
-      handlers: null,
-      gain: null,
-      gainRequest: null,
-    } as AudioEntry;
-    entry.howl = new Howl({
-      src: [src],
-      format,
-      html5: true,
-      preload: true,
-      autoplay: false,
-      volume,
-      mute: muted,
-    });
-    requestGain(entry);
-    entry.howl.once("load", () => {
-      entry.loaded = true;
-    });
-    entry.howl.on("loaderror", () => {
-      entry.failed = true;
-      entry.wantsPlay = false;
-    });
-    entry.howl.on("playerror", () => {
-      entry.wantsPlay = false;
-    });
-    entry.howl.once("play", () => {
-      if (entry === current) entry.handlers?.onStart?.();
-    });
-    for (const event of HOWL_EVENTS) {
-      entry.howl.on(event, (...args: unknown[]) => {
-        if (entry !== current) return;
-        emit();
-        if (event === "loaderror") entry.handlers?.onLoadError?.(...args);
-      });
+  const requestLoudness = (entry: { src: string; loudness: Loudness | null }) => {
+    if (leveling && !entry.loudness && isOwnStream(entry.src)) {
+      entry.loudness = fetchLoudness(entry.src);
     }
-    entry.node = mediaNode(entry.howl);
-    entry.onMediaEvent = () => {
-      if (entry === current) emit();
-    };
-    entry.onEnded = () => {
-      if (entry !== current) return;
-      entry.wantsPlay = false;
-      entry.handlers?.onEnd?.();
-    };
-    const tracker = createPlayTracker();
-    entry.onTimeUpdate = () => {
-      const node = entry.node;
-      if (entry !== current || !node) return;
-      if (node.seeking) tracker.seeking();
-      else if (tracker.update(node.currentTime, node.duration)) entry.handlers?.onPlayed?.();
-    };
-    entry.onSeeking = tracker.seeking;
-    entry.node?.addEventListener("ended", entry.onEnded);
-    entry.node?.addEventListener("timeupdate", entry.onTimeUpdate);
-    entry.node?.addEventListener("seeking", entry.onSeeking);
-    for (const event of MEDIA_EVENTS) entry.node?.addEventListener(event, entry.onMediaEvent);
-    return entry;
   };
 
-  const release = (entry: AudioEntry | null) => {
-    if (!entry) return;
-    entry.handlers = null;
-    entry.gainRequest?.abort();
-    entry.node?.removeEventListener("ended", entry.onEnded);
-    entry.node?.removeEventListener("timeupdate", entry.onTimeUpdate);
-    entry.node?.removeEventListener("seeking", entry.onSeeking);
-    for (const event of MEDIA_EVENTS) entry.node?.removeEventListener(event, entry.onMediaEvent);
-    entry.howl.unload();
+  const levelWhenKnown = (entry: AudioEntry) => {
+    void entry.loudness?.lufs.then((lufs) => {
+      if (lufs === null || current !== entry || entry.started) return;
+      entry.gain = levelingGain(lufs);
+      applyVolume();
+    });
   };
+
+  const attemptPlay = (entry: AudioEntry) => {
+    const attempt = ++playAttempt;
+    let request: Promise<void>;
+    try {
+      request = node.play();
+    } catch {
+      entry.wantsPlay = false;
+      entry.loading = false;
+      emit();
+      return;
+    }
+    request.catch(() => {
+      if (current !== entry || attempt !== playAttempt) return;
+      entry.wantsPlay = false;
+      entry.loading = false;
+      entry.playing = false;
+      emit();
+    });
+  };
+
+  const seekToStart = (entry: AudioEntry) => {
+    if (entry.startAt <= 0 || node.readyState < HAVE_METADATA) return;
+    try {
+      node.currentTime = entry.startAt;
+      entry.startAt = 0;
+    } catch {}
+  };
+
+  node.addEventListener("loadstart", () => {
+    if (!current) return;
+    current.loading = true;
+    emit();
+  });
+  node.addEventListener("loadedmetadata", () => {
+    if (!current) return;
+    current.loaded = true;
+    seekToStart(current);
+    emit();
+  });
+  node.addEventListener("canplay", () => {
+    if (!current) return;
+    current.loaded = true;
+    current.loading = false;
+    emit();
+  });
+  node.addEventListener("playing", () => {
+    const entry = current;
+    if (!entry) return;
+    entry.loaded = true;
+    entry.loading = false;
+    entry.playing = true;
+    if (!entry.started) {
+      entry.started = true;
+      entry.handlers?.onStart?.();
+    }
+    emit();
+  });
+  node.addEventListener("pause", () => {
+    if (!current || node.ended || !node.paused) return;
+    current.playing = false;
+    current.wantsPlay = false;
+    emit();
+  });
+  node.addEventListener("ended", () => {
+    const entry = current;
+    if (!entry) return;
+    entry.playing = false;
+    entry.wantsPlay = false;
+    entry.handlers?.onEnd?.();
+    if (current === entry) emit();
+  });
+  node.addEventListener("error", (event) => {
+    const entry = current;
+    if (!entry) return;
+    entry.loading = false;
+    entry.playing = false;
+    entry.wantsPlay = false;
+    emit();
+    entry.handlers?.onLoadError?.(event, node.error);
+  });
+  node.addEventListener("timeupdate", () => {
+    const entry = current;
+    if (!entry) return;
+    if (node.seeking) entry.tracker.seeking();
+    else if (entry.tracker.update(node.currentTime, node.duration)) entry.handlers?.onPlayed?.();
+  });
+  node.addEventListener("seeking", () => current?.tracker.seeking());
+  for (const event of ["waiting", "seeked", "durationchange"]) {
+    node.addEventListener(event, emit);
+  }
 
   const discardPreload = () => {
-    release(preloaded);
+    if (!preloaded) return;
+    preloaded.loudness?.controller.abort();
     preloaded = null;
   };
 
@@ -230,84 +256,108 @@ export function createAudioEngine() {
       autoplay?: boolean;
       startAt?: number;
     }) {
-      const reusable = sameSource(preloaded, src, format) && !preloaded.failed ? preloaded : null;
-      if (reusable) preloaded = null;
-      else if (sameSource(preloaded, src, format)) discardPreload();
-      const previous = current;
-      current = reusable ?? createEntry({ src, format });
-      current.handlers = { onEnd, onStart, onPlayed, onLoadError };
-      release(previous);
-      if (startAt > 0) {
-        current.startAt = startAt;
-        current.howl.seek(startAt);
-      }
-      current.wantsPlay = autoplay;
-      if (autoplay) current.howl.play();
+      const upcoming = sameSource(preloaded, src, format) ? preloaded : null;
+      const loudness = upcoming?.loudness ?? null;
+      if (upcoming) upcoming.loudness = null;
+      discardPreload();
+      current?.loudness?.controller.abort();
+      const entry: AudioEntry = {
+        src,
+        format,
+        wantsPlay: autoplay,
+        startAt,
+        loaded: false,
+        loading: true,
+        playing: false,
+        started: false,
+        handlers: { onEnd, onStart, onPlayed, onLoadError },
+        gain: null,
+        loudness,
+        tracker: createPlayTracker(),
+      };
+      current = entry;
+      requestLoudness(entry);
+      levelWhenKnown(entry);
+      if (!node.isConnected) document.body.append(node);
+      node.muted = muted;
+      node.src = src;
+      node.load();
+      applyVolume();
+      if (autoplay) attemptPlay(entry);
       emit();
     },
     preload({ src, format }: { src: string; format: string[] }) {
       if (!src || sameSource(current, src, format) || sameSource(preloaded, src, format)) return;
       discardPreload();
-      preloaded = createEntry({ src, format });
+      preloaded = { src, format, loudness: null };
+      requestLoudness(preloaded);
     },
     discardPreload,
     play() {
-      if (!current || current.howl.playing()) return;
+      if (!current || current.playing) return;
       current.wantsPlay = true;
-      current.howl.play();
+      current.loading = !current.loaded;
+      attemptPlay(current);
       emit();
     },
     pause() {
       if (!current) return;
       current.wantsPlay = false;
-      current.howl.pause();
+      current.playing = false;
+      node.pause();
       emit();
     },
     seek(position: number) {
       if (!current || !Number.isFinite(position)) return;
       const target = Math.max(0, position);
-      if (!current.loaded) current.startAt = target;
-      current.howl.seek(target);
+      if (!current.loaded || node.readyState < HAVE_METADATA) {
+        current.startAt = target;
+        return;
+      }
+      try {
+        node.currentTime = target;
+      } catch {}
     },
     getPosition() {
       if (!current) return 0;
       if (!current.loaded) return current.startAt;
-      return current.node?.currentTime || 0;
+      return node.currentTime || 0;
     },
     getBufferedEnd() {
-      const node = current?.node;
-      const ranges = node?.buffered;
-      if (!ranges) return 0;
+      if (!current) return 0;
+      const { buffered } = node;
       const position = node.currentTime || 0;
-      for (let index = 0; index < ranges.length; index += 1) {
-        if (ranges.start(index) <= position + 0.5 && ranges.end(index) >= position) {
-          return ranges.end(index);
+      for (let index = 0; index < buffered.length; index += 1) {
+        if (buffered.start(index) <= position + 0.5 && buffered.end(index) >= position) {
+          return buffered.end(index);
         }
       }
       return 0;
     },
     setVolume(nextVolume: number) {
       volume = nextVolume;
-      applyVolume(current);
-      applyVolume(preloaded);
+      applyVolume();
     },
     setLeveling(enabled: boolean) {
       leveling = enabled;
-      for (const entry of [current, preloaded]) {
-        if (!entry) continue;
-        requestGain(entry);
-        applyVolume(entry);
+      if (current) {
+        requestLoudness(current);
+        levelWhenKnown(current);
       }
+      if (preloaded) requestLoudness(preloaded);
+      applyVolume();
     },
     setMuted(nextMuted: boolean) {
       muted = nextMuted;
-      current?.howl.mute(nextMuted);
-      preloaded?.howl.mute(nextMuted);
+      node.muted = nextMuted;
     },
     unload() {
       discardPreload();
-      release(current);
+      current?.loudness?.controller.abort();
       current = null;
+      node.pause();
+      node.removeAttribute("src");
+      node.load();
       emit();
     },
   };
