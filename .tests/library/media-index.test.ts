@@ -1635,7 +1635,7 @@ test("a file at a listed song's place is that song, keeping its own title when t
   });
 });
 
-test("a song an owned album does not list leaves it when its file is retagged as a listed song", async (t: import("vite-plus/test").TestContext) => {
+test("an owned album lets go of a song it does not list once the song's file is retagged as a listed one, and keeps a song saved to it", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-owned-retag-"));
   const artist = `Owned Retag ${process.pid}`;
   const title = `Owned Retag ${process.pid}`;
@@ -1659,18 +1659,22 @@ test("a song an owned album does not list leaves it when its file is retagged as
       uuid("c7c7c7c7", 1),
     );
     await scanConfiguredLibrary({ musicRoot: root, includeReadOnly: false });
-    setLibraryManagement({
-      entityKind: "album",
-      entityId: requireValue(
-        db
-          .prepare<[string], Rows.LibraryAlbumsRow["id"]>(
-            "SELECT id FROM library_albums WHERE title = ?",
-          )
-          .pluck()
-          .get(title),
-      ),
-      monitorMode: "monitored",
+    const albumId = requireValue(
+      db
+        .prepare<[string], Rows.LibraryAlbumsRow["id"]>(
+          "SELECT id FROM library_albums WHERE title = ?",
+        )
+        .pluck()
+        .get(title),
+    );
+    setLibraryManagement({ entityKind: "album", entityId: albumId, monitorMode: "monitored" });
+    const saved = upsertLibraryTrack({
+      identityKey: `recording:${uuid("c7c7c7c7", 2)}`,
+      mbid: uuid("c7c7c7c7", 2),
+      title: "Bonus",
+      artistName: artist,
     });
+    linkLibraryAlbumTrack({ albumId, trackId: saved.id, trackNumber: 3, keepPosition: true });
     await rm(other);
     await album.file(root, "Sabre Dance (extended)");
     await scanConfiguredLibrary({ musicRoot: root, includeReadOnly: false });
@@ -1678,6 +1682,7 @@ test("a song an owned album does not list leaves it when its file is retagged as
     assert.deepEqual(albumListing(title), [
       ["One", "have"],
       ["Sabre Dance (extended)", "have"],
+      ["Bonus", "missing"],
     ]);
   });
 });
