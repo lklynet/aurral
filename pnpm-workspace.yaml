@@ -2,6 +2,7 @@ packages:
   - backend
   - frontend
   - docs
+  - hub
 
 engineStrict: true
 
@@ -17,3 +18,5 @@ allowBuilds:
   bcrypt: true
   fsevents: true
   better-sqlite3: false
+  esbuild: false
+  workerd: false

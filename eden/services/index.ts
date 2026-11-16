@@ -1,5 +1,6 @@
 import { airsonic, feishin } from "./clients.ts";
 import { gotify } from "./gotify.ts";
+import { hub } from "./hub.ts";
 import { jellyfin } from "./jellyfin.ts";
 import { koito } from "./koito.ts";
 import { lidarr } from "./lidarr.ts";
@@ -30,6 +31,7 @@ export const services = {
   sso,
   feishin,
   airsonic,
+  hub,
 } satisfies Record<string, Service>;
 
 export type ServiceName = keyof typeof services;

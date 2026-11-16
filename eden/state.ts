@@ -20,6 +20,8 @@ export const paths = {
   selected: path.join(STATE_DIR, "selected.json"),
   done: path.join(STATE_DIR, "done.json"),
   devPid: path.join(STATE_DIR, "dev.pid"),
+  hub: path.join(STATE_DIR, "hub"),
+  hubPid: path.join(STATE_DIR, "hub.pid"),
 };
 
 export const LOGIN = { username: "test", password: "password" } as const;
@@ -48,6 +50,7 @@ const UNASSIGNED_PORTS = {
   slskd: 0,
   lidarr: 0,
   oidc: 0,
+  hub: 0,
 };
 export type Ports = typeof UNASSIGNED_PORTS;
 

@@ -1,0 +1,14 @@
+{
+  "name": "aurral-hub",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "hono": "^4.13.13",
+    "valibot": "^1.5.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261101.1",
+    "wrangler": "4.156.1"
+  }
+}

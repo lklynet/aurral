@@ -107,6 +107,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { slug: "development/eden" },
+            { slug: "development/hub" },
             { slug: "development/logs" },
             { slug: "development/track-matching" },
             { slug: "development/ui-design-system" },

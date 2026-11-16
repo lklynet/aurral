@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "aurral-hub",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": false,
+  "routes": [{ "pattern": "aurral.org/v1/*", "zone_name": "aurral.org" }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_id": "680b1f6c-d759-4285-97ab-501d8a82a234",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "env": {
+    "preview": {
+      "workers_dev": true,
+      "routes": [],
+      "d1_databases": [
+        { "binding": "DB", "database_name": "aurral-hub-preview", "migrations_dir": "migrations" },
+      ],
+    },
+  },
+}

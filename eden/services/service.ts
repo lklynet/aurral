@@ -18,6 +18,9 @@ export type Service = {
   // Settings Aurral only reads from its environment.
   env?: (ports: Ports) => Record<string, string>;
   setup: (context: EdenContext) => Promise<void>;
+  // A process Eden runs on the host instead of in a container.
+  start?: (ports: Ports) => Promise<void>;
+  stop?: () => Promise<void>;
 };
 
 export const local = (port: number) => `http://127.0.0.1:${port}`;

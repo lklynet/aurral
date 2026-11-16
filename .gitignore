@@ -23,3 +23,5 @@ coverage/
 # Local planning artifacts
 /SPEC.md
 /tasks/
+.wrangler/
+.dev.vars*

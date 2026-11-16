@@ -132,6 +132,7 @@ async function up(everything = false) {
     "--wait",
     ...new Set([...CORE_CONTAINERS, ...chosen.flatMap((service) => service.containers)]),
   ]);
+  for (const service of chosen) await service.start?.(ports);
   const env = chosen.reduce(
     (merged, service) => ({ ...merged, ...service.env?.(ports) }),
     aurralEnv(ports),
@@ -193,6 +194,10 @@ async function down() {
     return;
   }
   await stopDev();
+  for (const name of serviceNames) {
+    const service: Service = services[name];
+    await service.stop?.();
+  }
   const ports = await resolvePorts();
   compose(ports, ["down", "--volumes", "--remove-orphans"]);
   rmSync(STATE_DIR, { recursive: true, force: true });
