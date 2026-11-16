@@ -4,7 +4,11 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-11-01",
   "workers_dev": false,
-  "routes": [{ "pattern": "aurral.org/v1/*", "zone_name": "aurral.org" }],
+  "routes": [
+    { "pattern": "aurral.org/v1/*", "zone_name": "aurral.org" },
+    { "pattern": "aurral.org/account*", "zone_name": "aurral.org" },
+  ],
+  "vars": { "HUB_ORIGIN": "https://aurral.org" },
   "d1_databases": [
     {
       "binding": "DB",
@@ -16,6 +20,7 @@
     "preview": {
       "workers_dev": true,
       "routes": [],
+      "vars": { "HUB_ORIGIN": "https://aurral-hub-preview.leefamous.workers.dev" },
       "d1_databases": [
         { "binding": "DB", "database_name": "aurral-hub-preview", "migrations_dir": "migrations" },
       ],

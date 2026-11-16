@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "hono": "^4.13.13"
+    "better-auth": "1.7.15",
+    "hono": "^4.13.13",
+    "obscenity": "0.4.6"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261101.1",

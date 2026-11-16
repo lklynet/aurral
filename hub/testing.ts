@@ -2,7 +2,9 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { getMigrations } from "better-auth/db/migration";
 import { getPlatformProxy } from "wrangler";
+import { authOptions } from "./src/auth.ts";
 import type { Bindings } from "./src/index.ts";
 
 const hubDir = import.meta.dirname;
@@ -33,4 +35,9 @@ export async function localHub({ migrate = true } = {}) {
       rmSync(persistTo, { recursive: true, force: true });
     },
   };
+}
+
+export async function missingAuthSchema(env: Bindings) {
+  const { toBeCreated, toBeAdded } = await getMigrations(authOptions(env));
+  return [...toBeCreated, ...toBeAdded].map(({ table }) => table);
 }
