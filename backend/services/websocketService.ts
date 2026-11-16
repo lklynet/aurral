@@ -116,7 +116,6 @@ class WebSocketService extends EventEmitter {
           socket: req.socket || {},
           connection: req.connection || {},
           ip: req.socket?.remoteAddress || "",
-          ips: [],
         });
         if (sessionUser) {
           authSource = "local-network-bypass";

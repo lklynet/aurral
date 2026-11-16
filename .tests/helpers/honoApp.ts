@@ -7,7 +7,7 @@ export const signedInAs = (user: RequestUser | undefined | (() => RequestUser | 
   new Hono<AppEnv>().use(async (c, next) => {
     c.set("user", typeof user === "function" ? user() : user);
     c.set("clientIp", "127.0.0.1");
-    c.set("clientIps", ["127.0.0.1"]);
+    c.set("peerIp", "127.0.0.1");
     c.set("protocol", "http");
     await next();
   });
