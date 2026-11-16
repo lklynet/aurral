@@ -8,6 +8,7 @@ import { getStagingStreamUrl } from "../utils/api/playlistUrls.ts";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useAuth } from "../contexts/AuthContext";
+import { useToast } from "../contexts/ToastContext";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
 import { getActivityPollIntervalMs } from "../utils/requestScheduling.ts";
 import { PageSectionMobileNav } from "../components/PageSectionMobileNav";
@@ -27,6 +28,9 @@ import ActivityAlbumRow from "./activity/ActivityAlbumRow";
 import ActivityStatusTabs from "./activity/ActivityStatusTabs";
 import ActivityMissingPage from "./activity/ActivityMissingPage";
 import ActivityInfoModal from "./activity/ActivityInfoModal";
+import ManualMissingSearchModal, {
+  type ManualSearchJob,
+} from "./activity/ManualMissingSearchModal";
 import ActivityCauses from "./activity/ActivityCauses";
 import { getApiErrorText } from "../utils/api/errors.ts";
 
@@ -101,6 +105,8 @@ function ActivityPage() {
   const [controllingJobs, setControllingJobs] = useState<Record<string, "cancel" | "retry">>({});
   const [jobErrors, setJobErrors] = useState<Record<string, string>>({});
   const [infoRequest, setInfoRequest] = useState<ActivityRequest | null>(null);
+  const [manualSearchJob, setManualSearchJob] = useState<ManualSearchJob | null>(null);
+  const { showSuccess } = useToast();
   const [confirmingCancelAll, setConfirmingCancelAll] = useState(false);
 
   const { playTrack, currentTrack, isPlaying, togglePlayPause } = useAudioQueue();
@@ -544,6 +550,9 @@ function ActivityPage() {
                 onDeny: (jobId: string | null | undefined) => reviewBlockedJob(jobId, "deny"),
                 onCancel: (jobId: string | null | undefined) => controlDownloadJob(jobId, "cancel"),
                 onRetry: (jobId: string | null | undefined) => controlDownloadJob(jobId, "retry"),
+                onManualSearch: ({ jobId, trackName, artistName }: ActivityRequest) => {
+                  if (jobId) setManualSearchJob({ id: jobId, trackName, artistName });
+                },
                 onPreview: handleReviewPreview,
                 onInfo: setInfoRequest,
               };
@@ -563,6 +572,14 @@ function ActivityPage() {
         </div>
       )}
       <ActivityInfoModal item={infoRequest} onClose={() => setInfoRequest(null)} />
+      <ManualMissingSearchModal
+        job={manualSearchJob}
+        onClose={() => setManualSearchJob(null)}
+        onQueued={(job) => {
+          void queryClient.invalidateQueries({ queryKey: activityQueryKey });
+          showSuccess(`Downloading ${job.trackName || "selected track"}`);
+        }}
+      />
       <ConfirmModal
         open={confirmingCancelAll}
         title={page?.cause ? "Cancel these downloads?" : "Cancel all downloads?"}
