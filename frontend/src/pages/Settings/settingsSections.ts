@@ -141,10 +141,11 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
       item: "prowlarr",
       keywords: "indexers indexer manager search usenet torrent priority",
     },
-    Quality: {
+    Quality: "lossless smaller files quality preference FLAC MP3 AAC",
+    "Advanced quality": {
       item: "quality",
       keywords:
-        "lossless smaller files quality profile FLAC MP3 AAC M4A 128 192 256 320 bitrate hi-res allowed formats rank preference cutoff automatic upgrades",
+        "quality profile tiers FLAC MP3 AAC M4A 128 192 256 320 bitrate hi-res allowed formats rank cutoff automatic upgrades interval",
     },
   },
   discovery: {
