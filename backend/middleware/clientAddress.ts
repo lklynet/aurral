@@ -3,7 +3,7 @@ import proxyaddr from "proxy-addr";
 import type { AppEnv } from "./requestUser.ts";
 
 function trustProxy(value: string | undefined) {
-  if (value === undefined) return (_address: string, hop: number) => hop < 1;
+  if (value === undefined) return proxyaddr.compile(["loopback", "linklocal", "uniquelocal"]);
   if (value === "true") return () => true;
   if (value === "false") return () => false;
   const hops = Number(value);
