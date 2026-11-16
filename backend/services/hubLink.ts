@@ -86,10 +86,11 @@ async function checkHub(link: HubLinksRow) {
 }
 
 export async function hubLinkStatus(userId: number) {
+  const available = hubLinksEnabled();
   const before = selectLink.get(userId);
-  if (before && !before.broken && hubLinksEnabled()) await checkHub(before);
-  const link = selectLink.get(userId);
-  const base = { available: hubLinksEnabled(), origin: link?.origin ?? SHARE_ORIGIN };
+  if (before && !before.broken && available) await checkHub(before);
+  const link = before && available ? selectLink.get(userId) : before;
+  const base = { available, origin: link?.origin ?? SHARE_ORIGIN };
   if (!link) return { ...base, state: "none" as const };
   if (link.linked_at && link.handle) {
     return {

@@ -12,6 +12,7 @@ import { logIn } from "../../../utils/session.ts";
 import { DotLoader } from "../../../components/DotLoader";
 import { ApiKeyRow } from "../components/ApiKeyRow";
 import { ConnectedAccountsSection, useMyIdentities } from "../components/ConnectedAccountsSection";
+import { HubLinkGroup } from "../components/HubLinkGroup";
 import { SettingsInput } from "../components/SettingsField";
 import {
   SettingsActions,
@@ -217,6 +218,7 @@ export function ProfileSection() {
         <>
           <PasswordGroup />
           <ConnectedAccountsSection />
+          <HubLinkGroup />
           <ApiAccessGroup userId={user.id} />
         </>
       ) : null}

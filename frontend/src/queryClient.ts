@@ -278,6 +278,7 @@ export const queryKeys = {
   myApiKey: (userId: MaybeId): QueryKey => ["users", "me", "api-key", userId || null],
   myPlaylistOrder: (userId: MaybeId): QueryKey => ["users", "me", "playlist-order", userId || null],
   myIdentities: (userId: MaybeId): QueryKey => ["auth", "identities", userId || null],
+  hubLink: (userId: MaybeId): QueryKey => ["hub-link", userId || null],
   manualMissingSearchSources: (jobId: MaybeId, mode: string, playlistId: MaybeId): QueryKey => [
     "playlists",
     "manual-search-sources",

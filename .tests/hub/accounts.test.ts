@@ -295,10 +295,9 @@ test("a server links a user once a signed-in account approves its code, and eith
   await form(`/account/unlink/${linkId}`, stranger, {});
   assert.equal((await serverStatus()).status, 200);
   await form(`/account/unlink/${linkId}`, jar, {});
-  assert.deepEqual(
-    { status: (await serverStatus()).status, body: await (await serverStatus()).json() },
-    { status: 401, body: { error: "link_revoked" } },
-  );
+  const revoked = await serverStatus();
+  assert.equal(revoked.status, 401);
+  assert.deepEqual(await revoked.text(), JSON.stringify({ error: "link_revoked" }));
 
   await startServerLink();
   const tokenHash = await sha256Hex(linkToken);

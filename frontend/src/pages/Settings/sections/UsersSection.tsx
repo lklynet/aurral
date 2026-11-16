@@ -258,6 +258,28 @@ function AutoLoginGroup() {
   );
 }
 
+function HubAccountsGroup() {
+  const { settings } = useServerSettings();
+  const saveSecurity = useSaveSecurity();
+
+  return (
+    <SettingsGroup title="aurral.org">
+      <SettingsRow
+        label="Accounts"
+        htmlFor="users-aurral-accounts"
+        help="Let users link an aurral.org account and publish playlists."
+      >
+        <PillToggle
+          id="users-aurral-accounts"
+          checked={settings.security.aurralAccounts !== false}
+          aria-label="aurral.org accounts"
+          onChange={(event) => void saveSecurity({ aurralAccounts: event.target.checked })}
+        />
+      </SettingsRow>
+    </SettingsGroup>
+  );
+}
+
 export function UsersSection() {
   const item = useSettingsItem();
   const { user: me } = useAuth();
@@ -285,6 +307,7 @@ export function UsersSection() {
       <UsersGroup users={users} />
       <SignInGroup />
       <AutoLoginGroup />
+      <HubAccountsGroup />
     </SettingsPage>
   );
 }
