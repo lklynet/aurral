@@ -108,6 +108,14 @@ test("signing in with GitHub keeps only the provider account ID, on every sign-i
     },
   ]);
   assert.ok(stored.sessions.every((session) => !session.user_agent && !session.ip_address));
+
+  const [deleted] = stored.accounts;
+  await deleteAccount(db, String(deleted?.id));
+  assert.deepEqual(await rows(), { accounts: [], identities: [], sessions: [] });
+  await signInWithGitHub();
+  const fresh = await rows();
+  assert.equal(fresh.accounts.length, 1);
+  assert.notEqual(fresh.accounts[0]?.id, deleted?.id);
 });
 
 test("a sign-up cut off before its identity was saved finishes on the next sign-in", async () => {
