@@ -82,6 +82,7 @@ export function ArtistDetailsPreviewTracks({
                 duration={formatTrackDuration(track.duration_ms)}
                 active={active}
                 playing={active && isArtistPlaybackActive}
+                previewOnly={Boolean(track.preview_url)}
                 onPlay={track.preview_url ? () => handlePreviewPlay(track) : null}
                 menu={
                   onAddTrackToPlaylist || track.preview_url ? (
