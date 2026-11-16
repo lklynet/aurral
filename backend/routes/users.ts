@@ -1,3 +1,4 @@
+import { forgetHubLink } from "../services/hubLink.ts";
 import { Hono } from "hono";
 import * as v from "valibot";
 import { userOps, dbOps, userIdentityOps } from "../db/helpers/index.ts";
@@ -399,6 +400,7 @@ export default new Hono<AppEnv>()
         return c.json({ error: "User not found" }, 404);
       }
       deleteSessionsByUserId(id);
+      forgetHubLink(id);
       userOps.deleteUser(id);
       dbOps.deleteUserSettings(id);
       dbOps.deleteDiscoveryCacheByPrefix(`${getUserDiscoveryNamespace(id)}:`);

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import * as v from "valibot";
 import { afterAll, afterEach, beforeEach, test, vi } from "vite-plus/test";
 import { HANDLE_HOLD_MS, claimHandle, deleteAccount } from "../../hub/src/handles.ts";
+import { sha256Hex } from "../../hub/src/instances.ts";
+import { LINK_CODE_MS, approveLink, linkStatus, startLink } from "../../hub/src/links.ts";
+import { authorizeShareInstance } from "../../web/functions/_shareInstances.js";
 import hub, { signInProviders, type Bindings } from "../../hub/src/index.ts";
 import { localHub, missingAuthSchema } from "../../hub/testing.ts";
 
@@ -18,6 +22,7 @@ const env: Bindings = {
 afterAll(() => local.dispose());
 
 const db = env.DB;
+let githubId = 4242;
 
 beforeEach(() => {
   vi.stubGlobal("fetch", async (input: string | URL | Request) => {
@@ -31,7 +36,7 @@ beforeEach(() => {
     }
     if (url.href === "https://api.github.com/user") {
       return Response.json({
-        id: 4242,
+        id: githubId,
         login: "lee",
         name: "Real Name",
         avatar_url: "https://avatars.example/4242",
@@ -81,7 +86,11 @@ const rows = async () => ({
 });
 
 const reset = () =>
-  db.batch([db.prepare("DELETE FROM handles"), db.prepare("DELETE FROM accounts")]);
+  db.batch(
+    ["links", "instances", "handles", "accounts"].map((table) =>
+      db.prepare(`DELETE FROM ${table}`),
+    ),
+  );
 
 test("schema in the migrations matches what better-auth expects", async () => {
   assert.deepEqual(await missingAuthSchema(env), []);
@@ -225,4 +234,112 @@ test("account forms refuse posts from another origin", async () => {
     );
   assert.equal((await post("https://evil.example")).status, 403);
   assert.equal((await post(ORIGIN)).status, 302);
+});
+
+const INSTANCE = { instanceId: "inst_aaaaaaaaaaa", secret: "s".repeat(43) };
+const linkToken = "t".repeat(43);
+
+const api = (path: string, init: RequestInit = {}) => hub.request(`${ORIGIN}${path}`, init, env);
+const form = (path: string, jar: Map<string, string>, fields: Record<string, string>) =>
+  api(path, {
+    method: "POST",
+    headers: {
+      cookie: cookieHeader(jar),
+      origin: ORIGIN,
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams(fields),
+  });
+const startServerLink = async (secret = INSTANCE.secret) =>
+  api("/v1/links", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...INSTANCE, secret, token: linkToken, userName: "lee\u0000 " }),
+  });
+const serverStatus = async () =>
+  api("/v1/link", { headers: { authorization: `Bearer ${linkToken}` } });
+
+test("a server links a user once a signed-in account approves its code, and either side can undo it", async () => {
+  await reset();
+  githubId = 4242;
+  assert.equal(await authorizeShareInstance(db, INSTANCE.instanceId, INSTANCE.secret), true);
+  assert.equal((await startServerLink("x".repeat(43))).status, 403);
+
+  const started = await startServerLink();
+  assert.equal(started.status, 201);
+  const { userCode } = v.parse(v.object({ userCode: v.string() }), await started.json());
+  assert.ok(v.is(v.object({ status: v.literal("pending") }), await (await serverStatus()).json()));
+
+  const signedOut = await api(`/link?code=${userCode.toLowerCase()}`);
+  assert.match(
+    await signedOut.text(),
+    new RegExp(`sign-in/github\\?code=${userCode.replace("-", "")}`),
+  );
+
+  const jar = await signInWithGitHub();
+  const code = userCode.replace("-", "");
+  const claimed = await form("/account/handle", jar, { handle: "lee_k", code });
+  assert.equal(claimed.headers.get("location"), `/link?code=${code}`);
+  const confirm = await (
+    await api(`/link?code=${code}`, { headers: { cookie: cookieHeader(jar) } })
+  ).text();
+  assert.match(confirm, /Link Aurral user lee to @lee_k\?/);
+
+  assert.equal((await form("/link", jar, { code })).headers.get("location"), "/account");
+  assert.equal((await form("/link", jar, { code })).status, 404);
+  assert.deepEqual(await (await serverStatus()).json(), { status: "linked", handle: "lee_k" });
+
+  const linkId = await db.prepare("SELECT id FROM links").first<string>("id");
+  githubId = 5151;
+  const stranger = await signInWithGitHub();
+  await form(`/account/unlink/${linkId}`, stranger, {});
+  assert.equal((await serverStatus()).status, 200);
+  await form(`/account/unlink/${linkId}`, jar, {});
+  assert.deepEqual(
+    { status: (await serverStatus()).status, body: await (await serverStatus()).json() },
+    { status: 401, body: { error: "link_revoked" } },
+  );
+
+  await startServerLink();
+  const tokenHash = await sha256Hex(linkToken);
+  const revoke = (secret: string) =>
+    api("/v1/links/revoke", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...INSTANCE, secret, tokenHash }),
+    });
+  assert.equal((await revoke("x".repeat(43))).status, 403);
+  assert.equal((await revoke(INSTANCE.secret)).status, 204);
+  assert.equal((await serverStatus()).status, 401);
+});
+
+test("a code approves one account once and only before it expires", async () => {
+  await reset();
+  const now = Date.now();
+  const expired = now + LINK_CODE_MS;
+  await db.batch(
+    ["a", "b"].map((id) =>
+      db
+        .prepare(
+          "INSERT INTO accounts (id, name, email, email_verified, created_at, updated_at) VALUES (?, '', ?, 1, ?, ?)",
+        )
+        .bind(
+          id,
+          `test-${id}@users.aurral.org`,
+          new Date(now).toISOString(),
+          new Date(now).toISOString(),
+        ),
+    ),
+  );
+  const link = { instanceId: INSTANCE.instanceId, userName: "lee" };
+  const first = await startLink(db, { ...link, tokenHash: "aa" }, now);
+  const late = await startLink(db, { ...link, tokenHash: "bb" }, now);
+  const code = (started: typeof first) => started?.userCode.replace("-", "") ?? "";
+
+  const approvals = await Promise.all(
+    ["a", "b"].map((account) => approveLink(db, code(first), account, now + 1)),
+  );
+  assert.deepEqual(approvals.toSorted(), [false, true]);
+  assert.equal(await approveLink(db, code(late), "a", expired), false);
+  assert.equal(await linkStatus(db, "bb", expired), null);
 });

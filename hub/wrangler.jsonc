@@ -7,8 +7,12 @@
   "routes": [
     { "pattern": "aurral.org/v1/*", "zone_name": "aurral.org" },
     { "pattern": "aurral.org/account*", "zone_name": "aurral.org" },
+    { "pattern": "aurral.org/link*", "zone_name": "aurral.org" },
   ],
   "vars": { "HUB_ORIGIN": "https://aurral.org" },
+  "ratelimits": [
+    { "name": "LINK_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
+  ],
   "d1_databases": [
     {
       "binding": "DB",
@@ -21,6 +25,9 @@
       "workers_dev": true,
       "routes": [],
       "vars": { "HUB_ORIGIN": "https://aurral-hub-preview.leefamous.workers.dev" },
+      "ratelimits": [
+        { "name": "LINK_LIMITER", "namespace_id": "1002", "simple": { "limit": 20, "period": 60 } },
+      ],
       "d1_databases": [
         { "binding": "DB", "database_name": "aurral-hub-preview", "migrations_dir": "migrations" },
       ],

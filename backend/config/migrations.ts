@@ -223,6 +223,20 @@ const recordDownloadCauses: Migration = (db) => {
   }
 };
 
+const createHubLinks: Migration = (db) =>
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS hub_links (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      origin TEXT NOT NULL,
+      token TEXT NOT NULL,
+      user_code TEXT,
+      expires_at INTEGER,
+      handle TEXT,
+      linked_at INTEGER,
+      broken INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -237,6 +251,7 @@ export const migrations: Migration[] = [
   dropUnusedSettings,
   moveGotifyToWebhook,
   recordDownloadCauses,
+  createHubLinks,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

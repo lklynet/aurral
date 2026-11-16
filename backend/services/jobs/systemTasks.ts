@@ -408,6 +408,15 @@ const SYSTEM_TASKS = {
       await downloadWorker.releaseReadOnlyFolderFiles(stringList(payload.folders) ?? []);
     },
   },
+  "hub-link-revoke": {
+    queue: "maintenance",
+    label: "aurral.org unlink",
+    description: "Tells aurral.org to forget a link after a user unlinks or is deleted.",
+    async run(payload) {
+      const { revokeHubLink } = await import("../hubLink.ts");
+      await revokeHubLink(payload);
+    },
+  },
   "lidarr-files-release": retired("system"),
   "lidarr-retry": retired("system"),
   "playback-library-scan": retired("playback"),

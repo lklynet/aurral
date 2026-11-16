@@ -33,6 +33,7 @@ const flag = lenient(v.boolean());
 
 const securitySchema = v.looseObject({
   localNetworkBypass: lenient(v.looseObject({ enabled: flag })),
+  aurralAccounts: flag,
   defaultPermissions: lenient(v.record(v.string(), v.boolean())),
 });
 

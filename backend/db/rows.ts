@@ -155,6 +155,17 @@ export interface HistoryServersRow {
   connected_at: number;
 }
 
+export interface HubLinksRow {
+  user_id: number;
+  origin: string;
+  token: string;
+  user_code: string | null;
+  expires_at: number | null;
+  handle: string | null;
+  linked_at: number | null;
+  broken: number;
+}
+
 export interface ImagesCacheRow {
   mbid: string | null;
   image_url: string | null;
