@@ -607,7 +607,10 @@ export function ThemeSettings({
             try {
               restoreCustomTheme(removed);
             } catch (restoreError) {
-              showError?.(asApiError(restoreError)?.message ?? "");
+              showError(
+                asApiError(restoreError)?.message ||
+                  `Could not restore ${removed.theme.name}. Try again.`,
+              );
             }
           },
         },
