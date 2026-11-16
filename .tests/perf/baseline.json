@@ -275,6 +275,14 @@
     "bytes": 48,
     "scans": []
   },
+  "aurral.org account": {
+    "queries": {
+      "cold": 4,
+      "warm": 4
+    },
+    "bytes": 63,
+    "scans": []
+  },
   "subsonic getArtists": {
     "queries": {
       "cold": 9,

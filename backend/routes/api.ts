@@ -36,6 +36,7 @@ import scrobbling from "./scrobbling.ts";
 import historyServers from "./historyServers.ts";
 import search from "./search.ts";
 import settings from "./settings/index.ts";
+import hubLink from "./hubLink.ts";
 import shareLinks from "./shareLinks.ts";
 import starPrompt from "./starPrompt.ts";
 import settingsDownloadClients from "./settings/downloadClients.ts";
@@ -89,6 +90,7 @@ export const api = new Hono<AppEnv>()
   .route("/", visualizer)
   .route("/", playEvents)
   .route("/", playQueue)
+  .route("/", hubLink)
   .route("/", shareLinks)
   .route("/", starPrompt)
   .route("/", wrapped)

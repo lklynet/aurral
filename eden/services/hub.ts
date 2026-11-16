@@ -26,6 +26,7 @@ const runningPid = () => {
 export const hub: Service = {
   containers: [],
   needs: ["sso"],
+  env: (ports) => ({ AURRAL_SHARE_ORIGIN: local(ports.hub) }),
   about: (ports) =>
     `${local(ports.hub)}/account is aurral.org's hub, signing in through Eden's OIDC people`,
   async start(ports) {

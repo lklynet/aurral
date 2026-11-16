@@ -11,7 +11,7 @@ The hub is the API behind aurral.org's community features. It is a Hono app on C
 pnpm eden up --with hub
 ```
 
-This applies the migrations to a local D1 database in `.eden/hub` and serves the hub on wrangler's local runtime. Its account pages sign in through Eden's OIDC stand-in, as `ada` or `grace`. `pnpm eden status` prints the address. The hub's tests use the same runtime through `hub/testing.ts`.
+This applies the migrations to a local D1 database in `.eden/hub` and serves the hub on wrangler's local runtime. Its account pages sign in through Eden's OIDC stand-in, as `ada` or `grace`, and Eden points Aurral's `AURRAL_SHARE_ORIGIN` at it, so linking in **Settings > Profile** goes to the local hub. `pnpm eden status` prints the address. The hub's tests use the same runtime through `hub/testing.ts`.
 
 ## Change the database
 

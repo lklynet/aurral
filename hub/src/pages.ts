@@ -1,6 +1,7 @@
 import { html } from "hono/html";
 import type { HtmlEscapedString } from "hono/utils/html";
 import type { HandleClaim } from "./handles.ts";
+import { formatCode } from "./links.ts";
 
 type Page = HtmlEscapedString | Promise<HtmlEscapedString>;
 
@@ -23,6 +24,9 @@ p{margin:0}
 input{width:100%;border:0;border-radius:8px;padding:11px 12px;background:var(--field);color:var(--text);font:inherit}
 form{display:grid;gap:10px;margin:0}
 a{color:inherit}
+ul{margin:0;padding-left:18px;display:grid;gap:6px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.row a{text-decoration:none;font-weight:600}
 :focus-visible{outline:2px solid var(--text);outline-offset:3px}`;
 
 const layout = (title: string, body: Page) =>
@@ -45,20 +49,38 @@ const LEGAL = html`<p class="muted">
   <a href="/terms">Terms</a>
 </p>`;
 
-const LEAVE = html`<form method="post" action="/account/sign-out">
-    <button class="button">Sign out</button>
-  </form>
-  <a class="button danger link" href="/account/delete">Delete account</a>`;
+const codeField = (code: string | null) =>
+  code ? html`<input type="hidden" name="code" value="${code}" />` : "";
 
-export const signInPage = (providers: { id: string; label: string }[], failed: boolean) =>
+const signOut = (code: string | null, label = "Sign out") =>
+  html`<form method="post" action="/account/sign-out">
+    ${codeField(code)}
+    <button class="button">${label}</button>
+  </form>`;
+
+const leave = (code: string | null) =>
+  html`${signOut(code)} <a class="button danger link" href="/account/delete">Delete account</a>`;
+
+const shortDate = (time: number) =>
+  new Date(time).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+export const signInPage = (
+  providers: { id: string; label: string }[],
+  failed: boolean,
+  code: string | null,
+) =>
   layout(
     "Sign in",
     html`<h1>Sign in to aurral.org</h1>
-      <p class="muted">To link your Aurral and publish playlists.</p>
+      <p class="muted">
+        ${code ? "Sign in to link your Aurral." : "To link your Aurral and publish playlists."}
+      </p>
       ${failed ? html`<p class="error" role="alert">Sign-in didn't finish. Try again.</p>` : ""}
       ${providers.map(
         ({ id, label }) =>
-          html`<a class="button" href="/account/sign-in/${id}">Continue with ${label}</a>`,
+          html`<a class="button" href="/account/sign-in/${id}${code ? `?code=${code}` : ""}"
+            >Continue with ${label}</a
+          >`,
       )}
       ${LEGAL}`,
   );
@@ -70,7 +92,11 @@ const HANDLE_ERRORS: Record<Exclude<HandleClaim, "claimed">, string> = {
   taken: "That handle is taken.",
 };
 
-export const handlePage = (value = "", problem: Exclude<HandleClaim, "claimed"> | null = null) =>
+export const handlePage = (
+  value: string,
+  problem: Exclude<HandleClaim, "claimed"> | null,
+  code: string | null,
+) =>
   layout(
     "Pick a handle",
     html`<h1>Pick a handle</h1>
@@ -78,6 +104,7 @@ export const handlePage = (value = "", problem: Exclude<HandleClaim, "claimed"> 
         Shown on playlists you publish. 3 to 20 lowercase letters, numbers, or underscores.
       </p>
       <form method="post" action="/account/handle">
+        ${codeField(code)}
         <input
           name="handle"
           value="${value}"
@@ -91,17 +118,89 @@ export const handlePage = (value = "", problem: Exclude<HandleClaim, "claimed"> 
         ${problem ? html`<p class="error" role="alert">${HANDLE_ERRORS[problem]}</p>` : ""}
         <button class="button primary">Continue</button>
       </form>
-      ${LEAVE}`,
+      ${leave(code)}`,
   );
 
-export const accountPage = (handle: string, provider: string) =>
+type LinkRow = { id: string; user_name: string; linked_at: number };
+
+export const accountPage = (handle: string, provider: string, links: LinkRow[]) =>
   layout(
     `@${handle}`,
     html`<h1>@${handle}</h1>
       <p class="muted">Signed in with ${provider}</p>
       <h2>Linked servers</h2>
-      <p class="muted">None yet. Link one from Settings in Aurral.</p>
-      ${LEAVE}`,
+      ${
+        links.length
+          ? links.map(
+              (link) =>
+                html`<div class="row">
+                  <p>
+                    Aurral user ${link.user_name}<br /><span class="muted"
+                      >Linked ${shortDate(link.linked_at)}</span
+                    >
+                  </p>
+                  <a class="danger" href="/account/unlink/${link.id}">Unlink</a>
+                </div>`,
+            )
+          : html`<p class="muted">None yet. Link one from Settings in Aurral.</p>`
+      }
+      ${leave(null)}`,
+  );
+
+export const unlinkPage = (link: LinkRow) =>
+  layout(
+    "Unlink",
+    html`<h1>Unlink Aurral user ${link.user_name}?</h1>
+      <p class="muted">That server can no longer publish as you. You can link it again anytime.</p>
+      <form method="post" action="/account/unlink/${link.id}">
+        <button class="button danger">Unlink</button>
+      </form>
+      <a class="button" href="/account">Cancel</a>`,
+  );
+
+const LINK_ERRORS = {
+  missing: "That code expired or doesn't exist. Start again in Aurral.",
+  busy: "Too many tries. Wait a minute and try again.",
+};
+
+export const linkCodePage = (problem: keyof typeof LINK_ERRORS | null) =>
+  layout(
+    "Link a server",
+    html`<h1>Link an Aurral server</h1>
+      <p class="muted">Enter the code from Settings, Profile in Aurral.</p>
+      <form method="get" action="/link">
+        <input
+          name="code"
+          aria-label="Code"
+          placeholder="XXXX-XXXX"
+          autocomplete="off"
+          autocapitalize="characters"
+          spellcheck="false"
+          maxlength="9"
+          required
+        />
+        ${problem ? html`<p class="error" role="alert">${LINK_ERRORS[problem]}</p>` : ""}
+        <button class="button primary">Continue</button>
+      </form>
+      <a class="button" href="/account">Cancel</a>`,
+  );
+
+export const linkConfirmPage = (handle: string, userName: string, code: string) =>
+  layout(
+    "Link a server",
+    html`<h1>Link Aurral user ${userName} to @${handle}?</h1>
+      <p class="muted">Code ${formatCode(code)}</p>
+      <ul>
+        <li>That server can publish playlists as @${handle}.</li>
+        <li>Its admin can do anything this link can.</li>
+        <li>Linking gives aurral.org no access to your server.</li>
+      </ul>
+      <form method="post" action="/link">
+        ${codeField(code)}
+        <button class="button primary">Link to @${handle}</button>
+      </form>
+      <a class="button" href="/account">Cancel</a>
+      ${signOut(code, `Not @${handle}? Sign out`)}`,
   );
 
 export const deletePage = (handle: string | null) =>

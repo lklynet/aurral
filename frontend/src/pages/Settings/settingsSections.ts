@@ -80,6 +80,7 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
       when: "signInMethods",
     },
     "API access": "API key X-Api-Key api_key token copy rotate",
+    "aurral.org account": "link unlink handle community publish",
   },
   listening: {
     Services: "scrobbling listening history recommendations",
@@ -111,6 +112,7 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
     Users: "create edit add account permissions roles suspended disabled claim",
     "Sign-in": "SSO OIDC single sign-on login form",
     "Local network auto-login": "LAN bypass authentication",
+    "aurral.org": "accounts link publish community playlists turn off",
     Google: { item: "google", keywords: "OAuth sign in client ID secret redirect" },
     "Default permissions": { item: "defaults", keywords: "new users permissions SSO register" },
   },
