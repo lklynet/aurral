@@ -6,6 +6,8 @@ on:
     types: [opened, edited, reopened, synchronize]
   issues:
     types: [opened]
+  issue_comment:
+    types: [created]
   push:
     branches: ["main"]
     paths:
@@ -56,6 +58,22 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: gh issue edit "${ISSUE_NUMBER}" --repo "${GITHUB_REPOSITORY}" --add-label needs-triage
 
+  author-replied:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      !github.event.issue.pull_request &&
+      contains(github.event.issue.labels.*.name, 'waiting-on-user') &&
+      github.event.comment.user.login == github.event.issue.user.login
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: gh issue edit "${ISSUE_NUMBER}" --repo "${GITHUB_REPOSITORY}" --remove-label waiting-on-user --add-label needs-triage
+
   sync:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -74,6 +92,7 @@ jobs:
           enhancement|a2eeef|Requested improvement or new capability.
           documentation|0075ca|Documentation needs correction or improvement.
           needs-triage|fbca04|Issue needs maintainer review and initial categorization.
+          waiting-on-user|d4c5f9|Waiting for the issue author to reply.
           dependencies|0366d6|Dependency update or maintenance work.
           skip-changelog|ededed|Do not include this change in release notes.
           perf-accepted|c5def5|A maintainer accepted the slowdown the Perf check found.

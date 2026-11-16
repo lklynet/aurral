@@ -31,6 +31,7 @@ Aurral keeps human triage labels small:
 - `enhancement` marks a requested improvement or new capability.
 - `documentation` marks documentation work.
 - `needs-triage` marks an issue that still needs maintainer review.
+- `waiting-on-user` marks an issue waiting on its author. When the author replies, automation swaps it back to `needs-triage`.
 
 Pull requests receive one automatic `size:*` label based on changed lines. Release and nightly labels are maintained by automation.
 
