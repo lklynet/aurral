@@ -1,60 +1,46 @@
 import { createContext, useContext, useState, useCallback, useRef, useMemo } from "react";
 import type { ReactNode } from "react";
-import { ToastContainer } from "../components/Toast";
-import type { ToastType } from "../components/Toast";
-import type { IconComponent } from "../components/icons";
+import { ToastContainer } from "../components/Toast.tsx";
+import type { ToastContent, ToastItem, ToastType } from "../components/Toast.tsx";
 import { stackToast } from "../utils/toastStack.ts";
 
 const MAX_TOASTS = 4;
 
-type ToastContent = {
-  duration?: number;
-  artwork?: string[];
-  icon?: IconComponent;
-  onClose?: () => void;
-} & (
-  | { message: ReactNode }
-  | { title: ReactNode }
-  | { description: ReactNode }
-  | { action: { label: string; onClick: () => void } }
-);
-type ToastMessage = string | ToastContent;
-type ToastEntry = ToastContent & { id: string; type: ToastType; duration: number };
+const DURATIONS: Record<ToastType, number> = {
+  success: 3000,
+  info: 3000,
+  warning: 6000,
+  error: 6000,
+};
+
+type ToastInput = string | ToastContent;
 type ToastApi = {
-  addToast: (message: ToastMessage, type?: ToastType, duration?: number) => string;
+  addToast: (input: ToastInput, type?: ToastType) => string;
   removeToast: (id: string) => void;
-  showSuccess: (message: ToastMessage, duration?: number) => string;
-  showError: (message: ToastMessage, duration?: number) => string;
-  showInfo: (message: ToastMessage, duration?: number) => string;
+  showSuccess: (input: ToastInput) => string;
+  showError: (input: ToastInput) => string;
+  showInfo: (input: ToastInput) => string;
 };
 
 const ToastContext = createContext<ToastApi | undefined>(undefined);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<ToastEntry[]>([]);
-  const toastsRef = useRef<ToastEntry[]>([]);
-  const nextToastIdRef = useRef(0);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const toastsRef = useRef<ToastItem[]>([]);
+  const nextIdRef = useRef(0);
 
-  const replaceToasts = useCallback((next: ToastEntry[]) => {
+  const replaceToasts = useCallback((next: ToastItem[]) => {
     toastsRef.current = next;
     setToasts(next);
   }, []);
 
   const addToast = useCallback(
-    (message: ToastMessage, type: ToastType = "info", duration = 3000) => {
-      const id = `${Date.now()}-${nextToastIdRef.current++}`;
-      const content: ToastContent =
-        message &&
-        typeof message === "object" &&
-        ("message" in message ||
-          "title" in message ||
-          "description" in message ||
-          "action" in message)
-          ? message
-          : { message };
+    (input: ToastInput, type: ToastType = "info") => {
+      const content = typeof input === "string" ? { message: input } : input;
+      const id = String(nextIdRef.current++);
       const { kept, evicted } = stackToast(
         toastsRef.current,
-        { ...content, id, type, duration: content.duration ?? duration },
+        { ...content, id, type, duration: content.duration ?? DURATIONS[type] },
         MAX_TOASTS,
       );
       replaceToasts(kept);
@@ -74,41 +60,19 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [replaceToasts],
   );
 
-  const showSuccess = useCallback(
-    (message: ToastMessage, duration?: number) => {
-      return addToast(message, "success", duration);
-    },
-    [addToast],
-  );
-
-  const showError = useCallback(
-    (message: ToastMessage, duration?: number) => {
-      return addToast(message, "error", duration);
-    },
-    [addToast],
-  );
-
-  const showInfo = useCallback(
-    (message: ToastMessage, duration?: number) => {
-      return addToast(message, "info", duration);
-    },
-    [addToast],
-  );
-
   const value = useMemo(
     () => ({
       addToast,
       removeToast,
-      showSuccess,
-      showError,
-      showInfo,
+      showSuccess: (input: ToastInput) => addToast(input, "success"),
+      showError: (input: ToastInput) => addToast(input, "error"),
+      showInfo: (input: ToastInput) => addToast(input, "info"),
     }),
-    [addToast, removeToast, showSuccess, showError, showInfo],
+    [addToast, removeToast],
   );
 
   return (
     <ToastContext.Provider value={value}>
-      {" "}
       {children}
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
     </ToastContext.Provider>

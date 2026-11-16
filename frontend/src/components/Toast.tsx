@@ -8,54 +8,42 @@ import {
   type ReactNode,
 } from "react";
 import { AlertCircle, CheckCircle, Info, TriangleAlert, X, type IconComponent } from "./icons";
-import { DotLoader } from "./DotLoader";
 
 const TOAST_ICONS = {
   success: CheckCircle,
   error: AlertCircle,
   info: Info,
   warning: TriangleAlert,
-  loading: DotLoader,
 };
 
 export type ToastType = keyof typeof TOAST_ICONS;
 
 const TOAST_EXIT_DURATION = 180;
 
-export interface ToastItem {
-  id: string;
-  type?: ToastType;
+export type ToastContent = {
   title?: ReactNode;
   message?: ReactNode;
-  description?: ReactNode;
   artwork?: string[];
   icon?: IconComponent;
-  action?: { label: string; onClick?: () => void; dismiss?: boolean };
+  action?: { label: string; onClick: () => void };
   duration?: number;
-}
+  onClose?: () => void;
+} & ({ title: ReactNode } | { message: ReactNode });
+
+export type ToastItem = ToastContent & { id: string; type: ToastType; duration: number };
 
 interface ToastProps {
   toast: ToastItem;
   onDismiss: (id: string) => void;
-  index?: number;
+  index: number;
 }
 
-export function Toast({ toast, onDismiss, index = 0 }: ToastProps) {
-  const {
-    id,
-    type = "info",
-    title,
-    message,
-    description,
-    artwork,
-    icon,
-    action,
-    duration = 3000,
-  } = toast;
+function Toast({ toast, onDismiss, index }: ToastProps) {
+  const { id, type, title, message, artwork, icon, action, duration } = toast;
   const [isExiting, setIsExiting] = useState(false);
   const timerRef = useRef<number | null>(null);
   const exitTimerRef = useRef<number | null>(null);
-  const remainingRef = useRef(Math.max(0, Number(duration) || 3000));
+  const remainingRef = useRef(duration);
   const startedAtRef = useRef<number | null>(null);
   const interactionRef = useRef(false);
   const dismissedRef = useRef(false);
@@ -115,7 +103,7 @@ export function Toast({ toast, onDismiss, index = 0 }: ToastProps) {
   }, [pauseTimer, startTimer]);
 
   useEffect(() => {
-    remainingRef.current = Math.max(0, Number(duration) || 3000);
+    remainingRef.current = duration;
     const handleVisibilityChange = () => syncTimer();
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -148,18 +136,15 @@ export function Toast({ toast, onDismiss, index = 0 }: ToastProps) {
   };
 
   const handleAction = () => {
-    action?.onClick?.();
-    if (action?.dismiss !== false) dismiss();
+    action?.onClick();
+    dismiss();
   };
 
-  const Icon = icon ?? TOAST_ICONS[type] ?? TOAST_ICONS.info;
-  const body = description || message;
+  const Icon = icon ?? TOAST_ICONS[type];
 
   return (
     <div
       className={`app-toast app-toast--${type}${isExiting ? " app-toast--exiting" : ""}`}
-      role={type === "error" ? "alert" : "status"}
-      aria-live={type === "error" ? "assertive" : "polite"}
       style={{ "--toast-index": index }}
       onMouseEnter={handleInteractionStart}
       onMouseLeave={handleInteractionEnd}
@@ -182,11 +167,11 @@ export function Toast({ toast, onDismiss, index = 0 }: ToastProps) {
       )}
       <div className="app-toast__content">
         {title && <div className="app-toast__title">{title}</div>}
-        {body && (
-          <div className={title ? "app-toast__description" : "app-toast__message"}>{body}</div>
+        {message && (
+          <div className={title ? "app-toast__description" : "app-toast__message"}>{message}</div>
         )}
       </div>
-      {action?.label && (
+      {action && (
         <button type="button" className="app-toast__action" onClick={handleAction}>
           {action.label}
         </button>
@@ -211,11 +196,16 @@ interface ToastContainerProps {
 export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
   return (
     <div className="app-toast-container">
-      <div className="app-toast-stack">
+      <section
+        className="app-toast-stack"
+        aria-label="Notifications"
+        aria-live="polite"
+        tabIndex={-1}
+      >
         {toasts.map((toast, index) => (
           <Toast key={toast.id} toast={toast} index={index} onDismiss={onDismiss} />
         ))}
-      </div>
+      </section>
     </div>
   );
 }

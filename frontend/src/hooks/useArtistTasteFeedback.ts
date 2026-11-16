@@ -199,9 +199,9 @@ export function useArtistTasteFeedback() {
             label: "Undo",
             onClick: () => undoFeedback({ artist, change, onRevert }),
           },
+          duration: 8000,
         },
         "success",
-        8000,
       );
       return true;
     },

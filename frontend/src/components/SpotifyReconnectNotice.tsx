@@ -29,9 +29,9 @@ export default function SpotifyReconnectNotice() {
               label: "Reconnect",
               onClick: () => navigate("/library/playlists", { state: { openImport: true } }),
             },
+            duration: 15000,
           },
           "warning",
-          15000,
         );
       })
       .catch(() => {});

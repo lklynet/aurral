@@ -42,8 +42,8 @@ export const showFavoriteRemoved = (
           }
         },
       },
+      duration: 8000,
     },
     "success",
-    8000,
   );
 };
