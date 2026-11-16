@@ -1643,48 +1643,59 @@ test("an owned album lets go of a song it does not list once the song's file is 
     "One",
     "Sabre Dance (extended)",
   ]);
+  const elsewhere = listedAlbum(artist, uuid("dddddddd", 30), `${title} Live`, 301, ["Encore"]);
   t.onTestFinished(async () => {
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
-  await withReleaseGroups({ [album.releaseGroup]: album.group }, async () => {
-    await album.file(root, "One");
-    const other = await taggedTrack(
-      root,
-      artist,
-      title,
-      album,
-      "Sabre Dance",
-      2,
-      uuid("c7c7c7c7", 1),
-    );
-    await scanConfiguredLibrary({ musicRoot: root, includeReadOnly: false });
-    const albumId = requireValue(
-      db
-        .prepare<[string], Rows.LibraryAlbumsRow["id"]>(
-          "SELECT id FROM library_albums WHERE title = ?",
-        )
-        .pluck()
-        .get(title),
-    );
-    setLibraryManagement({ entityKind: "album", entityId: albumId, monitorMode: "monitored" });
-    const saved = upsertLibraryTrack({
-      identityKey: `recording:${uuid("c7c7c7c7", 2)}`,
-      mbid: uuid("c7c7c7c7", 2),
-      title: "Bonus",
-      artistName: artist,
-    });
-    linkLibraryAlbumTrack({ albumId, trackId: saved.id, trackNumber: 3, keepPosition: true });
-    await rm(other);
-    await album.file(root, "Sabre Dance (extended)");
-    await scanConfiguredLibrary({ musicRoot: root, includeReadOnly: false });
+  await withReleaseGroups(
+    { [album.releaseGroup]: album.group, [elsewhere.releaseGroup]: elsewhere.group },
+    async () => {
+      await album.file(root, "One");
+      await elsewhere.file(root, "Encore");
+      const other = await taggedTrack(
+        root,
+        artist,
+        title,
+        album,
+        "Sabre Dance",
+        2,
+        uuid("c7c7c7c7", 1),
+      );
+      await scanConfiguredLibrary({ musicRoot: root, includeReadOnly: false });
+      const albumId = requireValue(
+        db
+          .prepare<[string], Rows.LibraryAlbumsRow["id"]>(
+            "SELECT id FROM library_albums WHERE title = ?",
+          )
+          .pluck()
+          .get(title),
+      );
+      setLibraryManagement({ entityKind: "album", entityId: albumId, monitorMode: "monitored" });
+      const saved = upsertLibraryTrack({
+        identityKey: `recording:${uuid("c7c7c7c7", 2)}`,
+        mbid: uuid("c7c7c7c7", 2),
+        title: "Bonus",
+        artistName: artist,
+      });
+      linkLibraryAlbumTrack({ albumId, trackId: saved.id, trackNumber: 3, keepPosition: true });
+      const encore = upsertLibraryTrack({
+        identityKey: `recording:${requireFixture(elsewhere.group.recordings.Encore)}`,
+        title: "Encore",
+      });
+      linkLibraryAlbumTrack({ albumId, trackId: encore.id, trackNumber: 4, keepPosition: true });
+      await rm(other);
+      await album.file(root, "Sabre Dance (extended)");
+      await scanConfiguredLibrary({ musicRoot: root, includeReadOnly: false });
 
-    assert.deepEqual(albumListing(title), [
-      ["One", "have"],
-      ["Sabre Dance (extended)", "have"],
-      ["Bonus", "missing"],
-    ]);
-  });
+      assert.deepEqual(albumListing(title), [
+        ["One", "have"],
+        ["Sabre Dance (extended)", "have"],
+        ["Bonus", "missing"],
+        ["Encore", "missing"],
+      ]);
+    },
+  );
 });
 
 test("a file is the listed song its recording is, before another whose title it shares at its place", async (t: import("vite-plus/test").TestContext) => {
