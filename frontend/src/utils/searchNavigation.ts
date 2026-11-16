@@ -1,6 +1,10 @@
 import { browsePlaylistPath, flowPath, playlistPath } from "../navigation/playlistPaths.ts";
 import { albumPath } from "../../../lib/albumPath.ts";
-import { resolveAlbumPath } from "../navigation/resolveLinks.ts";
+import {
+  resolveAlbumPath,
+  resolveArtistPath,
+  resolveLibraryArtistPath,
+} from "../navigation/resolveLinks.ts";
 import type { toNormalizedAlbum } from "../../../backend/services/providers/brainzmashMappers.ts";
 
 type AlbumRating = NonNullable<ReturnType<typeof toNormalizedAlbum>["rating"]>;
@@ -202,6 +206,31 @@ function getLibraryResultPath(item: SearchItem) {
   return null;
 }
 
+export function getTrackAlbumLink(item: SearchItem) {
+  const libraryPath = getLibraryResultPath(item);
+  if (libraryPath) return { to: libraryPath };
+  const target = getReleaseNavigationTarget(item);
+  if (target) return { to: target.pathname, state: target.state };
+  const resolved = resolveAlbumPath({
+    artistName: item.artistName,
+    albumName: item.albumTitle,
+    deezerAlbumId: item.deezerAlbumId,
+    trackName: item.title,
+  });
+  return resolved ? { to: resolved } : null;
+}
+
+export function getTrackArtistLink(item: SearchItem) {
+  if (item.artistMbid) {
+    return { to: `/artist/${item.artistMbid}`, state: { artistName: item.artistName } };
+  }
+  const resolved =
+    item.source === "library"
+      ? resolveLibraryArtistPath({ name: item.artistName })
+      : resolveArtistPath({ name: item.artistName });
+  return resolved ? { to: resolved } : null;
+}
+
 export function getSearchResultLink(item: SearchItem | null | undefined, { query = "" } = {}) {
   if (!item) return null;
 
@@ -225,18 +254,8 @@ export function getSearchResultLink(item: SearchItem | null | undefined, { query
     if (item.source === "library" && item.streamPath && !item.albumMbid) {
       return { to: "/library" };
     }
-    const target = getReleaseNavigationTarget(item);
-    if (target) return { to: target.pathname, state: target.state };
-    const resolved =
-      item.source === "deezer"
-        ? resolveAlbumPath({
-            artistName: item.artistName,
-            albumName: item.albumTitle,
-            deezerAlbumId: item.deezerAlbumId,
-            trackName: item.title,
-          })
-        : null;
-    if (resolved) return { to: resolved };
+    const album = getTrackAlbumLink(item);
+    if (album) return album;
     if (item.artistMbid) {
       return { to: `/artist/${item.artistMbid}`, state: buildArtistFocusState(item) };
     }
