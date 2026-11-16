@@ -1,6 +1,7 @@
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import os from "node:os";
 
@@ -223,7 +224,6 @@ test("trusted-local bypass rejects an inactive sole administrator", () => {
   });
   const req = {
     ip: "127.0.0.1",
-    ips: [],
     headers: {},
     socket: { remoteAddress: "127.0.0.1" },
     connection: { remoteAddress: "127.0.0.1" },
@@ -232,7 +232,7 @@ test("trusted-local bypass rejects an inactive sole administrator", () => {
   assert.equal(auth.resolveLocalNetworkBypassUser(req), null);
 });
 
-test("trusted-local bypass accepts only addresses on the server's private subnet", () => {
+test("trusted-local bypass accepts only direct requests from the server's private subnet", (t) => {
   userOps.createUser("lan-admin", bcrypt.hashSync("password123", 4), "admin");
   dbOps.updateSettings({
     onboardingComplete: true,
@@ -270,10 +270,20 @@ test("trusted-local bypass accepts only addresses on the server's private subnet
       },
     ],
   }));
-  const from = (address: string) => ({
+  const readFileSync = fs.readFileSync;
+  vi.spyOn(fs, "readFileSync").mockImplementation((file, options) =>
+    file === "/proc/net/route"
+      ? "Iface\tDestination\tGateway\neth0\t00000000\t0104A8C0\neth0\t0004A8C0\t00000000\n"
+      : readFileSync(file, options),
+  );
+  syncBuiltinESMExports();
+  t.onTestFinished(() => {
+    vi.restoreAllMocks();
+    syncBuiltinESMExports();
+  });
+  const from = (address: string, headers: Record<string, string> = {}) => ({
     ip: address,
-    ips: [],
-    headers: {},
+    headers,
     socket: { remoteAddress: address },
     connection: { remoteAddress: address },
   });
@@ -283,6 +293,23 @@ test("trusted-local bypass accepts only addresses on the server's private subnet
     auth.resolveLocalNetworkBypassUser(from("::ffff:192.168.4.20"))?.username,
     "lan-admin",
   );
+  assert.equal(auth.resolveLocalNetworkBypassUser(from("127.0.0.1"))?.username, "lan-admin");
   assert.equal(auth.resolveLocalNetworkBypassUser(from("192.168.5.20")), null);
   assert.equal(auth.resolveLocalNetworkBypassUser(from("8.8.8.8")), null);
+  assert.equal(auth.resolveLocalNetworkBypassUser(from("192.168.4.1")), null);
+  for (const [header, value] of [
+    ["x-forwarded-for", "127.0.0.1"],
+    ["x-forwarded-for", "192.168.4.20"],
+    ["forwarded", "for=127.0.0.1"],
+    ["x-forwarded-host", "aurral.tailnet.ts.net"],
+    ["x-real-ip", "127.0.0.1"],
+    ["cf-connecting-ip", "198.51.100.7"],
+  ] as const) {
+    assert.equal(auth.resolveLocalNetworkBypassUser(from("127.0.0.1", { [header]: value })), null);
+    assert.equal(
+      auth.resolveLocalNetworkBypassUser(from("192.168.4.20", { [header]: value })),
+      null,
+    );
+    assert.equal(auth.resolveLocalNetworkBypassUser(from("8.8.8.8", { [header]: value })), null);
+  }
 });

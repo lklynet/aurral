@@ -11,6 +11,6 @@ export const requestCredentials = <E extends AppEnv>(c: Context<E>): CredentialR
     headers: c.req.header(),
     query: { api_key: single("api_key"), token: single("token"), st: single("st") },
     ip: c.var.clientIp,
-    ips: c.var.clientIps,
+    socket: { remoteAddress: c.var.peerIp },
   };
 };

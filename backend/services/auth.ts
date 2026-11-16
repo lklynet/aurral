@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import fs from "fs";
 import net from "net";
 import os from "os";
 import { dbOps, userOps } from "../db/helpers/index.ts";
@@ -15,7 +16,6 @@ type ClientRequest = {
   socket?: { remoteAddress?: string };
   connection?: { remoteAddress?: string };
   ip?: string;
-  ips?: string[];
 };
 
 type ProxyRequest = ClientRequest & { headers: RequestHeaders };
@@ -204,23 +204,41 @@ export function inferTrustedLocalSubnet() {
   return sameSubnet ? first.subnet : null;
 }
 
-function getRequestIps(req: ClientRequest) {
-  const ips = [
-    req?.socket?.remoteAddress,
-    req?.connection?.remoteAddress,
-    req?.ip,
-    ...(Array.isArray(req?.ips) ? req.ips : []),
-  ]
-    .map((ip) => normalizeIp(ip))
-    .filter(Boolean);
-  return Array.from(new Set(ips));
+const FORWARDING_HEADERS = [
+  "forwarded",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "x-real-ip",
+  "cf-connecting-ip",
+];
+
+const peerAddress = (req: ClientRequest) =>
+  normalizeIp(req.socket?.remoteAddress ?? req.connection?.remoteAddress);
+
+const wasForwarded = (req: ClientRequest) =>
+  FORWARDING_HEADERS.some((name) => req.headers?.[name] !== undefined);
+
+function defaultGateway() {
+  let routes;
+  try {
+    routes = fs.readFileSync("/proc/net/route", "utf8");
+  } catch {
+    return null;
+  }
+  for (const line of routes.split("\n").slice(1)) {
+    const [, destination, gateway] = line.trim().split(/\s+/);
+    if (destination !== "00000000" || !gateway || gateway.length !== 8) continue;
+    const octets = gateway.match(/../g)?.map((byte) => parseInt(byte, 16));
+    return octets?.reverse().join(".") ?? null;
+  }
+  return null;
 }
 
 function isTrustedProxy(req: ClientRequest) {
   const allowed = parseCsv(process.env.AUTH_PROXY_TRUSTED_IPS).map((ip) => normalizeIp(ip));
   if (allowed.length === 0) return true;
-  const requestIps = getRequestIps(req);
-  return requestIps.some((ip) => allowed.includes(ip));
+  return allowed.includes(peerAddress(req));
 }
 
 export function buildPermissions(role: string, permissions?: UserPermissions) {
@@ -348,13 +366,12 @@ export function getSoleAdminUser() {
 }
 
 export function isRequestFromTrustedLocalSubnet(req: ClientRequest) {
-  const requestIps = getRequestIps(req);
-  if (requestIps.some((ip) => isLoopbackIp(ip))) {
-    return true;
-  }
+  if (wasForwarded(req)) return false;
+  const peer = peerAddress(req);
+  if (isLoopbackIp(peer)) return true;
+  if (!isPrivateIpv4(peer)) return false;
   const subnet = inferTrustedLocalSubnet();
-  if (!subnet) return false;
-  return requestIps.some((ip) => isPrivateIpv4(ip) && subnet.check(ip, "ipv4"));
+  return !!subnet && subnet.check(peer, "ipv4") && peer !== defaultGateway();
 }
 
 export function getLocalNetworkBypassStatus(req: ClientRequest) {
@@ -408,7 +425,6 @@ export function reconcileLocalNetworkBypassSetting() {
     socket: {},
     connection: {},
     ip: "",
-    ips: [],
   });
   if (status.eligible) {
     return {

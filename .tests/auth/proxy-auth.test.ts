@@ -25,7 +25,7 @@ function proxyRequest(
   headers: Parameters<typeof resolveProxyUser>[0]["headers"] = {},
   remoteAddress: string = "127.0.0.1",
 ) {
-  return { headers, ip: remoteAddress, ips: [remoteAddress] };
+  return { headers, ip: remoteAddress, socket: { remoteAddress } };
 }
 
 function resetProxyEnv() {
@@ -87,15 +87,29 @@ test("proxy auth creates configured admin users as admins", () => {
   assert.equal(userOps.getUserByUsername("sso-admin")?.role, "admin");
 });
 
-test("proxy auth does not create users from untrusted proxy IPs", () => {
+test("proxy auth trusts only the address that connects", () => {
   process.env.AUTH_PROXY_TRUSTED_IPS = "10.0.0.1";
 
   const resolved = resolveProxyUser(
     proxyRequest({ "x-forwarded-user": "mallory" }, "192.168.1.10"),
   );
+  const spoofed = resolveProxyUser({
+    ...proxyRequest(
+      { "x-forwarded-user": "mallory", "x-forwarded-for": "10.0.0.1" },
+      "203.0.113.9",
+    ),
+    ip: "10.0.0.1",
+  });
 
   assert.equal(resolved, null);
+  assert.equal(spoofed, null);
   assert.equal(userOps.getAllUsers().length, 0);
+
+  const proxied = resolveProxyUser({
+    ...proxyRequest({ "x-forwarded-user": "alice", "x-forwarded-for": "203.0.113.9" }, "10.0.0.1"),
+    ip: "203.0.113.9",
+  });
+  assert.equal(proxied?.username, "alice");
 });
 
 test("explicitly disabling proxy auth overrides a configured header", () => {

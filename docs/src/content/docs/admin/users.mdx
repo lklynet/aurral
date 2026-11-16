@@ -57,6 +57,9 @@ Auto-login works only when all these conditions are true:
 - Setup is complete.
 - Exactly one user exists, and that user is an admin.
 - Aurral can find one trusted IPv4 subnet for the server.
+- The request comes straight from a device on that subnet, or from the server itself. Requests through a reverse proxy or tunnel never sign in automatically, and neither do requests that reach a Docker container through its gateway, such as from the host.
+
+Aurral recognizes a proxy or tunnel by the forwarding headers it adds. One that forwards plain TCP without them looks local, so turn auto-login off if Aurral is reachable through one.
 
 When you add a second user, Aurral turns auto-login off. The setting shows why auto-login is unavailable when a condition is not met.
 
