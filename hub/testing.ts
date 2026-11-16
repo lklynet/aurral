@@ -6,15 +6,15 @@ import { getPlatformProxy } from "wrangler";
 import type { Bindings } from "./src/index.ts";
 
 const hubDir = import.meta.dirname;
-const wrangler = path.join(hubDir, "node_modules", ".bin", "wrangler");
+const wrangler = path.join(hubDir, "node_modules", "wrangler", "bin", "wrangler.js");
 
 export async function localHub({ migrate = true } = {}) {
   const persistTo = mkdtempSync(path.join(tmpdir(), "aurral-hub-"));
   const env = { ...process.env, WRANGLER_SEND_METRICS: "false", CI: "true" };
   if (migrate) {
     execFileSync(
-      wrangler,
-      ["d1", "migrations", "apply", "DB", "--local", "--persist-to", persistTo],
+      process.execPath,
+      [wrangler, "d1", "migrations", "apply", "DB", "--local", "--persist-to", persistTo],
       {
         cwd: hubDir,
         env,

@@ -388,9 +388,6 @@ importers:
       hono:
         specifier: ^4.13.13
         version: 4.13.13
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
     devDependencies:
       '@cloudflare/workers-types':
         specifier: 5.20261101.1

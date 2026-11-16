@@ -22,10 +22,10 @@ aurral.org gets accounts and a hub: a TypeScript Hono app on Cloudflare Workers 
 ## What aurral.org stores
 
 - Accounts: the OAuth identity, the handle, and the account's links.
-- Anything a user publishes: public playlists, now playing, and bounded summaries such as top plays over the last 30 days.
-- Friendships.
+- Anything a user publishes: public playlists, now playing, and top plays as one 30-day snapshot per link that replaces the last one daily.
+- Friendships, and Blends between friends, computed from both friends' snapshots.
 
-It never stores a listening history, a Library, files, or anything a server didn't send on a user's behalf. Now playing is one entry per link that expires after the track ends.
+It never stores a listening history, a Library, or files, and it keeps no history of now playing, in logs either. Now playing is one entry per link that expires after the track's duration. Aurral is not a scrobble provider for aurral.org: scrobble providers get every play queued for delivery, which is the full history.
 
 ## Traps
 

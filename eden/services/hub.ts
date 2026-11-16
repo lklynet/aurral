@@ -5,7 +5,7 @@ import { paths, REPO_ROOT } from "../state.ts";
 import { local, until, type Service } from "./service.ts";
 
 const HUB_DIR = path.join(REPO_ROOT, "hub");
-const WRANGLER = path.join(HUB_DIR, "node_modules", ".bin", "wrangler");
+const WRANGLER = path.join(HUB_DIR, "node_modules", "wrangler", "bin", "wrangler.js");
 const wranglerEnv = { ...process.env, WRANGLER_SEND_METRICS: "false", CI: "true" };
 
 const isLive = async (port: number) => {
@@ -28,15 +28,25 @@ export const hub: Service = {
   async start(ports) {
     if (await isLive(ports.hub)) return;
     mkdirSync(paths.hub, { recursive: true });
-    spawnSync(WRANGLER, ["d1", "migrations", "apply", "DB", "--local", "--persist-to", paths.hub], {
-      cwd: HUB_DIR,
-      env: wranglerEnv,
-      stdio: "inherit",
-    });
+    const migrated = spawnSync(
+      process.execPath,
+      [WRANGLER, "d1", "migrations", "apply", "DB", "--local", "--persist-to", paths.hub],
+      { cwd: HUB_DIR, env: wranglerEnv, stdio: "inherit" },
+    );
+    if (migrated.status !== 0) throw new Error("The hub's migrations did not apply");
     const log = openSync(path.join(paths.hub, "wrangler.log"), "a");
     const child = spawn(
-      WRANGLER,
-      ["dev", "--ip", "127.0.0.1", "--port", String(ports.hub), "--persist-to", paths.hub],
+      process.execPath,
+      [
+        WRANGLER,
+        "dev",
+        "--ip",
+        "127.0.0.1",
+        "--port",
+        String(ports.hub),
+        "--persist-to",
+        paths.hub,
+      ],
       { cwd: HUB_DIR, env: wranglerEnv, detached: true, stdio: ["ignore", log, log] },
     );
     child.unref();

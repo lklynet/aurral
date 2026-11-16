@@ -172,6 +172,7 @@ The backend (`backend/server.ts`) is Hono on Node with one SQLite database, `aur
 - `lib/`: code shared by the backend and frontend.
 - `frontend/`: the browser app. Theme tokens live in `frontend/src/index.css`; `frontend/lint-rules/` and `frontend/scripts/lint-ui-css.mts` enforce them. `frontend/public` and `frontend/lint-rules` stay JavaScript because browsers and oxlint load them as-is.
 - `web/`: the aurral.org site and its share-link functions, in JavaScript.
+- `hub/`: aurral.org's API for accounts and community features, a Hono app on Workers and D1. See [ADR 0014](docs/architecture/0014-accounts-and-the-hub.md).
 - `backend/services/plugins/`: the plugin host. `plugin-api.md` and `aurral-plugin.d.ts` beside it are the plugin API reference, and the docs site and `/api/mcp` both read them.
 - `.tests/`: unit and integration tests.
 - `docs/`: the documentation site and `docs/architecture/` decision records.

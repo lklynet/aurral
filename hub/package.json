@@ -4,8 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "hono": "^4.13.13",
-    "valibot": "^1.5.0"
+    "hono": "^4.13.13"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261101.1",

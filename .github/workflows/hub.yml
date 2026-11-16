@@ -49,10 +49,10 @@ jobs:
 
       - name: Create the preview database once
         if: env.TARGET == 'preview'
-        run: pnpm exec wrangler d1 info aurral-hub-preview || pnpm exec wrangler d1 create aurral-hub-preview
+        run: vp exec wrangler d1 info aurral-hub-preview || vp exec wrangler d1 create aurral-hub-preview
 
       - name: Apply migrations
-        run: pnpm exec wrangler d1 migrations apply DB --remote --env "${TARGET/production/}"
+        run: vp exec wrangler d1 migrations apply DB --remote --env "${TARGET/production/}"
 
       - name: Deploy
-        run: pnpm exec wrangler deploy --env "${TARGET/production/}"
+        run: vp exec wrangler deploy --env "${TARGET/production/}"
