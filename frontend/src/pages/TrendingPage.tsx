@@ -6,6 +6,7 @@ import ArtworkImage from "../components/ArtworkImage";
 import { useCollectionTint } from "../components/CollectionHeader";
 import { DiscoverRail } from "../components/DiscoverRail";
 import { DotLoader } from "../components/DotLoader";
+import PreviewChip from "../components/PreviewChip";
 import RouteLink from "../components/RouteLink";
 import { Select, type SelectOption } from "../components/Select";
 import { SkeletonRail, SkeletonStatus } from "../components/Skeletons";
@@ -407,6 +408,8 @@ export default function TrendingPage() {
               {songs.items.slice(1, SONG_GRID_END).map((song, offset) => {
                 const index = offset + 1;
                 const playing = isTrackPlaying(index);
+                const previewOnly =
+                  tracks[index]?.isPreview === true && Boolean(tracks[index]?.streamUrl);
                 return (
                   <li key={song.key}>
                     <button
@@ -414,7 +417,7 @@ export default function TrendingPage() {
                       className={`trending-song${currentId === tracks[index]?.id ? " is-current" : ""}`}
                       onClick={() => playFrom(index)}
                       disabled={!song.preview_url}
-                      aria-label={`${playing ? "Pause" : "Play"} ${song.trackName} by ${song.artistName}`}
+                      aria-label={`${playing ? "Pause" : previewOnly ? "Preview" : "Play"} ${song.trackName} by ${song.artistName}`}
                     >
                       <span className="trending-song__rank">{song.position}</span>
                       <span className="trending-song__art">
@@ -426,7 +429,10 @@ export default function TrendingPage() {
                         </span>
                       </span>
                       <span className="trending-song__text">
-                        <span className="trending-song__title">{song.trackName}</span>
+                        <span className="trending-song__title">
+                          {previewOnly ? <PreviewChip /> : null}
+                          {song.trackName}
+                        </span>
                         <span className="trending-song__artist">{song.artistName}</span>
                       </span>
                       <Movement value={song.movement} />

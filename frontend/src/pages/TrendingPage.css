@@ -287,6 +287,11 @@
   font-weight: 600;
 }
 
+.trending-song__title > .preview-chip {
+  font-weight: 400;
+  line-height: 1.25rem;
+}
+
 .trending-song__artist {
   color: var(--aurral-text-muted);
   font-size: var(--aurral-font-sm);

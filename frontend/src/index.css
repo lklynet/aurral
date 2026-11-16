@@ -8295,7 +8295,8 @@ button.native-library-card__artist:focus-visible {
 }
 
 .native-library-track__title > span > .preview-chip,
-.artist-track__title > .preview-chip {
+.artist-track__title > .preview-chip,
+.trending-song__title > .preview-chip {
   display: none;
   float: right;
   margin-left: 0.75rem;
@@ -8304,13 +8305,16 @@ button.native-library-card__artist:focus-visible {
 .native-library-track.is-active .native-library-track__title > span > .preview-chip,
 .native-library-track:focus-within .native-library-track__title > span > .preview-chip,
 .artist-track.is-active .artist-track__title > .preview-chip,
-.artist-track:focus-within .artist-track__title > .preview-chip {
+.artist-track:focus-within .artist-track__title > .preview-chip,
+.trending-song.is-current .trending-song__title > .preview-chip,
+.trending-song:focus-visible .trending-song__title > .preview-chip {
   display: inline-block;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .native-library-track:hover .native-library-track__title > span > .preview-chip,
-  .artist-track:hover .artist-track__title > .preview-chip {
+  .artist-track:hover .artist-track__title > .preview-chip,
+  .trending-song:hover .trending-song__title > .preview-chip {
     display: inline-block;
   }
 }
