@@ -27,6 +27,11 @@ test("flow playback can opt out of listening history", () => {
   assert.equal(normalizePlaylistQueueTrack(track, { recordHistory: false }).recordHistory, false);
 });
 
+test("a Deezer preview in a playlist reaches the player as a preview", () => {
+  assert.equal(normalizePlaylistQueueTrack({ ...track, isPreview: true }).isPreview, true);
+  assert.equal(normalizePlaylistQueueTrack(track).isPreview, false);
+});
+
 test("previews and playlist tracks keep their cover so the player and album-art theme can show it", () => {
   const topTrack = normalizePreviewTrack(
     { id: "1", title: "Song", preview_url: "https://p/1.mp3", artworkUrl: "https://c/top.jpg" },
