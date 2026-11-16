@@ -22,13 +22,8 @@ import TooltipButton from "../../../../components/TooltipButton";
 import { SettingsInput } from "../../components/SettingsField";
 import { Select } from "../../../../components/Select";
 import { useServerSettings } from "../../SettingsProviders";
-import {
-  SettingsAdvancedGroup,
-  SettingsGroup,
-  SettingsPage,
-  SettingsRow,
-  type ServiceStatus,
-} from "../../SettingsLayout";
+import { useSettingsRoute } from "../../../../navigation/settingsRoute";
+import { SettingsGroup, SettingsPage, SettingsRow } from "../../SettingsLayout";
 import type { QualityProfile } from "../../../../../../backend/db/helpers/settings.ts";
 import {
   QUALITY_PRESETS,
@@ -69,8 +64,50 @@ function readQualityProfile(settings: ServerSettings["settings"]) {
   return { profile, order, enabled, choice };
 }
 
-export function qualityServiceStatus(settings: ServerSettings["settings"]): ServiceStatus {
-  return { label: readQualityProfile(settings).choice.label };
+function useQualityProfile() {
+  const { settings, updateSettings } = useServerSettings();
+  const quality = readQualityProfile(settings);
+  const update = (patch: Partial<QualityProfile>) =>
+    updateSettings({ ...settings, qualityProfile: { ...quality.profile, ...patch } });
+  return { ...quality, update };
+}
+
+export function QualityGroup() {
+  const { choice, update } = useQualityProfile();
+  const route = useSettingsRoute();
+
+  const choose = (value: string) => {
+    const preset = PRESET_OPTIONS.find((option) => option.value === value)?.value;
+    if (!preset) return;
+    const tiers = QUALITY_PRESETS[preset];
+    update({ order: [...tiers.order], enabled: [...tiers.enabled], cutoff: tiers.cutoff });
+  };
+
+  return (
+    <SettingsGroup
+      title="Quality"
+      actions={
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => route.open("downloads/quality")}
+        >
+          Advanced
+        </button>
+      }
+    >
+      <SettingsRow label="Prefer" htmlFor="quality-preset" help={choice.help}>
+        <Select
+          id="quality-preset"
+          value={choice.value}
+          onChange={choose}
+          options={[...PRESET_OPTIONS, ...(choice === CUSTOM_OPTION ? [CUSTOM_OPTION] : [])].map(
+            ({ value, label }) => ({ value, label }),
+          )}
+        />
+      </SettingsRow>
+    </SettingsGroup>
+  );
 }
 
 function QualityTier({
@@ -124,15 +161,11 @@ function QualityTier({
 }
 
 export function QualityProfileDetail() {
-  const { settings, updateSettings } = useServerSettings();
-  const { profile, order, enabled, choice } = readQualityProfile(settings);
+  const { profile, order, enabled, update } = useQualityProfile();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-
-  const update = (patch: Partial<QualityProfile>) =>
-    updateSettings({ ...settings, qualityProfile: { ...profile, ...patch } });
 
   const setAllowed = (id: string, allowed: boolean) => {
     const nextEnabled = allowed ? [...enabled, id] : [...enabled].filter((tierId) => tierId !== id);
@@ -146,13 +179,6 @@ export function QualityProfileDetail() {
     });
   };
 
-  const choose = (value: string) => {
-    const preset = PRESET_OPTIONS.find((option) => option.value === value)?.value;
-    if (!preset) return;
-    const tiers = QUALITY_PRESETS[preset];
-    update({ order: [...tiers.order], enabled: [...tiers.enabled], cutoff: tiers.cutoff });
-  };
-
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
     update({
@@ -163,18 +189,6 @@ export function QualityProfileDetail() {
   return (
     <SettingsPage title="Quality" back="Downloads">
       <SettingsGroup>
-        <SettingsRow label="Prefer" htmlFor="quality-preset" help={choice.help}>
-          <Select
-            id="quality-preset"
-            value={choice.value}
-            onChange={choose}
-            options={[...PRESET_OPTIONS, ...(choice === CUSTOM_OPTION ? [CUSTOM_OPTION] : [])].map(
-              ({ value, label }) => ({ value, label }),
-            )}
-          />
-        </SettingsRow>
-      </SettingsGroup>
-      <SettingsAdvancedGroup>
         <p className="settings-group__note">
           Rank best first. Downloads use allowed qualities, and upgrades stop at the cutoff.
         </p>
@@ -237,7 +251,7 @@ export function QualityProfileDetail() {
             />
           </SettingsRow>
         ) : null}
-      </SettingsAdvancedGroup>
+      </SettingsGroup>
     </SettingsPage>
   );
 }
