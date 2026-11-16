@@ -18,7 +18,7 @@ import {
   type DownloadClientDefinition,
 } from "./downloads/DownloadClients";
 import { ProwlarrDetail, prowlarrServiceStatus } from "./downloads/ProwlarrDetail";
-import { QualityProfileDetail, qualityServiceStatus } from "./downloads/QualityProfileDetail";
+import { QualityGroup, QualityProfileDetail } from "./downloads/QualityProfileDetail";
 import { PathMappingDetail, PathMappingsTable, resolveMappingItem } from "./downloads/PathMappings";
 import { pluginStatus, usePlugins } from "./PluginsSection";
 import { DownloadSourceList, type DownloadSourceRow } from "./downloads/DownloadSources";
@@ -116,13 +116,7 @@ export function DownloadsSection() {
           status={prowlarrServiceStatus(data)}
         />
       </SettingsGroup>
-      <SettingsGroup title="Quality">
-        <SettingsServiceRow
-          to="downloads/quality"
-          name="Quality"
-          status={qualityServiceStatus(settings)}
-        />
-      </SettingsGroup>
+      <QualityGroup />
       <SettingsGroup
         title="Remote path mappings"
         note="Only needed when a download client sees your files at a different path than Aurral."
