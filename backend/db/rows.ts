@@ -155,6 +155,13 @@ export interface HistoryServersRow {
   connected_at: number;
 }
 
+export interface HubFriendTracksRow {
+  user_id: number;
+  handle: string;
+  tracks: string;
+  fetched_at: number;
+}
+
 export interface HubLinksRow {
   user_id: number;
   origin: string;

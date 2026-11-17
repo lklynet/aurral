@@ -4,7 +4,12 @@ import BoundedMap from "../boundedMap.ts";
 import { buildRadio } from "../radio.ts";
 import { matchesArtistKeys } from "./artistKeys.ts";
 import { getBlockedArtistKeys } from "./feedback.ts";
-import { BLEND_MIX_PREFIX, LISTENS_MIX_PREFIX } from "../../../lib/browsePlaylists.ts";
+import {
+  BLEND_MIX_PREFIX,
+  FRIEND_BLEND_MIX_PREFIX,
+  LISTENS_MIX_PREFIX,
+} from "../../../lib/browsePlaylists.ts";
+import { sharedFriendTracks, type FriendTracks } from "../hubFriends.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MIX_SIZE = 50;
@@ -465,7 +470,8 @@ async function buildMixes(userId: number, now: number): Promise<Mix[]> {
   return mixes.filter((mix) => mix.trackIds.length >= MIN_MIX_TRACKS);
 }
 
-type BlendSource = "both" | number;
+type BlendSource = "both" | 0 | 1;
+type Favorite = { play: TrackPlays; weight: number };
 
 type BlendPartner = {
   id: number;
@@ -513,22 +519,29 @@ function recentArtists(userId: number, now: number) {
   return artists;
 }
 
-function closestPartners(userId: number, partners: BlendPartner[], now: number) {
+type Partner = { person: BlendPartner } | { friend: FriendTracks };
+
+const artistsOf = (partner: Partner, now: number) =>
+  "person" in partner
+    ? recentArtists(partner.person.id, now)
+    : new Set(partner.friend.tracks.map(({ artist }) => artist.toLowerCase()));
+
+function closestPartners(userId: number, partners: Partner[], now: number) {
   if (partners.length <= MAX_BLENDS) return partners;
   const mine = recentArtists(userId, now);
-  const sharedWith = (partnerId: number) => {
+  const sharedWith = (partner: Partner) => {
     let shared = 0;
-    for (const artist of recentArtists(partnerId, now)) if (mine.has(artist)) shared += 1;
+    for (const artist of artistsOf(partner, now)) if (mine.has(artist)) shared += 1;
     return shared;
   };
   return partners
-    .map((partner) => ({ partner, shared: sharedWith(partner.id) }))
+    .map((partner) => ({ partner, shared: sharedWith(partner) }))
     .sort((left, right) => right.shared - left.shared)
     .slice(0, MAX_BLENDS)
     .map(({ partner }) => partner);
 }
 
-function blendFavorites(userId: number, now: number, blocked: Set<string>) {
+function blendFavorites(userId: number, now: number, blocked: Set<string>): Favorite[] {
   return playsStmt
     .all(now - ON_REPEAT_MS, now - REWIND_MS, now - ON_REPEAT_MS, now - TOP_ARTIST_MS, userId, now)
     .filter((play) => !matchesArtistKeys({ name: play.artist }, blocked))
@@ -537,10 +550,26 @@ function blendFavorites(userId: number, now: number, blocked: Set<string>) {
     .slice(0, BLEND_WINDOW);
 }
 
-async function buildBlend(left: number, right: number, now: number, blocked: Set<string>) {
-  const draw = (id: number) =>
-    seededRandom(`${left}:${right}:${Math.floor(now / DAY_MS)}:blend:${id}`)();
-  const sides = [left, right].map((userId) => blendFavorites(userId, now, blocked));
+function friendFavorites(friend: FriendTracks, blocked: Set<string>): Favorite[] {
+  const kept = friend.tracks.filter(({ artist }) => !matchesArtistKeys({ name: artist }, blocked));
+  return kept.map(({ title, artist }, rank) => ({
+    play: {
+      trackId: "",
+      artist,
+      title,
+      total: 0,
+      recent: 0,
+      rewind: 0,
+      season: 0,
+      lastPlayedAt: 0,
+    },
+    weight: Math.log1p(kept.length - rank),
+  }));
+}
+
+async function buildBlend(seed: string, favorites: () => Favorite[][]) {
+  const draw = (id: number) => seededRandom(`${seed}:blend:${id}`)();
+  const sides = favorites();
   await yieldToEventLoop();
   const [mine, theirs] = sides.map((side) => {
     const resolved = resolvePlays(side.map(({ play }) => play));
@@ -573,8 +602,8 @@ async function buildBlend(left: number, right: number, now: number, blocked: Set
         }),
       ),
     ],
-    [left, shuffled([...mine].filter(([id]) => !theirs.has(id)))],
-    [right, shuffled([...theirs].filter(([id]) => !mine.has(id)))],
+    [0, shuffled([...mine].filter(([id]) => !theirs.has(id)))],
+    [1, shuffled([...theirs].filter(([id]) => !mine.has(id)))],
   ];
   const sources = new Map<number, BlendSource>();
   const perArtist = new Map<string, number>();
@@ -595,11 +624,11 @@ async function buildBlend(left: number, right: number, now: number, blocked: Set
       return !!next;
     });
   }
-  const share = (userId: number) =>
-    [...sources.values()].filter((source) => source === "both" || source === userId).length;
+  const share = (side: 0 | 1) =>
+    [...sources.values()].filter((source) => source === "both" || source === side).length;
   return sources.size >= MIN_MIX_TRACKS &&
-    share(left) >= MIN_BLEND_SHARE &&
-    share(right) >= MIN_BLEND_SHARE
+    share(0) >= MIN_BLEND_SHARE &&
+    share(1) >= MIN_BLEND_SHARE
     ? sources
     : null;
 }
@@ -612,24 +641,47 @@ type CachedBlend = {
 
 const blendCache = new BoundedMap<string, CachedBlend>(500);
 
-function getBlend(userId: number, partnerId: number, now: number) {
-  const [left, right] = userId < partnerId ? [userId, partnerId] : [partnerId, userId];
-  const key = `${left}:${right}`;
+function cachedBlend(key: string, inputs: string, now: number, favorites: () => Favorite[][]) {
   const day = Math.floor(now / DAY_MS);
-  const blocked = new Set([...getBlockedArtistKeys(left), ...getBlockedArtistKeys(right)]);
-  const inputs = [latestPlayStmt.get(left)?.id, latestPlayStmt.get(right)?.id, ...blocked].join(
-    "\0",
-  );
   const cached = blendCache.get(key);
   if (cached && cached.day === day && cached.inputs === inputs) return cached.sources;
-  const sources = buildBlend(left, right, now, blocked);
+  const sources = buildBlend(`${key}:${day}`, favorites);
   blendCache.set(key, { day, inputs, sources });
   sources.catch(() => blendCache.delete(key));
   return sources;
 }
 
+function getBlend(userId: number, partnerId: number, now: number) {
+  const [left, right] = userId < partnerId ? [userId, partnerId] : [partnerId, userId];
+  const blocked = new Set([...getBlockedArtistKeys(left), ...getBlockedArtistKeys(right)]);
+  const inputs = [latestPlayStmt.get(left)?.id, latestPlayStmt.get(right)?.id, ...blocked].join(
+    "\0",
+  );
+  return cachedBlend(`${left}:${right}`, inputs, now, () => [
+    blendFavorites(left, now, blocked),
+    blendFavorites(right, now, blocked),
+  ]);
+}
+
+function getFriendBlend(userId: number, friend: FriendTracks, now: number) {
+  const blocked = getBlockedArtistKeys(userId);
+  const inputs = [latestPlayStmt.get(userId)?.id, friend.fetchedAt, ...blocked].join("\0");
+  return cachedBlend(`${userId}:@${friend.handle}`, inputs, now, () => [
+    blendFavorites(userId, now, blocked),
+    friendFavorites(friend, blocked),
+  ]);
+}
+
 export function getUserBlends(userId: number, now = Date.now()) {
-  return blendsWith(userId, closestPartners(userId, visiblePeople(userId, now), now), now);
+  const people = visiblePeople(userId, now);
+  const here = new Set(people.map(({ handle }) => handle));
+  const partners: Partner[] = [
+    ...people.map((person) => ({ person })),
+    ...sharedFriendTracks(userId)
+      .filter(({ handle }) => !here.has(handle))
+      .map((friend) => ({ friend })),
+  ];
+  return blendsWith(userId, closestPartners(userId, partners, now), now);
 }
 
 const recentPlaysStmt = db.prepare<[number, number, number], TrackPlays>(`
@@ -664,27 +716,39 @@ function listensOf(userId: number, person: BlendPartner, now: number): Mix | nul
     : null;
 }
 
-async function blendsWith(userId: number, partners: BlendPartner[], now: number) {
+async function blendsWith(userId: number, partners: Partner[], now: number) {
   const mixes: Mix[] = [];
   const waiting: string[] = [];
   for (const partner of partners) {
-    const sources = await getBlend(userId, partner.id, now);
+    const local = "person" in partner;
+    const sources = await (local
+      ? getBlend(userId, partner.person.id, now)
+      : getFriendBlend(userId, partner.friend, now));
     if (!sources) {
-      waiting.push(partner.username);
+      if (local) waiting.push(partner.person.username);
       continue;
     }
+    const { id, name, viewer, mine } = local
+      ? {
+          id: `${BLEND_MIX_PREFIX}${partner.person.id}`,
+          name: partner.person.username,
+          viewer: partner.person.viewer,
+          mine: userId < partner.person.id ? 0 : 1,
+        }
+      : {
+          id: `${FRIEND_BLEND_MIX_PREFIX}${partner.friend.handle}`,
+          name: `@${partner.friend.handle}`,
+          viewer: partner.friend.viewer,
+          mine: 0,
+        };
     const reasonFor = (source: BlendSource) =>
-      source === "both"
-        ? "You both play this"
-        : source === userId
-          ? "From you"
-          : `From ${partner.username}`;
+      source === "both" ? "You both play this" : source === mine ? "From you" : `From ${name}`;
     mixes.push({
-      id: `${BLEND_MIX_PREFIX}${partner.id}`,
-      name: `Blend with ${partner.username}`,
-      description: `${partner.viewer} and ${partner.username}`,
+      id,
+      name: `Blend with ${name}`,
+      description: `${viewer} and ${name}`,
       trackIds: [...sources.keys()],
-      reasons: new Map([...sources].map(([id, source]) => [id, reasonFor(source)])),
+      reasons: new Map([...sources].map(([track, source]) => [track, reasonFor(source)])),
     });
   }
   return { mixes, waiting };
@@ -732,6 +796,11 @@ function getOwnMixes(userId: number, now: number) {
 }
 
 export async function getUserMix(userId: number, id: string, now = Date.now()) {
+  if (id.startsWith(FRIEND_BLEND_MIX_PREFIX)) {
+    const handle = id.slice(FRIEND_BLEND_MIX_PREFIX.length);
+    const friend = sharedFriendTracks(userId).find((each) => each.handle === handle);
+    return friend ? ((await blendsWith(userId, [{ friend }], now)).mixes[0] ?? null) : null;
+  }
   const prefix = [BLEND_MIX_PREFIX, LISTENS_MIX_PREFIX].find((each) => id.startsWith(each));
   if (prefix) {
     const personId = Number(id.slice(prefix.length));
@@ -739,7 +808,7 @@ export async function getUserMix(userId: number, id: string, now = Date.now()) {
     if (!person) return null;
     return prefix === LISTENS_MIX_PREFIX
       ? listensOf(userId, person, now)
-      : ((await blendsWith(userId, [person], now)).mixes[0] ?? null);
+      : ((await blendsWith(userId, [{ person }], now)).mixes[0] ?? null);
   }
   return (await getOwnMixes(userId, now)).find((mix) => mix.id === id) ?? null;
 }

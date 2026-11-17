@@ -65,6 +65,7 @@ export function useFriendActions() {
   const settle = () => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.friends(user?.id) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.inbox(user?.id) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.hubProfiles(user?.id) });
   };
   const add = useMutation({
     mutationFn: (handle: string) =>

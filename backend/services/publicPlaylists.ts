@@ -4,7 +4,6 @@ import { db } from "../config/db-sqlite.ts";
 import type { HubPublicationsRow } from "../db/rows.ts";
 import { MAX_SHARE_BYTES, parseShareManifest, withoutShareFiles } from "../../lib/shareManifest.ts";
 import { asAppError } from "../../lib/errors.ts";
-import { fromSomeonesListening } from "../../lib/browsePlaylists.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
 import { resolveShareManifest } from "./shareLinks/metadata.ts";
@@ -23,7 +22,6 @@ import { logger } from "./logger.ts";
 const SHELF_TTL_MS = 10 * 60 * 1000;
 const SHELF_RETRY_MS = 60 * 1000;
 const SHELF_TIMEOUT_MS = 3000;
-const NOT_REPUBLISHABLE = new Set(["aurral-community", "aurral-share"]);
 
 export class PublicPlaylistError extends Error {
   status: 400 | 404 | 409 | 422 | 502;
@@ -93,16 +91,6 @@ export async function makePlaylistPublic(user: RequestUser, playlistId: string) 
   }
   const link = linkedLink(user.id);
   if (!link) throw new PublicPlaylistError("Link an aurral.org account first.", 409);
-  const source = playlist.importSource;
-  if (source && NOT_REPUBLISHABLE.has(source.provider)) {
-    throw new PublicPlaylistError("Copies of other Aurral playlists can't be public.", 400);
-  }
-  if (fromSomeonesListening(source)) {
-    throw new PublicPlaylistError(
-      "Playlists made from someone else's listening can't be public.",
-      400,
-    );
-  }
   const built = playlistManifest(playlistId);
   if (built === "too_large" || !built) {
     throw new PublicPlaylistError("This playlist is too large to make public.", 400);

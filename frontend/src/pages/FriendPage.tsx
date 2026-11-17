@@ -168,6 +168,15 @@ export default function FriendPage() {
   const top = self ? own.data?.topPlays : friend?.topPlays;
   const name = `@${handle}`;
 
+  const blend = profile.data?.blend ?? null;
+  const playlists = [...(blend ? [blend] : []), ...(profile.data?.playlists ?? [])];
+  const blendNote =
+    friend && friends.data?.state === "linked" && friends.data.sharing && !blend ? (
+      <p className="friend-page__empty">
+        Your Blend with {name} fills in once you both play a few more tracks.
+      </p>
+    ) : null;
+
   const lists = friend ? (
     hasTopPlays(top) ? (
       <TopPlayLists top={top} />
@@ -211,17 +220,15 @@ export default function FriendPage() {
           )
         ) : profile.data ? (
           <>
-            {profile.data.playlists.length ? (
+            {playlists.length ? (
               <DiscoverPlaylistSection
-                title="Public playlists"
-                playlists={profile.data.playlists.map((playlist) => ({
-                  ...playlist,
-                  curator: null,
-                }))}
+                title={blend ? "Playlists" : "Public playlists"}
+                playlists={playlists.map((playlist) => ({ ...playlist, curator: null }))}
               />
             ) : (
               <p className="friend-page__empty">No public playlists from {name} yet.</p>
             )}
+            {blendNote}
             {lists}
           </>
         ) : null}

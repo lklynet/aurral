@@ -14,10 +14,11 @@ import {
   getEditorialShelf,
 } from "./editorialPlaylists.ts";
 import { getAurralPlaylist, importAurralPlaylist, withOwnedTracks } from "./aurralPlaylists.ts";
-import { getUserMix, getUserMixes, type Mix } from "./mixes.ts";
+import { getUserMix, getUserMixes, visiblePeople, type Mix } from "./mixes.ts";
 import { browseCoverTemplate, browseCoverUrl, type BrowseCover } from "./browseCovers.ts";
 import {
   BLEND_MIX_PREFIX,
+  FRIEND_BLEND_MIX_PREFIX,
   BROWSE_IMPORT_PROVIDERS,
   BROWSE_PROVIDERS,
   LISTENS_MIX_PREFIX,
@@ -177,9 +178,22 @@ const communityCard = (playlist: Awaited<ReturnType<typeof communityShelf>>[numb
 
 export const getCommunityPlaylists = async () => (await communityShelf()).map(communityCard);
 
-export async function getCommunityProfile(handle: string) {
-  const profile = await communityProfile(handle);
-  return profile && { handle: profile.handle, playlists: profile.playlists.map(communityCard) };
+export async function getCommunityProfile(user: RequestUser, handle: string) {
+  const here = visiblePeople(user.id).find((person) => person.handle === handle);
+  const [profile, blend] = await Promise.all([
+    communityProfile(handle),
+    getUserMix(
+      user.id,
+      here ? `${BLEND_MIX_PREFIX}${here.id}` : `${FRIEND_BLEND_MIX_PREFIX}${handle}`,
+    ),
+  ]);
+  return (
+    profile && {
+      handle: profile.handle,
+      playlists: profile.playlists.map(communityCard),
+      blend: mixCards(blend ? [blend] : [])[0] ?? null,
+    }
+  );
 }
 
 export const getArtistPlaylists = async (deezerArtistId: string) =>

@@ -11,8 +11,6 @@ import { readApiError } from "../../utils/api/errors.ts";
 import type { StaticPlaylist } from "../../utils/playlistStats.ts";
 import { optionMenuItem } from "./playlistPageUtils";
 
-const REPUBLISH_BLOCKED = new Set(["aurral-community", "aurral-share"]);
-
 export function usePublicPlaylist(playlist: StaticPlaylist, onEditDetails: () => void) {
   const { user } = useAuth();
   const { showError, showSuccess } = useToast();
@@ -21,9 +19,7 @@ export function usePublicPlaylist(playlist: StaticPlaylist, onEditDetails: () =>
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState<{ message: string; rename: boolean } | null>(null);
   const queryKey = queryKeys.publicPlaylists(user?.id);
-  const eligible =
-    playlist.ownerUserId === user?.id &&
-    !REPUBLISH_BLOCKED.has(playlist.importSource?.provider ?? "");
+  const eligible = playlist.ownerUserId === user?.id;
   const state = useQuery({
     queryKey,
     queryFn: () => parseResponse(hubLinkClient["public-playlists"].$get()),

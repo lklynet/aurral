@@ -8,10 +8,11 @@ import { friendLists, removeFriend, requestFriend } from "./friends.ts";
 import { claimHandle, deleteAccount, handleOf } from "./handles.ts";
 import {
   clearListening,
+  friendsBlendTracks,
   nowPlayingSchema,
   setNowPlaying,
   setTopPlays,
-  topPlaysSchema,
+  sharedTopPlaysSchema,
 } from "./listening.ts";
 import { authorizeInstance, sha256Hex } from "./instances.ts";
 import {
@@ -182,6 +183,11 @@ const v1 = new Hono<Env>()
     if (!accountId) return linkRevoked(c);
     return c.json(await friendLists(c.env.DB, accountId));
   })
+  .get("/friends/blend-tracks", async (c) => {
+    const accountId = await accountOfLink(c);
+    if (!accountId) return linkRevoked(c);
+    return c.json({ friends: await friendsBlendTracks(c.env.DB, accountId) });
+  })
   .put("/friends/:handle", async (c) => {
     const accountId = await accountOfLink(c);
     if (!accountId) return linkRevoked(c);
@@ -202,7 +208,7 @@ const v1 = new Hono<Env>()
     await setNowPlaying(c.env.DB, linkId, c.req.valid("json"));
     return c.body(null, 204);
   })
-  .put("/listening/top-plays", json(topPlaysSchema), async (c) => {
+  .put("/listening/top-plays", json(sharedTopPlaysSchema), async (c) => {
     const linkId = await linkOf(c);
     if (!linkId) return linkRevoked(c);
     await setTopPlays(c.env.DB, linkId, c.req.valid("json"));

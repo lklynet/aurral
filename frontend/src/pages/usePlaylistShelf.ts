@@ -11,6 +11,7 @@ import type { ShelfScope } from "../../../backend/services/importLists/deezerPla
 import {
   BLEND_MIX_PREFIX,
   BROWSE_IMPORT_PROVIDERS,
+  FRIEND_BLEND_MIX_PREFIX,
   type BrowseProvider,
 } from "../../../lib/browsePlaylists.ts";
 
@@ -26,7 +27,8 @@ export function useMadeForYou() {
   return useQuery({
     ...madeForYouQueryOptions(user?.id),
     select: ({ discovery, mixes }) => {
-      const isBlend = (mix: (typeof mixes)[number]) => mix.id.startsWith(BLEND_MIX_PREFIX);
+      const isBlend = (mix: (typeof mixes)[number]) =>
+        [BLEND_MIX_PREFIX, FRIEND_BLEND_MIX_PREFIX].some((prefix) => mix.id.startsWith(prefix));
       const afterNewToYou = discovery.findIndex((playlist) => playlist.id === "new-to-you") + 1;
       return {
         mixes,

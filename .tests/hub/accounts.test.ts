@@ -374,13 +374,31 @@ test("linked servers add friends by handle, both asking makes friends, friends s
     outgoing: [],
   });
 
-  const share = (link: string, nowPlaying: object | null, until: number, top: object, at: number) =>
+  const share = (
+    link: string,
+    nowPlaying: object | null,
+    until: number,
+    top: object,
+    at: number,
+    blend: string[] = [],
+  ) =>
     db
       .prepare(
-        "INSERT INTO listening (link_id, now_playing, playing_until, top_plays, top_plays_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO listening (link_id, now_playing, playing_until, top_plays, top_plays_at, blend_tracks) VALUES (?, ?, ?, ?, ?, ?)",
       )
-      .bind(link, nowPlaying && JSON.stringify(nowPlaying), until, JSON.stringify(top), at)
+      .bind(
+        link,
+        nowPlaying && JSON.stringify(nowPlaying),
+        until,
+        JSON.stringify(top),
+        at,
+        blend.length
+          ? JSON.stringify(blend.map((title) => ({ title, artist: "Radiohead" })))
+          : null,
+      )
       .run();
+  const blendTracks = (token: string) =>
+    api("/v1/friends/blend-tracks", { headers: { authorization: `Bearer ${token}` } });
   const time = Date.now();
   const top = (plays: number) => ({
     artists: [{ name: "Radiohead", plays }],
@@ -393,7 +411,9 @@ test("linked servers add friends by handle, both asking makes friends, friends s
     time + 60_000,
     top(3),
     time,
+    ["Nude", "Reckoner"],
   );
+  assert.deepEqual(await (await blendTracks(tokens.ann)).json(), { friends: [] });
   assert.deepEqual(await lists(tokens.ann), {
     friends: [],
     incoming: [],
@@ -423,9 +443,19 @@ test("linked servers add friends by handle, both asking makes friends, friends s
         { name: "Björk", plays: 4 },
       ],
     },
-    time,
+    time - 1,
+    ["nude", "Lucky"],
   );
-  await share("bob-3", null, 0, top(50), time - 8 * 86_400_000);
+  await share("bob-3", null, 0, top(50), time - 8 * 86_400_000, ["Creep"]);
+  assert.deepEqual(await (await blendTracks(tokens.ann)).json(), {
+    friends: [
+      {
+        handle: "bob",
+        tracks: ["Nude", "Reckoner", "Lucky"].map((title) => ({ title, artist: "Radiohead" })),
+      },
+    ],
+  });
+  assert.deepEqual(await (await blendTracks(tokens.bob)).json(), { friends: [] });
   assert.deepEqual(await lists(tokens.ann), {
     friends: [
       {
@@ -478,9 +508,12 @@ test("a linked server shares now playing and top plays, and they leave with the 
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   const stored = () =>
-    db
-      .prepare("SELECT now_playing, playing_until, top_plays FROM listening")
-      .first<{ now_playing: string | null; playing_until: number; top_plays: string | null }>();
+    db.prepare("SELECT now_playing, playing_until, top_plays, blend_tracks FROM listening").first<{
+      now_playing: string | null;
+      playing_until: number;
+      top_plays: string | null;
+      blend_tracks: string | null;
+    }>();
 
   const before = Date.now();
   const track = { title: " Reckoner ", artist: "Radiohead", album: null, durationMs: 290_000 };
@@ -490,7 +523,11 @@ test("a linked server shares now playing and top plays, and they leave with the 
     albums: [{ title: "In Rainbows", artist: "Radiohead", plays: 9 }],
     tracks: [{ title: "Reckoner", artist: "Radiohead", plays: 4 }],
   };
-  assert.equal((await share("/top-plays", "PUT", top)).status, 204);
+  const blendTracks = Array.from({ length: 100 }, (_, index) => ({
+    title: `Track ${index}`,
+    artist: "Radiohead",
+  }));
+  assert.equal((await share("/top-plays", "PUT", { ...top, blendTracks })).status, 204);
   const shared = await stored();
   assert.deepEqual(JSON.parse(shared?.now_playing ?? ""), {
     title: "Reckoner",
@@ -499,9 +536,14 @@ test("a linked server shares now playing and top plays, and they leave with the 
   });
   assert.ok(shared && shared.playing_until >= before + 290_000);
   assert.deepEqual(JSON.parse(shared?.top_plays ?? ""), top);
+  assert.deepEqual(JSON.parse(shared?.blend_tracks ?? ""), blendTracks);
 
   const tooMany = { ...top, tracks: Array.from({ length: 11 }, () => top.tracks[0]) };
   assert.equal((await share("/top-plays", "PUT", tooMany)).status, 400);
+  const tooManyBlend = { ...top, blendTracks: [...blendTracks, blendTracks[0]] };
+  assert.equal((await share("/top-plays", "PUT", tooManyBlend)).status, 400);
+  assert.equal((await share("/top-plays", "PUT", top)).status, 204);
+  assert.equal((await stored())?.blend_tracks, null);
   assert.equal((await share("", "DELETE")).status, 204);
   assert.equal(await stored(), null);
 

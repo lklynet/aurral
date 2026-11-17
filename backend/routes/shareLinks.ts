@@ -7,7 +7,6 @@ import type { AppEnv, RequestUser } from "../middleware/requestUser.ts";
 import { validate } from "../middleware/validate.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { findSharedTrack, MAX_SHARE_BYTES, withoutShareFiles } from "../../lib/shareManifest.ts";
-import { fromSomeonesListening } from "../../lib/browsePlaylists.ts";
 import {
   enqueueImportedPlaylist,
   sharedPlaylistTracks,
@@ -353,18 +352,6 @@ export default new Hono<AppEnv>()
     }
     if (target.kind === "playlist" && !canSharePlaylist(c.var.user, target.targetRef)) {
       return playlistNotFound(c);
-    }
-    if (
-      target.kind === "playlist" &&
-      fromSomeonesListening(flowPlaylistConfig.getStaticPlaylist(target.targetRef)?.importSource)
-    ) {
-      return c.json(
-        {
-          error: "not_shareable",
-          message: "Playlists made from someone else's listening can't be shared.",
-        },
-        400,
-      );
     }
     const shareFiles = hosted ? input.shareFiles === true : true;
     let manifest = hosted ? resolveShareManifest(target, input.manifest) : null;

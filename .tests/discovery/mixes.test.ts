@@ -280,3 +280,63 @@ test("Blends mix two people's plays with their 3 closest listeners until either 
   db.prepare("UPDATE users SET status = 'disabled' WHERE id = ?").run(mia);
   assert.equal(await blendOf(lee, mia), undefined);
 });
+
+test("a friend Blend mixes your plays with a friend's ranked tracks found in your Library", async () => {
+  const { addDiscoveryFeedback } = await import("../../backend/services/discovery/feedback.ts");
+  vi.spyOn(Date, "now").mockReturnValue(NOW);
+  db.prepare(
+    "INSERT INTO hub_links (user_id, origin, token, handle, linked_at) VALUES (?, 'https://aurral.org', 't', 'lee_k', 1)",
+  ).run(userId);
+  const friendTracks = (handle: string, names: [string, string][]) =>
+    db
+      .prepare(
+        "INSERT INTO hub_friend_tracks (user_id, handle, tracks, fetched_at) VALUES (?, ?, ?, 1)",
+      )
+      .run(userId, handle, JSON.stringify(names.map(([artist, title]) => ({ title, artist }))));
+  const tracksOf = (name: string, count: number) =>
+    addArtist(name, count).tracks.map((track): [string, string] => [name, track.title]);
+  const shared = tracksOf("Shared", 3);
+  for (const [artist, title] of [...shared, ...tracksOf("Mine A", 3), ...tracksOf("Mine B", 3)]) {
+    play(`lastfm:${title}`, title, artist, 2, 1);
+  }
+  friendTracks("nova_k", [
+    ...shared,
+    ...tracksOf("Nova A", 3),
+    ...tracksOf("Nova B", 3),
+    ...tracksOf("Blocked", 3),
+    ["Elsewhere", "Not in this Library"],
+  ]);
+  addDiscoveryFeedback(userId, { action: "block_artist", artistName: "Blocked" });
+  const mia = db
+    .prepare<[], { id: number }>(
+      "INSERT INTO users (username, password_hash) VALUES ('mia', 'x') RETURNING id",
+    )
+    .get()!.id;
+  db.prepare(
+    "INSERT INTO hub_links (user_id, origin, token, handle, linked_at) VALUES (?, 'https://aurral.org', 'm', 'mia_k', 1)",
+  ).run(mia);
+  const mias = [...shared, ...tracksOf("Mia", 3)];
+  for (const [artist, title] of mias)
+    insertPlay.run(mia, `lastfm:${title}`, title, artist, NOW - DAY);
+  friendTracks("mia_k", mias);
+
+  const blend = await getUserMix(userId, "friend-blend-nova_k", NOW);
+  assert.equal(blend?.name, "Blend with @nova_k");
+  assert.deepEqual(
+    [
+      ...new Set(
+        blend?.trackIds.map((id) => `${artistOf(id).split(" ")[0]}: ${blend.reasons?.get(id)}`),
+      ),
+    ].sort(),
+    ["Mine: From you", "Nova: From @nova_k", "Shared: You both play this"],
+  );
+  assert.deepEqual(
+    (await getUserMixes(userId, NOW))
+      .filter((mix) => mix.id.includes("blend"))
+      .map((mix) => mix.id),
+    [`blend-${mia}`, "friend-blend-nova_k"],
+  );
+
+  db.prepare("UPDATE hub_links SET share_listening = 0").run();
+  assert.equal(await getUserMix(userId, "friend-blend-nova_k", NOW), null);
+});
