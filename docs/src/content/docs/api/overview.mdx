@@ -84,9 +84,9 @@ const artists = await response.json();
 
 ## Cross-origin requests
 
-By default, Aurral does not allow browser requests to the JSON API from another origin. To allow them, set `CORS_ORIGIN` to a comma-separated list of origins.
+By default, the JSON API allows browser requests from one other origin, Aurral's hosted app at `https://music.aurral.org`. It still needs a signed-in session, and requests from another site never get the access Aurral gives before setup or with sign-in turned off. To allow more origins, set `CORS_ORIGIN` to a comma-separated list of origins. A fork can set `AURRAL_APP_ORIGIN` to its own hosted app.
 
-The CORS preflight allows the `Content-Type` and `Authorization` headers. It does not allow `X-Api-Key`. For a browser widget on another origin, use a server-side proxy. The `api_key` query parameter needs no custom header, but browser history and access logs can expose the key.
+The CORS preflight allows the `Content-Type`, `Authorization`, and `Range` headers. It does not allow `X-Api-Key`. For a browser widget on another origin, use a server-side proxy. The `api_key` query parameter needs no custom header, but browser history and access logs can expose the key.
 
 Browser Subsonic clients such as Feishin can use `/rest` without `CORS_ORIGIN`.
 

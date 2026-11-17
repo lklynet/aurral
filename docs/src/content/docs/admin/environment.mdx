@@ -57,9 +57,10 @@ Google sign-in uses settings in the web UI, not environment variables. See [Sign
 
 ## Cross-origin clients
 
-| Variable      | Purpose                                                                                                              |
-| ------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `CORS_ORIGIN` | Comma-separated browser origins that can call Aurral's JSON API. Browser Subsonic clients do not need this variable. |
+| Variable            | Purpose                                                                                                              |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `CORS_ORIGIN`       | Comma-separated browser origins that can call Aurral's JSON API. Browser Subsonic clients do not need this variable. |
+| `AURRAL_APP_ORIGIN` | The hosted app's origin, always allowed to call the JSON API. Defaults to `https://music.aurral.org`.                |
 
 ## Metadata
 
