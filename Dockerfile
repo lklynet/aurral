@@ -51,6 +51,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     python3 \
     ca-certificates \
     libjemalloc2 \
+    tini \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 1001 nodejs \
     && useradd --uid 1001 --gid nodejs --shell /usr/sbin/nologin --create-home nodejs \
@@ -86,5 +87,5 @@ ENV GITHUB_REPO=$GITHUB_REPO
 
 EXPOSE 3001
 
-ENTRYPOINT ["docker-entrypoint.sh"]
+ENTRYPOINT ["tini", "-s", "--", "docker-entrypoint.sh"]
 CMD ["node", "--max-semi-space-size=4", "backend/server.ts"]
