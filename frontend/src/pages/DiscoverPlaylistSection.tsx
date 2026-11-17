@@ -41,7 +41,11 @@ export function DiscoverPlaylistSection({
               key={`${playlist.provider}:${playlist.id}`}
               to={browsePlaylistPath(playlist.provider, playlist.id)}
               state={{
-                seed: { name: playlist.name, artworkUrl, trackCount: playlist.trackCount },
+                seed: {
+                  name: playlist.name,
+                  artworkUrl: playlist.artworkUrl,
+                  trackCount: playlist.trackCount,
+                },
               }}
               name={playlist.name}
               artworkUrl={artworkUrl}

@@ -177,7 +177,11 @@ test("a public playlist reaches the shelf and its copies, stays fresh, and leave
   const owner = signedInAs(userOps.getUserById(lee.id) || undefined).route("/", api);
   const setPublic = (method: "PUT" | "DELETE", playlistId: string) =>
     owner.request(`/hub-link/public-playlists/${playlistId}`, { method });
-  const track = { trackName: "Song", artistName: "Band" };
+  const track = {
+    trackName: "Song",
+    artistName: "Band",
+    albumMbid: "1b105601-d2d3-4da2-a7d9-114f981b1766",
+  };
   const mine = flowPlaylistConfig.createStaticPlaylist({
     name: "Late night",
     ownerUserId: lee.id,
@@ -213,6 +217,15 @@ test("a public playlist reaches the shelf and its copies, stays fresh, and leave
   const [card] = await browse.getCommunityPlaylists();
   const page = await browse.getBrowsePlaylist(viewer, "community", listed?.id ?? "");
   assert.equal(page.artworkUrl, card?.artworkUrl);
+  assert.deepEqual(
+    page.tracks.map(({ preview_url, artworkUrl }) => ({ preview_url, artworkUrl })),
+    [
+      {
+        preview_url: "/api/deezer/preview?artist=Band&track=Song",
+        artworkUrl: "/api/artists/release-group/1b105601-d2d3-4da2-a7d9-114f981b1766/cover/image",
+      },
+    ],
+  );
 
   const copy = flowPlaylistConfig.createStaticPlaylist({
     name: "Later night",

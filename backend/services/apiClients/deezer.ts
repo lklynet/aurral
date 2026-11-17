@@ -253,6 +253,9 @@ async function deezerList<Schema extends v.GenericSchema>(
 
 export const deezerPreviewPath = (trackId: string | number) => `/api/deezer/preview/${trackId}.mp3`;
 
+export const deezerPreviewSearchPath = (artist: string, track: string) =>
+  `/api/deezer/preview?${new URLSearchParams({ artist, track })}`;
+
 export function getDeezerPreviewLink(trackId: string) {
   return previewLinkCache.load(trackId, async () => {
     const track = await deezerGet(deezerTrackSchema, `/track/${trackId}`, { timeoutMs: 3000 });
@@ -475,6 +478,11 @@ export async function deezerGetTrackPreview({
     return null;
   }
 }
+
+export const deezerPreviewLinkFor = (track: { artistName: string; trackName: string }) =>
+  deezerGetTrackPreview(track).then(
+    (preview) => preview && getDeezerPreviewLink(preview.previewTrackId),
+  );
 
 const EDITION_GROUP =
   /[([](?:deluxe|remaster|anniversary|expanded|bonus|edition|live|mono|stereo|\d{4})/;

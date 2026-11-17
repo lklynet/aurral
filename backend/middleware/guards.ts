@@ -100,6 +100,7 @@ const tokenPaths = [
   /^\/api\/library\/file-stream\/[^/]+\/[^/]+$/i,
   /^\/api\/playlists\/stream\/[^/]+$/i,
   /^\/api\/playlists\/staging-stream\/[^/]+$/i,
+  /^\/api\/deezer\/preview$/i,
 ];
 
 const tokenArtworkPaths = [

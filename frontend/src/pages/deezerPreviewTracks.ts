@@ -38,7 +38,9 @@ export const mapPreviewTracks = (tracks: DeezerPreviewTrack[] | undefined, sourc
       status: "done" as const,
       isPreview: !owned,
       libraryOwned: Boolean(owned),
-      streamUrl: owned ? buildAuthenticatedApiUrl(owned.streamPath) : track.preview_url || null,
+      streamUrl: owned
+        ? buildAuthenticatedApiUrl(owned.streamPath)
+        : resolveAuthenticatedApiAssetUrl(track.preview_url) || null,
       streamFormat: owned?.streamFormat ?? null,
       artworkUrl: resolveAuthenticatedApiAssetUrl(owned?.artworkUrl || track.artworkUrl) || null,
       deezerAlbumId: track.deezerAlbumId || null,
