@@ -48,7 +48,6 @@ test("CORS allows only the hosted app and configured origins on the JSON API", a
     assert.equal(allowed.headers.get("access-control-allow-origin"), origin);
     assert.match(allowed.headers.get("access-control-expose-headers") || "", /X-Aurral-Loudness/);
     assert.match(allowed.headers.get("vary") || "", /Origin/);
-    assert.equal(allowed.headers.get("cross-origin-resource-policy"), "cross-origin");
 
     const preflight = await fetch(url, {
       method: "OPTIONS",
@@ -62,4 +61,8 @@ test("CORS allows only the hosted app and configured origins on the JSON API", a
 
   const blocked = await fetch(url, { headers: { Origin: "https://other.example" } });
   assert.equal(blocked.headers.get("access-control-allow-origin"), null);
+  const page = await fetch(`http://127.0.0.1:${server.port}/`, {
+    headers: { Origin: "https://music.aurral.org" },
+  });
+  assert.equal(page.headers.get("access-control-allow-origin"), null);
 });

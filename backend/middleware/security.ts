@@ -13,19 +13,21 @@ const isPublic = (c: Context<AppEnv>) => {
 
 const appOrigin = (process.env.AURRAL_APP_ORIGIN || "https://music.aurral.org").replace(/\/+$/, "");
 
-const allowedOrigins = new Set([
-  appOrigin,
-  ...(process.env.CORS_ORIGIN || "")
+const allowedOrigins = new Set(
+  (process.env.CORS_ORIGIN || "")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean),
-]);
+);
+
+const isAllowed = (origin: string, path: string) =>
+  allowedOrigins.has(origin) || (origin === appOrigin && path.startsWith("/api/"));
 
 export const corsHeaders = createMiddleware<AppEnv>(async (c, next) => {
   const publicRoute = isPublic(c);
   if (!publicRoute) c.res.headers.append("Vary", "Origin");
   const origin = c.req.header("origin") ?? "";
-  const allowOrigin = publicRoute ? "*" : allowedOrigins.has(origin) ? origin : null;
+  const allowOrigin = publicRoute ? "*" : isAllowed(origin, c.req.path) ? origin : null;
   if (!allowOrigin) return next();
   c.res.headers.set("Access-Control-Allow-Origin", allowOrigin);
   c.res.headers.set(
@@ -76,7 +78,6 @@ const headers = Object.entries({
 
 export const securityHeaders = createMiddleware<AppEnv>(async (c, next) => {
   for (const [name, value] of headers) c.res.headers.set(name, value);
-  const crossOrigin = isPublic(c) || c.req.path.startsWith("/api/");
-  c.res.headers.set("Cross-Origin-Resource-Policy", crossOrigin ? "cross-origin" : "same-origin");
+  c.res.headers.set("Cross-Origin-Resource-Policy", isPublic(c) ? "cross-origin" : "same-origin");
   await next();
 });

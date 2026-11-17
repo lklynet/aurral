@@ -133,7 +133,9 @@ export const authenticate = createMiddleware<AppEnv>(async (c, next) => {
     if (!isAuthRequiredByConfig()) return next();
   }
   const user = linkToken ? resolveTokenUser(credentials) : resolveRequestUser(credentials);
-  if (user) c.set("user", user);
-  else if (crossSite || !linkToken) return unauthorized(c);
+  if (user) {
+    c.set("user", user);
+    c.res.headers.set("Cross-Origin-Resource-Policy", "cross-origin");
+  } else if (crossSite || !linkToken) return unauthorized(c);
   return next();
 });

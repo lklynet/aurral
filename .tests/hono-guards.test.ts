@@ -103,7 +103,8 @@ test("a request from another site never takes a no-auth path", async () => {
     .route("/api", filesystem)
     .post("/api/onboarding/complete", (c) => c.text(String(c.var.user?.id)))
     .get("/api/library/artists", (c) => c.text(String(c.var.user?.id)))
-    .get("/api/library/albums/:id/cover", (c) => c.text(String(c.var.user?.id)));
+    .get("/api/library/albums/:id/cover", (c) => c.text(String(c.var.user?.id)))
+    .get("/api/library/stream/:id/:track", (c) => c.text(String(c.var.user?.id)));
   const from = (headers: Record<string, string>) => ({
     headers: { Host: "aurral.local:3001", ...headers },
   });
@@ -148,6 +149,7 @@ test("a request from another site never takes a no-auth path", async () => {
   for (const init of [foreign, from({ "Sec-Fetch-Site": "cross-site" })]) {
     assert.equal(await status("/api/onboarding/complete", init, "POST"), 401);
     assert.equal(await status("/api/library/albums/1/cover", init), 401);
+    assert.equal(await status("/api/library/stream/1/1", init), 401);
     assert.equal(await status("/api/filesystem/browse", init), 403);
     assert.equal(socketClose(init.headers), 4401);
   }
@@ -167,4 +169,5 @@ test("a request from another site never takes a no-auth path", async () => {
   assert.equal(await signedIn.text(), String(created.id));
   const cover = await app.request(`/api/library/albums/1/cover?token=${token}`, foreign);
   assert.equal(await cover.text(), String(created.id));
+  assert.equal(cover.headers.get("cross-origin-resource-policy"), "cross-origin");
 });
