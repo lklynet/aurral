@@ -371,7 +371,14 @@ test("a linked server publishes playlists to the shelf, and they leave with the 
   const idOf = async (response: Response) =>
     v.parse(v.object({ id: v.string() }), await response.json()).id;
   const listed = v.object({
-    playlists: v.array(v.object({ id: v.string(), title: v.string(), handle: v.string() })),
+    playlists: v.array(
+      v.object({
+        id: v.string(),
+        title: v.string(),
+        handle: v.string(),
+        artist: v.nullable(v.string()),
+      }),
+    ),
   });
   const shelf = async () => v.parse(listed, await (await api("/v1/playlists")).json()).playlists;
 
@@ -386,8 +393,8 @@ test("a linked server publishes playlists to the shelf, and they leave with the 
   assert.equal(await idOf(await send("POST", "/v1/publications", "Two")), ids[1]);
   const latest = ids.at(-1) ?? "";
   assert.deepEqual(
-    (await shelf()).map(({ title, handle }) => `${handle}:${title}`),
-    ["lee_k:Late night", "lee_k:Three", "lee_k:Two"],
+    (await shelf()).map(({ title, handle, artist }) => `${handle}:${title}:${artist}`),
+    ["lee_k:Late night:Band", "lee_k:Three:Band", "lee_k:Two:Band"],
   );
 
   assert.equal((await send("PUT", `/v1/publications/${latest}`, "shit list")).status, 422);

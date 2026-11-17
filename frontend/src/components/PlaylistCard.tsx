@@ -24,7 +24,6 @@ export default function PlaylistCard({
   artworkUrl,
   meta,
   claim,
-  titleCover = false,
 }: {
   to: string;
   state?: unknown;
@@ -32,7 +31,6 @@ export default function PlaylistCard({
   artworkUrl: string | null;
   meta: string | null;
   claim?: "synced" | "saved";
-  titleCover?: boolean;
 }) {
   const [failedArtwork, setFailedArtwork] = useState(false);
   return (
@@ -51,10 +49,6 @@ export default function PlaylistCard({
               loading="lazy"
               onError={() => setFailedArtwork(true)}
             />
-          ) : titleCover ? (
-            <div className="playlist-title-cover" aria-hidden="true">
-              {name}
-            </div>
           ) : (
             <div className="artist-media-placeholder--discover">
               <ListMusic className="artist-icon-lg" aria-hidden="true" />

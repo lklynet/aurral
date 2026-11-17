@@ -5161,20 +5161,6 @@ textarea:disabled {
   color: var(--aurral-text-muted);
 }
 
-.playlist-title-cover {
-  display: flex;
-  height: 100%;
-  width: 100%;
-  align-items: flex-end;
-  padding: 0.75rem;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-  color: var(--aurral-text);
-  font-size: var(--aurral-font-lg);
-  font-weight: 700;
-  line-height: 1.1;
-}
-
 .artist-media-placeholder--discover .artist-icon-lg {
   width: 2.5rem;
   height: 2.5rem;

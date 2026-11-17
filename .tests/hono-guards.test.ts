@@ -74,8 +74,10 @@ test("a link token signs in browse playlist and flow starter covers, and nothing
     .get("/api/discover/playlists/:provider/:id", (c) => c.text(String(c.var.user?.id)))
     .get("/api/playlists/flow-templates/:id/cover", (c) => c.text(String(c.var.user?.id)));
 
-  const cover = await app.request(`/api/discover/playlists/mix/daily-1/cover?token=${token}`);
-  assert.equal(await cover.text(), String(created.id));
+  for (const playlist of ["mix/daily-1", "community/1e35c76d"]) {
+    const cover = await app.request(`/api/discover/playlists/${playlist}/cover?token=${token}`);
+    assert.equal(await cover.text(), String(created.id));
+  }
   const detail = await app.request(`/api/discover/playlists/mix/daily-1?token=${token}`);
   assert.notEqual(await detail.text(), String(created.id));
   const starter = await app.request(

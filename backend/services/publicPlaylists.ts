@@ -34,6 +34,7 @@ const shelfSchema = v.object({
       handle: v.string(),
       trackCount: v.number(),
       publishedAt: v.number(),
+      artist: v.nullish(v.string(), null),
     }),
   ),
 });
