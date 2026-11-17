@@ -27,6 +27,8 @@ import type { LibraryArtistsRow } from "../../db/rows.ts";
 import { communityPlaylist, communityShelf } from "../publicPlaylists.ts";
 import { requireImportList } from "../importLists/importPlaylist.ts";
 import type { ShareManifest } from "../../../lib/shareManifest.ts";
+import { deezerPreviewSearchPath } from "../apiClients/deezer.ts";
+import { releaseGroupCoverImageUrl } from "../releaseGroupCoverService.ts";
 
 export const browseProviderSchema = v.picklist(BROWSE_PROVIDERS);
 
@@ -185,8 +187,8 @@ export async function getBrowsePlaylist(user: RequestUser, provider: BrowseProvi
           trackName: track.title,
           albumName: track.albumTitle,
           durationMs: track.durationMs,
-          preview_url: null,
-          artworkUrl: null,
+          preview_url: deezerPreviewSearchPath(track.artistName, track.title),
+          artworkUrl: track.albumMbid ? releaseGroupCoverImageUrl(track.albumMbid) : null,
           deezerAlbumId: null,
         })),
       ),
