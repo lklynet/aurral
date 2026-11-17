@@ -283,6 +283,12 @@ export const queryKeys = {
   apiKey: ["auth", "api-key"],
   myApiKey: (userId: MaybeId): QueryKey => ["users", "me", "api-key", userId || null],
   myBlend: (userId: MaybeId): QueryKey => ["users", "me", "blend", userId || null],
+  playlistPeople: (playlistId: string, memberIds: number[]): QueryKey => [
+    "playlists",
+    "people",
+    playlistId,
+    memberIds,
+  ],
   myPlaylistOrder: (userId: MaybeId): QueryKey => ["users", "me", "playlist-order", userId || null],
   myIdentities: (userId: MaybeId): QueryKey => ["auth", "identities", userId || null],
   hubLink: (userId: MaybeId): QueryKey => ["hub-link", userId || null],

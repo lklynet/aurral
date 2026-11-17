@@ -207,14 +207,14 @@ function BlendRow({ userId }: { userId: number }) {
   return (
     <>
       <SettingsRow
-        label="Blend with people on this server"
-        help="Anyone here who also turns this on gets a Blend with you, made from what you both play."
+        label="Share listening on this server"
+        help="People here get Blends made from what you both play. Turn off to keep your listening to yourself."
       >
         <PillToggle
           id="profile-blend"
           checked={toggle.isPending ? toggle.variables : (blend.data?.enabled ?? false)}
           disabled={!blend.data || toggle.isPending}
-          aria-label="Blend with people on this server"
+          aria-label="Share listening on this server"
           onChange={(event) => toggle.mutate(event.target.checked)}
         />
       </SettingsRow>
