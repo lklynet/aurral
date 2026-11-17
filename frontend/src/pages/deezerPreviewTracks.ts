@@ -20,6 +20,7 @@ type DeezerPreviewTrack = {
   artworkUrl: string | null;
   deezerAlbumId: string | null;
   owned?: OwnedTrack | null;
+  reason?: string | null;
 };
 
 export const mapPreviewTracks = (tracks: DeezerPreviewTrack[] | undefined, sourceId: string) => {
@@ -34,7 +35,7 @@ export const mapPreviewTracks = (tracks: DeezerPreviewTrack[] | undefined, sourc
       trackName: track.trackName || "Unknown Track",
       albumName: track.albumName || null,
       durationMs: track.durationMs || null,
-      reason: owned ? "In your Library" : "Preview",
+      reason: track.reason || (owned ? "In your Library" : "Preview"),
       status: "done" as const,
       isPreview: !owned,
       libraryOwned: Boolean(owned),
