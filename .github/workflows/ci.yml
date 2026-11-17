@@ -162,7 +162,8 @@ jobs:
 
           docker exec "$container" node --input-type=module -e '
             import fs from "node:fs/promises";
-            const status = await fs.readFile("/proc/1/status", "utf8");
+            const server = (await fs.readFile("/proc/1/task/1/children", "utf8")).trim();
+            const status = await fs.readFile(`/proc/${server}/status`, "utf8");
             const groups = status.match(/^Groups:\s*(.*)$/m)?.[1].trim().split(/\s+/) ?? [];
             if (!groups.includes("3001")) throw new Error(`PGID 3001 missing from process groups:\n${status}`);
             const health = await (await fetch("http://127.0.0.1:3001/api/health")).json();
