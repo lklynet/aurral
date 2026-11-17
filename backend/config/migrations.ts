@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { createAurral3Schema } from "./aurral-3-schema.ts";
 import { NOTIFICATION_EVENTS } from "../../lib/notificationEvents.ts";
 import { isRecord } from "../../lib/isRecord.ts";
+import type { SettingsRow, UsersRow } from "../db/rows.ts";
 
 type Migration = (db: Database.Database) => void;
 
@@ -249,6 +250,27 @@ const createHubPublications: Migration = (db) =>
     CREATE INDEX IF NOT EXISTS idx_hub_publications_user ON hub_publications (user_id);
   `);
 
+const ownOrphanedPlaylists: Migration = (db) => {
+  const admin = db
+    .prepare<[], Pick<UsersRow, "id">>(
+      "SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1",
+    )
+    .get();
+  if (!admin) return;
+  const read = db.prepare<[string], Pick<SettingsRow, "value">>(
+    "SELECT value FROM settings WHERE key = ? AND json_valid(value)",
+  );
+  const write = db.prepare<[string, string]>("UPDATE settings SET value = ? WHERE key = ?");
+  for (const key of ["staticPlaylists", "flows"]) {
+    const stored: unknown = JSON.parse(read.get(key)?.value ?? "null");
+    if (!Array.isArray(stored)) continue;
+    const owned = stored.map((item: unknown) =>
+      isRecord(item) && item.ownerUserId == null ? { ...item, ownerUserId: admin.id } : item,
+    );
+    write.run(JSON.stringify(owned), key);
+  }
+};
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -265,6 +287,7 @@ export const migrations: Migration[] = [
   recordDownloadCauses,
   createHubLinks,
   createHubPublications,
+  ownOrphanedPlaylists,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {
