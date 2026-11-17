@@ -34,7 +34,7 @@ import type {
 import { AudioQueueContext } from "./audioQueueContext";
 import { useAuth } from "./AuthContext";
 import { useToast } from "./ToastContext";
-import { getRequestToken } from "../utils/api/core";
+import { apiPathOf, getRequestToken } from "../utils/api/core";
 import {
   QUEUE_STORAGE_KEY,
   parseStoredQueue,
@@ -196,7 +196,9 @@ const playEventFields = (track: QueueEntry) => ({
 
 function sendNowPlaying(track: QueueEntry) {
   if (!track.recordHistory) return;
-  playEventsClient["now-playing"].$post({ json: playEventFields(track) }).catch(() => {});
+  playEventsClient["now-playing"]
+    .$post({ json: { ...playEventFields(track), streamPath: apiPathOf(track.src ?? "") } })
+    .catch(() => {});
 }
 
 function recordPlay(track: QueueEntry) {

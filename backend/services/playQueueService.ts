@@ -5,12 +5,8 @@ import { listOf } from "../db/helpers/storedSchemas.ts";
 import type { SubsonicPlayQueuesRow } from "../db/rows.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import { websocketService } from "./websocketService.ts";
-import {
-  getSong,
-  queueEntryForSong,
-  songIdsForQueueEntries,
-  type QueueEntry,
-} from "./subsonicLibraryService.ts";
+import type { QueueEntry } from "./queueEntry.ts";
+import { getSong, queueEntryForSong, songIdsForQueueEntries } from "./subsonicLibraryService.ts";
 
 const readQueue = db.prepare<[number], SubsonicPlayQueuesRow>(
   "SELECT * FROM subsonic_play_queues WHERE user_id = ?",

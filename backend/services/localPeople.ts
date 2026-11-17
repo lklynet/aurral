@@ -2,7 +2,8 @@ import type { RequestUser } from "../middleware/requestUser.ts";
 import { getPersonPlaylists } from "./discovery/browsePlaylists.ts";
 import { sharesListening, visiblePeople } from "./discovery/mixes.ts";
 import { friendArtUrl, topPlaysWithArt } from "./friendArt.ts";
-import { localNowPlaying } from "./localNowPlaying.ts";
+import { allLocalNowPlaying, localNowPlaying } from "./localNowPlaying.ts";
+import { getSong, songIdsForQueueEntries } from "./subsonicLibraryService.ts";
 import { topPlaysOf } from "./wrapped/topPlays.ts";
 
 export function listPeople(userId: number, now = Date.now()) {
@@ -42,4 +43,32 @@ export async function personProfile(user: RequestUser, username: string, now = D
     topPlays: topPlaysWithArt(topPlaysOf(person.id, now)),
     playlists: await getPersonPlaylists(user, person.id),
   };
+}
+
+export function nowPlayingSongs(user: RequestUser, now = Date.now()) {
+  const playing = allLocalNowPlaying(now);
+  if (!playing.length) return [];
+  const names = new Map([[user.id, user.username]]);
+  if (playing.some(({ userId }) => userId !== user.id)) {
+    for (const person of visiblePeople(user.id, now)) names.set(person.id, person.username);
+  }
+  const shown = playing.filter(({ userId, entry }) => entry && names.has(userId));
+  const songIds = songIdsForQueueEntries(
+    user,
+    shown.map(({ entry }) => entry),
+  );
+  return shown.flatMap(({ userId, startedAt }, index) => {
+    const songId = songIds[index];
+    const song = songId && getSong(songId, user);
+    return song
+      ? [
+          {
+            ...song,
+            username: names.get(userId) ?? "",
+            minutesAgo: Math.max(0, Math.floor((now - startedAt) / 60_000)),
+            playerId: 0,
+          },
+        ]
+      : [];
+  });
 }

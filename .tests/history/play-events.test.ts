@@ -143,6 +143,42 @@ test("now playing reaches each linked scrobbler without recording a play", async
   );
 });
 
+test("a scrobble shows as now playing only when the app never said what is playing", async () => {
+  const NOW = Date.UTC(2026, 10, 5, 12);
+  vi.spyOn(Date, "now").mockReturnValue(NOW);
+  const userId = Number(
+    db.prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)").run("phone", "test")
+      .lastInsertRowid,
+  );
+  const { localNowPlaying } = await import("../../backend/services/localNowPlaying.ts");
+  const scrobble = (title: string, playedAt: number) =>
+    playEvents.showScrobbleAsNowPlaying(
+      userId,
+      requireFixture(
+        playEvents.recordPlayEvent(userId, {
+          trackId: `song:${title}`,
+          title,
+          artist: "Radiohead",
+          durationMs: 60_000,
+          playedAt,
+          source: "subsonic",
+        }),
+      ),
+      null,
+    );
+  const nowPlaying = () => localNowPlaying(userId)?.title ?? null;
+
+  scrobble("Airbag", NOW - 61_000);
+  assert.equal(nowPlaying(), null);
+  scrobble("Nude", NOW);
+  assert.equal(nowPlaying(), "Nude");
+  scrobble("Reckoner", NOW);
+  assert.equal(nowPlaying(), "Reckoner");
+  await playEvents.sendNowPlaying(userId, { title: "Lucky", artist: "Radiohead" });
+  scrobble("Reckoner", NOW);
+  assert.equal(nowPlaying(), "Lucky");
+});
+
 test("a Koito connection without a server URL is not connected, so its plays never reach the public ListenBrainz", () => {
   const { scrobbleConnectionStore } = scrobbleStore;
   for (const baseUrl of [null, "invalid", "ftp://koito.local"]) {

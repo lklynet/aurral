@@ -2,7 +2,8 @@ import * as v from "valibot";
 import { db } from "../config/db-sqlite.ts";
 import { playEventQueue } from "./jobs/queues.ts";
 import { shareNowPlaying } from "./hubFriends.ts";
-import { setLocalNowPlaying } from "./localNowPlaying.ts";
+import { setLocalNowPlaying, setNowPlayingFromScrobble } from "./localNowPlaying.ts";
+import { entryForStreamPath, type QueueEntry } from "./queueEntry.ts";
 import { scrobbleConnectionStore } from "./scrobbleConnectionStore.ts";
 import { getKoitoListenBrainzBaseUrl } from "./koitoClient.ts";
 import type { PlayEventsRow } from "../db/rows.ts";
@@ -24,6 +25,7 @@ type PlayEventInput = {
   durationMs?: unknown;
   playedAt?: unknown;
   source?: unknown;
+  streamPath?: unknown;
 };
 
 const getEventStmt = db.prepare<[number], PlayEventsRow>("SELECT * FROM play_events WHERE id = ?");
@@ -250,7 +252,11 @@ const sendListen = async (connection: ScrobbleConnection, listen: Listen) => {
   });
 };
 
-export const sendNowPlaying = (userId: number, input: PlayEventInput = {}) => {
+export const sendNowPlaying = (
+  userId: number,
+  input: PlayEventInput = {},
+  entry = entryForStreamPath(text(input.streamPath)),
+) => {
   const title = text(input.title, 500);
   const artist = text(input.artist, 500);
   if (!title || !artist) throw new Error("title and artist are required");
@@ -269,6 +275,7 @@ export const sendNowPlaying = (userId: number, input: PlayEventInput = {}) => {
     artist,
     album: listen.album,
     durationMs: listen.durationMs,
+    entry,
   });
   return Promise.all([
     shareNowPlaying(userId, { title, artist, album: listen.album, durationMs: listen.durationMs }),
@@ -280,6 +287,17 @@ export const sendNowPlaying = (userId: number, input: PlayEventInput = {}) => {
       }),
     ),
   ]);
+};
+
+export const showScrobbleAsNowPlaying = (
+  userId: number,
+  { title, artist, album, durationMs, playedAt }: NonNullable<ReturnType<typeof recordPlayEvent>>,
+  entry: QueueEntry | null,
+) => {
+  const track = { title, artist, album, durationMs };
+  if (setNowPlayingFromScrobble(userId, { ...track, playedAt, entry })) {
+    void shareNowPlaying(userId, track);
+  }
 };
 
 export const deliverPlayEvent = async ({
