@@ -479,16 +479,23 @@ type BlendPartner = {
   viewer: string;
   handle: string | null;
   lastPlayedAt: number;
+  lastTitle: string;
+  lastArtist: string;
+  lastAlbum: string | null;
 };
 
 const visiblePeopleStmt = db.prepare<[number, number], BlendPartner>(`
   SELECT * FROM (
     SELECT partner.id, partner.username, viewer.username AS viewer,
            CASE WHEN link.origin = mine.origin THEN link.handle END AS handle,
-           (SELECT MAX(played_at) FROM play_events WHERE user_id = partner.id) AS lastPlayedAt
+           last.played_at AS lastPlayedAt, last.title AS lastTitle,
+           last.artist AS lastArtist, last.album AS lastAlbum
     FROM users AS viewer
     JOIN users AS partner
       ON partner.blend = 1 AND partner.status = 'active' AND partner.id <> viewer.id
+    JOIN play_events AS last ON last.id = (
+      SELECT id FROM play_events WHERE user_id = partner.id ORDER BY played_at DESC LIMIT 1
+    )
     LEFT JOIN hub_links AS link
       ON link.user_id = partner.id AND link.linked_at IS NOT NULL AND link.broken = 0
     LEFT JOIN hub_links AS mine

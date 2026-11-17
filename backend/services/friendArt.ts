@@ -50,6 +50,11 @@ export async function friendArt(artist: string, album: string | undefined) {
 export const friendArtUrl = (artist: string, album?: string | null) =>
   `/api/hub-link/friends/art?${new URLSearchParams(album ? { artist, album } : { artist })}`;
 
+export const withArt = <Track extends { artist: string; album: string | null }>(track: Track) => ({
+  ...track,
+  artworkUrl: friendArtUrl(track.artist, track.album),
+});
+
 type TopPlays = {
   artists: { name: string; plays: number }[];
   albums: { title: string; artist: string; plays: number }[];

@@ -1,7 +1,7 @@
 import type { RequestUser } from "../middleware/requestUser.ts";
 import { getPersonPlaylists } from "./discovery/browsePlaylists.ts";
 import { sharesListening, visiblePeople } from "./discovery/mixes.ts";
-import { friendArtUrl, topPlaysWithArt } from "./friendArt.ts";
+import { topPlaysWithArt, withArt } from "./friendArt.ts";
 import { allLocalNowPlaying, localNowPlaying } from "./localNowPlaying.ts";
 import { getSong, songIdsForQueueEntries } from "./subsonicLibraryService.ts";
 import { topPlaysOf } from "./wrapped/topPlays.ts";
@@ -9,17 +9,20 @@ import { topPlaysOf } from "./wrapped/topPlays.ts";
 export function listPeople(userId: number, now = Date.now()) {
   return {
     sharing: sharesListening(userId),
-    people: visiblePeople(userId, now).map(({ id, username, handle, lastPlayedAt }) => {
-      const nowPlaying = localNowPlaying(id, now);
+    people: visiblePeople(userId, now).map((person) => {
+      const nowPlaying = localNowPlaying(person.id, now);
       return {
-        id,
-        username,
-        handle,
-        lastPlayedAt,
-        nowPlaying: nowPlaying && {
-          ...nowPlaying,
-          artworkUrl: friendArtUrl(nowPlaying.artist, nowPlaying.album),
-        },
+        id: person.id,
+        username: person.username,
+        handle: person.handle,
+        lastPlayedAt: person.lastPlayedAt,
+        nowPlaying: nowPlaying && withArt(nowPlaying),
+        lastPlayed: withArt({
+          title: person.lastTitle,
+          artist: person.lastArtist,
+          album: person.lastAlbum,
+          at: person.lastPlayedAt,
+        }),
       };
     }),
   };

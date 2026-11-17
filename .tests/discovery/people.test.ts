@@ -26,11 +26,11 @@ test("people on this server see each other's listening only while both share", a
   const lee = person("lee");
   const mia = person("mia");
   const kit = person("kit");
-  for (const user of [lee, mia]) {
-    db.prepare(
-      "INSERT INTO play_events (user_id, track_id, title, artist, played_at, source, created_at) VALUES (?, 'x', 'Nude', 'Radiohead', ?, 'test', 0)",
-    ).run(user.id, NOW - 60_000);
-  }
+  const play = db.prepare<[number, string, number]>(
+    "INSERT INTO play_events (user_id, track_id, title, artist, played_at, source, created_at) VALUES (?, 'x', ?, 'Radiohead', ?, 'test', 0)",
+  );
+  for (const user of [lee, mia]) play.run(user.id, "Nude", NOW - 60_000);
+  play.run(mia.id, "Airbag", NOW - 120_000);
   const as = (user: typeof lee) =>
     testClient(signedInAs(userOps.getUserById(user.id) || undefined).route("/", peopleRoutes))
       .people;
@@ -40,7 +40,11 @@ test("people on this server see each other's listening only while both share", a
     const body = await (await as(user).$get()).json();
     return {
       sharing: body.sharing,
-      people: body.people.map((each) => [each.username, each.nowPlaying?.title ?? null]),
+      people: body.people.map((each) => [
+        each.username,
+        each.nowPlaying?.title ?? null,
+        `${each.lastPlayed.title} ${each.lastPlayed.at}`,
+      ]),
     };
   };
 
@@ -49,7 +53,8 @@ test("people on this server see each other's listening only while both share", a
     artist: "Radiohead",
     durationMs: 60_000,
   });
-  assert.deepEqual(await people(lee), { sharing: true, people: [["mia", "Reckoner"]] });
+  const nude = `Nude ${NOW - 60_000}`;
+  assert.deepEqual(await people(lee), { sharing: true, people: [["mia", "Reckoner", nude]] });
   assert.equal(await profile(lee, "MIA"), 200);
   assert.equal(await profile(lee, "kit"), 404);
   const link = db.prepare<[number, string, string]>(
@@ -62,11 +67,11 @@ test("people on this server see each other's listening only while both share", a
   link.run(mia.id, "https://aurral.org", "mia_k");
   assert.equal(await miasHandle(), "mia_k");
   vi.spyOn(Date, "now").mockReturnValue(NOW + 60_000);
-  assert.deepEqual(await people(lee), { sharing: true, people: [["mia", null]] });
+  assert.deepEqual(await people(lee), { sharing: true, people: [["mia", null, nude]] });
 
   await setBlendSetting(lee.id, false);
   assert.deepEqual(await people(lee), { sharing: false, people: [] });
   assert.equal(await profile(mia, "lee"), 404);
   assert.equal(await profile(lee, "Lee"), 200);
-  assert.deepEqual(await people(kit), { sharing: true, people: [["mia", null]] });
+  assert.deepEqual(await people(kit), { sharing: true, people: [["mia", null, nude]] });
 });
