@@ -1,8 +1,12 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router";
 import { parseResponse, type InferResponseType } from "hono/client";
-import { AlertCircle, Users } from "../components/icons";
+import { AlertCircle, ListMusic, Users } from "../components/icons";
+import ArtworkImage from "../components/ArtworkImage";
+import { ClaimBadge } from "../components/PlaylistCard";
+import RelativeTime from "../components/RelativeTime";
+import RouteLink from "../components/RouteLink";
 import StatePanel from "../components/StatePanel";
 import Tooltip from "../components/Tooltip";
 import { useCollectionTint } from "../components/CollectionHeader";
@@ -10,21 +14,28 @@ import { FriendButton } from "../components/FriendButton";
 import { FriendArt, friendArtSrc, useFriends, useHubLink } from "../components/PlayerFriends";
 import { useAuth } from "../contexts/AuthContext";
 import { queryKeys } from "../queryClient";
+import { browsePlaylistPath } from "../navigation/playlistPaths.ts";
+import { resolveAuthenticatedApiAssetUrl } from "../utils/api/core.ts";
 import { hubLinkClient } from "../utils/api/clients/hubLink.ts";
 import { peopleClient } from "../utils/api/clients/people.ts";
 import { readApiError } from "../utils/api/errors.ts";
-import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
+import type { BrowseShelfPlaylist } from "./DiscoverPlaylistSection";
+import { formatTrackTotal } from "./playlists/playlistPageUtils";
+import { usePlaylistClaims } from "./usePlaylistShelf";
 import { resolveAlbumPath, resolveArtistPath } from "../navigation/resolveLinks.ts";
 import { albumPath } from "../../../lib/albumPath.ts";
+import { BLEND_MIX_PREFIX, FRIEND_BLEND_MIX_PREFIX } from "../../../lib/browsePlaylists.ts";
 
 const plays = (count: number) => `${count} ${count === 1 ? "play" : "plays"}`;
 const searchPath = (query: string) => `/search?${new URLSearchParams({ q: query })}`;
 
 function Ranked({
   title,
+  className = "friend-page__section",
   rows,
 }: {
   title: string;
+  className?: string;
   rows: {
     key: string;
     to: string;
@@ -36,11 +47,9 @@ function Ranked({
 }) {
   if (!rows.length) return null;
   return (
-    <section className="friend-page__section">
+    <section className={className}>
       <div className="native-library-section-heading">
-        <h2>
-          {title} <span className="friend-page__window">30 days</span>
-        </h2>
+        <h2>{title}</h2>
       </div>
       <ol className="friend-page__list">
         {rows.map((row, index) => (
@@ -62,38 +71,201 @@ function Ranked({
 
 type Person = InferResponseType<(typeof peopleClient)[":username"]["$get"], 200>;
 type TopPlays = Person["topPlays"];
-type Playing = NonNullable<
-  InferResponseType<typeof peopleClient.$get>["people"][number]["nowPlaying"]
->;
+type LocalPerson = InferResponseType<typeof peopleClient.$get>["people"][number];
+type Listener = { [Key in "nowPlaying" | "lastPlayed"]?: LocalPerson[Key] | null };
 
 export const hasTopPlays = (top: TopPlays | null | undefined): top is TopPlays =>
   !!top && top.artists.length + top.albums.length + top.tracks.length > 0;
 
-function FriendNowPlaying({ playing }: { playing: Playing | null | undefined }) {
-  if (!playing) return null;
+function FriendListening({ listener }: { listener: Listener | null | undefined }) {
+  const track = listener?.nowPlaying ?? listener?.lastPlayed;
+  if (!track) return null;
+  const playedAt = listener?.nowPlaying ? null : listener?.lastPlayed?.at;
   return (
     <Link
       className="friend-page__row friend-page__now"
       to={
-        resolveAlbumPath({ artistName: playing.artist, albumName: playing.album }) ??
-        resolveArtistPath({ name: playing.artist }) ??
-        searchPath(playing.title)
+        resolveAlbumPath({ artistName: track.artist, albumName: track.album }) ??
+        resolveArtistPath({ name: track.artist }) ??
+        searchPath(track.title)
       }
     >
-      <FriendArt src={playing.artworkUrl} />
+      <FriendArt src={track.artworkUrl} />
       <span className="player-queue__copy">
-        <span className="player-queue__name">{playing.title}</span>
+        <span className="player-queue__name">
+          {playedAt ? null : (
+            <span className="track-playing-indicator" role="img" aria-label="Playing now">
+              <span />
+              <span />
+              <span />
+            </span>
+          )}
+          <span className="friend-page__now-title">{track.title}</span>
+        </span>
         <span className="player-queue__artist">
-          {[playing.artist, playing.album].filter(Boolean).join(" · ")}
+          {playedAt ? (
+            <>
+              {track.artist} · <RelativeTime value={playedAt} />
+            </>
+          ) : (
+            [track.artist, track.album].filter(Boolean).join(" · ")
+          )}
         </span>
       </span>
     </Link>
   );
 }
 
+const isBlend = (playlist: BrowseShelfPlaylist) =>
+  [BLEND_MIX_PREFIX, FRIEND_BLEND_MIX_PREFIX].some((prefix) => playlist.id.startsWith(prefix));
+
+function ProfilePlaylist({
+  playlist,
+  name,
+  claim,
+}: {
+  playlist: BrowseShelfPlaylist;
+  name: string;
+  claim: ReturnType<ReturnType<typeof usePlaylistClaims>>;
+}) {
+  const [failed, setFailed] = useState(false);
+  const artworkUrl = resolveAuthenticatedApiAssetUrl(playlist.artworkUrl);
+  const blend = isBlend(playlist);
+  const tracks = formatTrackTotal(playlist.trackCount);
+  return (
+    <li className="discover-feed-tile discover-feed-tile--list">
+      <RouteLink
+        className="discover-feed-tile__body"
+        to={browsePlaylistPath(playlist.provider, playlist.id)}
+        state={{
+          seed: {
+            name: playlist.name,
+            artworkUrl: playlist.artworkUrl,
+            trackCount: playlist.trackCount,
+          },
+        }}
+      >
+        <span className="discover-feed-tile__art">
+          {artworkUrl && !failed ? (
+            <ArtworkImage src={artworkUrl} alt="" loading="lazy" onError={() => setFailed(true)} />
+          ) : (
+            <ListMusic aria-hidden="true" />
+          )}
+        </span>
+        <span className="discover-feed-tile__text">
+          <span className="discover-feed-tile__title">{blend ? "Blend" : playlist.name}</span>
+          <span className="discover-feed-tile__meta">
+            {blend ? `You and ${name} · ${tracks}` : tracks}
+          </span>
+        </span>
+      </RouteLink>
+      {claim ? <ClaimBadge claim={claim} /> : null}
+    </li>
+  );
+}
+
+export function ProfilePlaylists({
+  title,
+  name,
+  playlists,
+}: {
+  title: string;
+  name: string;
+  playlists: BrowseShelfPlaylist[];
+}) {
+  const claimOf = usePlaylistClaims();
+  if (!playlists.length) return null;
+  return (
+    <section>
+      <div className="native-library-section-heading">
+        <h2>{title}</h2>
+      </div>
+      <ul className="friend-page__playlists">
+        {playlists.map((playlist) => (
+          <ProfilePlaylist
+            key={`${playlist.provider}:${playlist.id}`}
+            playlist={playlist}
+            name={name}
+            claim={claimOf(playlist)}
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+export function ProfileNotes({ notes }: { notes: (string | false | null)[] }) {
+  const shown = notes.filter((note) => typeof note === "string");
+  if (!shown.length) return null;
+  return (
+    <div className="friend-page__notes">
+      {shown.map((note) => (
+        <p key={note} className="friend-page__empty">
+          {note}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+const HOUR_MARKS = [0, 6, 12, 18];
+const hourName = (hour: number) => `${hour % 12 || 12}${hour < 12 ? "am" : "pm"}`;
+
+function ListeningStats({ stats }: { stats: NonNullable<TopPlays["stats"]> }) {
+  const peak = Math.max(1, ...stats.hours);
+  const peakHour = stats.hours.indexOf(peak);
+  const listened = stats.minutes >= 60 ? `${Math.round(stats.minutes / 60)}h` : `${stats.minutes}m`;
+  return (
+    <section
+      className="friend-page__section friend-stats"
+      aria-label="Listening in the last 30 days"
+    >
+      <div className="native-library-section-heading">
+        <h2>Last 30 days</h2>
+      </div>
+      <div className="friend-stats__totals">
+        <p>
+          <strong>{stats.plays}</strong> {stats.plays === 1 ? "play" : "plays"}
+        </p>
+        {stats.minutes ? (
+          <p>
+            <strong>{listened}</strong> listened
+          </p>
+        ) : null}
+        <p>
+          <strong>{stats.artists}</strong> {stats.artists === 1 ? "artist" : "artists"}
+        </p>
+      </div>
+      {peakHour >= 0 ? (
+        <p className="friend-stats__peak">Most plays around {hourName(peakHour)}</p>
+      ) : null}
+      <div className="friend-stats__hours">
+        {stats.hours.map((count, hour) => (
+          <Tooltip key={hour} placement="top" content={`${hourName(hour)} · ${plays(count)}`}>
+            <span
+              className="friend-stats__hour"
+              data-empty={count ? undefined : ""}
+              data-peak={hour === peakHour ? "" : undefined}
+              style={{ "--share": count / peak }}
+            />
+          </Tooltip>
+        ))}
+      </div>
+      <div className="friend-stats__axis" aria-hidden="true">
+        {HOUR_MARKS.map((hour) => (
+          <span key={hour} style={{ gridColumn: `${hour + 1} / span 6` }}>
+            {hourName(hour)}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function TopPlayLists({ top }: { top: TopPlays }) {
   return (
-    <div className="friend-page__lists">
+    <div className="friend-page__lists" data-stats={top.stats?.plays ? "" : undefined}>
+      {top.stats?.plays ? <ListeningStats stats={top.stats} /> : null}
       <Ranked
         title="Top artists"
         rows={top.artists.map((artist) => ({
@@ -122,6 +294,7 @@ export function TopPlayLists({ top }: { top: TopPlays }) {
       />
       <Ranked
         title="Top tracks"
+        className="friend-page__section friend-page__section--tracks"
         rows={top.tracks.map((track) => ({
           key: `${track.artist}\u0000${track.title}`,
           to: track.albumMbid
@@ -135,63 +308,23 @@ export function TopPlayLists({ top }: { top: TopPlays }) {
   );
 }
 
-const HOUR_MARKS = ["12am", "6am", "12pm", "6pm", "11pm"];
-const hourName = (hour: number) => `${hour % 12 || 12}${hour < 12 ? "am" : "pm"}`;
-
-function ListeningStats({ stats }: { stats: NonNullable<TopPlays["stats"]> }) {
-  const peak = Math.max(1, ...stats.hours);
-  const listened = stats.minutes >= 60 ? `${Math.round(stats.minutes / 60)}h` : `${stats.minutes}m`;
-  return (
-    <section className="friend-stats" aria-label="Listening in the last 30 days">
-      <div className="friend-stats__totals">
-        <p>
-          <strong>{stats.plays}</strong> {stats.plays === 1 ? "play" : "plays"}
-        </p>
-        {stats.minutes ? (
-          <p>
-            <strong>{listened}</strong> listened
-          </p>
-        ) : null}
-        <p>
-          <strong>{stats.artists}</strong> {stats.artists === 1 ? "artist" : "artists"}
-        </p>
-      </div>
-      <div className="friend-stats__hours">
-        {stats.hours.map((count, hour) => (
-          <Tooltip key={hour} placement="top" content={`${hourName(hour)} · ${plays(count)}`}>
-            <span
-              className="friend-stats__hour"
-              data-empty={count ? undefined : ""}
-              style={{ "--share": count / peak }}
-            />
-          </Tooltip>
-        ))}
-      </div>
-      <div className="friend-stats__axis" aria-hidden="true">
-        {HOUR_MARKS.map((mark) => (
-          <span key={mark}>{mark}</span>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 export function ProfilePage({
   title,
   action,
-  playing,
+  listener,
   top,
   busy,
   children,
 }: {
   title: string;
   action: ReactNode;
-  playing: Playing | null | undefined;
+  listener: Listener | null | undefined;
   top: TopPlays | null | undefined;
   busy: boolean;
   children: ReactNode;
 }) {
-  const art = top?.artists[0]?.artworkUrl ?? playing?.artworkUrl;
+  const track = listener?.nowPlaying ?? listener?.lastPlayed;
+  const art = top?.artists[0]?.artworkUrl ?? track?.artworkUrl;
   const tint = useCollectionTint(art && friendArtSrc(art));
   return (
     <div
@@ -200,16 +333,13 @@ export function ProfilePage({
       aria-busy={busy}
     >
       <header className="native-library-header friend-page__header">
-        <div>
-          <div className="native-library-title-row friend-page__title">
-            <h1 className="page-title">{title}</h1>
-            {action}
-          </div>
-          <FriendNowPlaying playing={playing} />
+        <div className="native-library-title-row friend-page__title">
+          <h1 className="page-title">{title}</h1>
+          {action}
         </div>
-        {top?.stats?.plays ? <ListeningStats stats={top.stats} /> : null}
+        <FriendListening listener={listener} />
       </header>
-      <div className="native-library-content">{children}</div>
+      <div className="native-library-content friend-page__sections">{children}</div>
     </div>
   );
 }
@@ -258,37 +388,13 @@ export default function FriendPage() {
 
   const blend = profile.data?.blend ?? null;
   const playlists = [...(blend ? [blend] : []), ...(profile.data?.playlists ?? [])];
-  const blendNote =
-    friend && friends.data?.state === "linked" && friends.data.sharing && !blend ? (
-      <p className="friend-page__empty">
-        Your Blend with {name} fills in once you both play a few more tracks.
-      </p>
-    ) : null;
-
-  const lists = friend ? (
-    hasTopPlays(top) ? (
-      <TopPlayLists top={top} />
-    ) : (
-      <p className="friend-page__empty">No top plays from {name} yet.</p>
-    )
-  ) : self ? (
-    <>
-      {friends.data?.state === "linked" && !friends.data.sharing ? (
-        <p className="friend-page__empty">
-          {"Friends don't see your listening. Share it in Profile."}
-        </p>
-      ) : null}
-      {hasTopPlays(top) ? <TopPlayLists top={top} /> : null}
-    </>
-  ) : (
-    <p className="friend-page__empty">Friends see what {name} is playing and their top plays.</p>
-  );
+  const linked = friends.data?.state === "linked" ? friends.data : null;
 
   return (
     <ProfilePage
       title={name}
       action={profile.data ? <FriendButton handle={handle} /> : null}
-      playing={friend?.nowPlaying}
+      listener={friend}
       top={top}
       busy={profile.isPending}
     >
@@ -306,16 +412,26 @@ export default function FriendPage() {
         )
       ) : profile.data ? (
         <>
-          {playlists.length ? (
-            <DiscoverPlaylistSection
-              title={blend ? "Playlists" : "Public playlists"}
-              playlists={playlists.map((playlist) => ({ ...playlist, curator: null }))}
-            />
-          ) : (
-            <p className="friend-page__empty">No public playlists from {name} yet.</p>
-          )}
-          {blendNote}
-          {lists}
+          <ProfilePlaylists
+            title={blend ? "Playlists" : "Public playlists"}
+            name={name}
+            playlists={playlists.map((playlist) => ({ ...playlist, curator: null }))}
+          />
+          <ProfileNotes
+            notes={[
+              !friend && !self && `Friends see what ${name} is playing and their top plays.`,
+              self &&
+                linked?.sharing === false &&
+                "Friends don't see your listening. Share it in Profile.",
+              !playlists.length && `No public playlists from ${name} yet.`,
+              !!friend &&
+                !!linked?.sharing &&
+                !blend &&
+                `Your Blend with ${name} fills in once you both play a few more tracks.`,
+              !!friend && !hasTopPlays(top) && `No top plays from ${name} yet.`,
+            ]}
+          />
+          {(friend || self) && hasTopPlays(top) ? <TopPlayLists top={top} /> : null}
         </>
       ) : null}
     </ProfilePage>

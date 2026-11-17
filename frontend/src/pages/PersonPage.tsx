@@ -10,8 +10,13 @@ import { queryKeys } from "../queryClient";
 import { peopleClient } from "../utils/api/clients/people.ts";
 import { readApiError } from "../utils/api/errors.ts";
 import { BLEND_MIX_PREFIX } from "../../../lib/browsePlaylists.ts";
-import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
-import { hasTopPlays, ProfilePage, TopPlayLists } from "./FriendPage";
+import {
+  hasTopPlays,
+  ProfileNotes,
+  ProfilePage,
+  ProfilePlaylists,
+  TopPlayLists,
+} from "./FriendPage";
 
 export default function PersonPage() {
   const { username = "" } = useParams();
@@ -32,11 +37,11 @@ export default function PersonPage() {
   const name = person?.username ?? username;
   const listed = people.data?.people.find((each) => each.id === person?.id);
   const friends = useFriends(!!listed?.handle, true);
-  const playing =
-    listed?.nowPlaying ??
-    (friends.data?.state === "linked"
-      ? friends.data.friends.find((friend) => friend.handle === listed?.handle)?.nowPlaying
-      : null);
+  const hubFriend =
+    friends.data?.state === "linked"
+      ? friends.data.friends.find((friend) => friend.handle === listed?.handle)
+      : null;
+  const listener = listed?.nowPlaying || !hubFriend?.nowPlaying ? listed : hubFriend;
   const playlists = person?.playlists ?? [];
   const self = !!person && person.id === user?.id;
   const hasBlend = playlists.some((playlist) => playlist.id.startsWith(BLEND_MIX_PREFIX));
@@ -58,7 +63,7 @@ export default function PersonPage() {
     <ProfilePage
       title={name}
       action={listed?.handle ? <FriendButton handle={listed.handle} local /> : null}
-      playing={playing}
+      listener={listener}
       top={person?.topPlays}
       busy={profile.isPending}
     >
@@ -76,13 +81,11 @@ export default function PersonPage() {
         )
       ) : person ? (
         <>
-          <DiscoverPlaylistSection title="Playlists" playlists={playlists} />
-          {note ? <p className="friend-page__empty">{note}</p> : null}
-          {hasTopPlays(person.topPlays) ? (
-            <TopPlayLists top={person.topPlays} />
-          ) : (
-            <p className="friend-page__empty">No top plays from {name} yet.</p>
-          )}
+          <ProfilePlaylists title="Playlists" name={name} playlists={playlists} />
+          <ProfileNotes
+            notes={[note, !hasTopPlays(person.topPlays) && `No top plays from ${name} yet.`]}
+          />
+          {hasTopPlays(person.topPlays) ? <TopPlayLists top={person.topPlays} /> : null}
         </>
       ) : null}
     </ProfilePage>
