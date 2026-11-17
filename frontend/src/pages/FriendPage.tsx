@@ -1,10 +1,13 @@
+import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { AlertCircle, Users } from "../components/icons";
 import StatePanel from "../components/StatePanel";
+import Tooltip from "../components/Tooltip";
+import { useCollectionTint } from "../components/CollectionHeader";
 import { FriendButton } from "../components/FriendButton";
-import { FriendArt, useFriends, useHubLink } from "../components/PlayerFriends";
+import { FriendArt, friendArtSrc, useFriends, useHubLink } from "../components/PlayerFriends";
 import { useAuth } from "../contexts/AuthContext";
 import { queryKeys } from "../queryClient";
 import { hubLinkClient } from "../utils/api/clients/hubLink.ts";
@@ -12,6 +15,7 @@ import { peopleClient } from "../utils/api/clients/people.ts";
 import { readApiError } from "../utils/api/errors.ts";
 import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
 import { resolveAlbumPath, resolveArtistPath } from "../navigation/resolveLinks.ts";
+import { albumPath } from "../../../lib/albumPath.ts";
 
 const plays = (count: number) => `${count} ${count === 1 ? "play" : "plays"}`;
 const searchPath = (query: string) => `/search?${new URLSearchParams({ q: query })}`;
@@ -65,7 +69,7 @@ type Playing = NonNullable<
 export const hasTopPlays = (top: TopPlays | null | undefined): top is TopPlays =>
   !!top && top.artists.length + top.albums.length + top.tracks.length > 0;
 
-export function FriendNowPlaying({ playing }: { playing: Playing | null | undefined }) {
+function FriendNowPlaying({ playing }: { playing: Playing | null | undefined }) {
   if (!playing) return null;
   return (
     <Link
@@ -94,7 +98,9 @@ export function TopPlayLists({ top }: { top: TopPlays }) {
         title="Top artists"
         rows={top.artists.map((artist) => ({
           key: artist.name,
-          to: resolveArtistPath({ name: artist.name }) ?? searchPath(artist.name),
+          to: artist.mbid
+            ? `/artist/${artist.mbid}`
+            : (resolveArtistPath({ name: artist.name }) ?? searchPath(artist.name)),
           name: artist.name,
           note: plays(artist.plays),
           art: artist.artworkUrl,
@@ -105,9 +111,10 @@ export function TopPlayLists({ top }: { top: TopPlays }) {
         title="Top albums"
         rows={top.albums.map((album) => ({
           key: `${album.artist}\u0000${album.title}`,
-          to:
-            resolveAlbumPath({ artistName: album.artist, albumName: album.title }) ??
-            searchPath(album.title),
+          to: album.mbid
+            ? albumPath(album.mbid)
+            : (resolveAlbumPath({ artistName: album.artist, albumName: album.title }) ??
+              searchPath(album.title)),
           name: album.title,
           note: `${album.artist} · ${plays(album.plays)}`,
           art: album.artworkUrl,
@@ -117,11 +124,92 @@ export function TopPlayLists({ top }: { top: TopPlays }) {
         title="Top tracks"
         rows={top.tracks.map((track) => ({
           key: `${track.artist}\u0000${track.title}`,
-          to: searchPath(`${track.artist} ${track.title}`),
+          to: track.albumMbid
+            ? albumPath(track.albumMbid, { track: track.mbid })
+            : searchPath(`${track.artist} ${track.title}`),
           name: track.title,
           note: `${track.artist} · ${plays(track.plays)}`,
         }))}
       />
+    </div>
+  );
+}
+
+const HOUR_MARKS = ["12am", "6am", "12pm", "6pm", "11pm"];
+const hourName = (hour: number) => `${hour % 12 || 12}${hour < 12 ? "am" : "pm"}`;
+
+function ListeningStats({ stats }: { stats: NonNullable<TopPlays["stats"]> }) {
+  const peak = Math.max(1, ...stats.hours);
+  const listened = stats.minutes >= 60 ? `${Math.round(stats.minutes / 60)}h` : `${stats.minutes}m`;
+  return (
+    <section className="friend-stats" aria-label="Listening in the last 30 days">
+      <div className="friend-stats__totals">
+        <p>
+          <strong>{stats.plays}</strong> {stats.plays === 1 ? "play" : "plays"}
+        </p>
+        {stats.minutes ? (
+          <p>
+            <strong>{listened}</strong> listened
+          </p>
+        ) : null}
+        <p>
+          <strong>{stats.artists}</strong> {stats.artists === 1 ? "artist" : "artists"}
+        </p>
+      </div>
+      <div className="friend-stats__hours">
+        {stats.hours.map((count, hour) => (
+          <Tooltip key={hour} placement="top" content={`${hourName(hour)} · ${plays(count)}`}>
+            <span
+              className="friend-stats__hour"
+              data-empty={count ? undefined : ""}
+              style={{ "--share": count / peak }}
+            />
+          </Tooltip>
+        ))}
+      </div>
+      <div className="friend-stats__axis" aria-hidden="true">
+        {HOUR_MARKS.map((mark) => (
+          <span key={mark}>{mark}</span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function ProfilePage({
+  title,
+  action,
+  playing,
+  top,
+  busy,
+  children,
+}: {
+  title: string;
+  action: ReactNode;
+  playing: Playing | null | undefined;
+  top: TopPlays | null | undefined;
+  busy: boolean;
+  children: ReactNode;
+}) {
+  const art = top?.artists[0]?.artworkUrl ?? playing?.artworkUrl;
+  const tint = useCollectionTint(art && friendArtSrc(art));
+  return (
+    <div
+      className="library-page native-library-page collection-page"
+      style={tint ? { "--collection-tint": tint } : undefined}
+      aria-busy={busy}
+    >
+      <header className="native-library-header friend-page__header">
+        <div>
+          <div className="native-library-title-row friend-page__title">
+            <h1 className="page-title">{title}</h1>
+            {action}
+          </div>
+          <FriendNowPlaying playing={playing} />
+        </div>
+        {top?.stats?.plays ? <ListeningStats stats={top.stats} /> : null}
+      </header>
+      <div className="native-library-content">{children}</div>
     </div>
   );
 }
@@ -197,42 +285,39 @@ export default function FriendPage() {
   );
 
   return (
-    <div className="library-page native-library-page" aria-busy={profile.isPending}>
-      <header className="native-library-header">
-        <div className="native-library-title-row friend-page__title">
-          <h1 className="page-title">{name}</h1>
-          {profile.data ? <FriendButton handle={handle} /> : null}
-        </div>
-        <FriendNowPlaying playing={friend?.nowPlaying} />
-      </header>
-      <div className="native-library-content">
-        {profile.isError ? (
-          readApiError(profile.error).status === 404 ? (
-            <StatePanel icon={<Users />} title={`No one on aurral.org is ${name}`} />
-          ) : (
-            <StatePanel
-              icon={<AlertCircle />}
-              title={`Couldn't load ${name}`}
-              role="alert"
-              onRetry={() => profile.refetch()}
-              retrying={profile.isFetching}
+    <ProfilePage
+      title={name}
+      action={profile.data ? <FriendButton handle={handle} /> : null}
+      playing={friend?.nowPlaying}
+      top={top}
+      busy={profile.isPending}
+    >
+      {profile.isError ? (
+        readApiError(profile.error).status === 404 ? (
+          <StatePanel icon={<Users />} title={`No one on aurral.org is ${name}`} />
+        ) : (
+          <StatePanel
+            icon={<AlertCircle />}
+            title={`Couldn't load ${name}`}
+            role="alert"
+            onRetry={() => profile.refetch()}
+            retrying={profile.isFetching}
+          />
+        )
+      ) : profile.data ? (
+        <>
+          {playlists.length ? (
+            <DiscoverPlaylistSection
+              title={blend ? "Playlists" : "Public playlists"}
+              playlists={playlists.map((playlist) => ({ ...playlist, curator: null }))}
             />
-          )
-        ) : profile.data ? (
-          <>
-            {playlists.length ? (
-              <DiscoverPlaylistSection
-                title={blend ? "Playlists" : "Public playlists"}
-                playlists={playlists.map((playlist) => ({ ...playlist, curator: null }))}
-              />
-            ) : (
-              <p className="friend-page__empty">No public playlists from {name} yet.</p>
-            )}
-            {blendNote}
-            {lists}
-          </>
-        ) : null}
-      </div>
-    </div>
+          ) : (
+            <p className="friend-page__empty">No public playlists from {name} yet.</p>
+          )}
+          {blendNote}
+          {lists}
+        </>
+      ) : null}
+    </ProfilePage>
   );
 }

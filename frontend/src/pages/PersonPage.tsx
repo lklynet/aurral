@@ -11,7 +11,7 @@ import { peopleClient } from "../utils/api/clients/people.ts";
 import { readApiError } from "../utils/api/errors.ts";
 import { BLEND_MIX_PREFIX } from "../../../lib/browsePlaylists.ts";
 import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
-import { FriendNowPlaying, hasTopPlays, TopPlayLists } from "./FriendPage";
+import { hasTopPlays, ProfilePage, TopPlayLists } from "./FriendPage";
 
 export default function PersonPage() {
   const { username = "" } = useParams();
@@ -55,39 +55,36 @@ export default function PersonPage() {
             : null;
 
   return (
-    <div className="library-page native-library-page" aria-busy={profile.isPending}>
-      <header className="native-library-header">
-        <div className="native-library-title-row friend-page__title">
-          <h1 className="page-title">{name}</h1>
-          {listed?.handle ? <FriendButton handle={listed.handle} local /> : null}
-        </div>
-        <FriendNowPlaying playing={playing} />
-      </header>
-      <div className="native-library-content">
-        {profile.isError ? (
-          readApiError(profile.error).status === 404 ? (
-            <StatePanel icon={<Users />} title={`${username} isn't sharing listening with you`} />
+    <ProfilePage
+      title={name}
+      action={listed?.handle ? <FriendButton handle={listed.handle} local /> : null}
+      playing={playing}
+      top={person?.topPlays}
+      busy={profile.isPending}
+    >
+      {profile.isError ? (
+        readApiError(profile.error).status === 404 ? (
+          <StatePanel icon={<Users />} title={`${username} isn't sharing listening with you`} />
+        ) : (
+          <StatePanel
+            icon={<AlertCircle />}
+            title={`Couldn't load ${username}`}
+            role="alert"
+            onRetry={() => profile.refetch()}
+            retrying={profile.isFetching}
+          />
+        )
+      ) : person ? (
+        <>
+          <DiscoverPlaylistSection title="Playlists" playlists={playlists} />
+          {note ? <p className="friend-page__empty">{note}</p> : null}
+          {hasTopPlays(person.topPlays) ? (
+            <TopPlayLists top={person.topPlays} />
           ) : (
-            <StatePanel
-              icon={<AlertCircle />}
-              title={`Couldn't load ${username}`}
-              role="alert"
-              onRetry={() => profile.refetch()}
-              retrying={profile.isFetching}
-            />
-          )
-        ) : person ? (
-          <>
-            <DiscoverPlaylistSection title="Playlists" playlists={playlists} />
-            {note ? <p className="friend-page__empty">{note}</p> : null}
-            {hasTopPlays(person.topPlays) ? (
-              <TopPlayLists top={person.topPlays} />
-            ) : (
-              <p className="friend-page__empty">No top plays from {name} yet.</p>
-            )}
-          </>
-        ) : null}
-      </div>
-    </div>
+            <p className="friend-page__empty">No top plays from {name} yet.</p>
+          )}
+        </>
+      ) : null}
+    </ProfilePage>
   );
 }

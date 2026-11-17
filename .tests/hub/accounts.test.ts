@@ -402,10 +402,17 @@ test("linked servers add friends by handle, both asking makes friends, friends s
   const blendTracks = (token: string) =>
     api("/v1/friends/blend-tracks", { headers: { authorization: `Bearer ${token}` } });
   const time = Date.now();
-  const top = (plays: number) => ({
-    artists: [{ name: "Radiohead", plays }],
+  const radiohead = "a74b1b7f-71a5-4011-9441-d0b5e4122711";
+  const top = (plays: number, artists = 1) => ({
+    artists: [{ name: "Radiohead", plays, mbid: radiohead }],
     albums: [],
     tracks: [{ title: "Nude", artist: "Radiohead", plays }],
+    stats: {
+      plays,
+      minutes: plays * 4,
+      artists,
+      hours: Array.from({ length: 24 }, (_, hour) => (hour === 20 ? plays : 0)),
+    },
   });
   await share(
     "bob",
@@ -439,7 +446,7 @@ test("linked servers add friends by handle, both asking makes friends, friends s
     { title: "Old", artist: "Radiohead", album: null },
     time - 1,
     {
-      ...top(2),
+      ...top(2, 2),
       artists: [
         { name: "radiohead", plays: 2 },
         { name: "Björk", plays: 4 },
@@ -466,8 +473,14 @@ test("linked servers add friends by handle, both asking makes friends, friends s
         nowPlaying: { title: "Nude", artist: "Radiohead", album: null },
         lastPlayed: { title: "Old", artist: "Radiohead", album: null, at: time - 300_000 },
         topPlays: {
+          stats: {
+            plays: 5,
+            minutes: 20,
+            artists: 2,
+            hours: Array.from({ length: 24 }, (_, hour) => (hour === 20 ? 5 : 0)),
+          },
           artists: [
-            { name: "Radiohead", plays: 5 },
+            { name: "Radiohead", plays: 5, mbid: radiohead },
             { name: "Björk", plays: 4 },
           ],
           albums: [],
@@ -554,6 +567,8 @@ test("a linked server shares now playing and top plays, and they leave with the 
   assert.equal((await share("/top-plays", "PUT", tooManyBlend)).status, 400);
   assert.equal((await share("/top-plays", "PUT", top)).status, 204);
   assert.equal((await stored())?.blend_tracks, null);
+  const notMbid = { ...top, artists: [{ name: "Radiohead", plays: 12, mbid: "12" }] };
+  assert.equal((await share("/top-plays", "PUT", notMbid)).status, 400);
   assert.equal((await share("", "DELETE")).status, 204);
   assert.equal(await stored(), null);
 

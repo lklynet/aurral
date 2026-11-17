@@ -3,7 +3,9 @@ import { afterAll, beforeEach, test, vi } from "vite-plus/test";
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import hub, { type Bindings } from "../../hub/src/index.ts";
+import * as v from "valibot";
 import { approveLink, unlinkForAccount } from "../../hub/src/links.ts";
+import { topPlaysSchema } from "../../hub/src/listening.ts";
 import { localHub } from "../../hub/testing.ts";
 
 const HUB = "http://hub.test";
@@ -477,12 +479,19 @@ test("sharing sends now playing and top plays, Off clears aurral.org, and relink
     const status = await link.hubLinkStatus(lee.id);
     return status.state === "linked" && status.sharing;
   };
+  const mbids = {
+    artistMbid: "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+    albumMbid: "6e335887-60ba-38f0-95af-fae7774336bf",
+  };
+  const reckoner = "b5a8e5b4-ed5f-4e3c-9a3f-1d2e3c4b5a69";
   for (const [index, title] of ["Reckoner", "Reckoner", "Nude"].entries()) {
     playEvents.recordPlayEvent(lee.id, {
       trackId: title,
       title,
       artist: "Radiohead",
       album: "In Rainbows",
+      ...mbids,
+      trackMbid: title === "Reckoner" ? reckoner : "local-7",
       playedAt: Date.now() - (index + 1) * 600_000,
       source: "native-player",
     });
@@ -502,14 +511,26 @@ test("sharing sends now playing and top plays, Off clears aurral.org, and relink
     artist: "Radiohead",
     album: null,
   });
-  assert.deepEqual(JSON.parse(shared?.top_plays ?? ""), {
-    artists: [{ name: "Radiohead", plays: 3 }],
-    albums: [{ title: "In Rainbows", artist: "Radiohead", plays: 3 }],
+  const { stats, ...top } = v.parse(topPlaysSchema, JSON.parse(shared?.top_plays ?? ""));
+  assert.deepEqual(top, {
+    artists: [{ name: "Radiohead", plays: 3, mbid: mbids.artistMbid }],
+    albums: [{ title: "In Rainbows", artist: "Radiohead", plays: 3, mbid: mbids.albumMbid }],
     tracks: [
-      { title: "Reckoner", artist: "Radiohead", plays: 2 },
-      { title: "Nude", artist: "Radiohead", plays: 1 },
+      {
+        title: "Reckoner",
+        artist: "Radiohead",
+        plays: 2,
+        mbid: reckoner,
+        albumMbid: mbids.albumMbid,
+      },
+      { title: "Nude", artist: "Radiohead", plays: 1, mbid: null, albumMbid: mbids.albumMbid },
     ],
   });
+  assert.ok(stats);
+  assert.deepEqual(
+    { ...stats, hours: stats.hours.reduce((total, count) => total + count) },
+    { plays: 3, minutes: 0, artists: 1, hours: 3 },
+  );
 
   hubReachable = false;
   await assert.rejects(friends.shareListening(lee.id, false), { status: 502 });

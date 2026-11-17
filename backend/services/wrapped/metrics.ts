@@ -148,6 +148,7 @@ type Tally = {
   preview: string | null;
   beats: WrappedBeats | null;
   mbid: string | null;
+  albumMbid: string | null;
   libraryTrackId: number | null;
   libraryAlbumId: number | null;
 };
@@ -208,6 +209,7 @@ export function calculateWrapped(
       preview: null,
       beats: null,
       mbid: null,
+      albumMbid: null,
       libraryTrackId: null,
       libraryAlbumId: null,
     };
@@ -217,6 +219,7 @@ export function calculateWrapped(
     row.artwork ||= play.artwork ?? null;
     row.album ||= play.album ?? null;
     row.mbid ||= mbid ?? null;
+    row.albumMbid ||= play.albumMbid ?? null;
     if (row.libraryTrackId == null && play.libraryTrackId != null) {
       row.libraryTrackId = play.libraryTrackId;
       row.libraryAlbumId = play.libraryAlbumId ?? null;
