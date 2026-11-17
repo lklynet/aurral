@@ -102,7 +102,10 @@ function PasswordGroup() {
       setNewPassword("");
       setConfirmPassword("");
       showSuccess(hasLocalPassword ? "Password changed" : "Password set");
-      await queryClient.invalidateQueries({ queryKey: queryKeys.myIdentities(user?.id) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.myIdentities(user?.id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.mySessions(user?.id) }),
+      ]);
     } catch (err) {
       const failure = readApiError(err);
       showError(failure.error || failure.message || failure.text || "Couldn't save your password");

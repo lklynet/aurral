@@ -6,6 +6,7 @@ import {
   deleteSession,
   deleteUserSession,
   getSessionByToken,
+  isSessionLive,
   listUserSessions,
   touchReauth,
 } from "../config/session-helpers.ts";
@@ -121,8 +122,9 @@ export default new Hono<AppEnv>()
     }
   })
   .post("/pair", validate("json", pairBody), (c) => {
-    const userId = consumePairingCode(c.req.valid("json").code);
-    const user = userId == null ? null : userOps.getUserById(userId);
+    const issued = consumePairingCode(c.req.valid("json").code);
+    const user =
+      issued && isSessionLive(issued.sessionId) ? userOps.getUserById(issued.userId) : null;
     if (!user || user.status !== "active") {
       return c.json({ error: "That code is wrong or has expired" }, 401);
     }
@@ -136,7 +138,7 @@ export default new Hono<AppEnv>()
         403,
       );
     }
-    return c.json(createPairingCode(session.userId), 201);
+    return c.json(createPairingCode(session.userId, session.id), 201);
   })
   .get("/sessions", requireAuth, requireUserAccount, (c) => {
     const current = getSessionByToken(bearerToken(c))?.id ?? null;
@@ -162,9 +164,7 @@ export default new Hono<AppEnv>()
   )
   .post("/logout", requireAuth, (c) => {
     const token = bearerToken(c);
-    if (token) {
-      deleteSession(token);
-    }
+    if (token && deleteSession(token)) websocketService.disconnectSession(token);
     return c.json({ success: true }, 200);
   })
   .get("/me", requireAuth, (c) => {

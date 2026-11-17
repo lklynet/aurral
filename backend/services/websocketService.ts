@@ -106,7 +106,7 @@ class WebSocketService extends EventEmitter {
     let sessionToken: string | undefined;
     if (isAuthRequired() || isCrossSite(req)) {
       const requestUrl = new URL(req.url || "", "http://localhost");
-      const token = requestUrl.searchParams.get("token");
+      const token = requestUrl.searchParams.get("token")?.trim();
       sessionUser = resolveSessionUserFromToken(token);
       if (sessionUser && token) {
         sessionToken = token;

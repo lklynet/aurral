@@ -22,6 +22,9 @@ const renewSessionStmt = db.prepare<[number, number, number]>(
 const listUserSessionsStmt = db.prepare<[number, number], SessionsRow>(
   "SELECT * FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY coalesce(last_used_at, created_at) DESC",
 );
+const liveSessionStmt = db.prepare<[number, number], number>(
+  "SELECT 1 FROM sessions WHERE id = ? AND expires_at > ?",
+);
 const deleteUserSessionStmt = db.prepare<[number, number], { token: string }>(
   "DELETE FROM sessions WHERE id = ? AND user_id = ? RETURNING token",
 );
@@ -126,3 +129,6 @@ export const listUserSessions = (userId: number) => listUserSessionsStmt.all(use
 
 export const deleteUserSession = (userId: number, sessionId: number) =>
   deleteUserSessionStmt.get(sessionId, userId)?.token ?? null;
+
+export const isSessionLive = (sessionId: number) =>
+  liveSessionStmt.get(sessionId, Date.now()) !== undefined;

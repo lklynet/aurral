@@ -13,8 +13,9 @@ const [
   isolatedState,
   { db },
   { userOps, dbOps },
-  { createSession, getSessionByToken },
+  { createSession, deleteSessionsByUserId, getSessionByToken },
   { hashPassword },
+  { getApiKey },
   guards,
   { default: auth },
   { websocketService },
@@ -24,6 +25,7 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/config/session-helpers.ts"),
   () => import("../../backend/services/passwordHash.ts"),
+  () => import("../../backend/services/auth.ts"),
   () => import("../../backend/middleware/guards.ts"),
   () => import("../../backend/routes/auth.ts"),
   () => import("../../backend/services/websocketService.ts"),
@@ -52,12 +54,16 @@ const pair = (code: string) =>
     body: JSON.stringify({ code }),
   });
 
+const issue = async (token: string) => {
+  const issued = await app.request("/api/auth/pairing-codes", { method: "POST", ...bearer(token) });
+  assert.equal(issued.status, 201);
+  return ((await issued.json()) as { code: string }).code;
+};
+
 test("a code from a signed-in session pairs one device, once", async () => {
   const user = createUser("lee");
   const { token } = createSession(user.id);
-  const issued = await app.request("/api/auth/pairing-codes", { method: "POST", ...bearer(token) });
-  assert.equal(issued.status, 201);
-  const { code } = (await issued.json()) as { code: string };
+  const code = await issue(token);
   assert.match(code, /^[0-9A-HJKMNP-TV-Z]{10}$/);
 
   const redeemed = await Promise.all([pair(code), pair(code)]);
@@ -65,17 +71,23 @@ test("a code from a signed-in session pairs one device, once", async () => {
   const paired = (await redeemed.find((response) => response.ok)!.json()) as { token: string };
   assert.equal(getSessionByToken(paired.token)?.userId, user.id);
   assert.equal(getSessionByToken(paired.token)?.reauthenticatedAt, 0);
+
+  const revoked = await issue(token);
+  deleteSessionsByUserId(user.id);
+  assert.equal((await pair(revoked)).status, 401);
 });
 
 test("only a signed-in session can issue a code", async () => {
   createUser("basic");
-  const basic = `Basic ${Buffer.from("basic:password").toString("base64")}`;
-  const response = await app.request("/api/auth/pairing-codes", {
-    method: "POST",
-    headers: { Authorization: basic },
-  });
-  assert.equal(response.status, 403);
-  assert.equal(((await response.json()) as { error: string }).error, "session_required");
+  for (const [header, value] of [
+    ["Authorization", `Basic ${Buffer.from("basic:password").toString("base64")}`],
+    ["X-Api-Key", getApiKey()],
+  ] as const) {
+    const headers = { [header]: value };
+    const response = await app.request("/api/auth/pairing-codes", { method: "POST", headers });
+    assert.equal(response.status, 403);
+    assert.equal(((await response.json()) as { error: string }).error, "session_required");
+  }
 });
 
 test("signing a device out ends its session and sockets, and reaches only your own", async () => {
