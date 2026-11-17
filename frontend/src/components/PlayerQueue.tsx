@@ -9,6 +9,7 @@ import { useToast } from "../contexts/ToastContext";
 import TooltipButton from "./TooltipButton";
 import PlayerLyrics from "./PlayerLyrics";
 import PlayerFriends, { FriendsDialog, useFriends } from "./PlayerFriends";
+import PlayerOriginLink from "./PlayerOriginLink";
 import PillToggle from "./PillToggle";
 import { isAutoplayEntry } from "../utils/audioQueue";
 import { useAuth } from "../contexts/AuthContext";
@@ -272,9 +273,9 @@ export function PlayerQueuePanel({
   onClose,
   closeRef,
 }: PlayerQueuePanelProps) {
-  const { currentTrack, source } = useAudioQueue();
+  const { currentTrack, activeSource } = useAudioQueue();
   const tabsId = useId();
-  const playingFrom = currentTrack?.queueSource?.label ?? source?.label;
+  const playingFrom = activeSource?.label;
   const [height, setHeight] = useState<number | null>(null);
   const [managingFriends, setManagingFriends] = useState(false);
   const friends = useFriends(view === "friends");
@@ -349,14 +350,21 @@ export function PlayerQueuePanel({
               <div className="player-queue__now">
                 <QueueArt src={currentTrack.artwork} />
                 <span className="player-queue__copy">
-                  <span className="player-queue__name">{currentTrack.title}</span>
+                  <span className="player-queue__name">
+                    <PlayerOriginLink className="global-player__link">
+                      {currentTrack.title}
+                    </PlayerOriginLink>
+                  </span>
                   {currentTrack.artist ? (
                     <span className="player-queue__artist">{currentTrack.artist}</span>
                   ) : null}
                 </span>
               </div>
               {playingFrom ? (
-                <p className="player-queue__source">Playing from {playingFrom}</p>
+                <p className="player-queue__source">
+                  Playing from{" "}
+                  <PlayerOriginLink className="global-player__link">{playingFrom}</PlayerOriginLink>
+                </p>
               ) : null}
             </section>
             <UpNextQueue />

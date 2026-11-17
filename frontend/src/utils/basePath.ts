@@ -13,3 +13,9 @@ export const normalizeBasePathWithTrailingSlash = (baseUrl: string | undefined) 
 
 export const getAppBasePath = () =>
   normalizeBasePath(import.meta.env.VITE_BASE_PATH || import.meta.env.BASE_URL);
+
+export const stripBasePath = (pathname: string, base: string) =>
+  base === "/" ? pathname : pathname.slice(base.length) || "/";
+
+export const getAppRoutePath = () =>
+  stripBasePath(window.location.pathname, getAppBasePath()) + window.location.search;

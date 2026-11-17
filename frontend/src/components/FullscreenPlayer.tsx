@@ -6,6 +6,7 @@ import { useModalDialog } from "../hooks/useModalDialog.ts";
 import ArtworkImage from "./ArtworkImage";
 import { LibraryItemMenu } from "./LibraryItemMenu";
 import PlayerLyrics, { useTrackLyrics } from "./PlayerLyrics";
+import PlayerOriginLink from "./PlayerOriginLink";
 import { PlayerMiniProgress, PlayerSeek } from "./PlayerProgress";
 import { UpNextQueue } from "./PlayerQueue";
 import PlayerVisualizer, { type VisualizerMode, type VisualizerScene } from "./PlayerVisualizer";
@@ -164,11 +165,17 @@ function StageArt({ track, className }: { track: PlayerTrack; className: string 
   );
 }
 
-function StageMeta({ track }: { track: PlayerTrack }) {
+type StageProps = { track: PlayerTrack; onLeave: () => void };
+
+function StageMeta({ track, onLeave }: StageProps) {
   const subtitle = [track.artist, track.album].filter(Boolean).join(" · ");
   return (
     <div className="fullscreen-player__meta">
-      <h2 className="fullscreen-player__title">{track.title}</h2>
+      <h2 className="fullscreen-player__title">
+        <PlayerOriginLink className="global-player__link" onClick={onLeave}>
+          {track.title}
+        </PlayerOriginLink>
+      </h2>
       {subtitle ? <p className="fullscreen-player__subtitle">{subtitle}</p> : null}
     </div>
   );
@@ -266,13 +273,13 @@ function CurrentLyric({ track }: { track: PlayerTrack }) {
   );
 }
 
-function MinimalStage({ track }: { track: PlayerTrack }) {
+function MinimalStage({ track, onLeave }: StageProps) {
   return (
     <div className="fullscreen-player__minimal">
       <CurrentLyric key={track.entryId} track={track} />
       <div className="fullscreen-player__foot">
         <StageArt track={track} className="fullscreen-player__art--thumb" />
-        <StageMeta track={track} />
+        <StageMeta track={track} onLeave={onLeave} />
         <div className="fullscreen-player__chrome">
           <StageControls compact />
         </div>
@@ -282,11 +289,11 @@ function MinimalStage({ track }: { track: PlayerTrack }) {
   );
 }
 
-function NowPlaying({ track }: { track: PlayerTrack }) {
+function NowPlaying({ track, onLeave }: StageProps) {
   return (
     <div className="fullscreen-player__now">
       <StageArt track={track} className="fullscreen-player__art--cover" />
-      <StageMeta track={track} />
+      <StageMeta track={track} onLeave={onLeave} />
       <div className="fullscreen-player__chrome">
         <PlayerSeek variant="sheet" />
         <StageControls />
@@ -295,11 +302,11 @@ function NowPlaying({ track }: { track: PlayerTrack }) {
   );
 }
 
-function TabbedStage({ track }: { track: PlayerTrack }) {
+function TabbedStage({ track, onLeave }: StageProps) {
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("lyrics");
   return (
     <div className="fullscreen-player__tabbed">
-      <NowPlaying track={track} />
+      <NowPlaying track={track} onLeave={onLeave} />
       <div className="fullscreen-player__column">
         <div className="player-queue__tabs fullscreen-player__chrome" role="tablist">
           {TABS.map((entry) => (
@@ -325,13 +332,13 @@ function TabbedStage({ track }: { track: PlayerTrack }) {
   );
 }
 
-function SplitStage({ track }: { track: PlayerTrack }) {
+function SplitStage({ track, onLeave }: StageProps) {
   return (
     <div className="fullscreen-player__split">
       <div className="fullscreen-player__column fullscreen-player__chrome">
         <UpNextQueue className="fullscreen-player__queue" />
       </div>
-      <NowPlaying track={track} />
+      <NowPlaying track={track} onLeave={onLeave} />
       <div className="fullscreen-player__column">
         <PlayerLyrics key={track.entryId} track={track} variant="stage" />
       </div>
@@ -416,11 +423,11 @@ export default function FullscreenPlayer({
         </TooltipButton>
       </div>
       {view === "minimal" ? (
-        <MinimalStage track={track} />
+        <MinimalStage track={track} onLeave={onClose} />
       ) : view === "tabbed" ? (
-        <TabbedStage track={track} />
+        <TabbedStage track={track} onLeave={onClose} />
       ) : (
-        <SplitStage track={track} />
+        <SplitStage track={track} onLeave={onClose} />
       )}
     </div>,
     document.body,

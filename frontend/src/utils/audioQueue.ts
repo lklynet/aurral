@@ -28,9 +28,20 @@ export type RadioSeed = Omit<
   "exclude" | "limit"
 >;
 
-export type QueueSource = { type: string; id: string | number; label?: string; seed?: RadioSeed };
+export type QueueSource = {
+  type: string;
+  id: string | number;
+  label?: string;
+  seed?: RadioSeed;
+  href?: string;
+};
 
 export const AUTOPLAY_SOURCE: QueueSource = { type: "autoplay", id: "autoplay", label: "Autoplay" };
+
+export function withOrigin(source: QueueSource | null, href: string): QueueSource | null {
+  if (source?.type === "radio" || source?.type === AUTOPLAY_SOURCE.type) return source;
+  return source ? { ...source, href } : { type: "page", id: href, href };
+}
 
 export type RepeatMode = "off" | "all" | "one";
 

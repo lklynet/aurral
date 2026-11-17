@@ -48,6 +48,7 @@ import { PlayerQueuePanel, UpNextQueue, type PlayerPanelView } from "./PlayerQue
 import PlayerLyrics from "./PlayerLyrics";
 import PlayerFriends, { FriendsDialog } from "./PlayerFriends";
 import FullscreenPlayer from "./FullscreenPlayer";
+import PlayerOriginLink from "./PlayerOriginLink";
 import { PlayerMiniProgress, PlayerSeek } from "./PlayerProgress";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { PLAYER_SHORTCUTS, usePlayerShortcuts } from "../hooks/usePlayerShortcuts.ts";
@@ -502,20 +503,23 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
     setDragOffset(0);
   };
 
+  const artworkImage = (thumbnail: boolean) =>
+    currentTrack.artwork && currentTrack.artwork !== failedArtwork ? (
+      <ArtworkImage
+        src={currentTrack.artwork}
+        thumbnail={thumbnail}
+        sizes="3rem"
+        alt=""
+        loading="eager"
+        onError={() => setFailedArtwork(currentTrack.artwork)}
+      />
+    ) : (
+      <Music />
+    );
+
   const artwork = (className: string, thumbnail = true) => (
     <span className={className} aria-hidden="true">
-      {currentTrack.artwork && currentTrack.artwork !== failedArtwork ? (
-        <ArtworkImage
-          src={currentTrack.artwork}
-          thumbnail={thumbnail}
-          sizes="3rem"
-          alt=""
-          loading="eager"
-          onError={() => setFailedArtwork(currentTrack.artwork)}
-        />
-      ) : (
-        <Music />
-      )}
+      {artworkImage(thumbnail)}
     </span>
   );
 
@@ -664,7 +668,11 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
 
                   <div className="now-playing__meta">
                     <div className="now-playing__title-row">
-                      <h2 className="now-playing__title">{currentTrack.title}</h2>
+                      <h2 className="now-playing__title">
+                        <PlayerOriginLink className="global-player__link" onClick={closeSheet}>
+                          {currentTrack.title}
+                        </PlayerOriginLink>
+                      </h2>
                       {favorite ? (
                         <button
                           type="button"
@@ -830,10 +838,16 @@ function GlobalPlayerBar({ minimized, onMinimizedChange }: GlobalPlayerBarProps)
 
       <div className="global-player__inner">
         <div className="global-player__track">
-          {artwork("global-player__art global-player__art--bar")}
+          <PlayerOriginLink cover className="global-player__art global-player__art--bar">
+            {artworkImage(true)}
+          </PlayerOriginLink>
           <div className="global-player__meta">
             <div className="global-player__title-row">
-              <span className="global-player__title">{currentTrack.title}</span>
+              <span className="global-player__title">
+                <PlayerOriginLink className="global-player__link">
+                  {currentTrack.title}
+                </PlayerOriginLink>
+              </span>
               {currentTrack.isPreview ? <PreviewChip /> : null}
             </div>
             {artistLabel || albumLabel ? (
