@@ -47,7 +47,6 @@ export function DiscoverPlaylistSection({
               artworkUrl={artworkUrl}
               meta={browsePlaylistMeta(playlist)}
               claim={claimOf(playlist)}
-              titleCover={playlist.provider === "community"}
             />
           );
         })}

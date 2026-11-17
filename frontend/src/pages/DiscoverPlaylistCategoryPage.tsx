@@ -40,7 +40,6 @@ export default function DiscoverPlaylistCategoryPage() {
                 artworkUrl={artworkUrl}
                 meta={browsePlaylistMeta(playlist)}
                 claim={claimOf(playlist)}
-                titleCover={playlist.provider === "community"}
               />
             );
           })}

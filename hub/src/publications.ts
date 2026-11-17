@@ -88,7 +88,8 @@ export const shelf = async (db: D1Database) =>
   (
     await db
       .prepare(
-        `SELECT id, title, track_count AS trackCount, published_at AS publishedAt, handle FROM (
+        `SELECT id, title, track_count AS trackCount, published_at AS publishedAt, handle,
+           json_extract(manifest, '$.tracks[0].artistName') AS artist FROM (
            SELECT publications.*, handles.handle, ROW_NUMBER() OVER (
              PARTITION BY links.account_id ORDER BY publications.published_at DESC
            ) AS place
@@ -99,7 +100,14 @@ export const shelf = async (db: D1Database) =>
          ) WHERE place <= ? ORDER BY publishedAt DESC LIMIT ?`,
       )
       .bind(SHELF_PER_ACCOUNT, SHELF_LIMIT)
-      .all<{ id: string; title: string; trackCount: number; publishedAt: number; handle: string }>()
+      .all<{
+        id: string;
+        title: string;
+        trackCount: number;
+        publishedAt: number;
+        handle: string;
+        artist: string | null;
+      }>()
   ).results;
 
 export async function publicPlaylist(db: D1Database, id: string) {
