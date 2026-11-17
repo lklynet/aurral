@@ -81,7 +81,7 @@ function changeableLink(userId: number) {
   return link;
 }
 
-const handleOf = (input: string) => {
+export const handleOf = (input: string) => {
   const handle = input.trim().replace(/^@/, "").toLowerCase();
   if (!HANDLE.test(handle)) throw new FriendError("No one on aurral.org has that handle.", 404);
   return handle;

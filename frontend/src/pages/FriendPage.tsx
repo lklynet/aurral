@@ -214,7 +214,10 @@ export default function FriendPage() {
             {profile.data.playlists.length ? (
               <DiscoverPlaylistSection
                 title="Public playlists"
-                playlists={profile.data.playlists}
+                playlists={profile.data.playlists.map((playlist) => ({
+                  ...playlist,
+                  curator: null,
+                }))}
               />
             ) : (
               <p className="friend-page__empty">No public playlists from {name} yet.</p>
