@@ -1110,10 +1110,15 @@ textarea:disabled {
   transition: padding-inline-start var(--aurral-duration-slow) var(--aurral-ease-standard);
 }
 
+.app-body {
+  display: contents;
+}
+
 .app-main-wrap {
   position: relative;
   width: 100%;
   flex: 1;
+  min-width: 0;
   min-height: 0;
   border: 0;
   border-radius: var(--aurral-radius) 0 0 0;
@@ -2365,6 +2370,7 @@ textarea:disabled {
 }
 
 .sidebar-player__art {
+  position: relative;
   display: flex;
   width: 2rem;
   height: 2rem;
@@ -12853,29 +12859,51 @@ button.playlist-detail__cover {
   align-items: center;
   gap: 1rem;
   min-height: 4.25rem;
-  padding: 0.25rem 0.875rem 0.35rem 2.5rem;
+  padding: 0.25rem 0.875rem 0.35rem;
 }
 
-.btn.global-player__collapse {
-  position: absolute;
-  z-index: var(--aurral-z-raised);
-  inset-block: 0;
-  left: 0;
-  width: 1.75rem;
+.global-player__minimize {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
   padding: 0;
+  overflow: hidden;
   border: 0;
-  border-radius: 0;
-  color: var(--aurral-text-subtle);
+  border-radius: var(--aurral-radius-sm);
+  background: none;
+  cursor: pointer;
 }
 
-.btn.global-player__collapse:focus-visible {
-  background: var(--aurral-surface-hover);
+.global-player__minimize:focus-visible {
+  outline: 2px solid var(--aurral-ring);
+  outline-offset: 2px;
+}
+
+.global-player__minimize .player-art-hover svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.player-art-hover {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--aurral-scrim);
   color: var(--aurral-text);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--aurral-duration-fast) var(--aurral-ease-out);
 }
 
-.global-player__collapse svg {
-  width: 1rem;
-  height: 1rem;
+:is(.global-player__minimize, .sidebar-player__open):focus-visible .player-art-hover {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :is(.global-player__minimize, .sidebar-player__open):hover .player-art-hover {
+    opacity: 1;
+  }
 }
 
 .global-player__track {
@@ -13243,32 +13271,105 @@ button.playlist-detail__cover {
   width: 6rem;
 }
 
-.global-player__panel-toggle.is-active {
-  background: var(--aurral-surface-selected);
-  color: var(--aurral-text);
-}
-
 .app-content {
   --player-queue-width: 22rem;
 }
 
+.player-rail {
+  display: flex;
+  width: 0;
+  flex: none;
+  justify-content: flex-start;
+  overflow: hidden;
+  visibility: hidden;
+  transition:
+    width var(--aurral-duration-slow) var(--aurral-ease-standard),
+    visibility 0s var(--aurral-ease-linear) var(--aurral-duration-slow);
+}
+
+.player-rail.is-open {
+  width: var(--player-queue-width);
+  visibility: visible;
+  transition: width var(--aurral-duration-slow) var(--aurral-ease-standard);
+}
+
 .player-queue {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 0.25rem);
-  z-index: var(--aurral-z-raised);
   display: flex;
   width: var(--player-queue-width);
-  height: var(--player-queue-height, min(36rem, 70dvh));
+  flex: none;
   flex-direction: column;
   overflow: hidden;
-  border-radius: var(--aurral-radius) 0 0 var(--aurral-radius);
-  background: var(--aurral-surface);
-  animation: fade-in var(--aurral-duration-fast) var(--aurral-ease-out);
+  contain: strict;
+}
+
+.btn.player-rail-edge {
+  width: 1.75rem;
+  flex: none;
+  margin-right: calc(-1 * var(--app-gutter));
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  color: var(--aurral-text-subtle);
+  transition:
+    width var(--aurral-duration-fast) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard);
+}
+
+.btn.player-rail-edge.is-open {
+  visibility: hidden;
+}
+
+.btn.player-rail-edge:focus-visible {
+  background: var(--aurral-surface-hover);
+  color: var(--aurral-text);
+}
+
+.player-rail-edge svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .btn.player-rail-edge:hover:not(:disabled) {
+    background-color: transparent;
+    color: var(--aurral-text);
+  }
+
+  .btn.player-rail-edge:not(.is-open):hover {
+    width: 2.25rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .app-body {
+    position: relative;
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+}
+
+@media (min-width: 1024px) {
+  .btn.player-rail-edge {
+    margin-right: 0;
+  }
+
+  .btn.player-rail-edge.is-open {
+    width: 0;
+  }
+
+  .player-rail {
+    margin-right: calc(-1 * var(--app-gutter));
+  }
 }
 
 @media (max-width: 1023px) {
-  .player-queue {
+  .player-rail {
+    position: absolute;
+    inset-block: 0;
+    right: 0;
+    z-index: var(--aurral-z-player);
     border: 1px solid var(--aurral-border-overlay);
     border-radius: var(--aurral-radius-popover);
     background: var(--aurral-surface-popover);
@@ -13784,12 +13885,6 @@ button.playlist-detail__cover {
   color: var(--aurral-text-muted);
 }
 
-@media (max-width: 767px) {
-  .player-queue {
-    display: none;
-  }
-}
-
 @media (pointer: coarse) {
   .player-queue__remove {
     opacity: 1;
@@ -13850,28 +13945,13 @@ button.playlist-detail__cover {
   }
 }
 
-@media (min-width: 1024px) {
-  .player-queue {
-    right: 0;
-    bottom: calc(100% + var(--app-gutter));
-    border-radius: 0;
-    background: transparent;
-  }
-
-  .app-main-wrap:has(~ .global-player .player-queue) {
-    width: auto;
-    margin-right: calc(var(--player-queue-width) - var(--app-gutter));
-  }
-}
-
 @media (max-width: 767px) {
   .app-content--player-active .app-main-wrap,
   .app-content--player-active .app-main {
     border-radius: var(--aurral-radius) 0 0 var(--aurral-radius);
   }
 
-  .global-player--empty,
-  .global-player__collapse {
+  .global-player--empty {
     display: none;
   }
 }

@@ -2,7 +2,7 @@ import { useState, type SyntheticEvent } from "react";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import ArtworkImage from "./ArtworkImage";
 import { PlayerMiniProgress } from "./PlayerProgress";
-import { Music, Pause, Play } from "./icons";
+import { ChevronRight, Music, Pause, Play } from "./icons";
 
 type SidebarPlayerProps = {
   iconsOnly: boolean;
@@ -39,6 +39,9 @@ function SidebarPlayer({ iconsOnly, onRestore, onTooltip }: SidebarPlayerProps) 
           ) : (
             <Music />
           )}
+          <span className="player-art-hover">
+            <ChevronRight />
+          </span>
         </span>
         {iconsOnly ? (
           <span className="sidebar-tooltip">Show player</span>

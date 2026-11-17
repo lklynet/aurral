@@ -28,12 +28,14 @@ import {
 import Sidebar from "./Sidebar";
 import GlobalSearch from "./GlobalSearch";
 import GlobalPlayerBar from "./GlobalPlayerBar";
+import { PlayerRail, usePlayerRail } from "./PlayerQueue";
 import UserProfileMenu from "./UserProfileMenu";
 import InboxMenu from "./InboxMenu";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { SettingsLink, readSettingsPath, withoutSettingsParam } from "../navigation/settingsRoute";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
+import { useMediaQuery } from "../hooks/useMediaQuery.ts";
 import { useSectionNav } from "../navigation/useSectionNav.ts";
 import { isLibrarySectionPath, useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
 import { isRecord } from "../../../lib/isRecord.ts";
@@ -104,6 +106,8 @@ function Layout({ children, headerActions }: LayoutProps) {
       localStorage.setItem(PLAYER_MINIMIZED_KEY, String(minimized));
     } catch {}
   }, []);
+  const rail = usePlayerRail();
+  const hasRail = useMediaQuery("(min-width: 768px)");
   const location = useLocation();
   const navigate = useNavigate();
   const navigationType = useNavigationType();
@@ -573,46 +577,53 @@ function Layout({ children, headerActions }: LayoutProps) {
           </nav>
         ) : null}
 
-        <div
-          ref={mainWrapRef}
-          className="app-main-wrap"
-          data-scrolled={isMainScrolled || undefined}
-        >
-          <main
-            className={`app-main${isArtistDetailsRoute ? " app-main--artist-details" : ""}`}
-            ref={mainScrollRef}
-            onScroll={(event) => {
-              scrollPositionsRef.current.set(location.key, event.currentTarget.scrollTop);
-              setIsMainScrolled(event.currentTarget.scrollTop > 0);
-              updateMainScrollbar();
-              showScrollbarTemporarily();
-            }}
-          >
-            <div className="app-main__content">{children}</div>
-          </main>
+        <div className="app-body">
           <div
-            ref={scrollbarTrackRef}
-            className={`app-main-scrollbar${scrollbar.visible ? " is-visible" : ""}${
-              scrollbar.active ? " is-active" : ""
-            }`}
-            aria-hidden="true"
+            ref={mainWrapRef}
+            className="app-main-wrap"
+            data-scrolled={isMainScrolled || undefined}
           >
-            <div
-              className="app-main-scrollbar__thumb"
-              onPointerDown={handleScrollbarPointerDown}
-              onPointerMove={handleScrollbarPointerMove}
-              onPointerUp={handleScrollbarPointerEnd}
-              onPointerCancel={handleScrollbarPointerEnd}
-              onLostPointerCapture={handleScrollbarPointerEnd}
-              style={{
-                height: `${scrollbar.height}px`,
-                transform: `translateY(${scrollbar.top}px)`,
+            <main
+              className={`app-main${isArtistDetailsRoute ? " app-main--artist-details" : ""}`}
+              ref={mainScrollRef}
+              onScroll={(event) => {
+                scrollPositionsRef.current.set(location.key, event.currentTarget.scrollTop);
+                setIsMainScrolled(event.currentTarget.scrollTop > 0);
+                updateMainScrollbar();
+                showScrollbarTemporarily();
               }}
-            />
+            >
+              <div className="app-main__content">{children}</div>
+            </main>
+            <div
+              ref={scrollbarTrackRef}
+              className={`app-main-scrollbar${scrollbar.visible ? " is-visible" : ""}${
+                scrollbar.active ? " is-active" : ""
+              }`}
+              aria-hidden="true"
+            >
+              <div
+                className="app-main-scrollbar__thumb"
+                onPointerDown={handleScrollbarPointerDown}
+                onPointerMove={handleScrollbarPointerMove}
+                onPointerUp={handleScrollbarPointerEnd}
+                onPointerCancel={handleScrollbarPointerEnd}
+                onLostPointerCapture={handleScrollbarPointerEnd}
+                style={{
+                  height: `${scrollbar.height}px`,
+                  transform: `translateY(${scrollbar.top}px)`,
+                }}
+              />
+            </div>
           </div>
+          {hasRail ? <PlayerRail rail={rail} /> : null}
         </div>
 
-        <GlobalPlayerBar minimized={playerMinimized} onMinimizedChange={changePlayerMinimized} />
+        <GlobalPlayerBar
+          minimized={playerMinimized}
+          onMinimizedChange={changePlayerMinimized}
+          rail={rail}
+        />
 
         {mobileMenuPresence !== "closed" && (
           <div

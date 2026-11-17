@@ -1,9 +1,10 @@
 import ArtworkImage from "./ArtworkImage";
-import { useEffect, useId, useState, type RefObject } from "react";
+import { memo, useCallback, useEffect, useId, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { SortableList } from "./SortableList";
-import { GripVertical, ListMusic, Music, Plus, X } from "./icons";
+import { ChevronLeft, GripVertical, ListMusic, Music, Plus, X } from "./icons";
 import { useAudioQueue, type AudioQueueValue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import TooltipButton from "./TooltipButton";
@@ -258,44 +259,131 @@ const PANEL_VIEWS = [
   { id: "friends", label: "Friends" },
 ] as const satisfies readonly { id: PlayerPanelView; label: string }[];
 
-interface PlayerQueuePanelProps {
-  id: string;
-  view: PlayerPanelView;
-  onViewChange: (view: PlayerPanelView) => void;
-  onClose: () => void;
-  closeRef: RefObject<HTMLButtonElement | null>;
+const RAIL_OPEN_KEY = "playerRailOpen";
+const RAIL_VIEW_KEY = "playerRailView";
+const DOCKED_QUERY = "(min-width: 1024px)";
+const RAIL_EXIT_MS = 260;
+
+function readStored(key: string) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 
-export function PlayerQueuePanel({
-  id,
-  view,
-  onViewChange,
-  onClose,
-  closeRef,
-}: PlayerQueuePanelProps) {
+function store(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
+}
+
+export function usePlayerRail() {
+  const id = useId();
+  const edgeRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpenState] = useState(
+    () => window.matchMedia(DOCKED_QUERY).matches && readStored(RAIL_OPEN_KEY) === "true",
+  );
+  const [view, setViewState] = useState<PlayerPanelView>(
+    () => PANEL_VIEWS.find((entry) => entry.id === readStored(RAIL_VIEW_KEY))?.id ?? "queue",
+  );
+
+  const setOpen = useCallback(
+    (next: boolean) => {
+      const moveFocus = !next && !!document.getElementById(id)?.contains(document.activeElement);
+      flushSync(() => setOpenState(next));
+      store(RAIL_OPEN_KEY, String(next));
+      if (moveFocus) edgeRef.current?.focus({ preventScroll: true });
+    },
+    [id],
+  );
+
+  const setView = useCallback((next: PlayerPanelView) => {
+    setViewState(next);
+    store(RAIL_VIEW_KEY, next);
+  }, []);
+
+  const show = useCallback(
+    (next: PlayerPanelView) => {
+      setView(next);
+      setOpen(true);
+    },
+    [setOpen, setView],
+  );
+
+  return { id, open, view, edgeRef, closeRef, setOpen, setView, show };
+}
+
+export type PlayerRailState = ReturnType<typeof usePlayerRail>;
+
+function PlayerRailEdge({ rail, hidden }: { rail: PlayerRailState; hidden: boolean }) {
+  return (
+    <TooltipButton
+      ref={rail.edgeRef}
+      label="Show panel"
+      className={`btn btn-ghost player-rail-edge${hidden ? " is-open" : ""}`}
+      onClick={() => rail.setOpen(true)}
+    >
+      <ChevronLeft />
+    </TooltipButton>
+  );
+}
+
+export function PlayerRail({ rail }: { rail: PlayerRailState }) {
+  const [mounted, setMounted] = useState(rail.open);
+  const [expanded, setExpanded] = useState(rail.open);
+  const { edgeRef, closeRef } = rail;
+  if (rail.open && !mounted) setMounted(true);
+  if (!rail.open && expanded) setExpanded(false);
+
+  useEffect(() => {
+    if (rail.open) {
+      if (expanded) return undefined;
+      let frameId = window.requestAnimationFrame(() => {
+        frameId = window.requestAnimationFrame(() => {
+          const moveFocus = document.activeElement === edgeRef.current;
+          flushSync(() => setExpanded(true));
+          if (moveFocus) closeRef.current?.focus({ preventScroll: true });
+        });
+      });
+      return () => window.cancelAnimationFrame(frameId);
+    }
+    if (!mounted) return undefined;
+    const timeoutId = window.setTimeout(() => setMounted(false), RAIL_EXIT_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [rail.open, expanded, mounted, edgeRef, closeRef]);
+
+  return (
+    <>
+      <PlayerRailEdge rail={rail} hidden={expanded} />
+      <div className={`player-rail${expanded ? " is-open" : ""}`}>
+        {mounted ? <PlayerQueuePanel rail={rail} /> : null}
+      </div>
+    </>
+  );
+}
+
+const PlayerQueuePanel = memo(function PlayerQueuePanel({ rail }: { rail: PlayerRailState }) {
   const { currentTrack, activeSource } = useAudioQueue();
   const tabsId = useId();
   const playingFrom = activeSource?.label;
-  const [height, setHeight] = useState<number | null>(null);
   const [managingFriends, setManagingFriends] = useState(false);
-  const friends = useFriends(view === "friends");
-
-  useEffect(() => {
-    const mainWrap = document.querySelector(".app-main-wrap");
-    if (!mainWrap) return undefined;
-    const observer = new ResizeObserver(() => setHeight(mainWrap.getBoundingClientRect().height));
-    observer.observe(mainWrap);
-    return () => observer.disconnect();
-  }, []);
-
-  if (!currentTrack) return null;
+  const friends = useFriends(rail.view === "friends");
+  const { view } = rail;
 
   return (
     <aside
-      id={id}
+      id={rail.id}
       className="player-queue"
       aria-label="Player panel"
-      style={height ? { "--player-queue-height": `${height}px` } : undefined}
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || event.defaultPrevented) return;
+        if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) return;
+        if (document.querySelector(".player-queue__item.is-dragging")) return;
+        event.preventDefault();
+        rail.setOpen(false);
+      }}
     >
       <div className="player-queue__header">
         <div className="player-queue__tabs" role="tablist" aria-label="Player panel">
@@ -308,7 +396,7 @@ export function PlayerQueuePanel({
               aria-selected={view === entry.id}
               aria-controls={`${tabsId}-panel`}
               className={`player-queue__tab${view === entry.id ? " is-active" : ""}`}
-              onClick={() => onViewChange(entry.id)}
+              onClick={() => rail.setView(entry.id)}
             >
               {entry.label}
             </button>
@@ -324,11 +412,10 @@ export function PlayerQueuePanel({
           </TooltipButton>
         ) : null}
         <TooltipButton
-          ref={closeRef}
-          title="Close panel"
-          aria-label="Close panel"
+          ref={rail.closeRef}
+          label="Close panel"
           className="btn btn-ghost btn-icon btn-xs"
-          onClick={onClose}
+          onClick={() => rail.setOpen(false)}
         >
           <X className="artist-icon-sm" />
         </TooltipButton>
@@ -339,34 +426,44 @@ export function PlayerQueuePanel({
         aria-labelledby={`${tabsId}-${view}`}
         className="player-queue__view"
       >
-        {view === "lyrics" ? (
-          <PlayerLyrics key={currentTrack.entryId} track={currentTrack} variant="panel" />
-        ) : view === "friends" ? (
+        {view === "friends" ? (
           <PlayerFriends variant="panel" onManage={() => setManagingFriends(true)} />
+        ) : view === "lyrics" ? (
+          currentTrack ? (
+            <PlayerLyrics key={currentTrack.entryId} track={currentTrack} variant="panel" />
+          ) : (
+            <div className="player-queue__body">
+              <p className="player-queue__empty">Nothing playing</p>
+            </div>
+          )
         ) : (
           <div className="player-queue__body">
-            <section className="player-queue__section" aria-label="Now playing">
-              <h3 className="player-queue__heading">Now playing</h3>
-              <div className="player-queue__now">
-                <QueueArt src={currentTrack.artwork} />
-                <span className="player-queue__copy">
-                  <span className="player-queue__name">
-                    <PlayerOriginLink className="global-player__link">
-                      {currentTrack.title}
-                    </PlayerOriginLink>
+            {currentTrack ? (
+              <section className="player-queue__section" aria-label="Now playing">
+                <h3 className="player-queue__heading">Now playing</h3>
+                <div className="player-queue__now">
+                  <QueueArt src={currentTrack.artwork} />
+                  <span className="player-queue__copy">
+                    <span className="player-queue__name">
+                      <PlayerOriginLink className="global-player__link">
+                        {currentTrack.title}
+                      </PlayerOriginLink>
+                    </span>
+                    {currentTrack.artist ? (
+                      <span className="player-queue__artist">{currentTrack.artist}</span>
+                    ) : null}
                   </span>
-                  {currentTrack.artist ? (
-                    <span className="player-queue__artist">{currentTrack.artist}</span>
-                  ) : null}
-                </span>
-              </div>
-              {playingFrom ? (
-                <p className="player-queue__source">
-                  Playing from{" "}
-                  <PlayerOriginLink className="global-player__link">{playingFrom}</PlayerOriginLink>
-                </p>
-              ) : null}
-            </section>
+                </div>
+                {playingFrom ? (
+                  <p className="player-queue__source">
+                    Playing from{" "}
+                    <PlayerOriginLink className="global-player__link">
+                      {playingFrom}
+                    </PlayerOriginLink>
+                  </p>
+                ) : null}
+              </section>
+            ) : null}
             <UpNextQueue />
           </div>
         )}
@@ -374,4 +471,4 @@ export function PlayerQueuePanel({
       <FriendsDialog open={managingFriends} onClose={() => setManagingFriends(false)} />
     </aside>
   );
-}
+});
