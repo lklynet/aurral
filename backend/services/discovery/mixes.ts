@@ -483,13 +483,12 @@ function blendFavorites(userId: number, now: number, blocked: Set<string>) {
     .slice(0, BLEND_CANDIDATES);
 }
 
-async function buildBlend(left: number, right: number, now: number) {
+async function buildBlend(left: number, right: number, now: number, blocked: Set<string>) {
   const random = seededRandom(`${left}:${right}:${Math.floor(now / DAY_MS)}:blend`);
-  const blocked = new Set([...getBlockedArtistKeys(left), ...getBlockedArtistKeys(right)]);
   const sides = [left, right].map((userId) => blendFavorites(userId, now, blocked));
   await yieldToEventLoop();
-  const resolved = resolvePlays(sides.flat().map(({ play }) => play));
   const [mine, theirs] = sides.map((side) => {
+    const resolved = resolvePlays(side.map(({ play }) => play));
     const tracks = new Map<number, { weight: number; artist: string }>();
     for (const { play, weight } of side) {
       const id = resolved.get(play);
@@ -551,7 +550,7 @@ async function buildBlend(left: number, right: number, now: number) {
 
 type CachedBlend = {
   day: number;
-  plays: string;
+  inputs: string;
   sources: Promise<Map<number, BlendSource> | null>;
 };
 
@@ -561,11 +560,14 @@ function getBlend(userId: number, partnerId: number, now: number) {
   const [left, right] = userId < partnerId ? [userId, partnerId] : [partnerId, userId];
   const key = `${left}:${right}`;
   const day = Math.floor(now / DAY_MS);
-  const plays = `${latestPlayStmt.get(left)?.id ?? 0}:${latestPlayStmt.get(right)?.id ?? 0}`;
+  const blocked = new Set([...getBlockedArtistKeys(left), ...getBlockedArtistKeys(right)]);
+  const inputs = [latestPlayStmt.get(left)?.id, latestPlayStmt.get(right)?.id, ...blocked].join(
+    "\0",
+  );
   const cached = blendCache.get(key);
-  if (cached && cached.day === day && cached.plays === plays) return cached.sources;
-  const sources = buildBlend(left, right, now);
-  blendCache.set(key, { day, plays, sources });
+  if (cached && cached.day === day && cached.inputs === inputs) return cached.sources;
+  const sources = buildBlend(left, right, now, blocked);
+  blendCache.set(key, { day, inputs, sources });
   sources.catch(() => blendCache.delete(key));
   return sources;
 }

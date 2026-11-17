@@ -199,24 +199,19 @@ test("a Blend mixes what two people play, only while both turn it on", async () 
       )
       .get(username)!.id;
   const [lee, mia, kit] = ["lee", "mia", "kit"].map(person) as [number, number, number];
-  const plays = (listener: number, names: string[]) => {
+  const plays = (listeners: number[], names: string[]) => {
     for (const name of names) {
       for (const track of addArtist(name, 3).tracks) {
-        insertPlay.run(listener, String(track.id), track.title, name, NOW - DAY);
+        for (const listener of listeners) {
+          insertPlay.run(listener, `lastfm:${track.title}`, track.title, name, NOW - DAY);
+        }
       }
     }
   };
-  plays(lee, ["Shared A", "Shared B", "Lee A", "Lee B", "Lee C"]);
-  plays(mia, ["Mia A", "Mia B", "Mia C", "Blocked"]);
-  const shared = db
-    .prepare<[], { id: number; title: string; artist: string }>(
-      "SELECT id, title, artist_name AS artist FROM library_tracks WHERE artist_name LIKE 'Shared%'",
-    )
-    .all();
-  for (const track of shared) {
-    insertPlay.run(mia, String(track.id), track.title, track.artist, NOW - DAY);
-  }
-  plays(kit, ["Kit"]);
+  plays([lee, mia], ["Shared A", "Shared B"]);
+  plays([lee], ["Lee A", "Lee B", "Lee C"]);
+  plays([mia], ["Mia A", "Mia B", "Mia C", "Blocked"]);
+  plays([kit], ["Kit"]);
   addDiscoveryFeedback(lee, { action: "block_artist", artistName: "Blocked" });
   for (const id of [lee, mia, kit]) await setBlendSetting(id, true);
 
@@ -241,6 +236,8 @@ test("a Blend mixes what two people play, only while both turn it on", async () 
     "Shared: You both play this",
   ]);
   assert.deepEqual(await getBlendSetting(lee), { enabled: true, waiting: ["kit"] });
+  addDiscoveryFeedback(mia, { action: "block_artist", artistName: "Lee A" });
+  assert.ok((await blendOf(lee, mia))?.trackIds.every((id) => artistOf(id) !== "Lee A"));
 
   await setBlendSetting(mia, false);
   assert.equal(await blendOf(lee, mia), undefined);
