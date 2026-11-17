@@ -267,7 +267,7 @@ function HubAccountsGroup() {
       <SettingsRow
         label="Accounts"
         htmlFor="users-aurral-accounts"
-        help="Let users link an aurral.org account and publish playlists."
+        help="Let users link an aurral.org account, add friends, and publish playlists."
       >
         <PillToggle
           id="users-aurral-accounts"

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { ConfirmModal } from "../../../components/ConfirmModal";
+import { FriendsDialog } from "../../../components/PlayerFriends";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
 import { queryKeys } from "../../../queryClient.ts";
@@ -24,13 +25,17 @@ export function HubLinkGroup() {
   const { showError, showSuccess } = useToast();
   const queryClient = useQueryClient();
   const [confirmUnlink, setConfirmUnlink] = useState(false);
+  const [managingFriends, setManagingFriends] = useState(false);
   const queryKey = queryKeys.hubLink(user?.id);
   const status = useQuery({
     queryKey,
     queryFn: ({ signal }) => parseResponse(hubLinkClient.$get({}, { init: { signal } })),
     refetchInterval: (query) => (query.state.data?.state === "pending" ? POLL_MS : false),
   });
-  const settle = (next: HubLink) => queryClient.setQueryData(queryKey, next);
+  const settle = (next: HubLink) => {
+    queryClient.setQueryData(queryKey, next);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.friends(user?.id) });
+  };
   const start = useMutation({
     mutationFn: () => parseResponse(hubLinkClient.$post()),
     onSuccess: settle,
@@ -57,7 +62,10 @@ export function HubLinkGroup() {
   return (
     <SettingsGroup title="aurral.org account">
       {link.state === "none" ? (
-        <SettingsRow label="Not linked" help="Link to publish playlists for everyone.">
+        <SettingsRow
+          label="Not linked"
+          help="Link to add friends and publish playlists for everyone."
+        >
           <button
             type="button"
             className="btn btn-secondary btn-sm"
@@ -131,6 +139,18 @@ export function HubLinkGroup() {
           </>
         </SettingsRow>
       ) : null}
+      {link.state === "linked" && link.available ? (
+        <SettingsRow label="Friends" help="Add friends and answer requests.">
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => setManagingFriends(true)}
+          >
+            Manage
+          </button>
+        </SettingsRow>
+      ) : null}
+      <FriendsDialog open={managingFriends} onClose={() => setManagingFriends(false)} />
       <ConfirmModal
         open={confirmUnlink}
         title={linked ? `Unlink @${link.handle}?` : "Unlink?"}

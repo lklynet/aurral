@@ -16,6 +16,7 @@ const statusSchema = v.variant("status", [
 ]);
 const revokedSchema = v.object({ error: v.literal("link_revoked") });
 const revokeTaskSchema = v.object({ origin: v.string(), tokenHash: v.string() });
+const refusalSchema = v.object({ error: v.string() });
 
 export class HubLinkError extends Error {}
 
@@ -34,6 +35,22 @@ const countPublications = db.prepare<[number], { count: number }>(
 
 export const hubRequest = (origin: string, path: string, init: RequestInit = {}) =>
   fetch(`${origin}${path}`, { ...init, signal: AbortSignal.timeout(HUB_TIMEOUT_MS) });
+
+export const linkedLink = (userId: number) => {
+  const link = selectLink.get(userId);
+  return link?.linked_at && !link.broken ? link : null;
+};
+
+export const authorized = (link: HubLinksRow, method: string, body?: unknown) => ({
+  method,
+  headers: { Authorization: `Bearer ${link.token}`, "Content-Type": "application/json" },
+  ...(body !== undefined && { body: JSON.stringify(body) }),
+});
+
+export async function refusalOf(response: Response) {
+  const body = v.safeParse(refusalSchema, await response.json().catch(() => null));
+  return body.success ? body.output.error : null;
+}
 
 function queueRevoke(link: HubLinksRow) {
   enqueueSystemTask(

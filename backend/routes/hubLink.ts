@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { requireAuth, requireUserAccount } from "../middleware/guards.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
+import { addFriend, FriendError, friendLists, removeFriend } from "../services/hubFriends.ts";
 import { forgetHubLink, HubLinkError, hubLinkStatus, startHubLink } from "../services/hubLink.ts";
 import {
   makePlaylistPrivate,
@@ -24,6 +25,31 @@ export default new Hono<AppEnv>()
   .delete("/", async (c) => {
     forgetHubLink(c.var.user.id);
     return c.json(await hubLinkStatus(c.var.user.id));
+  })
+  .get("/friends", async (c) => {
+    try {
+      return c.json(await friendLists(c.var.user.id));
+    } catch (error) {
+      if (error instanceof FriendError) return c.json({ error: error.message }, error.status);
+      throw error;
+    }
+  })
+  .put("/friends/:handle", async (c) => {
+    try {
+      return c.json(await addFriend(c.var.user.id, c.req.param("handle")));
+    } catch (error) {
+      if (error instanceof FriendError) return c.json({ error: error.message }, error.status);
+      throw error;
+    }
+  })
+  .delete("/friends/:handle", async (c) => {
+    try {
+      await removeFriend(c.var.user.id, c.req.param("handle"));
+      return c.json({ ok: true });
+    } catch (error) {
+      if (error instanceof FriendError) return c.json({ error: error.message }, error.status);
+      throw error;
+    }
   })
   .get("/public-playlists", (c) => c.json(publicPlaylistState(c.var.user.id)))
   .put("/public-playlists/:playlistId", async (c) => {

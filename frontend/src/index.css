@@ -13204,6 +13204,77 @@ button.native-library-genre-row:focus-visible {
   padding: 0.625rem 0.5rem 0.375rem 0.875rem;
 }
 
+.player-queue__header-action {
+  margin-inline-start: auto;
+}
+
+.player-friends {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  align-content: start;
+  gap: 0.5rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 0.5rem 0.75rem;
+}
+
+.player-friends__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.player-friends__list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.player-friends__requests {
+  display: flex;
+  border: 0;
+  border-radius: var(--aurral-radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .player-friends__requests:hover {
+    background: var(--aurral-surface-hover);
+  }
+}
+
+.friends-dialog {
+  display: grid;
+  gap: 1rem;
+}
+
+.friends-dialog__add {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.friends-dialog__add .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.friends-dialog__section {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.friends-dialog__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .player-queue__tabs {
   display: flex;
   gap: 0.25rem;
@@ -13886,15 +13957,18 @@ button.native-library-genre-row:focus-visible {
     min-width: 0;
   }
 
-  .now-playing__lyrics-toggle {
+  .now-playing__lyrics-toggle,
+  .now-playing__friends-toggle {
     color: var(--aurral-text-subtle);
   }
 
-  .now-playing__lyrics-toggle.is-active {
+  .now-playing__lyrics-toggle.is-active,
+  .now-playing__friends-toggle.is-active {
     color: var(--aurral-text);
   }
 
-  .player-lyrics--sheet {
+  .player-lyrics--sheet,
+  .player-friends--sheet {
     width: min(100%, 22rem, calc(100dvh - 25rem));
     min-width: 10rem;
     flex: none;
@@ -13961,7 +14035,8 @@ button.native-library-genre-row:focus-visible {
     color: var(--aurral-text-muted);
   }
 
-  .now-playing__actions .now-playing__lyrics-toggle.is-active {
+  .now-playing__actions .now-playing__lyrics-toggle.is-active,
+  .now-playing__actions .now-playing__friends-toggle.is-active {
     color: var(--aurral-text);
   }
 

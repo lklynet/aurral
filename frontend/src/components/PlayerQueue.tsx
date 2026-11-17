@@ -3,11 +3,12 @@ import { useEffect, useId, useState, type RefObject } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { SortableList } from "./SortableList";
-import { GripVertical, ListMusic, Music, X } from "./icons";
+import { GripVertical, ListMusic, Music, Plus, X } from "./icons";
 import { useAudioQueue, type AudioQueueValue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import TooltipButton from "./TooltipButton";
 import PlayerLyrics from "./PlayerLyrics";
+import PlayerFriends, { FriendsDialog, useFriends } from "./PlayerFriends";
 import PillToggle from "./PillToggle";
 import { isAutoplayEntry } from "../utils/audioQueue";
 import { useAuth } from "../contexts/AuthContext";
@@ -248,11 +249,12 @@ export function UpNextQueue({ className = "" }: { className?: string }) {
   );
 }
 
-export type PlayerPanelView = "queue" | "lyrics";
+export type PlayerPanelView = "queue" | "lyrics" | "friends";
 
 const PANEL_VIEWS = [
   { id: "queue", label: "Queue" },
   { id: "lyrics", label: "Lyrics" },
+  { id: "friends", label: "Friends" },
 ] as const satisfies readonly { id: PlayerPanelView; label: string }[];
 
 interface PlayerQueuePanelProps {
@@ -274,6 +276,8 @@ export function PlayerQueuePanel({
   const tabsId = useId();
   const playingFrom = currentTrack?.queueSource?.label ?? source?.label;
   const [height, setHeight] = useState<number | null>(null);
+  const [managingFriends, setManagingFriends] = useState(false);
+  const friends = useFriends(view === "friends");
 
   useEffect(() => {
     const mainWrap = document.querySelector(".app-main-wrap");
@@ -309,6 +313,15 @@ export function PlayerQueuePanel({
             </button>
           ))}
         </div>
+        {view === "friends" && friends.data?.state === "linked" ? (
+          <TooltipButton
+            label="Add friends"
+            className="btn btn-ghost btn-icon btn-xs player-queue__header-action"
+            onClick={() => setManagingFriends(true)}
+          >
+            <Plus className="artist-icon-sm" aria-hidden="true" />
+          </TooltipButton>
+        ) : null}
         <TooltipButton
           ref={closeRef}
           title="Close panel"
@@ -327,6 +340,8 @@ export function PlayerQueuePanel({
       >
         {view === "lyrics" ? (
           <PlayerLyrics key={currentTrack.entryId} track={currentTrack} variant="panel" />
+        ) : view === "friends" ? (
+          <PlayerFriends variant="panel" onManage={() => setManagingFriends(true)} />
         ) : (
           <div className="player-queue__body">
             <section className="player-queue__section" aria-label="Now playing">
@@ -348,6 +363,7 @@ export function PlayerQueuePanel({
           </div>
         )}
       </div>
+      <FriendsDialog open={managingFriends} onClose={() => setManagingFriends(false)} />
     </aside>
   );
 }

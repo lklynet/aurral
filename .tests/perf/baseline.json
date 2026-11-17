@@ -283,6 +283,14 @@
     "bytes": 83,
     "scans": []
   },
+  "friends": {
+    "queries": {
+      "cold": 4,
+      "warm": 4
+    },
+    "bytes": 16,
+    "scans": []
+  },
   "community playlists": {
     "queries": {
       "cold": 3,
