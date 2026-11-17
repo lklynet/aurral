@@ -290,14 +290,15 @@ function writeIdentity(file: TagLib.File, identity: object) {
   }
 }
 
-// taglib reads nothing from an RVA2 frame without an identification, but throws
-// when it saves a file that has one, so drop it first.
-function dropUnreadableVolumeFrames(file: TagLib.File) {
-  const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
-  for (const frame of id3?.getFramesByClassType<TagLib.Id3v2RelativeVolumeFrame>(
-    Id3v2FrameClassType.RelativeVolumeFrame,
-  ) || []) {
-    if (frame.identification === undefined) id3!.removeFrame(frame);
+// taglib reads some malformed frames, like an RVA2 without an identification or a
+// UFID without an identifier, then throws when it saves them, so drop those first.
+function dropUnsavableFrames(id3: TagLib.Id3v2Tag) {
+  for (const frame of [...id3.frames]) {
+    try {
+      frame.render(id3.version);
+    } catch {
+      id3.removeFrame(frame);
+    }
   }
 }
 
@@ -416,6 +417,7 @@ export async function writeAudioTags(
       file.removeTags(addedTagTypes & ~file.tagTypesOnDisk);
       const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
       if (id3 && !(file.tagTypesOnDisk & TagTypes.Id3v2)) id3.version = 4;
+      if (id3) dropUnsavableFrames(id3);
       for (const field of changed) {
         FIELD_SPECS[field].write(
           file.tag,
@@ -427,7 +429,6 @@ export async function writeAudioTags(
         writeIdentity(file, identity);
         clearLegacyIdentity(file);
       }
-      dropUnreadableVolumeFrames(file);
       file.save();
     } finally {
       file.dispose();
