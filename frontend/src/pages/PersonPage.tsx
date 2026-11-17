@@ -3,7 +3,7 @@ import { parseResponse } from "hono/client";
 import { useParams } from "react-router";
 import { AlertCircle, Users } from "../components/icons";
 import StatePanel from "../components/StatePanel";
-import { useLocalPeople } from "../components/PlayerFriends";
+import { useFriends, useLocalPeople } from "../components/PlayerFriends";
 import { useAuth } from "../contexts/AuthContext";
 import { queryKeys } from "../queryClient";
 import { peopleClient } from "../utils/api/clients/people.ts";
@@ -29,7 +29,13 @@ export default function PersonPage() {
   const people = useLocalPeople(true, true);
   const person = profile.data;
   const name = person?.username ?? username;
-  const playing = people.data?.people.find((each) => each.id === person?.id)?.nowPlaying;
+  const listed = people.data?.people.find((each) => each.id === person?.id);
+  const friends = useFriends(!!listed?.handle, true);
+  const playing =
+    listed?.nowPlaying ??
+    (friends.data?.state === "linked"
+      ? friends.data.friends.find((friend) => friend.handle === listed?.handle)?.nowPlaying
+      : null);
   const playlists = person?.playlists ?? [];
   const hasBlend = playlists.some((playlist) => playlist.id.startsWith(BLEND_MIX_PREFIX));
   const note = !person
