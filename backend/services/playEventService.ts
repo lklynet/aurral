@@ -2,6 +2,7 @@ import * as v from "valibot";
 import { db } from "../config/db-sqlite.ts";
 import { playEventQueue } from "./jobs/queues.ts";
 import { shareNowPlaying } from "./hubFriends.ts";
+import { setLocalNowPlaying } from "./localNowPlaying.ts";
 import { scrobbleConnectionStore } from "./scrobbleConnectionStore.ts";
 import { getKoitoListenBrainzBaseUrl } from "./koitoClient.ts";
 import type { PlayEventsRow } from "../db/rows.ts";
@@ -263,6 +264,12 @@ export const sendNowPlaying = (userId: number, input: PlayEventInput = {}) => {
     albumMbid: text(input.albumMbid, 100) || null,
     trackMbid: text(input.trackMbid, 100) || null,
   };
+  setLocalNowPlaying(userId, {
+    title,
+    artist,
+    album: listen.album,
+    durationMs: listen.durationMs,
+  });
   return Promise.all([
     shareNowPlaying(userId, { title, artist, album: listen.album, durationMs: listen.durationMs }),
     ...Object.values(scrobbleConnectionStore.getConnections(userId)).map((connection) =>

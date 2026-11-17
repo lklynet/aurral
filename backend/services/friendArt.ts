@@ -46,3 +46,21 @@ export async function friendArt(artist: string, album: string | undefined) {
   }
   return { url: await lookup };
 }
+
+export const friendArtUrl = (artist: string, album?: string | null) =>
+  `/api/hub-link/friends/art?${new URLSearchParams(album ? { artist, album } : { artist })}`;
+
+type TopPlays = {
+  artists: { name: string; plays: number }[];
+  albums: { title: string; artist: string; plays: number }[];
+  tracks: { title: string; artist: string; plays: number }[];
+};
+
+export const topPlaysWithArt = ({ artists, albums, tracks }: TopPlays) => ({
+  artists: artists.map((artist) => ({ ...artist, artworkUrl: friendArtUrl(artist.name) })),
+  albums: albums.map((album) => ({
+    ...album,
+    artworkUrl: friendArtUrl(album.artist, album.title),
+  })),
+  tracks,
+});

@@ -189,6 +189,34 @@ export function seedPerfLibrary(
   };
 }
 
+export function seedPerfNeighbor(
+  db: Database.Database,
+  userId: number,
+  library: Pick<PerfLibrary, "trackRows">,
+  now = Date.now(),
+) {
+  const insertPlay = db.prepare(
+    `INSERT INTO play_events (user_id, track_id, title, artist, album, album_key, duration_ms, played_at, source, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 200000, ?, 'web', ?)`,
+  );
+  db.transaction(() => {
+    for (let index = 0; index < 200; index += 1) {
+      const track = library.trackRows[index % Math.min(60, library.trackRows.length)]!;
+      const playedAt = now - (index + 1) * 600_000;
+      insertPlay.run(
+        userId,
+        track.key,
+        track.title,
+        track.artist,
+        track.album,
+        track.albumKey,
+        playedAt,
+        playedAt,
+      );
+    }
+  })();
+}
+
 export function seedPerfListening(
   db: Database.Database,
   userId: number,

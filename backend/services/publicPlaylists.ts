@@ -4,6 +4,7 @@ import { db } from "../config/db-sqlite.ts";
 import type { HubPublicationsRow } from "../db/rows.ts";
 import { MAX_SHARE_BYTES, parseShareManifest, withoutShareFiles } from "../../lib/shareManifest.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { fromSomeonesListening } from "../../lib/browsePlaylists.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
 import { resolveShareManifest } from "./shareLinks/metadata.ts";
@@ -94,6 +95,12 @@ export async function makePlaylistPublic(user: RequestUser, playlistId: string) 
   const source = playlist.importSource;
   if (source && NOT_REPUBLISHABLE.has(source.provider)) {
     throw new PublicPlaylistError("Copies of other Aurral playlists can't be public.", 400);
+  }
+  if (fromSomeonesListening(source)) {
+    throw new PublicPlaylistError(
+      "Playlists made from someone else's listening can't be public.",
+      400,
+    );
   }
   const built = playlistManifest(playlistId);
   if (built === "too_large" || !built) {

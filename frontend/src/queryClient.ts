@@ -294,6 +294,8 @@ export const queryKeys = {
   hubLink: (userId: MaybeId): QueryKey => ["hub-link", userId || null],
   publicPlaylists: (userId: MaybeId): QueryKey => ["hub-link", "public", userId || null],
   friends: (userId: MaybeId): QueryKey => ["hub-link", "friends", userId || null],
+  people: (userId: MaybeId): QueryKey => ["people", userId || null],
+  person: (userId: MaybeId, username: string): QueryKey => ["people", userId || null, username],
   manualMissingSearchSources: (jobId: MaybeId, mode: string, playlistId: MaybeId): QueryKey => [
     "playlists",
     "manual-search-sources",

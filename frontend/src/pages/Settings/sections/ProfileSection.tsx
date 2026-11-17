@@ -200,6 +200,7 @@ function BlendRow({ userId }: { userId: number }) {
     onSuccess: (next) => {
       queryClient.setQueryData(queryKey, next);
       void queryClient.invalidateQueries({ queryKey: queryKeys.madeForYou(userId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.people(userId) });
     },
     onError: (error) => showError(readApiError(error).error || "Couldn't save your Blend setting"),
   });
@@ -208,7 +209,7 @@ function BlendRow({ userId }: { userId: number }) {
     <>
       <SettingsRow
         label="Share listening on this server"
-        help="People here get Blends made from what you both play. Turn off to keep your listening to yourself."
+        help="People on this server see what you play and get Blends with you."
       >
         <PillToggle
           id="profile-blend"

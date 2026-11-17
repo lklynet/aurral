@@ -53,6 +53,7 @@ const ShowsPage = lazy(routeModules.shows);
 const LibraryPage = lazy(routeModules.library);
 const WrappedPage = lazy(routeModules.wrapped);
 const FriendPage = lazy(routeModules.friend);
+const PersonPage = lazy(routeModules.person);
 const WrappedAnnouncement = lazy(() => import("./components/WrappedAnnouncement.tsx"));
 const LidarrConversionReport = lazy(() => import("./components/LidarrConversionReport.tsx"));
 const ArtistDetailsPage = lazy(routeModules.artist);
@@ -375,6 +376,7 @@ const appRoutes = createRoutesFromElements(
         <Route path="/artist/:mbid" element={<ArtistDetailsPage />} />
         <Route path="/wrapped" element={<WrappedPage />} />
         <Route path="/friends/:handle" element={<FriendPage />} />
+        <Route path="/people/:username" element={<PersonPage />} />
         <Route
           path="/blocklist"
           element={<Navigate to="/?settings=listening/blocklist" replace />}

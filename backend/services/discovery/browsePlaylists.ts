@@ -17,8 +17,10 @@ import { getAurralPlaylist, importAurralPlaylist, withOwnedTracks } from "./aurr
 import { getUserMix, getUserMixes, type Mix } from "./mixes.ts";
 import { browseCoverTemplate, browseCoverUrl, type BrowseCover } from "./browseCovers.ts";
 import {
+  BLEND_MIX_PREFIX,
   BROWSE_IMPORT_PROVIDERS,
   BROWSE_PROVIDERS,
+  LISTENS_MIX_PREFIX,
   type BrowseProvider,
 } from "../../../lib/browsePlaylists.ts";
 import { getDeezerArtistPlaylists, type ShelfScope } from "../importLists/deezerPlaylists.ts";
@@ -106,10 +108,9 @@ export async function getBrowseCover(user: RequestUser, provider: BrowseProvider
   return null;
 }
 
-export async function getMadeForYou(user: RequestUser) {
-  const userMixes = await getUserMixes(user.id);
+function mixCards(userMixes: Mix[]) {
   const covers = mixCovers(userMixes);
-  const mixes = userMixes.map((mix, index): BrowsePlaylist<"mix"> => {
+  return userMixes.map((mix, index): BrowsePlaylist<"mix"> => {
     const cover = covers[index];
     return {
       provider: "mix",
@@ -121,6 +122,16 @@ export async function getMadeForYou(user: RequestUser) {
       trackCount: mix.trackIds.length,
     };
   });
+}
+
+export async function getPersonPlaylists(user: RequestUser, personId: number) {
+  const ids = [BLEND_MIX_PREFIX, LISTENS_MIX_PREFIX].map((prefix) => `${prefix}${personId}`);
+  const found = await Promise.all(ids.map((id) => getUserMix(user.id, id)));
+  return mixCards(found.filter((mix) => mix !== null));
+}
+
+export async function getMadeForYou(user: RequestUser) {
+  const mixes = mixCards(await getUserMixes(user.id));
   const discovery = getDiscoveryPlaylists(user.id).map((playlist): BrowsePlaylist<"discovery"> => ({
     provider: "discovery",
     id: playlist.id,
