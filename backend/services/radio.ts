@@ -131,18 +131,35 @@ function resolveSeed(seed: RadioSeed) {
   ];
   const trackIds = [...new Set(seedTracks.map((track) => track.trackId))];
   const albumIds = [...new Set([...seedTracks, ...seedAlbums].map((entry) => entry.albumId))];
-  const seedArtistIds = matchedArtists.map((artist) => artist.id);
-  const genres = db
-    .prepare<number[], { genre: string }>(
-      `SELECT DISTINCT lower(name) AS genre FROM library_entity_genres
+  const requestedArtistIds = matchedArtists.map((artist) => artist.id);
+  const genreRows = db
+    .prepare<number[], { kind: string; id: number; genre: string }>(
+      `SELECT entity_kind AS kind, entity_id AS id, lower(name) AS genre FROM library_entity_genres
        WHERE (entity_kind = 'artists' AND entity_id IN (${placeholders(artistIds)}))
           OR (entity_kind = 'albums' AND entity_id IN (${placeholders(albumIds)}))
           OR (entity_kind = 'albums' AND entity_id IN (
-            SELECT id FROM library_albums WHERE artist_id IN (${placeholders(seedArtistIds)})))
+            SELECT id FROM library_albums WHERE artist_id IN (${placeholders(requestedArtistIds)})))
           OR (entity_kind = 'tracks' AND entity_id IN (${placeholders(trackIds)}))`,
     )
-    .all(...artistIds, ...albumIds, ...seedArtistIds, ...trackIds)
-    .map((row) => row.genre);
+    .all(...artistIds, ...albumIds, ...requestedArtistIds, ...trackIds);
+  const tagged = new Set(genreRows.map((row) => `${row.kind}:${row.id}`));
+  const artistTagsFor = new Set([
+    ...requestedArtistIds,
+    ...seedTracks
+      .filter((track) => !tagged.has(`tracks:${track.trackId}`))
+      .filter((track) => !tagged.has(`albums:${track.albumId}`))
+      .map((track) => track.artistId),
+    ...seedAlbums
+      .filter((album) => !tagged.has(`albums:${album.albumId}`))
+      .map((album) => album.artistId),
+  ]);
+  const genres = [
+    ...new Set(
+      genreRows
+        .filter((row) => row.kind !== "artists" || artistTagsFor.has(row.id))
+        .map((row) => row.genre),
+    ),
+  ];
   const artists = artistIds.length
     ? db
         .prepare<number[], ArtistRow>(
@@ -186,22 +203,42 @@ async function similarArtistScores(
   return scores;
 }
 
+const untagged = (kind: string, id: string) =>
+  `NOT EXISTS (SELECT 1 FROM library_entity_genres AS own
+    WHERE own.entity_kind = '${kind}' AND own.entity_id = ${id})`;
+
+const taggedWith = (kind: string, genres: string[]) =>
+  `SELECT entity_id FROM library_entity_genres
+   WHERE entity_kind = '${kind}' AND lower(name) IN (${placeholders(genres)})`;
+
 function genreArtistScores(genres: string[]) {
   const scores = new Map<number, number>();
   if (!genres.length) return scores;
   const rows = db
     .prepare<unknown[], { artistId: number; overlap: number }>(
-      `SELECT artist_id AS artistId, COUNT(DISTINCT genre) AS overlap FROM (
-         SELECT entity_id AS artist_id, lower(name) AS genre FROM library_entity_genres
-         WHERE entity_kind = 'artists' AND lower(name) IN (${placeholders(genres)})
+      `SELECT artistId, COUNT(*) AS overlap FROM (
+         SELECT album.artist_id AS artistId, lower(genres.name) AS genre
+         FROM library_entity_genres AS genres
+         JOIN library_album_tracks AS link ON link.track_id = genres.entity_id
+         JOIN library_albums AS album ON album.id = link.album_id
+         WHERE genres.entity_kind = 'tracks' AND lower(genres.name) IN (${placeholders(genres)})
          UNION
          SELECT album.artist_id, lower(genres.name) FROM library_entity_genres AS genres
          JOIN library_albums AS album ON album.id = genres.entity_id
          WHERE genres.entity_kind = 'albums' AND lower(genres.name) IN (${placeholders(genres)})
+           AND EXISTS (SELECT 1 FROM library_album_tracks AS link
+             WHERE link.album_id = album.id AND ${untagged("tracks", "link.track_id")})
+         UNION
+         SELECT genres.entity_id, lower(genres.name) FROM library_entity_genres AS genres
+         WHERE genres.entity_kind = 'artists' AND lower(genres.name) IN (${placeholders(genres)})
+           AND EXISTS (SELECT 1 FROM library_albums AS album
+             JOIN library_album_tracks AS link ON link.album_id = album.id
+             WHERE album.artist_id = genres.entity_id
+               AND ${untagged("albums", "album.id")} AND ${untagged("tracks", "link.track_id")})
        )
-       GROUP BY artist_id ORDER BY overlap DESC LIMIT ?`,
+       GROUP BY artistId ORDER BY overlap DESC LIMIT ?`,
     )
-    .all(...genres, ...genres, MAX_GENRE_ARTISTS);
+    .all(...genres, ...genres, ...genres, MAX_GENRE_ARTISTS);
   for (const row of rows) {
     scores.set(row.artistId, 0.15 + 0.45 * Math.min(1, row.overlap / genres.length));
   }
@@ -247,9 +284,10 @@ function withoutBlockedArtists(
   return removed;
 }
 
-const CANDIDATE_SELECT = `
-  SELECT track.id AS trackId, album.artist_id AS artistId,
-         track.identity_key AS trackKey, artist.identity_key AS artistKey
+const CANDIDATE_COLUMNS = `track.id AS trackId, album.artist_id AS artistId,
+  track.identity_key AS trackKey, artist.identity_key AS artistKey`;
+
+const CANDIDATE_FROM = `
   FROM library_albums AS album
   JOIN library_artists AS artist ON artist.id = album.artist_id
   JOIN library_album_tracks AS link ON link.album_id = album.id
@@ -259,20 +297,28 @@ const CANDIDATE_SELECT = `
     WHERE media.track_id = track.id AND media.available = 1
   )`;
 
-function candidateTracks(artistIds: number[]) {
+function candidateTracks(artistIds: number[], wholeCatalogIds: number[], genres: string[]) {
   if (!artistIds.length) return [];
   return db
-    .prepare<number[], Candidate>(
-      `${CANDIDATE_SELECT} AND album.artist_id IN (${placeholders(artistIds)}) GROUP BY track.id`,
+    .prepare<unknown[], Candidate>(
+      `SELECT ${CANDIDATE_COLUMNS} ${CANDIDATE_FROM}
+         AND album.artist_id IN (${placeholders(artistIds)})
+         AND (album.artist_id IN (${placeholders(wholeCatalogIds)})
+           OR track.id IN (${taggedWith("tracks", genres)})
+           OR (${untagged("tracks", "track.id")}
+             AND (album.id IN (${taggedWith("albums", genres)})
+               OR (${untagged("albums", "album.id")}
+                 AND album.artist_id IN (${taggedWith("artists", genres)})))))
+       GROUP BY track.id`,
     )
-    .all(...artistIds);
+    .all(...artistIds, ...wholeCatalogIds, ...genres, ...genres, ...genres);
 }
 
 function fallbackTracks(limit: number, skipArtistIds: Set<number>) {
   const skip = [...skipArtistIds];
   return db
     .prepare<number[], Candidate>(
-      `${CANDIDATE_SELECT} AND album.artist_id NOT IN (${placeholders(skip)})
+      `SELECT ${CANDIDATE_COLUMNS} ${CANDIDATE_FROM} AND album.artist_id NOT IN (${placeholders(skip)})
        GROUP BY track.id ORDER BY random() LIMIT ?`,
     )
     .all(...skip, limit);
@@ -396,19 +442,24 @@ export async function buildRadio({
   ];
 
   const scores = genreArtistScores(resolved.genres);
-  for (const [artistId, score] of await similarArtistScores(similarSeeds, similarArtists)) {
+  const similar = await similarArtistScores(similarSeeds, similarArtists);
+  for (const [artistId, score] of similar) {
     scores.set(artistId, Math.max(scores.get(artistId) ?? 0, score));
   }
   for (const artistId of seedArtistIds) scores.set(artistId, 1);
   const blocked = withoutBlockedArtists(scores, seedArtistIds, userId);
 
   const excluded = new Set([...positiveIds(exclude), ...resolved.trackIds]);
-  const pool = candidateTracks([...scores.keys()]).filter(
-    (candidate) => !excluded.has(candidate.trackId),
-  );
+  const wholeCatalog = (artistId: number) => seedArtistIds.has(artistId) || similar.has(artistId);
+  const genreOnly = [...scores.keys()].filter((artistId) => !wholeCatalog(artistId));
+  const pool = candidateTracks(
+    [...scores.keys()],
+    [...scores.keys()].filter(wholeCatalog),
+    resolved.genres,
+  ).filter((candidate) => !excluded.has(candidate.trackId));
   if (pool.length < size * 2) {
     const known = new Set(pool.map((candidate) => candidate.trackId));
-    for (const candidate of fallbackTracks(size * 4, blocked)) {
+    for (const candidate of fallbackTracks(size * 4, new Set([...blocked, ...genreOnly]))) {
       if (excluded.has(candidate.trackId) || known.has(candidate.trackId)) continue;
       if (!scores.has(candidate.artistId)) scores.set(candidate.artistId, FALLBACK_SCORE);
       known.add(candidate.trackId);

@@ -22,6 +22,7 @@ function addArtist(
   trackCount: number,
   genres: string[] = [],
   albumGenres: string[] = [],
+  trackGenres: string[][] = [],
 ) {
   const artist = store.upsertLibraryArtist({
     identityKey: `artist:${name}`,
@@ -39,6 +40,7 @@ function addArtist(
       identityKey: `track:${name}:${index}`,
       title: `${name} ${index}`,
       artistName: name,
+      metadata: trackGenres[index]?.length ? { genres: trackGenres[index] } : null,
     });
     store.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: index + 1 });
     store.upsertLibraryMediaFile({
@@ -107,6 +109,41 @@ test("a track radio mixes the seed artist with similar and same-genre artists, n
   assert.ok(!picks.includes(excludedTrack!.id));
   const artists = picks.map(artistOf);
   assert.ok(artists.every((name, index) => name !== artists[index - 1]));
+});
+
+test("a track radio follows the genres of tracks, not the broad tags of their artists", async () => {
+  const house = Array.from({ length: 8 }, () => ["house"]);
+  const seed = addArtist("Daft Punk", 8, ["house", "r&b"], ["house"], house);
+  addArtist("Chance the Rapper", 4, ["r&b"]);
+  const kendrick = addArtist(
+    "Kendrick Lamar",
+    6,
+    ["house", "hip hop"],
+    ["hip hop"],
+    [["house"], ["house"], ["rap"], ["rap"], ["rap"], ["rap"]],
+  );
+
+  const picks = await buildRadio({
+    userId,
+    seed: { trackIds: [String(seed.tracks[0]!.id)] },
+    limit: 4,
+    random: seeded(9),
+    similarArtists: async () => [],
+  });
+
+  assert.deepEqual(countByArtist(picks), { "Daft Punk": 2, "Kendrick Lamar": 2 });
+  const houseTracks = kendrick.tracks.slice(0, 2).map((track) => track.id);
+  const shortPool = await buildRadio({
+    userId,
+    seed: { trackIds: [String(seed.tracks[0]!.id)] },
+    limit: 5,
+    random: seeded(9),
+    similarArtists: async () => [],
+  });
+  for (const ids of [picks, shortPool]) {
+    const kendricks = ids.filter((id) => artistOf(id) === "Kendrick Lamar");
+    assert.ok(kendricks.every((id) => houseTracks.includes(id)));
+  }
 });
 
 test("a blocked similar artist with a big catalog doesn't leave the station empty", async () => {
