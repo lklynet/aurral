@@ -5,8 +5,9 @@ export const HANDLE_HOLD_MS = 90 * 24 * 60 * 60 * 1000;
 
 const HANDLE = /^[a-z0-9_]{3,20}$/;
 
+const OFFICIAL_NAMES = ["aurral", "lklynet"];
+
 const RESERVED = new Set([
-  "aurral",
   "admin",
   "administrator",
   "root",
@@ -42,7 +43,9 @@ export const normalizeHandle = (input: string) => input.trim().replace(/^@/, "")
 
 export function checkHandle(handle: string): HandleClaim | null {
   if (!HANDLE.test(handle)) return "invalid";
-  if (RESERVED.has(handle) || handle.includes("aurral")) return "reserved";
+  if (RESERVED.has(handle) || OFFICIAL_NAMES.some((name) => handle.includes(name))) {
+    return "reserved";
+  }
   if (profanity.hasMatch(handle)) return "not_allowed";
   return null;
 }

@@ -189,6 +189,8 @@ test("handles follow the rules, belong to one account, and stay held after the a
     ["a", "has space", "invalid"],
     ["a", "admin", "reserved"],
     ["a", "aurral_fan", "reserved"],
+    ["a", "@LklyNet", "reserved"],
+    ["a", "lklynet_official", "reserved"],
     ["a", "@Lee_K", "claimed"],
     ["a", "second", "taken"],
     ["b", "LEE_K", "taken"],
