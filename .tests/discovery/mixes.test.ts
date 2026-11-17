@@ -212,6 +212,11 @@ test("a Blend mixes what two people play, only while both turn it on", async () 
   plays([lee], ["Lee A", "Lee B", "Lee C"]);
   plays([mia], ["Mia A", "Mia B", "Mia C", "Blocked"]);
   plays([kit], ["Kit"]);
+  for (let index = 0; index < 250; index += 1) {
+    for (let time = 0; time < 3; time += 1) {
+      insertPlay.run(mia, `lastfm:ghost-${index}`, `Ghost ${index}`, "Ghost", NOW - DAY - time);
+    }
+  }
   addDiscoveryFeedback(lee, { action: "block_artist", artistName: "Blocked" });
   for (const id of [lee, mia, kit]) await setBlendSetting(id, true);
 
@@ -236,6 +241,11 @@ test("a Blend mixes what two people play, only while both turn it on", async () 
     "Shared: You both play this",
   ]);
   assert.deepEqual(await getBlendSetting(lee), { enabled: true, waiting: ["kit"] });
+  const saved = await requireImportList("aurral-mix").fetch({
+    userId: lee,
+    externalId: `blend-${mia}`,
+  });
+  assert.deepEqual(saved.tracks.length > 0 && saved.tracks.filter((track) => track.reason), []);
   addDiscoveryFeedback(mia, { action: "block_artist", artistName: "Lee A" });
   assert.ok((await blendOf(lee, mia))?.trackIds.every((id) => artistOf(id) !== "Lee A"));
 

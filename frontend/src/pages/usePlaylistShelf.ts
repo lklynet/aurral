@@ -27,12 +27,13 @@ export function useMadeForYou() {
     ...madeForYouQueryOptions(user?.id),
     select: ({ discovery, mixes }) => {
       const isBlend = (mix: (typeof mixes)[number]) => mix.id.startsWith(BLEND_MIX_PREFIX);
+      const afterNewToYou = discovery.findIndex((playlist) => playlist.id === "new-to-you") + 1;
       return {
         mixes,
         playlists: [
-          ...discovery.slice(0, 1),
+          ...discovery.slice(0, afterNewToYou),
           ...mixes.filter(isBlend),
-          ...discovery.slice(1),
+          ...discovery.slice(afterNewToYou),
           ...mixes.filter((mix) => !isBlend(mix)),
         ],
       };

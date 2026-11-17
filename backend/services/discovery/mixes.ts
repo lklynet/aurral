@@ -23,6 +23,7 @@ const REWIND_MS = 365 * DAY_MS;
 const TOP_ARTIST_MS = 90 * DAY_MS;
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const BLEND_CANDIDATES = 200;
+const BLEND_WINDOW = 1000;
 const MIN_BLEND_SHARE = 5;
 
 export type Mix = {
@@ -480,11 +481,12 @@ function blendFavorites(userId: number, now: number, blocked: Set<string>) {
     .filter((play) => !matchesArtistKeys({ name: play.artist }, blocked))
     .map((play) => ({ play, weight: 2 * Math.log1p(play.season) + Math.log1p(play.total) }))
     .sort((left, right) => right.weight - left.weight)
-    .slice(0, BLEND_CANDIDATES);
+    .slice(0, BLEND_WINDOW);
 }
 
 async function buildBlend(left: number, right: number, now: number, blocked: Set<string>) {
-  const random = seededRandom(`${left}:${right}:${Math.floor(now / DAY_MS)}:blend`);
+  const draw = (id: number) =>
+    seededRandom(`${left}:${right}:${Math.floor(now / DAY_MS)}:blend:${id}`)();
   const sides = [left, right].map((userId) => blendFavorites(userId, now, blocked));
   await yieldToEventLoop();
   const [mine, theirs] = sides.map((side) => {
@@ -492,6 +494,7 @@ async function buildBlend(left: number, right: number, now: number, blocked: Set
     const tracks = new Map<number, { weight: number; artist: string }>();
     for (const { play, weight } of side) {
       const id = resolved.get(play);
+      if (tracks.size >= BLEND_CANDIDATES) break;
       if (id !== undefined && !tracks.has(id)) {
         tracks.set(id, { weight, artist: play.artist.trim().toLowerCase() });
       }
@@ -504,7 +507,7 @@ async function buildBlend(left: number, right: number, now: number, blocked: Set
       .map(([id, { weight, artist }]) => ({
         id,
         artist,
-        key: Math.log(Math.max(random(), Number.EPSILON)) / Math.max(weight, 0.01),
+        key: Math.log(Math.max(draw(id), Number.EPSILON)) / Math.max(weight, 0.01),
       }))
       .sort((a, b) => b.key - a.key);
   const queues: [BlendSource, ReturnType<typeof shuffled>][] = [
@@ -619,7 +622,7 @@ const cache = new BoundedMap<number, CachedMixes>(500);
 
 export async function getUserMixes(userId: number, now = Date.now()) {
   const [blends, mixes] = await Promise.all([getUserBlends(userId, now), getOwnMixes(userId, now)]);
-  return blends.mixes.length ? [...blends.mixes, ...mixes] : mixes;
+  return blends.mixes.length ? [...mixes, ...blends.mixes] : mixes;
 }
 
 function getOwnMixes(userId: number, now: number) {
