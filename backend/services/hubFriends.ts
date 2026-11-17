@@ -19,8 +19,23 @@ const TOP_TRACKS = 10;
 const DAY_MS = 86_400_000;
 
 const friendSchema = v.object({ handle: v.string() });
+const ranked = <Entries extends v.ObjectEntries>(entries: Entries) =>
+  v.array(v.object({ ...entries, plays: v.number() }));
+const listeningSchema = v.object({
+  ...friendSchema.entries,
+  nowPlaying: v.nullish(
+    v.object({ title: v.string(), artist: v.string(), album: v.nullable(v.string()) }),
+  ),
+  topPlays: v.nullish(
+    v.object({
+      artists: ranked({ name: v.string() }),
+      albums: ranked({ title: v.string(), artist: v.string() }),
+      tracks: ranked({ title: v.string(), artist: v.string() }),
+    }),
+  ),
+});
 const listsSchema = v.object({
-  friends: v.array(friendSchema),
+  friends: v.array(listeningSchema),
   incoming: v.array(friendSchema),
   outgoing: v.array(friendSchema),
 });
@@ -33,6 +48,9 @@ export class FriendError extends Error {
     this.status = status;
   }
 }
+
+const friendArtUrl = (artist: string, album?: string | null) =>
+  `/api/hub-link/friends/art?${new URLSearchParams(album ? { artist, album } : { artist })}`;
 
 const unreachable = () => new FriendError("Couldn't reach aurral.org. Try again.", 502);
 const relink = () =>
@@ -76,7 +94,32 @@ export async function friendLists(userId: number) {
   if (!response) return { state: "broken" as const };
   const lists = v.safeParse(listsSchema, await response.json().catch(() => null));
   if (!lists.success) throw unreachable();
-  return { state: "linked" as const, ...lists.output };
+  const { friends, incoming, outgoing } = lists.output;
+  return {
+    state: "linked" as const,
+    sharing: link.share_listening === 1,
+    friends: friends.map(({ handle, nowPlaying, topPlays }) => ({
+      handle,
+      nowPlaying: nowPlaying
+        ? { ...nowPlaying, artworkUrl: friendArtUrl(nowPlaying.artist, nowPlaying.album) }
+        : null,
+      topPlays: topPlays
+        ? {
+            artists: topPlays.artists.map((artist) => ({
+              ...artist,
+              artworkUrl: friendArtUrl(artist.name),
+            })),
+            albums: topPlays.albums.map((album) => ({
+              ...album,
+              artworkUrl: friendArtUrl(album.artist, album.title),
+            })),
+            tracks: topPlays.tracks,
+          }
+        : null,
+    })),
+    incoming,
+    outgoing,
+  };
 }
 
 export async function addFriend(userId: number, input: string) {

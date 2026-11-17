@@ -285,14 +285,32 @@ test("linked users add each other as friends, and a failing aurral.org changes n
   assert.deepEqual(await friends.addFriend(lee.id, "@Mia_K"), { status: "sent" });
   assert.deepEqual(await friends.friendLists(mia.id), {
     state: "linked",
+    sharing: true,
     friends: [],
     incoming: [{ handle: "lee_k" }],
     outgoing: [],
   });
   assert.deepEqual(await friends.addFriend(mia.id, "lee_k"), { status: "friends" });
-  assert.deepEqual(await friends.friendLists(lee.id), {
+  await playEvents.sendNowPlaying(lee.id, {
+    title: "Nude",
+    artist: "Radiohead",
+    album: "In Rainbows",
+  });
+  assert.deepEqual(await friends.friendLists(mia.id), {
     state: "linked",
-    friends: [{ handle: "mia_k" }],
+    sharing: true,
+    friends: [
+      {
+        handle: "lee_k",
+        nowPlaying: {
+          title: "Nude",
+          artist: "Radiohead",
+          album: "In Rainbows",
+          artworkUrl: "/api/hub-link/friends/art?artist=Radiohead&album=In+Rainbows",
+        },
+        topPlays: null,
+      },
+    ],
     incoming: [],
     outgoing: [],
   });
@@ -315,6 +333,7 @@ test("linked users add each other as friends, and a failing aurral.org changes n
   });
   assert.deepEqual(await friends.friendLists(mia.id), {
     state: "linked",
+    sharing: true,
     friends: [],
     incoming: [],
     outgoing: [],
@@ -331,6 +350,7 @@ test("linked users add each other as friends, and a failing aurral.org changes n
 });
 
 test("sharing sends now playing and top plays, Off clears aurral.org, and relinking keeps it off", async () => {
+  await hubEnv.DB.prepare("DELETE FROM listening").run();
   const pending = await link.startHubLink(lee);
   await approve(pending.state === "pending" ? pending.code : "");
   await link.hubLinkStatus(lee.id);

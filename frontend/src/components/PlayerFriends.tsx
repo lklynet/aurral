@@ -1,7 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { AlertCircle, Plus, Users } from "./icons";
+import ArtworkImage from "./ArtworkImage";
 import StatePanel from "./StatePanel";
 import TooltipButton from "./TooltipButton";
 import { ModalShell } from "./PlaylistModals";
@@ -10,28 +12,52 @@ import { useToast } from "../contexts/ToastContext";
 import { SettingsLink } from "../navigation/settingsRoute";
 import { queryKeys } from "../queryClient";
 import { hubLinkClient } from "../utils/api/clients/hubLink.ts";
+import { resolveAuthenticatedApiAssetUrl } from "../utils/api/core.ts";
 import { readApiError } from "../utils/api/errors.ts";
 
 const SHARING = "Friends see what you're playing and your top plays from the last 30 days.";
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
-export function useFriends(enabled = true) {
+const LIVE_MS = 60_000;
+
+export function useFriends(enabled = true, live = false) {
   const { user } = useAuth();
   return useQuery({
     queryKey: queryKeys.friends(user?.id),
     queryFn: ({ signal }) => parseResponse(hubLinkClient.friends.$get({}, { init: { signal } })),
     staleTime: 0,
+    refetchInterval: live ? LIVE_MS : false,
     enabled,
   });
 }
 
-function FriendRow({ title, note }: { title: string; note?: string }) {
+export const friendPath = (handle: string) => `/friends/${encodeURIComponent(handle)}`;
+
+export function FriendArt({ src, round = false }: { src?: string | null; round?: boolean }) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  return (
+    <span className={`player-queue__art${round ? " is-round" : ""}`} aria-hidden="true">
+      {src && src !== failedSrc ? (
+        <ArtworkImage
+          src={resolveAuthenticatedApiAssetUrl(`${src}&w=96`)}
+          thumbnail={false}
+          alt=""
+          onError={() => setFailedSrc(src)}
+        />
+      ) : null}
+    </span>
+  );
+}
+
+function FriendRow({ title, note, art }: { title: string; note?: string; art?: ReactNode }) {
   return (
     <span className="player-queue__now">
-      <span className="player-queue__art" aria-hidden="true">
-        <Users />
-      </span>
+      {art ?? (
+        <span className="player-queue__art" aria-hidden="true">
+          <Users />
+        </span>
+      )}
       <span className="player-queue__copy">
         <span className="player-queue__name">{title}</span>
         {note ? <span className="player-queue__artist">{note}</span> : null}
@@ -47,11 +73,11 @@ export default function PlayerFriends({
   variant: "panel" | "sheet";
   onManage: () => void;
 }) {
-  const friends = useFriends();
+  const friends = useFriends(true, true);
   const className = `player-friends player-friends--${variant}`;
   const data = friends.data;
 
-  if (friends.isError) {
+  if (friends.isError && !data) {
     return (
       <div className={className}>
         <StatePanel
@@ -100,7 +126,10 @@ export default function PlayerFriends({
     );
   }
 
-  const { incoming, friends: list } = data;
+  const { incoming, friends: list, sharing } = data;
+  const sorted = [...list].sort(
+    (a, b) => Number(Boolean(b.nowPlaying)) - Number(Boolean(a.nowPlaying)),
+  );
   return (
     <div className={className}>
       {variant === "sheet" ? (
@@ -123,11 +152,17 @@ export default function PlayerFriends({
           />
         </button>
       ) : null}
-      {list.length ? (
+      {sorted.length ? (
         <ul className="player-friends__list">
-          {list.map((friend) => (
-            <li key={friend.handle}>
-              <FriendRow title={`@${friend.handle}`} />
+          {sorted.map(({ handle, nowPlaying }) => (
+            <li key={handle}>
+              <Link className="player-friends__friend" to={friendPath(handle)}>
+                <FriendRow
+                  title={`@${handle}`}
+                  note={nowPlaying ? `${nowPlaying.title} · ${nowPlaying.artist}` : undefined}
+                  art={<FriendArt src={nowPlaying?.artworkUrl} />}
+                />
+              </Link>
             </li>
           ))}
         </ul>
@@ -137,6 +172,12 @@ export default function PlayerFriends({
             Add friends
           </button>
         </StatePanel>
+      )}
+      {sharing ? null : (
+        <p className="player-friends__hint">
+          {"Friends can't see what you play. "}
+          <SettingsLink to="profile">Share in Profile</SettingsLink>
+        </p>
       )}
     </div>
   );

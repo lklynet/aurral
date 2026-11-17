@@ -1,0 +1,48 @@
+import { db } from "../config/db-sqlite.ts";
+import { dbOps } from "../db/helpers/index.ts";
+import { findDeezerAlbumCover, getDeezerArtist } from "./apiClients/deezer.ts";
+import { getLibraryArtwork } from "./libraryArtwork.ts";
+import { wrappedKey } from "./wrapped/metrics.ts";
+
+const NOT_FOUND = "NOT_FOUND";
+
+const libraryAlbum = db.prepare<[string, string], { id: number }>(
+  `SELECT library_albums.id FROM library_albums
+   JOIN library_artists ON library_artists.id = library_albums.artist_id
+   WHERE library_albums.title = ? COLLATE NOCASE AND library_artists.name = ? COLLATE NOCASE
+   LIMIT 1`,
+);
+const libraryArtist = db.prepare<[string], { id: number }>(
+  "SELECT id FROM library_artists WHERE name = ? COLLATE NOCASE LIMIT 1",
+);
+
+const lookups = new Map<string, Promise<string | null>>();
+
+async function deezerArt(key: string, artist: string, album: string | undefined) {
+  try {
+    const found = album
+      ? await findDeezerAlbumCover(artist, album)
+      : ((await getDeezerArtist(artist, { throwOnError: true }))?.imageUrl ?? null);
+    dbOps.setImage(key, found ?? NOT_FOUND);
+    return found;
+  } catch {
+    return null;
+  }
+}
+
+export async function friendArt(artist: string, album: string | undefined) {
+  const local = album ? libraryAlbum.get(album, artist) : libraryArtist.get(artist);
+  const file = local
+    ? await getLibraryArtwork(album ? "album" : "artist", String(local.id)).catch(() => null)
+    : null;
+  if (file) return { file };
+  const key = `friend:${wrappedKey(artist)}\u0000${album ? wrappedKey(album) : ""}`;
+  const cached = dbOps.getImage(key)?.imageUrl;
+  if (cached) return { url: cached === NOT_FOUND ? null : cached };
+  let lookup = lookups.get(key);
+  if (!lookup) {
+    lookup = deezerArt(key, artist, album).finally(() => lookups.delete(key));
+    lookups.set(key, lookup);
+  }
+  return { url: await lookup };
+}

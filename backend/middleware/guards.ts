@@ -112,6 +112,7 @@ const tokenArtworkPaths = [
   /^\/api\/discover\/playlists\/[^/]+\/[^/]+\/cover$/i,
   /^\/api\/artists\/release-group\/[a-f0-9-]{36}\/cover\/image$/i,
   /^\/api\/artists\/[a-f0-9-]{36}\/image$/i,
+  /^\/api\/hub-link\/friends\/art$/i,
 ];
 
 const acceptsLinkToken = (method: string, path: string) =>

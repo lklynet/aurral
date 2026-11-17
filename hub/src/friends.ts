@@ -1,5 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types/index.ts";
 import { normalizeHandle } from "./handles.ts";
+import { friendsListening } from "./listening.ts";
 
 type FriendRequest = "sent" | "friends" | "missing" | "self";
 
@@ -59,8 +60,13 @@ export async function friendLists(db: D1Database, accountId: string) {
     .all<{ handle: string; sent: number; received: number }>();
   const where = (keep: (row: (typeof results)[number]) => boolean) =>
     results.filter(keep).map(({ handle }) => ({ handle }));
+  const listening = await friendsListening(db, accountId);
   return {
-    friends: where((row) => Boolean(row.sent && row.received)),
+    friends: where((row) => Boolean(row.sent && row.received)).map(({ handle }) => ({
+      handle,
+      nowPlaying: listening.get(handle)?.nowPlaying ?? null,
+      topPlays: listening.get(handle)?.topPlays ?? null,
+    })),
     incoming: where((row) => !row.sent),
     outgoing: where((row) => !row.received),
   };

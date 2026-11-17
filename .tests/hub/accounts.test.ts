@@ -314,7 +314,7 @@ test("a server links a user once a signed-in account approves its code, and eith
   assert.equal((await serverStatus()).status, 401);
 });
 
-test("linked servers add friends by handle, both asking makes friends, and either side ends it", async () => {
+test("linked servers add friends by handle, both asking makes friends, friends see what each other plays, and either side ends it", async () => {
   await reset();
   const now = new Date().toISOString();
   const tokens = { ann: "a".repeat(43), bob: "b".repeat(43) };
@@ -357,9 +357,72 @@ test("linked servers add friends by handle, both asking makes friends, and eithe
     outgoing: [],
   });
 
-  assert.deepEqual(await (await friends(tokens.bob, "PUT", "ann")).json(), { status: "friends" });
+  const share = (link: string, nowPlaying: object | null, until: number, top: object, at: number) =>
+    db
+      .prepare(
+        "INSERT INTO listening (link_id, now_playing, playing_until, top_plays, top_plays_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      .bind(link, nowPlaying && JSON.stringify(nowPlaying), until, JSON.stringify(top), at)
+      .run();
+  const time = Date.now();
+  const top = (plays: number) => ({
+    artists: [{ name: "Radiohead", plays }],
+    albums: [],
+    tracks: [{ title: "Nude", artist: "Radiohead", plays }],
+  });
+  await share(
+    "bob",
+    { title: "Nude", artist: "Radiohead", album: null },
+    time + 60_000,
+    top(3),
+    time,
+  );
   assert.deepEqual(await lists(tokens.ann), {
-    friends: [{ handle: "bob" }],
+    friends: [],
+    incoming: [],
+    outgoing: [{ handle: "bob" }],
+  });
+
+  assert.deepEqual(await (await friends(tokens.bob, "PUT", "ann")).json(), { status: "friends" });
+  await db
+    .prepare(
+      "INSERT INTO links (id, instance_id, user_name, token_hash, account_id, linked_at) VALUES ('bob-2', 'inst', 'bob', 'h2', 'bob', 1), ('bob-3', 'inst', 'bob', 'h3', 'bob', 1)",
+    )
+    .run();
+  await share(
+    "bob-2",
+    { title: "Old", artist: "Radiohead", album: null },
+    time - 1,
+    {
+      ...top(2),
+      artists: [
+        { name: "radiohead", plays: 2 },
+        { name: "Björk", plays: 4 },
+      ],
+    },
+    time,
+  );
+  await share("bob-3", null, 0, top(50), time - 8 * 86_400_000);
+  assert.deepEqual(await lists(tokens.ann), {
+    friends: [
+      {
+        handle: "bob",
+        nowPlaying: { title: "Nude", artist: "Radiohead", album: null },
+        topPlays: {
+          artists: [
+            { name: "Radiohead", plays: 5 },
+            { name: "Björk", plays: 4 },
+          ],
+          albums: [],
+          tracks: [{ title: "Nude", artist: "Radiohead", plays: 5 }],
+        },
+      },
+    ],
+    incoming: [],
+    outgoing: [],
+  });
+  assert.deepEqual(await lists(tokens.bob), {
+    friends: [{ handle: "ann", nowPlaying: null, topPlays: null }],
     incoming: [],
     outgoing: [],
   });

@@ -174,3 +174,32 @@ test("a track found by artist and title plays its Deezer preview for a signed-in
   assert.equal(played.headers.get("location"), link);
   assert.deepEqual(requests, ["https://api.deezer.com/search", "https://api.deezer.com/track/13"]);
 });
+
+test("a friend's cover is looked up on Deezer by name once, and a miss isn't asked again", async () => {
+  const cover = "https://cdn-images.dzcdn.net/images/cover/abc/1000x1000-000000-80-0-0.jpg";
+  const requests = stubDeezer({
+    "https://api.deezer.com/search/album": () => ({
+      data: [{ id: 1, title: "In Rainbows", artist: { name: "Radiohead" }, cover_xl: cover }],
+    }),
+    "https://api.deezer.com/search/artist": () => ({ data: [] }),
+  });
+  const user = userOps.createUser("friend", "password-hash");
+  assert.ok(user);
+  const token = createSession(user.id).token;
+  const art = (query: string) =>
+    requestPreview(`/api/hub-link/friends/art?${query}&token=${token}`);
+
+  const found = await art("artist=Radiohead&album=In+Rainbows");
+  assert.equal(found.status, 302);
+  assert.equal(found.headers.get("location"), cover);
+  assert.equal((await art("artist=Nobody+Here")).status, 404);
+  assert.equal((await art("artist=nobody+here")).status, 404);
+  assert.equal(
+    (await art("artist=Radiohead&album=In+Rainbows&w=96")).headers.get("location"),
+    cover.replace("1000x1000", "120x120"),
+  );
+  assert.deepEqual(requests, [
+    "https://api.deezer.com/search/album",
+    "https://api.deezer.com/search/artist",
+  ]);
+});
