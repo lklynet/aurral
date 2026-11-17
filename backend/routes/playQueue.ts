@@ -7,6 +7,7 @@ import type { AppEnv } from "../middleware/requestUser.ts";
 import { validate } from "../middleware/validate.ts";
 import type { DownloadJob } from "../services/downloadJobs/downloadTracker.ts";
 import { clearPlayerQueue, getPlayerQueue, savePlayerQueue } from "../services/playQueueService.ts";
+import { entryForStreamPath } from "../services/queueEntry.ts";
 import { toQueueTracks } from "../services/queueTracks.ts";
 
 const MAX_ENTRIES = 1000;
@@ -19,18 +20,6 @@ const playQueueInput = v.object({
   positionMs: v.pipe(v.number(), v.integer(), v.minValue(0)),
   device,
 });
-
-function entryForStreamPath(path: string) {
-  const library = /^\/library\/stream\/[^/]+\/(\d+)$/.exec(path);
-  if (library) return { trackId: Number(library[1]) };
-  const playlist = /^\/playlists\/stream\/([^/]+)$/.exec(path);
-  if (!playlist?.[1]) return null;
-  try {
-    return { jobId: decodeURIComponent(playlist[1]) };
-  } catch {
-    return null;
-  }
-}
 
 const jobQueueTrack = (job: DownloadJob) => ({
   id: String(job.id),

@@ -23,6 +23,7 @@ const playEventInput = v.object({
   durationMs: value,
   playedAt: value,
   source: value,
+  streamPath: value,
 });
 
 export default new Hono<AppEnv>()

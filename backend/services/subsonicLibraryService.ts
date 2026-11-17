@@ -75,6 +75,7 @@ import {
   linkTracksToLibrary,
   releaseLibraryJobs,
 } from "./playlists/playlistLibrary.ts";
+import type { QueueEntry } from "./queueEntry.ts";
 import { getCachedArtistByMbid } from "./providers/brainzmashProvider.ts";
 import {
   getCustomArtwork,
@@ -1866,8 +1867,6 @@ function playlistSongIdsFor(user: SubsonicUser) {
     return shared ? idFor("shared-song", `${shared}:${job.id}`) : null;
   };
 }
-
-export type QueueEntry = { trackId: number } | { jobId: string };
 
 export function songIdsForQueueEntries(user: SubsonicUser, entries: (QueueEntry | null)[]) {
   const jobs = downloadTracker.getJobs(

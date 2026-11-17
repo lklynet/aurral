@@ -91,6 +91,7 @@ type SubsonicPayload = {
   randomSongs: { song: SubsonicEntry[] };
   topSongs: { song: SubsonicEntry[] };
   playQueueByIndex: { entry: SubsonicEntry[]; currentIndex: number; position: number };
+  nowPlaying: { entry: (SubsonicEntry & { username: string })[] };
   playQueue: {
     entry: SubsonicEntry[];
     current: string;
@@ -668,6 +669,45 @@ test("the web player and Subsonic clients resume the same play queue", async () 
   await save([librarySong.streamPath], 0);
   await close("Aurral web");
   assert.deepEqual(await (await apiFetch("/api/play-queue")).json(), { queue: null });
+});
+
+test("getNowPlaying shows what people sharing their listening play on the web or in a Subsonic app", async () => {
+  const song = requireFixture(
+    responseJson(await request("getRandomSongs", { size: 1 })).randomSongs.song[0],
+  );
+  const track = db
+    .prepare<[string], { id: number }>("SELECT id FROM library_tracks WHERE identity_key = ?")
+    .get(decodeURIComponent(song.id.slice("song:".length)));
+  assert.ok(track);
+  const bob = userOps.createUser("now-bob", hashPassword("password123"), "user");
+  assert.ok(bob != null);
+  const playing = async (username: string) =>
+    [...responseJson(await request("getNowPlaying", { u: username })).nowPlaying.entry].map(
+      ({ id, username }) => [id, username],
+    );
+  try {
+    const played = { title: song.title, artist: song.artist, durationMs: 60_000 };
+    await apiFetch("/api/play-events", {
+      method: "POST",
+      body: JSON.stringify({ ...played, trackId: song.id, source: "native-player" }),
+    });
+    await apiFetch("/api/play-events/now-playing", {
+      method: "POST",
+      body: JSON.stringify({ ...played, streamPath: `/library/stream/track/${track.id}` }),
+    });
+    assert.deepEqual(await playing("now-bob"), [[song.id, "alice"]]);
+
+    await request("scrobble", { u: "now-bob", id: song.id, submission: "true" });
+    assert.deepEqual(await playing("alice"), [
+      [song.id, "alice"],
+      [song.id, "now-bob"],
+    ]);
+  } finally {
+    db.prepare(
+      "DELETE FROM play_events WHERE user_id IN (SELECT id FROM users WHERE username IN ('alice', 'now-bob'))",
+    ).run();
+    db.prepare("DELETE FROM users WHERE id = ?").run(bob.id);
+  }
 });
 
 test("transcodes requested formats and bitrate limits while preserving raw streams and downloads", async () => {

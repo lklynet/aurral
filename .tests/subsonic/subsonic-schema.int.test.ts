@@ -363,6 +363,8 @@ test("list, search, playlist and annotation responses match the Subsonic and Ope
   await assertValid("getSong", { id: songId });
   await assertValid("unstar", { id: songId, albumId: album.id, artistId });
   await assertValid("scrobble", { id: songId, submission: "true" });
+  const nowPlaying: unknown = await assertValid("getNowPlaying");
+  assert.ok(JSON.stringify(nowPlaying).includes(`"username":"alice"`));
 
   const playlists = await assertValid("getPlaylists");
   const playlistId = playlists.playlists.playlist[0].id;

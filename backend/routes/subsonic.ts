@@ -51,12 +51,18 @@ import {
   toIndexArtist,
   updateSubsonicPlaylist,
   unstarMany,
+  queueEntryForSong,
 } from "../services/subsonicLibraryService.ts";
+import { nowPlayingSongs } from "../services/localPeople.ts";
 import {
   getLibraryScanStatus,
   getScheduledLibraryScanJobId,
 } from "../services/libraryScanWorker.ts";
-import { recordPlayEvent, sendNowPlaying } from "../services/playEventService.ts";
+import {
+  recordPlayEvent,
+  sendNowPlaying,
+  showScrobbleAsNowPlaying,
+} from "../services/playEventService.ts";
 import { logger } from "../services/logger.ts";
 import { asAppError } from "../../lib/errors.ts";
 
@@ -479,14 +485,17 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
         albumId: song.albumId,
         durationMs: Number(song.duration || 0) * 1000,
       };
+      const found = queueEntryForSong(user, song.id);
+      const entry = found?.job ? { jobId: found.job.id } : found;
       if (submission) {
-        recordPlayEvent(user.id, {
+        const event = recordPlayEvent(user.id, {
           ...track,
           playedAt: times[index] || undefined,
           source: "subsonic",
         });
+        if (event) showScrobbleAsNowPlaying(user.id, event, entry);
       } else {
-        void sendNowPlaying(user.id, track);
+        void sendNowPlaying(user.id, track, entry);
       }
     });
     return ok();
@@ -509,7 +518,7 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
     });
   }
   if (method === "getnowplaying") {
-    return ok({ nowPlaying: { entry: [] } });
+    return ok({ nowPlaying: { entry: nowPlayingSongs(user) } });
   }
   if (method === "getbookmarks") {
     return ok({ bookmarks: { bookmark: [] } });
