@@ -671,6 +671,7 @@ export interface UsersRow {
   has_local_password: number;
   api_key: string | null;
   api_key_hash: string | null;
+  blend: number;
 }
 
 export interface WrappedReportsRow {

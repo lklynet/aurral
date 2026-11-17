@@ -13,3 +13,5 @@ export const BROWSE_IMPORT_PROVIDERS = {
 
 export const isBrowseProvider = (value: unknown): value is BrowseProvider =>
   BROWSE_PROVIDERS.some((provider) => provider === value);
+
+export const BLEND_MIX_PREFIX = "blend-";

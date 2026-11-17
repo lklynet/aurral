@@ -1,6 +1,6 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
@@ -10,6 +10,7 @@ import { setStoredAuth } from "../../../utils/api/core.ts";
 import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.ts";
 import { logIn } from "../../../utils/session.ts";
 import { DotLoader } from "../../../components/DotLoader";
+import PillToggle from "../../../components/PillToggle";
 import { ApiKeyRow } from "../components/ApiKeyRow";
 import { ConnectedAccountsSection, useMyIdentities } from "../components/ConnectedAccountsSection";
 import { HubLinkGroup } from "../components/HubLinkGroup";
@@ -183,6 +184,51 @@ function PasswordGroup() {
   );
 }
 
+const nameList = new Intl.ListFormat("en", { style: "long", type: "conjunction" });
+
+function BlendRow({ userId }: { userId: number }) {
+  const { showError } = useToast();
+  const queryClient = useQueryClient();
+  const queryKey = queryKeys.myBlend(userId);
+  const blend = useQuery({
+    queryKey,
+    queryFn: ({ signal }) => parseResponse(usersClient.me.blend.$get({}, { init: { signal } })),
+  });
+  const toggle = useMutation({
+    mutationFn: (enabled: boolean) =>
+      parseResponse(usersClient.me.blend.$put({ json: { enabled } })),
+    onSuccess: (next) => {
+      queryClient.setQueryData(queryKey, next);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.madeForYou(userId) });
+    },
+    onError: (error) => showError(readApiError(error).error || "Couldn't save your Blend setting"),
+  });
+  const waiting = blend.data?.waiting ?? [];
+  return (
+    <>
+      <SettingsRow
+        label="Blend with people on this server"
+        help="Anyone here who also turns this on gets a Blend with you, made from what you both play."
+      >
+        <PillToggle
+          id="profile-blend"
+          checked={toggle.isPending ? toggle.variables : (blend.data?.enabled ?? false)}
+          disabled={!blend.data || toggle.isPending}
+          aria-label="Blend with people on this server"
+          onChange={(event) => toggle.mutate(event.target.checked)}
+        />
+      </SettingsRow>
+      {waiting.length ? (
+        <SettingsNote>
+          {waiting.length === 1
+            ? `The Blend with ${waiting[0]} fills in once you both have played a few more tracks.`
+            : `Your Blends with ${nameList.format(waiting)} fill in once you each have played a few more tracks.`}
+        </SettingsNote>
+      ) : null}
+    </>
+  );
+}
+
 function ApiAccessGroup({ userId }: { userId: number }) {
   return (
     <SettingsGroup title="API access">
@@ -212,6 +258,7 @@ export function ProfileSection() {
           <SettingsRow label="Username">
             <span className="settings-row__value">{user.username}</span>
           </SettingsRow>
+          {user.id != null ? <BlendRow userId={user.id} /> : null}
         </SettingsGroup>
       ) : null}
       {user?.id != null ? (

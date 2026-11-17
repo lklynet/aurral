@@ -33,6 +33,7 @@ import {
 } from "../services/listeningHistory.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { normalizeDiscoverLayout } from "../../lib/discoverLayout.ts";
+import { getBlendSetting, setBlendSetting } from "../services/discovery/mixes.ts";
 import { flowPlaylistConfig } from "../services/playlists/flowPlaylistConfig.ts";
 
 type UserUpdate = Parameters<typeof userOps.updateUser>[1];
@@ -73,6 +74,7 @@ const listenHistoryBody = v.partial(
 );
 const themeBody = v.object({ theme: v.optional(v.unknown()) });
 const discoverLayoutBody = v.object({ layout: v.optional(v.unknown()) });
+const blendBody = v.object({ enabled: v.boolean() });
 const playlistOrderBody = v.object({
   ids: v.pipe(v.array(v.pipe(v.string(), v.maxLength(200))), v.maxLength(5000)),
 });
@@ -300,6 +302,10 @@ export default new Hono<AppEnv>()
       return c.json({ error: "Failed to save theme", message: failure?.message }, 500);
     }
   })
+  .get("/me/blend", requireAuth, async (c) => c.json(await getBlendSetting(c.var.user.id), 200))
+  .put("/me/blend", requireAuth, validate("json", blendBody), async (c) =>
+    c.json(await setBlendSetting(c.var.user.id, c.req.valid("json").enabled), 200),
+  )
   .get("/me/discover-layout", requireAuth, (c) => {
     try {
       const user = userOps.getUserById(c.var.user.id);

@@ -8,7 +8,11 @@ import {
   playlistStatusQueryOptions,
 } from "../queryOptions.ts";
 import type { ShelfScope } from "../../../backend/services/importLists/deezerPlaylists.ts";
-import { BROWSE_IMPORT_PROVIDERS, type BrowseProvider } from "../../../lib/browsePlaylists.ts";
+import {
+  BLEND_MIX_PREFIX,
+  BROWSE_IMPORT_PROVIDERS,
+  type BrowseProvider,
+} from "../../../lib/browsePlaylists.ts";
 
 const GROUP_ORDER = ["mood", "decade", "genre"] as const;
 
@@ -21,7 +25,18 @@ export function useMadeForYou() {
   const { user } = useAuth();
   return useQuery({
     ...madeForYouQueryOptions(user?.id),
-    select: ({ discovery, mixes }) => ({ mixes, playlists: [...discovery, ...mixes] }),
+    select: ({ discovery, mixes }) => {
+      const isBlend = (mix: (typeof mixes)[number]) => mix.id.startsWith(BLEND_MIX_PREFIX);
+      return {
+        mixes,
+        playlists: [
+          ...discovery.slice(0, 1),
+          ...mixes.filter(isBlend),
+          ...discovery.slice(1),
+          ...mixes.filter((mix) => !isBlend(mix)),
+        ],
+      };
+    },
   });
 }
 

@@ -187,3 +187,67 @@ test("Daily Mixes group the most played artists by shared genre", async () => {
   insertPlay.run(userId, "lastfm:old", "Old Song", "Avalon", NOW - 90 * DAY);
   assert.notEqual(await getUserMixes(userId, later + 31 * 60_000), built);
 });
+
+test("a Blend mixes what two people play, only while both turn it on", async () => {
+  const { setBlendSetting, getBlendSetting } =
+    await import("../../backend/services/discovery/mixes.ts");
+  const { addDiscoveryFeedback } = await import("../../backend/services/discovery/feedback.ts");
+  const person = (username: string) =>
+    db
+      .prepare<[string], { id: number }>(
+        "INSERT INTO users (username, password_hash) VALUES (?, 'x') RETURNING id",
+      )
+      .get(username)!.id;
+  const [lee, mia, kit] = ["lee", "mia", "kit"].map(person) as [number, number, number];
+  const plays = (listener: number, names: string[]) => {
+    for (const name of names) {
+      for (const track of addArtist(name, 3).tracks) {
+        insertPlay.run(listener, String(track.id), track.title, name, NOW - DAY);
+      }
+    }
+  };
+  plays(lee, ["Shared A", "Shared B", "Lee A", "Lee B", "Lee C"]);
+  plays(mia, ["Mia A", "Mia B", "Mia C", "Blocked"]);
+  const shared = db
+    .prepare<[], { id: number; title: string; artist: string }>(
+      "SELECT id, title, artist_name AS artist FROM library_tracks WHERE artist_name LIKE 'Shared%'",
+    )
+    .all();
+  for (const track of shared) {
+    insertPlay.run(mia, String(track.id), track.title, track.artist, NOW - DAY);
+  }
+  plays(kit, ["Kit"]);
+  addDiscoveryFeedback(lee, { action: "block_artist", artistName: "Blocked" });
+  for (const id of [lee, mia, kit]) await setBlendSetting(id, true);
+
+  const blendOf = async (viewer: number, partner: number) =>
+    (await getUserMixes(viewer, NOW)).find((mix) => mix.id === `blend-${partner}`);
+  const forLee = await blendOf(lee, mia);
+  const forMia = await blendOf(mia, lee);
+  assert.equal(forLee?.name, "Blend with mia");
+  assert.deepEqual(forMia?.trackIds, forLee?.trackIds);
+  const reasons = (blend: typeof forLee) =>
+    new Set(
+      blend?.trackIds.map((id) => `${artistOf(id).split(" ")[0]}: ${blend.reasons?.get(id)}`),
+    );
+  assert.deepEqual([...reasons(forLee)].sort(), [
+    "Lee: From you",
+    "Mia: From mia",
+    "Shared: You both play this",
+  ]);
+  assert.deepEqual([...reasons(forMia)].sort(), [
+    "Lee: From lee",
+    "Mia: From you",
+    "Shared: You both play this",
+  ]);
+  assert.deepEqual(await getBlendSetting(lee), { enabled: true, waiting: ["kit"] });
+
+  await setBlendSetting(mia, false);
+  assert.equal(await blendOf(lee, mia), undefined);
+  await setBlendSetting(mia, true);
+  await setBlendSetting(lee, false);
+  assert.equal(await blendOf(mia, lee), undefined);
+  await setBlendSetting(lee, true);
+  db.prepare("UPDATE users SET status = 'disabled' WHERE id = ?").run(mia);
+  assert.equal(await blendOf(lee, mia), undefined);
+});

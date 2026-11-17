@@ -288,6 +288,7 @@ function BrowsePlaylistDetail({
           loading={false}
           playbackSource={playbackSource}
           emptyMessage="This playlist has no tracks."
+          showReasons={playlist?.tracks.some((track) => "reason" in track && !!track.reason)}
           onNavigateArtist={(track: PreviewTrack) => openLink(getArtistLink(track))}
           onNavigateAlbum={(track: PreviewTrack) => openLink(getAlbumLink(track))}
           getArtistLink={getArtistLink}
