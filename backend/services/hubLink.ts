@@ -16,6 +16,7 @@ const statusSchema = v.variant("status", [
 ]);
 const revokedSchema = v.object({ error: v.literal("link_revoked") });
 const revokeTaskSchema = v.object({ origin: v.string(), tokenHash: v.string() });
+const refusalSchema = v.object({ error: v.string() });
 
 export class HubLinkError extends Error {}
 
@@ -23,11 +24,33 @@ const hashToken = (token: string) => createHash("sha256").update(token).digest("
 
 export const hubLinksEnabled = () => dbOps.getSettings().security.aurralAccounts !== false;
 
-const selectLink = db.prepare<[number], HubLinksRow>("SELECT * FROM hub_links WHERE user_id = ?");
+export const selectLink = db.prepare<[number], HubLinksRow>(
+  "SELECT * FROM hub_links WHERE user_id = ?",
+);
 const deleteLink = db.prepare<[number]>("DELETE FROM hub_links WHERE user_id = ?");
 
-const hubRequest = (origin: string, path: string, init: RequestInit = {}) =>
+const countPublications = db.prepare<[number], { count: number }>(
+  "SELECT COUNT(*) AS count FROM hub_publications WHERE user_id = ?",
+);
+
+export const hubRequest = (origin: string, path: string, init: RequestInit = {}) =>
   fetch(`${origin}${path}`, { ...init, signal: AbortSignal.timeout(HUB_TIMEOUT_MS) });
+
+export const linkedLink = (userId: number) => {
+  const link = selectLink.get(userId);
+  return link?.linked_at && !link.broken ? link : null;
+};
+
+export const authorized = (link: HubLinksRow, method: string, body?: unknown) => ({
+  method,
+  headers: { Authorization: `Bearer ${link.token}`, "Content-Type": "application/json" },
+  ...(body !== undefined && { body: JSON.stringify(body) }),
+});
+
+export async function refusalOf(response: Response) {
+  const body = v.safeParse(refusalSchema, await response.json().catch(() => null));
+  return body.success ? body.output.error : null;
+}
 
 function queueRevoke(link: HubLinksRow) {
   enqueueSystemTask(
@@ -35,6 +58,11 @@ function queueRevoke(link: HubLinksRow) {
     { maxAttempts: REVOKE_ATTEMPTS },
   );
 }
+
+export const markLinkBroken = db.transaction((userId: number) => {
+  db.prepare<[number]>("UPDATE hub_links SET broken = 1 WHERE user_id = ?").run(userId);
+  db.prepare<[number]>("DELETE FROM hub_publications WHERE user_id = ?").run(userId);
+});
 
 export const forgetHubLink = db.transaction((userId: number) => {
   const link = selectLink.get(userId);
@@ -55,10 +83,11 @@ export async function startHubLink(user: { id: number; username: string }) {
   const started = response?.ok ? v.safeParse(startedSchema, await response.json()) : null;
   if (!started?.success) throw new HubLinkError("Couldn't reach aurral.org. Try again.");
   db.transaction(() => {
+    const sharing = selectLink.get(user.id)?.share_listening ?? 1;
     forgetHubLink(user.id);
-    db.prepare<[number, string, string, string, number]>(
-      "INSERT INTO hub_links (user_id, origin, token, user_code, expires_at) VALUES (?, ?, ?, ?, ?)",
-    ).run(user.id, SHARE_ORIGIN, token, started.output.userCode, started.output.expiresAt);
+    db.prepare<[number, string, string, string, number, number]>(
+      "INSERT INTO hub_links (user_id, origin, token, user_code, expires_at, share_listening) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run(user.id, SHARE_ORIGIN, token, started.output.userCode, started.output.expiresAt, sharing);
   })();
   return hubLinkStatus(user.id);
 }
@@ -71,7 +100,7 @@ async function checkHub(link: HubLinksRow) {
   const body: unknown = await response.json().catch(() => null);
   if (response.status === 401 && v.is(revokedSchema, body)) {
     if (link.linked_at) {
-      db.prepare<[number]>("UPDATE hub_links SET broken = 1 WHERE user_id = ?").run(link.user_id);
+      markLinkBroken(link.user_id);
     } else {
       deleteLink.run(link.user_id);
     }
@@ -90,7 +119,11 @@ export async function hubLinkStatus(userId: number) {
   const before = selectLink.get(userId);
   if (before && !before.broken && available) await checkHub(before);
   const link = before && available ? selectLink.get(userId) : before;
-  const base = { available, origin: link?.origin ?? SHARE_ORIGIN };
+  const base = {
+    available,
+    origin: link?.origin ?? SHARE_ORIGIN,
+    publicPlaylists: countPublications.get(userId)?.count ?? 0,
+  };
   if (!link) return { ...base, state: "none" as const };
   if (link.linked_at && link.handle) {
     return {
@@ -98,6 +131,7 @@ export async function hubLinkStatus(userId: number) {
       state: link.broken ? ("broken" as const) : ("linked" as const),
       handle: link.handle,
       linkedAt: link.linked_at,
+      sharing: link.share_listening === 1,
     };
   }
   if (link.user_code && link.expires_at && link.expires_at > Date.now()) {

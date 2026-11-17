@@ -12,6 +12,7 @@ interface ConfirmModalProps {
   tone?: "danger" | "primary";
   busyLabel: string;
   busy?: boolean;
+  error?: string | null;
   onCancel: () => void;
   onConfirm: () => void;
 }
@@ -25,6 +26,7 @@ export function ConfirmModal({
   tone = "danger",
   busyLabel,
   busy = false,
+  error = null,
   onCancel,
   onConfirm,
 }: ConfirmModalProps) {
@@ -55,6 +57,11 @@ export function ConfirmModal({
         <p id={bodyId} className="artist-modal__subcopy">
           {body}
         </p>
+        {error ? (
+          <p className="artist-modal__error" role="alert">
+            {error}
+          </p>
+        ) : null}
         <div className="artist-modal__actions">
           <button type="button" onClick={onCancel} className="btn btn-secondary" disabled={busy}>
             {cancelLabel}

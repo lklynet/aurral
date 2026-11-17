@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { createAurral3Schema } from "./aurral-3-schema.ts";
 import { NOTIFICATION_EVENTS } from "../../lib/notificationEvents.ts";
 import { isRecord } from "../../lib/isRecord.ts";
+import type { SettingsRow, UsersRow } from "../db/rows.ts";
 
 type Migration = (db: Database.Database) => void;
 
@@ -237,6 +238,58 @@ const createHubLinks: Migration = (db) =>
     );
   `);
 
+const createHubPublications: Migration = (db) =>
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS hub_publications (
+      playlist_id TEXT NOT NULL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES hub_links(user_id) ON DELETE CASCADE,
+      publication_id TEXT NOT NULL,
+      manifest_hash TEXT NOT NULL,
+      published_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_hub_publications_user ON hub_publications (user_id);
+  `);
+
+const ownOrphanedPlaylists: Migration = (db) => {
+  const admin = db
+    .prepare<[], Pick<UsersRow, "id">>(
+      "SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1",
+    )
+    .get();
+  if (!admin) return;
+  const read = db.prepare<[string], Pick<SettingsRow, "value">>(
+    "SELECT value FROM settings WHERE key = ? AND json_valid(value)",
+  );
+  const write = db.prepare<[string, string]>("UPDATE settings SET value = ? WHERE key = ?");
+  for (const key of ["staticPlaylists", "flows"]) {
+    const stored: unknown = JSON.parse(read.get(key)?.value ?? "null");
+    if (!Array.isArray(stored)) continue;
+    const owned = stored.map((item: unknown) =>
+      isRecord(item) && item.ownerUserId == null ? { ...item, ownerUserId: admin.id } : item,
+    );
+    write.run(JSON.stringify(owned), key);
+  }
+};
+
+const shareListeningWithFriends: Migration = (db) => {
+  if (
+    db.prepare("SELECT 1 FROM pragma_table_info('hub_links') WHERE name = 'share_listening'").get()
+  )
+    return;
+  db.exec("ALTER TABLE hub_links ADD COLUMN share_listening INTEGER NOT NULL DEFAULT 1");
+};
+
+const blendWithPeopleOnServer: Migration = (db) => {
+  if (db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'blend'").get()) return;
+  db.exec("ALTER TABLE users ADD COLUMN blend INTEGER NOT NULL DEFAULT 0");
+};
+
+const blendByDefault: Migration = (db) =>
+  db.exec(`
+    ALTER TABLE users DROP COLUMN blend;
+    ALTER TABLE users ADD COLUMN blend INTEGER NOT NULL DEFAULT 1;
+  `);
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -252,6 +305,11 @@ export const migrations: Migration[] = [
   moveGotifyToWebhook,
   recordDownloadCauses,
   createHubLinks,
+  createHubPublications,
+  ownOrphanedPlaylists,
+  shareListeningWithFriends,
+  blendWithPeopleOnServer,
+  blendByDefault,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

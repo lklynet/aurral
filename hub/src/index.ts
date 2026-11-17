@@ -4,19 +4,37 @@ import { csrf } from "hono/csrf";
 import { validator } from "hono/validator";
 import * as v from "valibot";
 import { authFor, socialProviders } from "./auth.ts";
+import { friendLists, removeFriend, requestFriend } from "./friends.ts";
 import { claimHandle, deleteAccount, handleOf } from "./handles.ts";
+import {
+  clearListening,
+  nowPlayingSchema,
+  setNowPlaying,
+  setTopPlays,
+  topPlaysSchema,
+} from "./listening.ts";
 import { authorizeInstance, sha256Hex } from "./instances.ts";
 import {
   accountLink,
   accountLinks,
   approveLink,
   linkStatus,
+  linkedAccountId,
   normalizeCode,
   pendingLink,
   revokeLink,
   startLink,
   unlinkForAccount,
 } from "./links.ts";
+import {
+  linkedLinkId,
+  publicPlaylist,
+  publish,
+  readPublication,
+  shelf,
+  unpublish,
+  updatePublication,
+} from "./publications.ts";
 import {
   accountPage,
   deletePage,
@@ -80,6 +98,24 @@ const json = <Schema extends v.GenericSchema>(schema: Schema) =>
 const bearer = (c: Context<Env>) =>
   /^Bearer ([A-Za-z0-9_-]{43})$/.exec(c.req.header("authorization") ?? "")?.[1] ?? null;
 
+const REFUSALS = {
+  too_large: [413, "share_too_large"],
+  invalid: [400, "invalid_manifest"],
+  title_not_allowed: [422, "title_not_allowed"],
+} as const;
+
+const linkOf = async (c: Context<Env>) => {
+  const token = bearer(c);
+  return token ? linkedLinkId(c.env.DB, await sha256Hex(token)) : null;
+};
+
+const linkRevoked = (c: Context<Env>) => c.json({ error: "link_revoked" }, 401);
+
+const accountOfLink = async (c: Context<Env>) => {
+  const token = bearer(c);
+  return token ? linkedAccountId(c.env.DB, await sha256Hex(token)) : null;
+};
+
 const v1 = new Hono<Env>()
   .get("/health", (c) => c.json({ ok: true }))
   .on(["GET", "POST"], "/auth/*", (c) => authFor(c.env).handler(c.req.raw))
@@ -107,6 +143,82 @@ const v1 = new Hono<Env>()
     }
     await revokeLink(c.env.DB, body.instanceId, body.tokenHash.toLowerCase());
     return c.body(null, 204);
+  })
+  .post("/publications", async (c) => {
+    const linkId = await linkOf(c);
+    if (!linkId) return linkRevoked(c);
+    const body = readPublication(await c.req.text());
+    if (typeof body === "string") {
+      const [status, error] = REFUSALS[body];
+      return c.json({ error }, status);
+    }
+    if (!body.ref) return c.json({ error: "invalid_manifest" }, 400);
+    const published = await publish(c.env.DB, linkId, body.ref, body.playlist);
+    if (!published) return c.json({ error: "invalid_manifest" }, 400);
+    if (published.delisted) return c.json({ error: "delisted" }, 403);
+    return c.json({ id: published.id }, 201);
+  })
+  .put("/publications/:id", async (c) => {
+    const linkId = await linkOf(c);
+    if (!linkId) return linkRevoked(c);
+    const body = readPublication(await c.req.text());
+    if (typeof body === "string") {
+      const [status, error] = REFUSALS[body];
+      return c.json({ error }, status);
+    }
+    return (await updatePublication(c.env.DB, linkId, c.req.param("id"), body.playlist))
+      ? c.body(null, 204)
+      : c.json({ error: "not_found" }, 404);
+  })
+  .delete("/publications/:id", async (c) => {
+    const linkId = await linkOf(c);
+    if (!linkId) return linkRevoked(c);
+    await unpublish(c.env.DB, linkId, c.req.param("id"));
+    return c.body(null, 204);
+  })
+  .get("/friends", async (c) => {
+    const accountId = await accountOfLink(c);
+    if (!accountId) return linkRevoked(c);
+    return c.json(await friendLists(c.env.DB, accountId));
+  })
+  .put("/friends/:handle", async (c) => {
+    const accountId = await accountOfLink(c);
+    if (!accountId) return linkRevoked(c);
+    const status = await requestFriend(c.env.DB, accountId, c.req.param("handle"));
+    if (status === "missing") return c.json({ error: "no_account" }, 404);
+    if (status === "self") return c.json({ error: "self" }, 422);
+    return c.json({ status });
+  })
+  .delete("/friends/:handle", async (c) => {
+    const accountId = await accountOfLink(c);
+    if (!accountId) return linkRevoked(c);
+    await removeFriend(c.env.DB, accountId, c.req.param("handle"));
+    return c.body(null, 204);
+  })
+  .put("/listening/now-playing", json(nowPlayingSchema), async (c) => {
+    const linkId = await linkOf(c);
+    if (!linkId) return linkRevoked(c);
+    await setNowPlaying(c.env.DB, linkId, c.req.valid("json"));
+    return c.body(null, 204);
+  })
+  .put("/listening/top-plays", json(topPlaysSchema), async (c) => {
+    const linkId = await linkOf(c);
+    if (!linkId) return linkRevoked(c);
+    await setTopPlays(c.env.DB, linkId, c.req.valid("json"));
+    return c.body(null, 204);
+  })
+  .delete("/listening", async (c) => {
+    const linkId = await linkOf(c);
+    if (!linkId) return linkRevoked(c);
+    await clearListening(c.env.DB, linkId);
+    return c.body(null, 204);
+  })
+  .get("/playlists", async (c) =>
+    c.json({ playlists: await shelf(c.env.DB) }, 200, { "cache-control": "public, max-age=300" }),
+  )
+  .get("/playlists/:id", async (c) => {
+    const playlist = await publicPlaylist(c.env.DB, c.req.param("id"));
+    return playlist ? c.json(playlist) : c.json({ error: "not_public" }, 404);
   });
 
 const forwardCookies = (c: Context<Env>, headers: Headers) => {

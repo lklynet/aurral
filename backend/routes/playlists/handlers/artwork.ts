@@ -23,6 +23,8 @@ import { PLAYLIST_COVER_TEMPLATES } from "../../../services/playlistCoverTemplat
 import {
   canAccessJobThroughPlaylist,
   canAccessPlaylistType,
+  canManagePlaylistType,
+  ownerOnly,
   requirePlaylistAccess,
   requirePlaylistAccessIfSignedIn,
 } from "./utils.ts";
@@ -137,6 +139,7 @@ export default new Hono<AppEnv>()
     if (!canAccessPlaylistType(c.var.user, playlistId)) {
       return c.json({ error: "Playlist not found" }, 404);
     }
+    if (!canManagePlaylistType(c.var.user, playlistId)) return ownerOnly(c);
     const image = await readImageUpload(c);
     if (!image?.length) {
       return c.json({ error: "Bad Request", message: "Image body is required" }, 400);
@@ -153,6 +156,7 @@ export default new Hono<AppEnv>()
     if (!canAccessPlaylistType(c.var.user, playlistId)) {
       return c.json({ error: "Playlist not found" }, 404);
     }
+    if (!canManagePlaylistType(c.var.user, playlistId)) return ownerOnly(c);
     try {
       await playlistManager.removeArtwork(playlistId);
       return c.json({ ok: true }, 200);
@@ -212,6 +216,7 @@ export default new Hono<AppEnv>()
     if (!canAccessPlaylistType(c.var.user, playlistId)) {
       return c.json({ error: "Playlist not found" }, 404);
     }
+    if (!canManagePlaylistType(c.var.user, playlistId)) return ownerOnly(c);
     try {
       await playlistManager.restoreOriginalArtwork(playlistId);
       return c.json({ ok: true }, 200);
@@ -231,6 +236,7 @@ export default new Hono<AppEnv>()
       if (!canAccessPlaylistType(c.var.user, playlistId)) {
         return c.json({ error: "Playlist not found" }, 404);
       }
+      if (!canManagePlaylistType(c.var.user, playlistId)) return ownerOnly(c);
       const { style, pick } = c.req.valid("json");
       try {
         await playlistManager.generateArtwork(playlistId, style, pick ?? null);

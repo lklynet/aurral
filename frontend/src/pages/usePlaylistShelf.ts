@@ -2,12 +2,17 @@ import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../contexts/AuthContext";
 import {
+  communityPlaylistsQueryOptions,
   madeForYouQueryOptions,
   playlistShelfQueryOptions,
   playlistStatusQueryOptions,
 } from "../queryOptions.ts";
 import type { ShelfScope } from "../../../backend/services/importLists/deezerPlaylists.ts";
-import { BROWSE_IMPORT_PROVIDERS, type BrowseProvider } from "../../../lib/browsePlaylists.ts";
+import {
+  BLEND_MIX_PREFIX,
+  BROWSE_IMPORT_PROVIDERS,
+  type BrowseProvider,
+} from "../../../lib/browsePlaylists.ts";
 
 const GROUP_ORDER = ["mood", "decade", "genre"] as const;
 
@@ -20,13 +25,31 @@ export function useMadeForYou() {
   const { user } = useAuth();
   return useQuery({
     ...madeForYouQueryOptions(user?.id),
-    select: ({ discovery, mixes }) => ({ mixes, playlists: [...discovery, ...mixes] }),
+    select: ({ discovery, mixes }) => {
+      const isBlend = (mix: (typeof mixes)[number]) => mix.id.startsWith(BLEND_MIX_PREFIX);
+      const afterNewToYou = discovery.findIndex((playlist) => playlist.id === "new-to-you") + 1;
+      return {
+        mixes,
+        playlists: [
+          ...discovery.slice(0, afterNewToYou),
+          ...mixes.filter(isBlend),
+          ...discovery.slice(afterNewToYou),
+          ...mixes.filter((mix) => !isBlend(mix)),
+        ],
+      };
+    },
   });
+}
+
+export function useCommunityPlaylists() {
+  const { user } = useAuth();
+  return useQuery(communityPlaylistsQueryOptions(user?.id));
 }
 
 export function usePlaylistCategories() {
   const madeForYou = useMadeForYou();
   const shelf = usePlaylistShelf();
+  const community = useCommunityPlaylists();
   const browse = useMemo(
     () =>
       GROUP_ORDER.flatMap((group) =>
@@ -41,12 +64,13 @@ export function usePlaylistCategories() {
       ...[
         { id: "made-for-you", name: "Made for you", playlists: madeForYou.data?.playlists ?? [] },
         { id: "for-you", name: "Your genres", playlists: shelf.data?.forYou ?? [] },
+        { id: "community", name: "Community", playlists: community.data?.playlists ?? [] },
       ].filter((category) => category.playlists.length > 0),
       ...browse,
     ],
-    [madeForYou.data, shelf.data, browse],
+    [madeForYou.data, shelf.data, community.data, browse],
   );
-  return { categories, browse, madeForYou, shelf };
+  return { categories, browse, madeForYou, shelf, community };
 }
 
 export function usePlaylistClaims() {

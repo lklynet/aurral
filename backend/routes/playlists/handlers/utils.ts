@@ -133,6 +133,19 @@ export const canAccessPlaylistType = (
   return false;
 };
 
+export const canManagePlaylistType = (
+  user: RequestUser | undefined,
+  playlistType: string | null | undefined,
+) => {
+  const staticPlaylist = flowPlaylistConfig.getStaticPlaylist(String(playlistType || "").trim());
+  return staticPlaylist
+    ? flowPlaylistConfig.canUserManageStaticPlaylist(user, staticPlaylist)
+    : canAccessPlaylistType(user, playlistType);
+};
+
+export const ownerOnly = <E extends AppEnv>(c: Context<E>) =>
+  c.json({ error: "Only the playlist owner can change this" }, 403);
+
 export const LIBRARY_JOB_TYPE = "library";
 
 export const canAccessJobType = (

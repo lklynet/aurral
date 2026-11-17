@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { ConfirmModal } from "../../../components/ConfirmModal";
+import PillToggle from "../../../components/PillToggle";
+import { FriendsDialog } from "../../../components/PlayerFriends";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
 import { queryKeys } from "../../../queryClient.ts";
@@ -24,22 +26,34 @@ export function HubLinkGroup() {
   const { showError, showSuccess } = useToast();
   const queryClient = useQueryClient();
   const [confirmUnlink, setConfirmUnlink] = useState(false);
+  const [managingFriends, setManagingFriends] = useState(false);
   const queryKey = queryKeys.hubLink(user?.id);
   const status = useQuery({
     queryKey,
     queryFn: ({ signal }) => parseResponse(hubLinkClient.$get({}, { init: { signal } })),
     refetchInterval: (query) => (query.state.data?.state === "pending" ? POLL_MS : false),
   });
-  const settle = (next: HubLink) => queryClient.setQueryData(queryKey, next);
+  const settle = (next: HubLink) => {
+    queryClient.setQueryData(queryKey, next);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.friends(user?.id) });
+  };
   const start = useMutation({
     mutationFn: () => parseResponse(hubLinkClient.$post()),
     onSuccess: settle,
+    onError: (error) => showError(readApiError(error).error || "Couldn't reach aurral.org."),
+  });
+  const share = useMutation({
+    mutationFn: (shared: boolean) =>
+      parseResponse(hubLinkClient.sharing.$put({ json: { shared } })),
+    onSuccess: (next) => queryClient.setQueryData(queryKey, next),
     onError: (error) => showError(readApiError(error).error || "Couldn't reach aurral.org."),
   });
   const unlink = useMutation({
     mutationFn: (_handle: string | null) => parseResponse(hubLinkClient.$delete()),
     onSuccess: (next, handle) => {
       settle(next);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.publicPlaylists(user?.id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.communityPlaylists(user?.id) });
       setConfirmUnlink(false);
       if (handle) showSuccess(`Unlinked @${handle}.`);
     },
@@ -55,7 +69,10 @@ export function HubLinkGroup() {
   return (
     <SettingsGroup title="aurral.org account">
       {link.state === "none" ? (
-        <SettingsRow label="Not linked" help="Link to publish playlists for everyone.">
+        <SettingsRow
+          label="Not linked"
+          help="Link to add friends and publish playlists for everyone."
+        >
           <button
             type="button"
             className="btn btn-secondary btn-sm"
@@ -129,10 +146,40 @@ export function HubLinkGroup() {
           </>
         </SettingsRow>
       ) : null}
+      {link.state === "linked" && link.available ? (
+        <SettingsRow label="Friends" help="Add friends and answer requests.">
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => setManagingFriends(true)}
+          >
+            Manage
+          </button>
+        </SettingsRow>
+      ) : null}
+      {linked ? (
+        <SettingsRow
+          label="Share with friends"
+          help="What you're playing, and your top artists, albums, and tracks from the last 30 days."
+        >
+          <PillToggle
+            id="hub-share-listening"
+            checked={share.isPending ? share.variables : link.sharing}
+            disabled={share.isPending}
+            aria-label="Share with friends"
+            onChange={(event) => share.mutate(event.target.checked)}
+          />
+        </SettingsRow>
+      ) : null}
+      <FriendsDialog open={managingFriends} onClose={() => setManagingFriends(false)} />
       <ConfirmModal
         open={confirmUnlink}
         title={linked ? `Unlink @${link.handle}?` : "Unlink?"}
-        body="This server can no longer publish as you on aurral.org. You can link again anytime."
+        body={`This server can no longer publish as you on aurral.org.${
+          link.publicPlaylists
+            ? ` ${link.publicPlaylists === 1 ? "Your public playlist stops" : `Your ${link.publicPlaylists} public playlists stop`} being public.`
+            : ""
+        } You can link again anytime.`}
         confirmLabel="Unlink"
         busyLabel="Unlinking…"
         tone="danger"

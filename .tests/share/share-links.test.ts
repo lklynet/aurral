@@ -955,19 +955,22 @@ test("playlist shares keep missing entries and never expose tracks added after c
   );
 });
 
-test("playlist shares republish changes daily without exposing files for added tracks", async () => {
+test("playlist shares republish changes daily and stop once their creator loses the playlist", async () => {
   const { flowPlaylistConfig } =
     await import("../../backend/services/playlists/flowPlaylistConfig.ts");
   const { refreshPlaylistShares } = await import("../../backend/services/shareLinks/refresh.ts");
   const curator = userOps.createUser("curator", "hash", "user", { accessPlaylists: true });
   assert.ok(curator);
-  const playlist = flowPlaylistConfig.createStaticPlaylist({
+  const { id } = flowPlaylistConfig.createStaticPlaylist({
     name: "Synced playlist",
-    ownerUserId: curator.id,
+    ownerUserId: owner.id,
     tracks: [
       { trackName: "Opening Song", artistName: artist.name, albumName: firstAlbum.album.title },
     ],
   });
+  const playlist = requireFixture(
+    flowPlaylistConfig.updateStaticPlaylist(id, { memberUserIds: [curator.id] }),
+  );
   const created = await callApi("POST", "", {
     user: curator,
     body: {
@@ -1034,7 +1037,8 @@ test("playlist shares republish changes daily without exposing files for added t
   );
 
   lookupRequests.length = 0;
-  flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
+  flowPlaylistConfig.updateStaticPlaylist(playlist.id, { memberUserIds: [] });
+  assert.equal((await fetch(base)).status, 404);
   await refreshPlaylistShares();
   assert.deepEqual(
     lookupRequests.map((entry) => entry.method),

@@ -72,6 +72,7 @@ export type TrackListRow = {
   subtitle?: ReactNode;
   detail?: ReactNode;
   reason?: ReactNode;
+  addedBy?: string | null;
   trailing?: ReactNode;
   active?: boolean;
   missing?: boolean;
@@ -303,6 +304,7 @@ export function TrackList({
   highlightKey = null,
   showYear = false,
   showReason = false,
+  showAddedBy = false,
   wideTime = false,
   onReorder = null,
 }: {
@@ -311,6 +313,7 @@ export function TrackList({
   onReorder?: ((keys: TrackListRow["key"][]) => void) | null;
   showYear?: boolean;
   showReason?: boolean;
+  showAddedBy?: boolean;
   wideTime?: boolean;
   variant?: "collection" | "release" | "compact";
   sort?: TrackSort | null;
@@ -439,6 +442,7 @@ export function TrackList({
           <TrackLink link={row.album} className="native-library-track__album" />
         ) : null}
         {showReason ? <span className="native-library-track__reason">{row.reason}</span> : null}
+        {showAddedBy ? <span className="native-library-track__added-by">{row.addedBy}</span> : null}
         {showYear ? <span className="native-library-track__year">{row.year}</span> : null}
         <span className={"native-library-track__time" + (row.timeMissing ? " is-missing" : "")}>
           {row.time}
@@ -495,7 +499,7 @@ export function TrackList({
 
   return (
     <div
-      className={`native-library-track-list native-library-track-list--${variant}${showYear ? " native-library-track-list--year" : ""}${showReason ? " native-library-track-list--reason" : ""}${wideTime ? " native-library-track-list--wide-time" : ""}`}
+      className={`native-library-track-list native-library-track-list--${variant}${showYear ? " native-library-track-list--year" : ""}${showReason ? " native-library-track-list--reason" : ""}${showAddedBy ? " native-library-track-list--added-by" : ""}${wideTime ? " native-library-track-list--wide-time" : ""}`}
     >
       {variant === "compact" ? null : (
         <div
@@ -520,6 +524,7 @@ export function TrackList({
           {isCollection ? <HeadingCell id="artist" label="Artist" sort={sort} /> : null}
           {isCollection ? <HeadingCell id="album" label="Album" sort={sort} /> : null}
           {showReason ? <span className="native-library-track__reason">Why</span> : null}
+          {showAddedBy ? <span className="native-library-track__added-by">Added by</span> : null}
           {showYear ? (
             <HeadingCell
               id="year"

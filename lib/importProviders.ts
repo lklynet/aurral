@@ -8,6 +8,7 @@ export const IMPORT_PROVIDER_LABELS = {
   "youtube-music-playlist": "YouTube Music",
   "deezer-playlist": "Deezer",
   "aurral-share": "Aurral share",
+  "aurral-community": "aurral.org",
   "aurral-discovery": "Aurral",
   "aurral-mix": "Aurral",
 } as const;

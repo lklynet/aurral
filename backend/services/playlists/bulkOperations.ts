@@ -41,7 +41,10 @@ export async function processStaticPlaylistBulkOperation(operationId: unknown) {
   if (!user || !source) throw new Error("Source playlist access is no longer available");
   record.state = "running";
   persist(record);
-  let target: Pick<StaticPlaylist, "id" | "name" | "ownerUserId" | "tracks"> | null = null;
+  let target: Pick<
+    StaticPlaylist,
+    "id" | "name" | "ownerUserId" | "memberUserIds" | "tracks"
+  > | null = null;
   let creatingTarget = false;
   if (record.action === "move") {
     target = flowPlaylistConfig.getStaticPlaylist(record.target.playlistId);
@@ -112,7 +115,7 @@ export async function processStaticPlaylistBulkOperation(operationId: unknown) {
               ownerUserId: user.id,
               tracks: linked.tracks,
             })
-          : flowPlaylistConfig.appendStaticPlaylistTracks(destination.id, linked.tracks);
+          : flowPlaylistConfig.appendStaticPlaylistTracks(destination.id, linked.tracks, user.id);
         if (!result) throw new Error("Could not persist destination membership");
         record.synchronization[destination.id] = false;
         persist(record);

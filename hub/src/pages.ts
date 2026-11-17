@@ -121,7 +121,10 @@ export const handlePage = (
       ${leave(code)}`,
   );
 
-type LinkRow = { id: string; user_name: string; linked_at: number };
+type LinkRow = { id: string; user_name: string; linked_at: number; public_count: number };
+
+const publicPlaylists = (count: number) =>
+  count === 1 ? "1 public playlist" : `${count} public playlists`;
 
 export const accountPage = (handle: string, provider: string, links: LinkRow[]) =>
   layout(
@@ -136,7 +139,10 @@ export const accountPage = (handle: string, provider: string, links: LinkRow[]) 
                 html`<div class="row">
                   <p>
                     Aurral user ${link.user_name}<br /><span class="muted"
-                      >Linked ${shortDate(link.linked_at)}</span
+                      >Linked
+                      ${shortDate(link.linked_at)}${
+                        link.public_count ? ` · ${publicPlaylists(link.public_count)}` : ""
+                      }</span
                     >
                   </p>
                   <a class="danger" href="/account/unlink/${link.id}">Unlink</a>
@@ -151,7 +157,13 @@ export const unlinkPage = (link: LinkRow) =>
   layout(
     "Unlink",
     html`<h1>Unlink Aurral user ${link.user_name}?</h1>
-      <p class="muted">That server can no longer publish as you. You can link it again anytime.</p>
+      <p class="muted">
+        That server can no longer publish as
+        you.${
+          link.public_count ? ` Its ${publicPlaylists(link.public_count)} stop being public.` : ""
+        }
+        You can link it again anytime.
+      </p>
       <form method="post" action="/account/unlink/${link.id}">
         <button class="button danger">Unlink</button>
       </form>
@@ -192,6 +204,9 @@ export const linkConfirmPage = (handle: string, userName: string, code: string) 
       <p class="muted">Code ${formatCode(code)}</p>
       <ul>
         <li>That server can publish playlists as @${handle}.</li>
+        <li>
+          It can add friends for you, share what you play with them, and read what they share.
+        </li>
         <li>Its admin can do anything this link can.</li>
         <li>Linking gives aurral.org no access to your server.</li>
       </ul>

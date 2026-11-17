@@ -19,7 +19,7 @@ Add a numbered file to `hub/migrations`. Never edit a migration that has shipped
 
 ## Deploy
 
-The Hub workflow applies migrations and deploys the preview environment on every push to `main` that changes `hub/`. The preview runs on workers.dev with its own database. Production deploys only when a maintainer runs the workflow with **production**. Both need the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets, with permission to edit Workers, D1, and the zone's Workers routes.
+On every push to `main` that changes `hub/`, the Hub workflow applies migrations and deploys the preview environment, then production if the preview succeeded. The preview runs on workers.dev with its own database. To redeploy one environment, run the workflow by hand and pick it. Deploys need the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets, with permission to edit Workers, D1, and the zone's Workers routes.
 
 ## Run your own
 

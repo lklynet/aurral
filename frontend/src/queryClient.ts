@@ -47,6 +47,12 @@ export const queryKeys = {
     scope
       ? ["discovery", "playlists", "shelf", userId || null, scope]
       : ["discovery", "playlists", "shelf", userId || null],
+  communityPlaylists: (userId: MaybeId): QueryKey => [
+    "discovery",
+    "playlists",
+    "community",
+    userId || null,
+  ],
   madeForYou: (userId: MaybeId): QueryKey => [
     "discovery",
     "playlists",
@@ -276,9 +282,18 @@ export const queryKeys = {
   pluginActions: (userId: MaybeId): QueryKey => ["plugins", "actions", userId || null],
   apiKey: ["auth", "api-key"],
   myApiKey: (userId: MaybeId): QueryKey => ["users", "me", "api-key", userId || null],
+  myBlend: (userId: MaybeId): QueryKey => ["users", "me", "blend", userId || null],
+  playlistPeople: (playlistId: string, memberIds: number[]): QueryKey => [
+    "playlists",
+    "people",
+    playlistId,
+    memberIds,
+  ],
   myPlaylistOrder: (userId: MaybeId): QueryKey => ["users", "me", "playlist-order", userId || null],
   myIdentities: (userId: MaybeId): QueryKey => ["auth", "identities", userId || null],
   hubLink: (userId: MaybeId): QueryKey => ["hub-link", userId || null],
+  publicPlaylists: (userId: MaybeId): QueryKey => ["hub-link", "public", userId || null],
+  friends: (userId: MaybeId): QueryKey => ["hub-link", "friends", userId || null],
   manualMissingSearchSources: (jobId: MaybeId, mode: string, playlistId: MaybeId): QueryKey => [
     "playlists",
     "manual-search-sources",

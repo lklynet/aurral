@@ -8,7 +8,7 @@ const [
   ,
   { db },
   store,
-  { getUserMixes, clearUserMixes },
+  { getUserMixes, getUserMix, clearUserMixes },
   browse,
   covers,
   operations,
@@ -186,4 +186,86 @@ test("Daily Mixes group the most played artists by shared genre", async () => {
   assert.equal(await getUserMixes(userId, later), built);
   insertPlay.run(userId, "lastfm:old", "Old Song", "Avalon", NOW - 90 * DAY);
   assert.notEqual(await getUserMixes(userId, later + 31 * 60_000), built);
+});
+
+test("Blends mix two people's plays with their 3 closest listeners until either turns it off", async () => {
+  const { setBlendSetting, getBlendSetting } =
+    await import("../../backend/services/discovery/mixes.ts");
+  const { addDiscoveryFeedback } = await import("../../backend/services/discovery/feedback.ts");
+  vi.spyOn(Date, "now").mockReturnValue(NOW);
+  const person = (username: string) =>
+    db
+      .prepare<[string], { id: number }>(
+        "INSERT INTO users (username, password_hash) VALUES (?, 'x') RETURNING id",
+      )
+      .get(username)!.id;
+  const [lee, mia, kit, nova, sam, zed] = ["lee", "mia", "kit", "nova", "sam", "zed"].map(
+    person,
+  ) as [number, number, number, number, number, number];
+  const plays = (listeners: number[], names: string[]) => {
+    for (const name of names) {
+      for (const track of addArtist(name, 3).tracks) {
+        for (const listener of listeners) {
+          insertPlay.run(listener, `lastfm:${track.title}`, track.title, name, NOW - DAY);
+        }
+      }
+    }
+  };
+  plays([lee, mia, nova, sam], ["Shared A"]);
+  plays([lee, mia], ["Shared B"]);
+  plays([lee], ["Lee A", "Lee B", "Lee C"]);
+  plays([mia], ["Mia A", "Mia B", "Mia C", "Blocked"]);
+  plays([nova], ["Nova"]);
+  plays([sam], ["Sam"]);
+  plays([kit], ["Kit", "Kit B"]);
+  insertPlay.run(zed, "lastfm:Kit 0", "Kit 0", "Kit", NOW - DAY);
+  for (let index = 0; index < 250; index += 1) {
+    for (let time = 0; time < 3; time += 1) {
+      insertPlay.run(mia, `lastfm:ghost-${index}`, `Ghost ${index}`, "Ghost", NOW - DAY - time);
+    }
+  }
+  addDiscoveryFeedback(lee, { action: "block_artist", artistName: "Blocked" });
+
+  const blendOf = async (viewer: number, partner: number) =>
+    (await getUserMixes(viewer, NOW)).find((mix) => mix.id === `blend-${partner}`);
+  const blendNames = async (viewer: number) =>
+    (await getUserMixes(viewer, NOW))
+      .filter((mix) => mix.id.startsWith("blend-"))
+      .map((mix) => mix.name);
+  assert.deepEqual(await blendNames(lee), ["Blend with mia", "Blend with nova", "Blend with sam"]);
+  assert.equal((await getUserMix(lee, `blend-${kit}`, NOW))?.name, "Blend with kit");
+  assert.deepEqual(await getBlendSetting(kit), { enabled: true, waiting: ["zed"] });
+  const forLee = await blendOf(lee, mia);
+  const forMia = await blendOf(mia, lee);
+  assert.deepEqual(forMia?.trackIds, forLee?.trackIds);
+  const reasons = (blend: typeof forLee) =>
+    new Set(
+      blend?.trackIds.map((id) => `${artistOf(id).split(" ")[0]}: ${blend.reasons?.get(id)}`),
+    );
+  assert.deepEqual([...reasons(forLee)].sort(), [
+    "Lee: From you",
+    "Mia: From mia",
+    "Shared: You both play this",
+  ]);
+  assert.deepEqual([...reasons(forMia)].sort(), [
+    "Lee: From lee",
+    "Mia: From you",
+    "Shared: You both play this",
+  ]);
+  const saved = await requireImportList("aurral-mix").fetch({
+    userId: lee,
+    externalId: `blend-${mia}`,
+  });
+  assert.deepEqual(saved.tracks.length > 0 && saved.tracks.filter((track) => track.reason), []);
+  addDiscoveryFeedback(mia, { action: "block_artist", artistName: "Lee A" });
+  assert.ok((await blendOf(lee, mia))?.trackIds.every((id) => artistOf(id) !== "Lee A"));
+
+  await setBlendSetting(mia, false);
+  assert.equal(await getUserMix(lee, `blend-${mia}`, NOW), null);
+  await setBlendSetting(mia, true);
+  await setBlendSetting(lee, false);
+  assert.equal(await getUserMix(mia, `blend-${lee}`, NOW), null);
+  await setBlendSetting(lee, true);
+  db.prepare("UPDATE users SET status = 'disabled' WHERE id = ?").run(mia);
+  assert.equal(await blendOf(lee, mia), undefined);
 });

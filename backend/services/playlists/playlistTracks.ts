@@ -30,6 +30,7 @@ export interface PlaylistTrackInput {
   canonicalJobId?: unknown;
   libraryJobId?: unknown;
   membershipId?: unknown;
+  addedByUserId?: unknown;
 }
 
 type PlaylistJob = PlaylistTrackInput & { id: string; createdAt?: unknown };
@@ -64,6 +65,7 @@ export const normalizePlaylistTrack = (track: PlaylistTrackInput | null | undefi
   const reason = String(track.reason ?? "").trim();
   const canonicalJobId = String(track.canonicalJobId ?? track.libraryJobId ?? "").trim();
   const membershipId = String(track.membershipId || "").trim();
+  const addedByUserId = positiveInteger(track.addedByUserId);
   return {
     artistName,
     trackName,
@@ -80,6 +82,7 @@ export const normalizePlaylistTrack = (track: PlaylistTrackInput | null | undefi
     ...(discNumber && { discNumber }),
     ...(canonicalJobId && { canonicalJobId }),
     ...(membershipId && { membershipId }),
+    ...(addedByUserId && { addedByUserId }),
   };
 };
 

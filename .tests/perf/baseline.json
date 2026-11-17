@@ -277,11 +277,33 @@
   },
   "aurral.org account": {
     "queries": {
+      "cold": 5,
+      "warm": 5
+    },
+    "bytes": 83,
+    "scans": []
+  },
+  "friends": {
+    "queries": {
       "cold": 4,
       "warm": 4
     },
-    "bytes": 63,
+    "bytes": 16,
     "scans": []
+  },
+  "community playlists": {
+    "queries": {
+      "cold": 3,
+      "warm": 3
+    },
+    "bytes": 16,
+    "scans": [],
+    "calls": {
+      "aurral.org": {
+        "cold": 1,
+        "warm": 0
+      }
+    }
   },
   "subsonic getArtists": {
     "queries": {

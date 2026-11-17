@@ -164,6 +164,15 @@ export interface HubLinksRow {
   handle: string | null;
   linked_at: number | null;
   broken: number;
+  share_listening: number;
+}
+
+export interface HubPublicationsRow {
+  playlist_id: string;
+  user_id: number;
+  publication_id: string;
+  manifest_hash: string;
+  published_at: number;
 }
 
 export interface ImagesCacheRow {
@@ -662,6 +671,7 @@ export interface UsersRow {
   has_local_password: number;
   api_key: string | null;
   api_key_hash: string | null;
+  blend: number;
 }
 
 export interface WrappedReportsRow {

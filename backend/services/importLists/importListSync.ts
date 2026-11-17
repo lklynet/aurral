@@ -187,6 +187,22 @@ export async function syncStaticPlaylistImportHere({
       tracksReused: Number(result?.tracksReused || 0),
     };
   } catch (error) {
+    if (asAppError(error)?.code === "PLAYLIST_SOURCE_GONE") {
+      const latest = flowPlaylistConfig.getStaticPlaylist(playlist.id)?.importSource;
+      flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
+        importSource: {
+          ...(latest || playlist.importSource),
+          syncEnabled: false,
+          lastSyncAt: Date.now(),
+          lastSyncError: asAppError(error)?.message || "The source is gone.",
+        },
+      });
+      logger.info("playlist-import", "Playlist source is gone, so sync stopped", {
+        provider: playlist.importSource.provider,
+        playlistId: playlist.id,
+      });
+      return { skipped: true, reason: "source-gone" };
+    }
     logger.error("playlist-import", "Playlist import sync failed", {
       provider: playlist.importSource.provider,
       playlistName: playlist.name,

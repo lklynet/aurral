@@ -100,6 +100,7 @@ const tokenPaths = [
   /^\/api\/library\/file-stream\/[^/]+\/[^/]+$/i,
   /^\/api\/playlists\/stream\/[^/]+$/i,
   /^\/api\/playlists\/staging-stream\/[^/]+$/i,
+  /^\/api\/deezer\/preview$/i,
 ];
 
 const tokenArtworkPaths = [
@@ -108,9 +109,10 @@ const tokenArtworkPaths = [
   /^\/api\/playlists\/artwork\/[^/]+(?:\/preview)?$/i,
   /^\/api\/playlists\/track-artwork\/[^/]+$/i,
   /^\/api\/playlists\/flow-templates\/[^/]+\/cover$/i,
-  /^\/api\/discover\/playlists\/(?:mix|discovery)\/[^/]+\/cover$/i,
+  /^\/api\/discover\/playlists\/[^/]+\/[^/]+\/cover$/i,
   /^\/api\/artists\/release-group\/[a-f0-9-]{36}\/cover\/image$/i,
   /^\/api\/artists\/[a-f0-9-]{36}\/image$/i,
+  /^\/api\/hub-link\/friends\/art$/i,
 ];
 
 const acceptsLinkToken = (method: string, path: string) =>

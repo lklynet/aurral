@@ -10,6 +10,7 @@ import type { AppEnv } from "../../middleware/requestUser.ts";
 import { sendViaNode } from "../../routes/shared/sendViaNode.ts";
 import { sendAudioFile } from "../audioFileStream.ts";
 import { logger } from "../logger.ts";
+import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import { streamSubsonicAudio } from "../subsonicTranscodeService.ts";
 import { playsInBrowsers, resolveShareTarget } from "./library.ts";
 import { getLiveShareLink, getShareInstance, getShareLinkSchedule } from "./store.ts";
@@ -31,7 +32,11 @@ const notFound = (c: Context<AppEnv>) =>
 function loadShare(token: string) {
   const link = getLiveShareLink(token);
   const owner = link ? userOps.getUserById(link.userId) : null;
-  const target = link && owner?.status === "active" ? resolveShareTarget(link) : null;
+  const allowed =
+    owner?.status === "active" &&
+    (link?.kind !== "playlist" ||
+      !!flowPlaylistConfig.getStaticPlaylistForUser(owner, link.targetRef));
+  const target = link && allowed ? resolveShareTarget(link) : null;
   if (target && link?.manifest) {
     const paths = new Set(link.manifest.tracks.map((track) => track.path));
     target.tracks = target.tracks.filter((track) =>

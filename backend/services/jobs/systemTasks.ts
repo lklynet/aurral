@@ -338,7 +338,17 @@ const SYSTEM_TASKS = {
     schedule: { everyMs: 24 * HOUR },
     async run() {
       const { refreshPlaylistShares } = await import("../shareLinks/refresh.ts");
+      const { refreshPublicPlaylists } = await import("../publicPlaylists.ts");
       await refreshPlaylistShares();
+      await refreshPublicPlaylists();
+    },
+  },
+  "friends-top-plays": {
+    queue: "system",
+    schedule: { everyMs: 24 * HOUR },
+    async run() {
+      const { shareAllTopPlays } = await import("../hubFriends.ts");
+      await shareAllTopPlays();
     },
   },
   "aurral-monitoring-reconcile": {

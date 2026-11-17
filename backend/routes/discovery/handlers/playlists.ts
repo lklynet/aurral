@@ -7,6 +7,7 @@ import {
   browseProviderSchema,
   getBrowseCover,
   getBrowsePlaylist,
+  getCommunityPlaylists,
   getMadeForYou,
   getPlaylistShelf,
   saveBrowsePlaylist,
@@ -61,6 +62,9 @@ export default new Hono<AppEnv>()
       return sendPlaylistError(c, error, "Failed to load your playlists");
     }
   })
+  .get("/playlists/community", requireAuth, async (c) =>
+    c.json({ playlists: await getCommunityPlaylists() }, 200),
+  )
   .get("/playlists/links", requireAuth, validate("query", linksQuery), async (c) => {
     const { artist, album, albumId, track } = c.req.valid("query");
     try {

@@ -828,8 +828,9 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
       return (await deleteSubsonicPlaylist(user, playlistId))
         ? ok()
         : fail(70, "Requested data was not found");
-    } catch {
-      return fail(0, "Failed to delete playlist");
+    } catch (error) {
+      const [code, message] = playlistEditFailure(error);
+      return code ? fail(code, message) : fail(0, "Failed to delete playlist");
     }
   }
   if (method === "download") {

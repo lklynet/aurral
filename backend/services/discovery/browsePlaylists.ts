@@ -24,13 +24,18 @@ import {
 import { getDeezerArtistPlaylists, type ShelfScope } from "../importLists/deezerPlaylists.ts";
 import type { RequestUser } from "../../middleware/requestUser.ts";
 import type { LibraryArtistsRow } from "../../db/rows.ts";
+import { communityPlaylist, communityShelf } from "../publicPlaylists.ts";
+import { requireImportList } from "../importLists/importPlaylist.ts";
+import type { ShareManifest } from "../../../lib/shareManifest.ts";
+import { deezerPreviewSearchPath } from "../apiClients/deezer.ts";
+import { releaseGroupCoverImageUrl } from "../releaseGroupCoverService.ts";
 
 export const browseProviderSchema = v.picklist(BROWSE_PROVIDERS);
 
 const AURRAL = "Aurral";
 
-type BrowsePlaylist = {
-  provider: BrowseProvider;
+type BrowsePlaylist<Provider extends BrowseProvider = BrowseProvider> = {
+  provider: Provider;
   id: string;
   name: string;
   description: string | null;
@@ -74,7 +79,22 @@ const discoveryCover = (playlist: { id: string; name: string; tracks: CatalogTra
   } satisfies BrowseCover;
 };
 
+const communityCover = (id: string, title: string, artist: string | null | undefined) =>
+  ({
+    title,
+    template: browseCoverTemplate("community", id),
+    artist: artist ? { artistName: artist, artistMbid: null } : null,
+  }) satisfies BrowseCover;
+
+async function communityCoverOf(id: string, manifest?: Pick<ShareManifest, "title" | "tracks">) {
+  const listed = (await communityShelf()).find((playlist) => playlist.id === id);
+  if (listed) return communityCover(id, listed.title, listed.artist);
+  const source = manifest ?? (await communityPlaylist(id)).manifest;
+  return communityCover(id, source.title, source.tracks[0]?.artistName);
+}
+
 export async function getBrowseCover(user: RequestUser, provider: BrowseProvider, id: string) {
+  if (provider === "community") return communityCoverOf(id);
   if (provider === "discovery") {
     const playlist = getDiscoveryPlaylist(user.id, id);
     return playlist && discoveryCover(playlist);
@@ -89,7 +109,7 @@ export async function getBrowseCover(user: RequestUser, provider: BrowseProvider
 export async function getMadeForYou(user: RequestUser) {
   const userMixes = await getUserMixes(user.id);
   const covers = mixCovers(userMixes);
-  const mixes = userMixes.map((mix, index): BrowsePlaylist => {
+  const mixes = userMixes.map((mix, index): BrowsePlaylist<"mix"> => {
     const cover = covers[index];
     return {
       provider: "mix",
@@ -101,7 +121,7 @@ export async function getMadeForYou(user: RequestUser) {
       trackCount: mix.trackIds.length,
     };
   });
-  const discovery = getDiscoveryPlaylists(user.id).map((playlist): BrowsePlaylist => ({
+  const discovery = getDiscoveryPlaylists(user.id).map((playlist): BrowsePlaylist<"discovery"> => ({
     provider: "discovery",
     id: playlist.id,
     name: playlist.name,
@@ -129,6 +149,21 @@ export async function getPlaylistShelf(user: RequestUser, scope?: ShelfScope) {
   };
 }
 
+export const getCommunityPlaylists = async () =>
+  (await communityShelf()).map((playlist): BrowsePlaylist => ({
+    provider: "community",
+    id: playlist.id,
+    name: playlist.title,
+    description: null,
+    curator: `@${playlist.handle}`,
+    artworkUrl: browseCoverUrl(
+      "community",
+      playlist.id,
+      communityCover(playlist.id, playlist.title, playlist.artist),
+    ),
+    trackCount: playlist.trackCount,
+  }));
+
 export const getArtistPlaylists = async (deezerArtistId: string) =>
   (await getDeezerArtistPlaylists(deezerArtistId)).map(deezer);
 
@@ -136,6 +171,30 @@ export async function getBrowsePlaylist(user: RequestUser, provider: BrowseProvi
   if (provider === "deezer") {
     const playlist = await getEditorialPlaylist(user, id);
     return { ...playlist, provider, tracks: withOwnedTracks(playlist.tracks) };
+  }
+  if (provider === "community") {
+    const { handle, manifest } = await communityPlaylist(id);
+    return {
+      provider,
+      id,
+      name: manifest.title,
+      description: null,
+      curator: `@${handle}`,
+      artworkUrl: browseCoverUrl("community", id, await communityCoverOf(id, manifest)),
+      tracks: withOwnedTracks(
+        manifest.tracks.map((track) => ({
+          artistName: track.artistName,
+          trackName: track.title,
+          albumName: track.albumTitle,
+          durationMs: track.durationMs,
+          preview_url: deezerPreviewSearchPath(track.artistName, track.title),
+          artworkUrl: track.albumMbid ? releaseGroupCoverImageUrl(track.albumMbid) : null,
+          deezerAlbumId: null,
+        })),
+      ),
+      libraryPlaylistId:
+        findLibraryPlaylist(user.id, id, BROWSE_IMPORT_PROVIDERS[provider])?.id || null,
+    };
   }
   const playlist = await getAurralPlaylist(provider, user.id, id);
   const cover =
@@ -155,6 +214,20 @@ export async function getBrowsePlaylist(user: RequestUser, provider: BrowseProvi
 
 export async function saveBrowsePlaylist(user: RequestUser, provider: BrowseProvider, id: string) {
   if (provider === "deezer") return addEditorialPlaylistToLibrary(user, id);
+  if (provider === "community") {
+    return addSyncedPlaylist(user, {
+      provider: BROWSE_IMPORT_PROVIDERS[provider],
+      externalId: id,
+      sourceName: "aurral.org",
+      load: async () => {
+        const playlist = await requireImportList(BROWSE_IMPORT_PROVIDERS[provider]).fetch({
+          userId: user.id,
+          externalId: id,
+        });
+        return { ...playlist, name: playlist.name ?? id, description: null };
+      },
+    });
+  }
   return addSyncedPlaylist(user, {
     provider: BROWSE_IMPORT_PROVIDERS[provider],
     externalId: id,

@@ -59,6 +59,12 @@ export async function linkStatus(db: D1Database, tokenHash: string, now = Date.n
   return null;
 }
 
+export const linkedAccountId = (db: D1Database, tokenHash: string) =>
+  db
+    .prepare("SELECT account_id FROM links WHERE token_hash = ? AND account_id IS NOT NULL")
+    .bind(tokenHash)
+    .first<string>("account_id");
+
 export const revokeLink = (db: D1Database, instanceId: string, tokenHash: string) =>
   db
     .prepare("DELETE FROM links WHERE instance_id = ? AND token_hash = ?")
@@ -88,21 +94,28 @@ export async function approveLink(
   return result.meta.changes > 0;
 }
 
+const PUBLIC_COUNT =
+  "(SELECT COUNT(*) FROM publications WHERE publications.link_id = links.id AND publications.delisted = 0) AS public_count";
+
+type LinkSummary = { id: string; user_name: string; linked_at: number; public_count: number };
+
 export const accountLinks = async (db: D1Database, accountId: string) =>
   (
     await db
       .prepare(
-        "SELECT id, user_name, linked_at FROM links WHERE account_id = ? ORDER BY linked_at DESC",
+        `SELECT id, user_name, linked_at, ${PUBLIC_COUNT} FROM links WHERE account_id = ? ORDER BY linked_at DESC`,
       )
       .bind(accountId)
-      .all<{ id: string; user_name: string; linked_at: number }>()
+      .all<LinkSummary>()
   ).results;
 
 export const accountLink = (db: D1Database, accountId: string, id: string) =>
   db
-    .prepare("SELECT id, user_name, linked_at FROM links WHERE account_id = ? AND id = ?")
+    .prepare(
+      `SELECT id, user_name, linked_at, ${PUBLIC_COUNT} FROM links WHERE account_id = ? AND id = ?`,
+    )
     .bind(accountId, id)
-    .first<{ id: string; user_name: string; linked_at: number }>();
+    .first<LinkSummary>();
 
 export const unlinkForAccount = (db: D1Database, accountId: string, id: string) =>
   db.prepare("DELETE FROM links WHERE account_id = ? AND id = ?").bind(accountId, id).run();

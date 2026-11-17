@@ -8,7 +8,11 @@ import {
   renderPickedPlaylistCover,
   type PlaylistArtworkArtist,
 } from "../playlistArtworkGenerator.ts";
-import { renderPlaylistCover, type PlaylistCoverTemplate } from "../playlistCoverTemplates.ts";
+import {
+  PLAYLIST_COVER_TEMPLATES,
+  renderPlaylistCover,
+  type PlaylistCoverTemplate,
+} from "../playlistCoverTemplates.ts";
 import type { BrowseProvider } from "../../../lib/browsePlaylists.ts";
 
 const COVER_DIR = path.join(resolveAurralDataDir(), "browse-covers");
@@ -25,6 +29,10 @@ const queue = new PQueue({ concurrency: 2 });
 
 export function browseCoverTemplate(provider: BrowseProvider, id: string): PlaylistCoverTemplate {
   if (provider === "discovery") return "e1";
+  if (provider === "community") {
+    const pick = parseInt(createHash("sha256").update(id).digest("hex").slice(0, 8), 16);
+    return PLAYLIST_COVER_TEMPLATES[pick % PLAYLIST_COVER_TEMPLATES.length] ?? "b3";
+  }
   if (id.startsWith("daily-")) return "a2";
   if (id.startsWith("radio-") || id.startsWith("artist-")) return "d1";
   return "b3";
