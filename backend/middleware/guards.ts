@@ -81,6 +81,7 @@ const openPaths = new Set([
   "/api/filesystem/browse",
   "/api/filesystem/ensure",
   "/api/auth/login",
+  "/api/auth/pair",
   "/api/auth/oidc/login",
   "/api/auth/oidc/exchange",
   "/api/auth/google/login",

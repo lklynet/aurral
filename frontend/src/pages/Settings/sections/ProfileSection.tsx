@@ -15,6 +15,7 @@ import { useHubLink } from "../../../components/PlayerFriends";
 import { friendPath, personPath } from "../../../../../lib/profilePaths.ts";
 import { ApiKeyRow } from "../components/ApiKeyRow";
 import { ConnectedAccountsSection, useMyIdentities } from "../components/ConnectedAccountsSection";
+import { DevicesGroup } from "../components/DevicesGroup";
 import { HubLinkGroup } from "../components/HubLinkGroup";
 import { SettingsInput } from "../components/SettingsField";
 import {
@@ -279,6 +280,7 @@ export function ProfileSection() {
           <PasswordGroup />
           <ConnectedAccountsSection />
           <HubLinkGroup />
+          <DevicesGroup userId={user.id} />
           <ApiAccessGroup userId={user.id} />
         </>
       ) : null}

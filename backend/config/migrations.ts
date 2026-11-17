@@ -301,6 +301,14 @@ const storeFriendBlendTracks: Migration = (db) =>
     );
   `);
 
+const renewSessionsOnUse: Migration = (db) => {
+  if (
+    !db.prepare("SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'last_used_at'").get()
+  ) {
+    db.exec("ALTER TABLE sessions ADD COLUMN last_used_at INTEGER");
+  }
+};
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -322,6 +330,7 @@ export const migrations: Migration[] = [
   blendWithPeopleOnServer,
   blendByDefault,
   storeFriendBlendTracks,
+  renewSessionsOnUse,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {
