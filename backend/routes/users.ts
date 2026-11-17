@@ -1,4 +1,5 @@
 import { forgetHubLink } from "../services/hubLink.ts";
+import { releaseDeletedUserFromPlaylists } from "../services/playlists/playlistMembers.ts";
 import { Hono } from "hono";
 import * as v from "valibot";
 import { userOps, dbOps, userIdentityOps } from "../db/helpers/index.ts";
@@ -389,7 +390,7 @@ export default new Hono<AppEnv>()
       return c.json({ error: "Failed to change password", message: failure?.message }, 500);
     }
   })
-  .delete("/:id", requireAuth, requireAdmin, (c) => {
+  .delete("/:id", requireAuth, requireAdmin, async (c) => {
     try {
       const id = parseInt(c.req.param("id"), 10);
       if (c.var.user.id === id) {
@@ -401,6 +402,7 @@ export default new Hono<AppEnv>()
       }
       deleteSessionsByUserId(id);
       forgetHubLink(id);
+      await releaseDeletedUserFromPlaylists(id);
       userOps.deleteUser(id);
       dbOps.deleteUserSettings(id);
       dbOps.deleteDiscoveryCacheByPrefix(`${getUserDiscoveryNamespace(id)}:`);
