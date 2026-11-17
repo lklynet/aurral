@@ -26,6 +26,7 @@ import type { RequestUser } from "../../middleware/requestUser.ts";
 import type { LibraryArtistsRow } from "../../db/rows.ts";
 import { communityPlaylist, communityShelf } from "../publicPlaylists.ts";
 import { requireImportList } from "../importLists/importPlaylist.ts";
+import type { ShareManifest } from "../../../lib/shareManifest.ts";
 
 export const browseProviderSchema = v.picklist(BROWSE_PROVIDERS);
 
@@ -83,13 +84,15 @@ const communityCover = (id: string, title: string, artist: string | null | undef
     artist: artist ? { artistName: artist, artistMbid: null } : null,
   }) satisfies BrowseCover;
 
+async function communityCoverOf(id: string, manifest?: Pick<ShareManifest, "title" | "tracks">) {
+  const listed = (await communityShelf()).find((playlist) => playlist.id === id);
+  if (listed) return communityCover(id, listed.title, listed.artist);
+  const source = manifest ?? (await communityPlaylist(id)).manifest;
+  return communityCover(id, source.title, source.tracks[0]?.artistName);
+}
+
 export async function getBrowseCover(user: RequestUser, provider: BrowseProvider, id: string) {
-  if (provider === "community") {
-    const listed = (await communityShelf()).find((playlist) => playlist.id === id);
-    if (listed) return communityCover(id, listed.title, listed.artist);
-    const { manifest } = await communityPlaylist(id);
-    return communityCover(id, manifest.title, manifest.tracks[0]?.artistName);
-  }
+  if (provider === "community") return communityCoverOf(id);
   if (provider === "discovery") {
     const playlist = getDiscoveryPlaylist(user.id, id);
     return playlist && discoveryCover(playlist);
@@ -175,11 +178,7 @@ export async function getBrowsePlaylist(user: RequestUser, provider: BrowseProvi
       name: manifest.title,
       description: null,
       curator: `@${handle}`,
-      artworkUrl: browseCoverUrl(
-        "community",
-        id,
-        communityCover(id, manifest.title, manifest.tracks[0]?.artistName),
-      ),
+      artworkUrl: browseCoverUrl("community", id, await communityCoverOf(id, manifest)),
       tracks: withOwnedTracks(
         manifest.tracks.map((track) => ({
           artistName: track.artistName,

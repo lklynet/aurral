@@ -20,6 +20,7 @@ const [
   published,
   { flowPlaylistConfig },
   { syncStaticPlaylistImportHere },
+  browse,
 ] = await setupIsolatedBackend(
   "server-link",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -29,6 +30,7 @@ const [
   () => import("../../backend/services/publicPlaylists.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/importLists/importListSync.ts"),
+  () => import("../../backend/services/discovery/browsePlaylists.ts"),
 );
 afterAll(async () => {
   await local.dispose();
@@ -206,6 +208,11 @@ test("a public playlist reaches the shelf and its copies, stays fresh, and leave
   assert.equal((await published.refreshPublicPlaylists()).updated, 1);
   assert.equal((await published.refreshPublicPlaylists()).updated, 0);
   assert.equal((await published.communityPlaylist(listed?.id ?? "")).manifest.title, "Later night");
+  const viewer = userOps.getUserById(admin.id) || undefined;
+  assert.ok(viewer);
+  const [card] = await browse.getCommunityPlaylists();
+  const page = await browse.getBrowsePlaylist(viewer, "community", listed?.id ?? "");
+  assert.equal(page.artworkUrl, card?.artworkUrl);
 
   const copy = flowPlaylistConfig.createStaticPlaylist({
     name: "Later night",
