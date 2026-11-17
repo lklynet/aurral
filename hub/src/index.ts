@@ -28,6 +28,7 @@ import {
 } from "./links.ts";
 import {
   linkedLinkId,
+  profile,
   publicPlaylist,
   publish,
   readPublication,
@@ -216,6 +217,12 @@ const v1 = new Hono<Env>()
   .get("/playlists", async (c) =>
     c.json({ playlists: await shelf(c.env.DB) }, 200, { "cache-control": "public, max-age=300" }),
   )
+  .get("/profiles/:handle", async (c) => {
+    const found = await profile(c.env.DB, c.req.param("handle"));
+    return found
+      ? c.json(found, 200, { "cache-control": "public, max-age=300" })
+      : c.json({ error: "no_account" }, 404);
+  })
   .get("/playlists/:id", async (c) => {
     const playlist = await publicPlaylist(c.env.DB, c.req.param("id"));
     return playlist ? c.json(playlist) : c.json({ error: "not_public" }, 404);

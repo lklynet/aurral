@@ -321,6 +321,20 @@
       }
     }
   },
+  "aurral.org profile": {
+    "queries": {
+      "cold": 3,
+      "warm": 3
+    },
+    "bytes": 33,
+    "scans": [],
+    "calls": {
+      "aurral.org": {
+        "cold": 1,
+        "warm": 1
+      }
+    }
+  },
   "subsonic getArtists": {
     "queries": {
       "cold": 9,

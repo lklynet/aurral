@@ -1,6 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types/index.ts";
 import { MAX_SHARE_BYTES, parseShareManifest, withoutShareFiles } from "../../lib/shareManifest.ts";
-import { allowedText } from "./handles.ts";
+import { allowedText, normalizeHandle } from "./handles.ts";
 
 const SHELF_LIMIT = 60;
 const SHELF_PER_ACCOUNT = 3;
@@ -109,6 +109,29 @@ export const shelf = async (db: D1Database) =>
         artist: string | null;
       }>()
   ).results;
+
+export async function profile(db: D1Database, handle: string) {
+  const owner = await db
+    .prepare("SELECT handle, account_id FROM handles WHERE handle = ? AND account_id IS NOT NULL")
+    .bind(normalizeHandle(handle))
+    .first<{ handle: string; account_id: string }>();
+  if (!owner) return null;
+  const { results } = await db
+    .prepare(
+      `SELECT publications.id, publications.title, publications.track_count AS trackCount,
+         publications.published_at AS publishedAt,
+         json_extract(publications.manifest, '$.tracks[0].artistName') AS artist
+       FROM publications JOIN links ON links.id = publications.link_id
+       WHERE links.account_id = ? AND publications.delisted = 0
+       ORDER BY publications.published_at DESC LIMIT ?`,
+    )
+    .bind(owner.account_id, SHELF_LIMIT)
+    .all<Omit<Awaited<ReturnType<typeof shelf>>[number], "handle">>();
+  return {
+    handle: owner.handle,
+    playlists: results.map((playlist) => ({ ...playlist, handle: owner.handle })),
+  };
+}
 
 export async function publicPlaylist(db: D1Database, id: string) {
   const row = await db

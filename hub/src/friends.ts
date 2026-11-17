@@ -47,8 +47,8 @@ export async function friendLists(db: D1Database, accountId: string) {
   const { results } = await db
     .prepare(
       `SELECT handles.handle,
-         EXISTS (SELECT 1 FROM friends WHERE account_id = ?1 AND friend_id = other) AS sent,
-         EXISTS (SELECT 1 FROM friends WHERE account_id = other AND friend_id = ?1) AS received
+         (SELECT created_at FROM friends WHERE account_id = ?1 AND friend_id = other) AS sentAt,
+         (SELECT created_at FROM friends WHERE account_id = other AND friend_id = ?1) AS receivedAt
        FROM (
          SELECT friend_id AS other FROM friends WHERE account_id = ?1
          UNION SELECT account_id FROM friends WHERE friend_id = ?1
@@ -57,17 +57,17 @@ export async function friendLists(db: D1Database, accountId: string) {
        ORDER BY handles.handle`,
     )
     .bind(accountId)
-    .all<{ handle: string; sent: number; received: number }>();
-  const where = (keep: (row: (typeof results)[number]) => boolean) =>
-    results.filter(keep).map(({ handle }) => ({ handle }));
+    .all<{ handle: string; sentAt: number | null; receivedAt: number | null }>();
   const listening = await friendsListening(db, accountId);
   return {
-    friends: where((row) => Boolean(row.sent && row.received)).map(({ handle }) => ({
-      handle,
-      nowPlaying: listening.get(handle)?.nowPlaying ?? null,
-      topPlays: listening.get(handle)?.topPlays ?? null,
-    })),
-    incoming: where((row) => !row.sent),
-    outgoing: where((row) => !row.received),
+    friends: results
+      .filter((row) => row.sentAt !== null && row.receivedAt !== null)
+      .map((row) => ({
+        ...row,
+        nowPlaying: listening.get(row.handle)?.nowPlaying ?? null,
+        topPlays: listening.get(row.handle)?.topPlays ?? null,
+      })),
+    incoming: results.filter((row) => row.sentAt === null),
+    outgoing: results.filter((row) => row.receivedAt === null),
   };
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import ArtworkImage from "./ArtworkImage";
 import { Check, ListMusic, RefreshCw } from "./icons";
 import RouteLink from "./RouteLink";
@@ -29,7 +29,7 @@ export default function PlaylistCard({
   state?: unknown;
   name: string;
   artworkUrl: string | null;
-  meta: string | null;
+  meta: ReactNode;
   claim?: "synced" | "saved";
 }) {
   const [failedArtwork, setFailedArtwork] = useState(false);
@@ -57,19 +57,16 @@ export default function PlaylistCard({
           {claim && <ClaimBadge claim={claim} />}
         </div>
         <div className="artist-discover-card__content">
-          <RouteLink
-            to={to}
-            state={state}
-            className="artist-discover-card__text card-link"
-            aria-label={`Open ${name}`}
-          >
-            <div className="artist-card-title-row--discover">
-              <Tooltip content={name}>
-                <span className="artist-card-title--discover">{name}</span>
-              </Tooltip>
-            </div>
-            {meta && <p className="artist-card-meta--discover">{meta}</p>}
-          </RouteLink>
+          <div className="artist-discover-card__text">
+            <RouteLink to={to} state={state} className="card-link" aria-label={`Open ${name}`}>
+              <div className="artist-card-title-row--discover">
+                <Tooltip content={name}>
+                  <span className="artist-card-title--discover">{name}</span>
+                </Tooltip>
+              </div>
+            </RouteLink>
+            {meta ? <p className="artist-card-meta--discover">{meta}</p> : null}
+          </div>
         </div>
       </div>
     </div>

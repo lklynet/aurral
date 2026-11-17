@@ -115,9 +115,10 @@ async function startFakeMetadata() {
   };
 }
 
-const LISTENBRAINZ_ANSWERS = new Map<string, unknown>([
+const FAKE_ANSWERS = new Map<string, unknown>([
   ["/similar-artists/json", []],
   ["/1/metadata/artist", []],
+  ["/v1/profiles/mia_k", { handle: "mia_k", playlists: [] }],
 ]);
 
 function fakeListenbrainz() {
@@ -125,9 +126,11 @@ function fakeListenbrainz() {
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : input);
-    if (!url.hostname.endsWith("listenbrainz.org")) return realFetch(input, init);
+    if (!url.hostname.endsWith("listenbrainz.org") && url.hostname !== "aurral.org") {
+      return realFetch(input, init);
+    }
     calls.set(url.host, (calls.get(url.host) ?? 0) + 1);
-    const answer = LISTENBRAINZ_ANSWERS.get(url.pathname.replace(/\/$/, ""));
+    const answer = FAKE_ANSWERS.get(url.pathname.replace(/\/$/, ""));
     return Response.json(answer ?? { error: "Not found" }, { status: answer ? 200 : 404 });
   };
   return {

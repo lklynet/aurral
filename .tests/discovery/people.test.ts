@@ -67,5 +67,6 @@ test("people on this server see each other's listening only while both share", a
   await setBlendSetting(lee.id, false);
   assert.deepEqual(await people(lee), { sharing: false, people: [] });
   assert.equal(await profile(mia, "lee"), 404);
+  assert.equal(await profile(lee, "Lee"), 200);
   assert.deepEqual(await people(kit), { sharing: true, people: [["mia", null]] });
 });

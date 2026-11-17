@@ -15,6 +15,7 @@ import { hubLinkClient } from "../utils/api/clients/hubLink.ts";
 import { peopleClient } from "../utils/api/clients/people.ts";
 import { formatRelativeTime } from "../utils/dateTime.ts";
 import { mergeFriendRows } from "./friendRows.ts";
+import { friendPath } from "../../../lib/profilePaths.ts";
 import { resolveAuthenticatedApiAssetUrl } from "../utils/api/core.ts";
 import { readApiError } from "../utils/api/errors.ts";
 
@@ -44,6 +45,54 @@ export function useFriends(enabled = true, live = false) {
     refetchInterval: live ? LIVE_MS : false,
     enabled,
   });
+}
+
+export function useHubLink(enabled = true) {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: queryKeys.hubLink(user?.id),
+    queryFn: ({ signal }) => parseResponse(hubLinkClient.$get({}, { init: { signal } })),
+    enabled,
+  });
+}
+
+const at = (handle: string) => `@${handle.trim().replace(/^@/, "").toLowerCase()}`;
+
+export function useFriendActions() {
+  const { user } = useAuth();
+  const { showError, showSuccess } = useToast();
+  const queryClient = useQueryClient();
+  const settle = () => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.friends(user?.id) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.inbox(user?.id) });
+  };
+  const add = useMutation({
+    mutationFn: (handle: string) =>
+      parseResponse(
+        hubLinkClient.friends[":handle"].$put({ param: { handle: encodeURIComponent(handle) } }),
+      ),
+    onSuccess: ({ status }, handle) => {
+      showSuccess(
+        status === "friends"
+          ? `You and ${at(handle)} are friends.`
+          : `Sent ${at(handle)} a request.`,
+      );
+      settle();
+    },
+    onError: (error) => showError(readApiError(error).error || "Couldn't add that friend."),
+  });
+  const remove = useMutation({
+    mutationFn: ({ handle }: { handle: string; done: string }) =>
+      parseResponse(
+        hubLinkClient.friends[":handle"].$delete({ param: { handle: encodeURIComponent(handle) } }),
+      ),
+    onSuccess: (_result, { done }) => {
+      showSuccess(done);
+      settle();
+    },
+    onError: (error) => showError(readApiError(error).error || "Couldn't reach aurral.org."),
+  });
+  return { add, remove, busy: add.isPending || remove.isPending };
 }
 
 export function FriendArt({ src, round = false }: { src?: string | null; round?: boolean }) {
@@ -272,45 +321,20 @@ export default function PlayerFriends({
 }
 
 export function FriendsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { user } = useAuth();
-  const { showError, showSuccess } = useToast();
-  const queryClient = useQueryClient();
   const friends = useFriends(open);
   const [handle, setHandle] = useState("");
-  const refresh = () => queryClient.invalidateQueries({ queryKey: queryKeys.friends(user?.id) });
-  const add = useMutation({
-    mutationFn: (next: string) =>
-      parseResponse(
-        hubLinkClient.friends[":handle"].$put({ param: { handle: encodeURIComponent(next) } }),
-      ),
-    onSuccess: ({ status }, next) => {
-      const name = `@${next.trim().replace(/^@/, "").toLowerCase()}`;
-      showSuccess(
-        status === "friends" ? `You and ${name} are friends.` : `Sent ${name} a request.`,
-      );
-      setHandle("");
-      void refresh();
-    },
-    onError: (error) => showError(readApiError(error).error || "Couldn't add that friend."),
-  });
-  const remove = useMutation({
-    mutationFn: ({ handle: target }: { handle: string; done: string }) =>
-      parseResponse(
-        hubLinkClient.friends[":handle"].$delete({ param: { handle: encodeURIComponent(target) } }),
-      ),
-    onSuccess: (_result, { done }) => {
-      showSuccess(done);
-      void refresh();
-    },
-    onError: (error) => showError(readApiError(error).error || "Couldn't reach aurral.org."),
-  });
+  const { add, remove, busy } = useFriendActions();
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (handle.trim()) add.mutate(handle);
+    if (handle.trim()) add.mutate(handle, { onSuccess: () => setHandle("") });
   };
   const lists = friends.data?.state === "linked" ? friends.data : null;
-  const busy = add.isPending || remove.isPending;
+  const profile = (name: string, note?: string) => (
+    <Link className="player-friends__friend" to={friendPath(name)} onClick={onClose}>
+      <FriendRow title={`@${name}`} note={note} />
+    </Link>
+  );
 
   return (
     <ModalShell open={open} title="Friends" description={SHARING} onClose={onClose}>
@@ -343,7 +367,7 @@ export function FriendsDialog({ open, onClose }: { open: boolean; onClose: () =>
             <h4 className="player-queue__heading">Requests</h4>
             {lists.incoming.map(({ handle: name }) => (
               <div key={name} className="friends-dialog__row">
-                <FriendRow title={`@${name}`} note="Wants to be friends" />
+                {profile(name, "Wants to be friends")}
                 <button
                   type="button"
                   className="btn btn-primary btn-sm"
@@ -364,7 +388,7 @@ export function FriendsDialog({ open, onClose }: { open: boolean; onClose: () =>
             ))}
             {lists.outgoing.map(({ handle: name }) => (
               <div key={name} className="friends-dialog__row">
-                <FriendRow title={`@${name}`} note="Requested" />
+                {profile(name, "Requested")}
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
@@ -384,7 +408,7 @@ export function FriendsDialog({ open, onClose }: { open: boolean; onClose: () =>
             <h4 className="player-queue__heading">Friends</h4>
             {lists.friends.map(({ handle: name }) => (
               <div key={name} className="friends-dialog__row">
-                <FriendRow title={`@${name}`} />
+                {profile(name)}
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"

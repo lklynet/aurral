@@ -181,6 +181,7 @@ export const scenarios: Scenario[] = [
   { name: "people on this server", requests: () => ["/api/people"] },
   { name: "person profile", requests: () => ["/api/people/mia"] },
   { name: "community playlists", requests: () => ["/api/discover/playlists/community"] },
+  { name: "aurral.org profile", requests: () => ["/api/hub-link/profiles/mia_k"] },
   { name: "subsonic getArtists", requests: () => ["/rest/getArtists"] },
   {
     name: "subsonic getAlbumList2",

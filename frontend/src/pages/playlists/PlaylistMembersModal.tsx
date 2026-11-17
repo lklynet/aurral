@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { ModalShell } from "../../components/PlaylistModals.tsx";
@@ -7,6 +8,7 @@ import { staticPlaylistsClient } from "../../utils/api/clients/staticPlaylists.t
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
 import { queryKeys } from "../../queryClient.ts";
 import type { StaticPlaylist } from "../../utils/playlistStats.ts";
+import { friendPath } from "../../../../lib/profilePaths.ts";
 
 const playlistRoutes = staticPlaylistsClient["static-playlists"][":playlistId"];
 const members = playlistRoutes.members;
@@ -15,7 +17,11 @@ function PersonName({ username, handle }: { username: string; handle?: string | 
   return (
     <span className="playlist-members__name">
       {username}
-      {handle ? <span className="playlist-members__handle">@{handle}</span> : null}
+      {handle ? (
+        <Link className="playlist-members__handle" to={friendPath(handle)}>
+          @{handle}
+        </Link>
+      ) : null}
     </span>
   );
 }

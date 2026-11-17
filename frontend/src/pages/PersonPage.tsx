@@ -3,6 +3,7 @@ import { parseResponse } from "hono/client";
 import { useParams } from "react-router";
 import { AlertCircle, Users } from "../components/icons";
 import StatePanel from "../components/StatePanel";
+import { FriendButton } from "../components/FriendButton";
 import { useFriends, useLocalPeople } from "../components/PlayerFriends";
 import { useAuth } from "../contexts/AuthContext";
 import { queryKeys } from "../queryClient";
@@ -37,21 +38,29 @@ export default function PersonPage() {
       ? friends.data.friends.find((friend) => friend.handle === listed?.handle)?.nowPlaying
       : null);
   const playlists = person?.playlists ?? [];
+  const self = !!person && person.id === user?.id;
   const hasBlend = playlists.some((playlist) => playlist.id.startsWith(BLEND_MIX_PREFIX));
   const note = !person
     ? null
-    : !playlists.length
-      ? `Playlists from ${name}'s listening fill in once they play a few more tracks.`
-      : !hasBlend
-        ? `Your Blend with ${name} fills in once you both play a few more tracks.`
-        : playlists.length === 1
-          ? `${name}'s tracks fills in once they play a few more tracks.`
-          : null;
+    : self
+      ? people.data?.sharing === false
+        ? "People on this server don't see your listening. Share it in Profile."
+        : null
+      : !playlists.length
+        ? `Playlists from ${name}'s listening fill in once they play a few more tracks.`
+        : !hasBlend
+          ? `Your Blend with ${name} fills in once you both play a few more tracks.`
+          : playlists.length === 1
+            ? `${name}'s tracks fills in once they play a few more tracks.`
+            : null;
 
   return (
     <div className="library-page native-library-page" aria-busy={profile.isPending}>
       <header className="native-library-header">
-        <h1 className="page-title">{name}</h1>
+        <div className="native-library-title-row friend-page__title">
+          <h1 className="page-title">{name}</h1>
+          {listed?.handle ? <FriendButton handle={listed.handle} local /> : null}
+        </div>
         <FriendNowPlaying playing={playing} />
       </header>
       <div className="native-library-content">

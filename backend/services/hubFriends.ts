@@ -1,6 +1,8 @@
 import * as v from "valibot";
 import { asAppError } from "../../lib/errors.ts";
+import { friendPath } from "../../lib/profilePaths.ts";
 import { db } from "../config/db-sqlite.ts";
+import { dbOps } from "../db/helpers/index.ts";
 import type { HubLinksRow } from "../db/rows.ts";
 import {
   authorized,
@@ -16,7 +18,11 @@ import { logger } from "./logger.ts";
 
 const HANDLE = /^[a-z0-9_]{3,20}$/;
 
-const friendSchema = v.object({ handle: v.string() });
+const friendSchema = v.object({
+  handle: v.string(),
+  sentAt: v.nullish(v.number()),
+  receivedAt: v.nullish(v.number()),
+});
 const ranked = <Entries extends v.ObjectEntries>(entries: Entries) =>
   v.array(v.object({ ...entries, plays: v.number() }));
 const listeningSchema = v.object({
@@ -100,24 +106,87 @@ export async function friendLists(userId: number) {
         : null,
       topPlays: topPlays ? topPlaysWithArt(topPlays) : null,
     })),
-    incoming,
-    outgoing,
+    incoming: incoming.map(({ handle }) => ({ handle })),
+    outgoing: outgoing.map(({ handle }) => ({ handle })),
   };
 }
+
+const requestKey = (handle: string) => `request:${handle}`;
+const forgetRequest = db.prepare<[number, string]>(
+  "DELETE FROM inbox_items WHERE user_id = ? AND kind = 'friend' AND source_key = ?",
+);
+const forgetAnsweredRequests = db.prepare<[number, string]>(
+  `DELETE FROM inbox_items WHERE user_id = ? AND kind = 'friend' AND source_key LIKE 'request:%'
+     AND source_key NOT IN (SELECT value FROM json_each(?))`,
+);
 
 export async function addFriend(userId: number, input: string) {
   if (!hubLinksEnabled()) throw new FriendError("aurral.org accounts are turned off.", 409);
   const link = changeableLink(userId);
-  const response = await callHub(link, "PUT", `/v1/friends/${handleOf(input)}`);
+  const handle = handleOf(input);
+  const response = await callHub(link, "PUT", `/v1/friends/${handle}`);
   if (!response) throw relink();
   const added = v.safeParse(requestedSchema, await response.json().catch(() => null));
   if (!added.success) throw unreachable();
+  forgetRequest.run(userId, requestKey(handle));
   return added.output;
 }
 
 export async function removeFriend(userId: number, input: string) {
   const link = changeableLink(userId);
-  if (!(await callHub(link, "DELETE", `/v1/friends/${handleOf(input)}`))) throw relink();
+  const handle = handleOf(input);
+  if (!(await callHub(link, "DELETE", `/v1/friends/${handle}`))) throw relink();
+  forgetRequest.run(userId, requestKey(handle));
+}
+
+const NOTICE_EVERY_MS = 15 * 60_000;
+const ACCEPTED_WITHIN_MS = 7 * 86_400_000;
+const NOTICE_TTL_MS = 30 * 86_400_000;
+const noticeChecks = new Map<number, number>();
+
+export async function refreshFriendNotices(userId: number, now = Date.now()) {
+  if (now - (noticeChecks.get(userId) ?? -Infinity) < NOTICE_EVERY_MS) return;
+  noticeChecks.set(userId, now);
+  if (!hubLinksEnabled()) return;
+  const link = linkedLink(userId);
+  if (!link) return;
+  const response = await callHub(link, "GET", "/v1/friends").catch(quietly("friend requests"));
+  const lists = response && v.safeParse(listsSchema, await response.json().catch(() => null));
+  if (!lists?.success) return;
+  const { friends, incoming } = lists.output;
+  const accepted = friends.filter(
+    ({ sentAt, receivedAt }) => sentAt != null && receivedAt != null && receivedAt > sentAt,
+  );
+  db.transaction(() => {
+    forgetAnsweredRequests.run(
+      userId,
+      JSON.stringify(incoming.map(({ handle }) => requestKey(handle))),
+    );
+    for (const { handle, receivedAt } of incoming) {
+      dbOps.upsertInboxItem({
+        userId,
+        kind: "friend",
+        sourceKey: requestKey(handle),
+        title: `@${handle}`,
+        subtitle: "Wants to be friends",
+        href: friendPath(handle),
+        metadata: { handle, request: true, at: receivedAt ?? null },
+      });
+    }
+    for (const { handle, receivedAt } of accepted) {
+      if (receivedAt == null || receivedAt < now - ACCEPTED_WITHIN_MS) continue;
+      dbOps.upsertInboxItem({
+        userId,
+        kind: "friend",
+        sourceKey: `accepted:${handle}:${receivedAt}`,
+        title: `@${handle}`,
+        subtitle: "Accepted your friend request",
+        href: friendPath(handle),
+        metadata: { handle, at: receivedAt },
+        expiresAt: receivedAt + NOTICE_TTL_MS,
+      });
+    }
+  })();
 }
 
 const setSharing = db.prepare<[number, number]>(

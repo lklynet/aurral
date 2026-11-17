@@ -37,6 +37,7 @@ import { readRouteSeed } from "../navigation/routeSeed.ts";
 import { resolveAlbumPath, resolveArtistPath } from "../navigation/resolveLinks.ts";
 import { useTrackSaveActions } from "../hooks/useTrackSaveActions";
 import { mapPreviewTracks, type PreviewTrack } from "./deezerPreviewTracks.ts";
+import { CuratorLink } from "./DiscoverPlaylistSection";
 
 const SAVE_COPY: Record<
   BrowseProvider,
@@ -239,12 +240,14 @@ function BrowsePlaylistDetail({
         title={shown.name}
         subtitle={("description" in shown ? shown.description : undefined) || null}
         meta={
-          [
-            provider === "community" && "curator" in shown ? shown.curator : null,
-            Number.isFinite(trackTotal) ? formatTrackTotal(trackTotal) : null,
-          ]
-            .filter(Boolean)
-            .join(" · ") || null
+          provider === "community" && "curator" in shown && shown.curator ? (
+            <>
+              By <CuratorLink curator={shown.curator} />
+              {Number.isFinite(trackTotal) ? ` · ${formatTrackTotal(trackTotal)}` : null}
+            </>
+          ) : Number.isFinite(trackTotal) ? (
+            formatTrackTotal(trackTotal)
+          ) : null
         }
         actions={
           <>
