@@ -546,6 +546,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
     () => showReasons && new Set(tracks.map((track) => track.reason).filter(Boolean)).size > 1,
     [showReasons, tracks],
   );
+  const showAddedBy = tracks.some((track) => track.addedBy !== undefined);
   const exceptions = useMemo(() => {
     if (!showTrackStatus) return [];
     const counts = new Map<string, number>();
@@ -689,6 +690,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
         track.artistName
       ),
       reason,
+      addedBy: track.addedBy,
       artist: {
         label: track.artistName,
         ...artistLink,
@@ -948,6 +950,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
           rows={rows}
           showYear={showYear}
           showReason={reasonsVary}
+          showAddedBy={showAddedBy}
           wideTime={rows.some((row) => typeof row.time !== "string")}
           sort={{ key: sortKey, direction: sortDirection, onSort: handleSort }}
           onReorder={

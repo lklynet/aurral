@@ -1,4 +1,5 @@
 import { db } from "../../config/db-sqlite.ts";
+import { userOps } from "../../db/helpers/index.ts";
 import type { ShareLinksRow } from "../../db/rows.ts";
 import {
   findSharedTrack,
@@ -26,7 +27,8 @@ export async function refreshPlaylistShares(now = Date.now()) {
       : [];
     const shared = new Set(sharedTracks.map((track) => track.path));
     try {
-      if (!flowPlaylistConfig.getStaticPlaylist(row.target_ref)) {
+      const creator = userOps.getUserById(row.user_id);
+      if (!flowPlaylistConfig.getStaticPlaylistForUser(creator, row.target_ref)) {
         await publishShareManifest(row.token, null);
         db.prepare<[number]>("DELETE FROM share_links WHERE id = ?").run(row.id);
         continue;

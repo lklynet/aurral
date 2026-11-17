@@ -51,7 +51,15 @@ export async function getAurralPlaylist(provider: AurralProvider, userId: number
   }
   const mix = await getUserMix(userId, id);
   if (!mix) throw notFound("This mix isn't available anymore");
-  return { ...mix, provider, tracks: toQueueTracks(mix.trackIds).map(fromQueueTrack) };
+  const { reasons, ...details } = mix;
+  return {
+    ...details,
+    provider,
+    tracks: toQueueTracks(mix.trackIds).map((track) => ({
+      ...fromQueueTrack(track),
+      ...(reasons && { reason: reasons.get(track.libraryTrackId) ?? null }),
+    })),
+  };
 }
 
 export async function importAurralPlaylist(
@@ -62,7 +70,7 @@ export async function importAurralPlaylist(
   if (userId === undefined) throw notFound("This playlist has no owner");
   const playlist = await getAurralPlaylist(provider, userId, id);
   const tracks = playlist.tracks.flatMap((track) => {
-    const normalized = normalizePlaylistTrack(track);
+    const normalized = normalizePlaylistTrack({ ...track, reason: null });
     if (!normalized) return [];
     const file =
       track.owned && ownedFileStmt.get(track.owned.libraryTrackId, track.owned.libraryAlbumId);

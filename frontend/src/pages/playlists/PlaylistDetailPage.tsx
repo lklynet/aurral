@@ -2,7 +2,7 @@ import { usePlaylistArtwork } from "../../hooks/usePlaylistArtwork.ts";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
-import { Clock, Pencil, RefreshCw, Share, Trash2 } from "../../components/icons";
+import { Clock, LogOut, Pencil, RefreshCw, Share, Trash2, Users } from "../../components/icons";
 import { useShareAction } from "../../hooks/useShareAction.ts";
 import { DotLoader } from "../../components/DotLoader";
 import {
@@ -30,6 +30,7 @@ import { ConfirmModal } from "../../components/ConfirmModal.tsx";
 import { PlaylistArtworkThumb } from "../../components/PlaylistArtworkThumb.tsx";
 import { getStaticPlaylistTrackCount } from "../../utils/playlistStats";
 import { PlaylistEditModal } from "./PlaylistEditModal.tsx";
+import { PlaylistMembersModal } from "./PlaylistMembersModal.tsx";
 import { PlaylistTracks } from "./PlaylistTracks.tsx";
 import { usePlaylistTrackPlayback } from "./components/playlistTrackComponents.tsx";
 import {
@@ -58,6 +59,7 @@ interface PlaylistDetailProps {
 }
 
 const sharedPlaylist = staticPlaylistsClient["static-playlists"][":playlistId"];
+const nameList = new Intl.ListFormat("en", { style: "long", type: "conjunction" });
 const syncFetch = apiFetchWithin(5 * 60 * 1000);
 
 function updateCachedPlaylist(playlistId: string, changes: Partial<StaticPlaylist>) {
@@ -157,6 +159,10 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const canManage = user?.role === "admin" || playlist.ownerUserId === user?.id;
 
   const importSource = playlist.importSource || null;
   const fromPlugin = importSource?.provider.startsWith("plugin:") === true;
@@ -166,6 +172,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
       (entry) => `plugin:${entry.pluginId}` === importSource?.provider,
     )?.sync !== false;
   const isSyncable = fromPlugin ? pluginSyncs : isNativeImportProvider(importSource?.provider);
+  const canSync = isSyncable && !playlist.members?.length;
   const providerLabel = fromPlugin
     ? playlist.sourceName || "a plugin"
     : isSyncable
@@ -183,7 +190,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
   const owner = playlist.ownerUsername || user?.username || null;
   const syncInterval = importSource?.syncIntervalHours ?? 0;
   const publicPlaylist = usePublicPlaylist(playlist, () => setEditOpen(true));
-  const metaParts = [owner, publicPlaylist.isPublic ? "Public" : null, trackLabel];
+  const metaParts = [publicPlaylist.isPublic ? "Public" : null, trackLabel];
   if (isSyncable || fromPlugin) {
     metaParts.push(
       importSource?.syncEnabled === true
@@ -223,6 +230,50 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
       setConfirmDelete(false);
     }
   };
+
+  const handleLeave = async () => {
+    if (user?.id == null) return;
+    setLeaving(true);
+    try {
+      await parseResponse(
+        sharedPlaylist.members[":userId"].$delete({
+          param: { playlistId: encodeURIComponent(playlist.id), userId: String(user.id) },
+        }),
+      );
+      showSuccess(`Left ${playlist.name}`);
+      await fetchStatus();
+      navigate("/library/playlists", { replace: true });
+    } catch (err) {
+      showError(getApiErrorMessage(err, "Couldn't leave the playlist"));
+      setLeaving(false);
+      setConfirmLeave(false);
+    }
+  };
+
+  const memberNames = playlist.members?.length
+    ? [owner, ...playlist.members.map((member) => member.username)].filter((name): name is string =>
+        Boolean(name),
+      )
+    : null;
+  const meta = (
+    <>
+      {memberNames ? (
+        <button
+          type="button"
+          className="playlist-detail__members"
+          onClick={() => setMembersOpen(true)}
+        >
+          {nameList.format(memberNames)}
+        </button>
+      ) : (
+        owner
+      )}
+      {metaParts
+        .filter(Boolean)
+        .map((part) => ` · ${part}`)
+        .join("")}
+    </>
+  );
 
   const handleSync = async () => {
     if (syncing) return;
@@ -323,25 +374,109 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
       "Failed to update track availability",
     );
 
+  const menuItems = canManage
+    ? [
+        ...(publicPlaylist.menuItem ? [publicPlaylist.menuItem] : []),
+        {
+          id: "edit",
+          label: "Edit details",
+          icon: Pencil,
+          onSelect: () => setEditOpen(true),
+        },
+        {
+          id: "collaborators",
+          label: "Collaborators",
+          icon: Users,
+          onSelect: () => setMembersOpen(true),
+        },
+        ...(canSync
+          ? [
+              {
+                id: "auto-sync",
+                label: "Auto-sync",
+                icon: Clock,
+                separatorBefore: true,
+                submenuItems: SYNC_INTERVAL_OPTIONS.map((option) =>
+                  choiceMenuItem({
+                    id: `sync-${option.value}`,
+                    label: option.label,
+                    checked: syncInterval === option.value,
+                    onSelect: () => updateSyncInterval(option.value),
+                  }),
+                ),
+              },
+              optionMenuItem({
+                id: "keep-removed",
+                label: `Keep tracks ${providerLabel} removes`,
+                checked: importSource?.keepRemovedTracks !== false,
+                onSelect: () => updateKeepRemoved(importSource?.keepRemovedTracks === false),
+              }),
+            ]
+          : []),
+        optionMenuItem({
+          id: "scrobble",
+          label: "Scrobble tracks",
+          checked: playlist.recordHistory !== false,
+          separatorBefore: !canSync,
+          onSelect: () => updateRecordHistory(playlist.recordHistory === false),
+        }),
+        optionMenuItem({
+          id: "availability",
+          label: "Show track availability",
+          checked: showTrackAvailability,
+          onSelect: () => updateTrackAvailability(!showTrackAvailability),
+        }),
+        ...pluginActions,
+        {
+          id: "delete",
+          label: "Delete playlist",
+          icon: Trash2,
+          danger: true,
+          separatorBefore: true,
+          onSelect: () => setConfirmDelete(true),
+        },
+      ]
+    : [
+        ...pluginActions,
+        {
+          id: "leave",
+          label: "Leave playlist",
+          icon: LogOut,
+          danger: true,
+          separatorBefore: true,
+          onSelect: () => setConfirmLeave(true),
+        },
+      ];
+
   return (
     <CollectionPage tintSrc={artworkUrlFor(playlist.id)} className="playlist-page">
       <CollectionHeader
         cover={
-          <button
-            type="button"
-            className="playlist-detail__cover"
-            onClick={() => setEditOpen(true)}
-            aria-label={`Edit ${playlist.name} details`}
-          >
-            <PlaylistArtworkThumb
-              sizes="18rem"
-              artworkUrl={artworkUrlFor(playlist.id)}
-              name={playlist.name}
-            />
-          </button>
+          canManage ? (
+            <button
+              type="button"
+              className="playlist-detail__cover"
+              onClick={() => setEditOpen(true)}
+              aria-label={`Edit ${playlist.name} details`}
+            >
+              <PlaylistArtworkThumb
+                sizes="18rem"
+                artworkUrl={artworkUrlFor(playlist.id)}
+                name={playlist.name}
+              />
+            </button>
+          ) : (
+            <span className="playlist-detail__cover">
+              <PlaylistArtworkThumb
+                sizes="18rem"
+                artworkUrl={artworkUrlFor(playlist.id)}
+                name={playlist.name}
+              />
+            </span>
+          )
         }
         corner={
-          isSyncable ? (
+          canSync && canManage ? (
             <TooltipButton
               className="native-library-icon-button"
               label={syncing ? "Syncing…" : "Sync now"}
@@ -353,7 +488,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
           ) : null
         }
         title={playlist.name}
-        meta={metaParts.filter(Boolean).join(" · ")}
+        meta={meta}
         actions={
           <>
             <CollectionPlayButtons
@@ -378,60 +513,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
                       playlist.name,
                     ),
                 },
-                ...(publicPlaylist.menuItem ? [publicPlaylist.menuItem] : []),
-                {
-                  id: "edit",
-                  label: "Edit details",
-                  icon: Pencil,
-                  onSelect: () => setEditOpen(true),
-                },
-                ...(isSyncable
-                  ? [
-                      {
-                        id: "auto-sync",
-                        label: "Auto-sync",
-                        icon: Clock,
-                        separatorBefore: true,
-                        submenuItems: SYNC_INTERVAL_OPTIONS.map((option) =>
-                          choiceMenuItem({
-                            id: `sync-${option.value}`,
-                            label: option.label,
-                            checked: syncInterval === option.value,
-                            onSelect: () => updateSyncInterval(option.value),
-                          }),
-                        ),
-                      },
-                      optionMenuItem({
-                        id: "keep-removed",
-                        label: `Keep tracks ${providerLabel} removes`,
-                        checked: importSource?.keepRemovedTracks !== false,
-                        onSelect: () =>
-                          updateKeepRemoved(importSource?.keepRemovedTracks === false),
-                      }),
-                    ]
-                  : []),
-                optionMenuItem({
-                  id: "scrobble",
-                  label: "Scrobble tracks",
-                  checked: playlist.recordHistory !== false,
-                  separatorBefore: !isSyncable,
-                  onSelect: () => updateRecordHistory(playlist.recordHistory === false),
-                }),
-                optionMenuItem({
-                  id: "availability",
-                  label: "Show track availability",
-                  checked: showTrackAvailability,
-                  onSelect: () => updateTrackAvailability(!showTrackAvailability),
-                }),
-                ...pluginActions,
-                {
-                  id: "delete",
-                  label: "Delete playlist",
-                  icon: Trash2,
-                  danger: true,
-                  separatorBefore: true,
-                  onSelect: () => setConfirmDelete(true),
-                },
+                ...menuItems,
               ]}
             />
           </>
@@ -460,6 +542,29 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
           onRename={handleRename}
         />
       ) : null}
+      {membersOpen ? (
+        <PlaylistMembersModal
+          playlist={playlist}
+          userId={user?.id ?? null}
+          canManage={canManage}
+          onChanged={fetchStatus}
+          onLeave={() => {
+            setMembersOpen(false);
+            setConfirmLeave(true);
+          }}
+          onClose={() => setMembersOpen(false)}
+        />
+      ) : null}
+      <ConfirmModal
+        open={confirmLeave}
+        title={`Leave ${playlist.name}?`}
+        body={`${owner || "The owner"} can add you back.`}
+        confirmLabel="Leave playlist"
+        busyLabel="Leaving…"
+        busy={leaving}
+        onCancel={() => setConfirmLeave(false)}
+        onConfirm={handleLeave}
+      />
       <ConfirmModal
         open={confirmDelete}
         title={`Delete ${playlist.name}?`}

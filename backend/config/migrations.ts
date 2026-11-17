@@ -279,6 +279,17 @@ const shareListeningWithFriends: Migration = (db) => {
   db.exec("ALTER TABLE hub_links ADD COLUMN share_listening INTEGER NOT NULL DEFAULT 1");
 };
 
+const blendWithPeopleOnServer: Migration = (db) => {
+  if (db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'blend'").get()) return;
+  db.exec("ALTER TABLE users ADD COLUMN blend INTEGER NOT NULL DEFAULT 0");
+};
+
+const blendByDefault: Migration = (db) =>
+  db.exec(`
+    ALTER TABLE users DROP COLUMN blend;
+    ALTER TABLE users ADD COLUMN blend INTEGER NOT NULL DEFAULT 1;
+  `);
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -297,6 +308,8 @@ export const migrations: Migration[] = [
   createHubPublications,
   ownOrphanedPlaylists,
   shareListeningWithFriends,
+  blendWithPeopleOnServer,
+  blendByDefault,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

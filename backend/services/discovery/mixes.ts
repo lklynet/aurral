@@ -2,6 +2,9 @@ import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import { db } from "../../config/db-sqlite.ts";
 import BoundedMap from "../boundedMap.ts";
 import { buildRadio } from "../radio.ts";
+import { matchesArtistKeys } from "./artistKeys.ts";
+import { getBlockedArtistKeys } from "./feedback.ts";
+import { BLEND_MIX_PREFIX } from "../../../lib/browsePlaylists.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MIX_SIZE = 50;
@@ -19,6 +22,10 @@ const ON_REPEAT_MS = 30 * DAY_MS;
 const REWIND_MS = 365 * DAY_MS;
 const TOP_ARTIST_MS = 90 * DAY_MS;
 const CACHE_TTL_MS = 30 * 60 * 1000;
+const BLEND_CANDIDATES = 200;
+const BLEND_WINDOW = 1000;
+const MIN_BLEND_SHARE = 5;
+const MAX_BLENDS = 3;
 
 export type Mix = {
   id: string;
@@ -26,6 +33,7 @@ export type Mix = {
   description: string;
   trackIds: number[];
   artistId?: number;
+  reasons?: Map<number, string>;
 };
 
 type TrackPlays = {
@@ -457,11 +465,210 @@ async function buildMixes(userId: number, now: number): Promise<Mix[]> {
   return mixes.filter((mix) => mix.trackIds.length >= MIN_MIX_TRACKS);
 }
 
+type BlendSource = "both" | number;
+
+type BlendPartner = { id: number; username: string; viewer: string };
+
+const blendPartnersStmt = db.prepare<[number, number], BlendPartner>(`
+  SELECT partner.id, partner.username, viewer.username AS viewer
+  FROM users AS viewer
+  JOIN users AS partner
+    ON partner.blend = 1 AND partner.status = 'active' AND partner.id <> viewer.id
+  WHERE viewer.id = ? AND viewer.blend = 1 AND viewer.status = 'active'
+    AND EXISTS (SELECT 1 FROM play_events WHERE user_id = partner.id AND played_at >= ?)
+  ORDER BY partner.username COLLATE NOCASE
+`);
+
+const recentArtistsStmt = db.prepare<[number, number], { artist: string }>(
+  "SELECT DISTINCT lower(artist) AS artist FROM play_events WHERE user_id = ? AND played_at >= ?",
+);
+
+const artistSets = new BoundedMap<number, { day: number; artists: Set<string> }>(500);
+
+function recentArtists(userId: number, now: number) {
+  const day = Math.floor(now / DAY_MS);
+  const cached = artistSets.get(userId);
+  if (cached?.day === day) return cached.artists;
+  const artists = new Set(
+    recentArtistsStmt.all(userId, now - TOP_ARTIST_MS).map(({ artist }) => artist),
+  );
+  artistSets.set(userId, { day, artists });
+  return artists;
+}
+
+function closestPartners(userId: number, partners: BlendPartner[], now: number) {
+  if (partners.length <= MAX_BLENDS) return partners;
+  const mine = recentArtists(userId, now);
+  const sharedWith = (partnerId: number) => {
+    let shared = 0;
+    for (const artist of recentArtists(partnerId, now)) if (mine.has(artist)) shared += 1;
+    return shared;
+  };
+  return partners
+    .map((partner) => ({ partner, shared: sharedWith(partner.id) }))
+    .sort((left, right) => right.shared - left.shared)
+    .slice(0, MAX_BLENDS)
+    .map(({ partner }) => partner);
+}
+
+function blendFavorites(userId: number, now: number, blocked: Set<string>) {
+  return playsStmt
+    .all(now - ON_REPEAT_MS, now - REWIND_MS, now - ON_REPEAT_MS, now - TOP_ARTIST_MS, userId, now)
+    .filter((play) => !matchesArtistKeys({ name: play.artist }, blocked))
+    .map((play) => ({ play, weight: 2 * Math.log1p(play.season) + Math.log1p(play.total) }))
+    .sort((left, right) => right.weight - left.weight)
+    .slice(0, BLEND_WINDOW);
+}
+
+async function buildBlend(left: number, right: number, now: number, blocked: Set<string>) {
+  const draw = (id: number) =>
+    seededRandom(`${left}:${right}:${Math.floor(now / DAY_MS)}:blend:${id}`)();
+  const sides = [left, right].map((userId) => blendFavorites(userId, now, blocked));
+  await yieldToEventLoop();
+  const [mine, theirs] = sides.map((side) => {
+    const resolved = resolvePlays(side.map(({ play }) => play));
+    const tracks = new Map<number, { weight: number; artist: string }>();
+    for (const { play, weight } of side) {
+      const id = resolved.get(play);
+      if (tracks.size >= BLEND_CANDIDATES) break;
+      if (id !== undefined && !tracks.has(id)) {
+        tracks.set(id, { weight, artist: play.artist.trim().toLowerCase() });
+      }
+    }
+    return tracks;
+  });
+  if (!mine || !theirs) return null;
+  const shuffled = (tracks: [number, { weight: number; artist: string }][]) =>
+    tracks
+      .map(([id, { weight, artist }]) => ({
+        id,
+        artist,
+        key: Math.log(Math.max(draw(id), Number.EPSILON)) / Math.max(weight, 0.01),
+      }))
+      .sort((a, b) => b.key - a.key);
+  const queues: [BlendSource, ReturnType<typeof shuffled>][] = [
+    [
+      "both",
+      shuffled(
+        [...mine].flatMap(([id, track]) => {
+          const other = theirs.get(id);
+          return other ? [[id, { ...track, weight: track.weight + other.weight }] as const] : [];
+        }),
+      ),
+    ],
+    [left, shuffled([...mine].filter(([id]) => !theirs.has(id)))],
+    [right, shuffled([...theirs].filter(([id]) => !mine.has(id)))],
+  ];
+  const sources = new Map<number, BlendSource>();
+  const perArtist = new Map<string, number>();
+  const take = (queue: ReturnType<typeof shuffled>) => {
+    for (let next = queue.shift(); next; next = queue.shift()) {
+      const count = perArtist.get(next.artist) ?? 0;
+      if (count >= PER_ARTIST) continue;
+      perArtist.set(next.artist, count + 1);
+      return next;
+    }
+    return null;
+  };
+  let lanes = queues;
+  while (lanes.length && sources.size < MIX_SIZE) {
+    lanes = lanes.filter(([source, queue]) => {
+      const next = sources.size < MIX_SIZE && take(queue);
+      if (next) sources.set(next.id, source);
+      return !!next;
+    });
+  }
+  const share = (userId: number) =>
+    [...sources.values()].filter((source) => source === "both" || source === userId).length;
+  return sources.size >= MIN_MIX_TRACKS &&
+    share(left) >= MIN_BLEND_SHARE &&
+    share(right) >= MIN_BLEND_SHARE
+    ? sources
+    : null;
+}
+
+type CachedBlend = {
+  day: number;
+  inputs: string;
+  sources: Promise<Map<number, BlendSource> | null>;
+};
+
+const blendCache = new BoundedMap<string, CachedBlend>(500);
+
+function getBlend(userId: number, partnerId: number, now: number) {
+  const [left, right] = userId < partnerId ? [userId, partnerId] : [partnerId, userId];
+  const key = `${left}:${right}`;
+  const day = Math.floor(now / DAY_MS);
+  const blocked = new Set([...getBlockedArtistKeys(left), ...getBlockedArtistKeys(right)]);
+  const inputs = [latestPlayStmt.get(left)?.id, latestPlayStmt.get(right)?.id, ...blocked].join(
+    "\0",
+  );
+  const cached = blendCache.get(key);
+  if (cached && cached.day === day && cached.inputs === inputs) return cached.sources;
+  const sources = buildBlend(left, right, now, blocked);
+  blendCache.set(key, { day, inputs, sources });
+  sources.catch(() => blendCache.delete(key));
+  return sources;
+}
+
+const blendPartners = (userId: number, now: number) =>
+  blendPartnersStmt.all(userId, now - REWIND_MS);
+
+export function getUserBlends(userId: number, now = Date.now()) {
+  return blendsWith(userId, closestPartners(userId, blendPartners(userId, now), now), now);
+}
+
+async function blendsWith(userId: number, partners: BlendPartner[], now: number) {
+  const mixes: Mix[] = [];
+  const waiting: string[] = [];
+  for (const partner of partners) {
+    const sources = await getBlend(userId, partner.id, now);
+    if (!sources) {
+      waiting.push(partner.username);
+      continue;
+    }
+    const reasonFor = (source: BlendSource) =>
+      source === "both"
+        ? "You both play this"
+        : source === userId
+          ? "From you"
+          : `From ${partner.username}`;
+    mixes.push({
+      id: `${BLEND_MIX_PREFIX}${partner.id}`,
+      name: `Blend with ${partner.username}`,
+      description: `${partner.viewer} and ${partner.username}`,
+      trackIds: [...sources.keys()],
+      reasons: new Map([...sources].map(([id, source]) => [id, reasonFor(source)])),
+    });
+  }
+  return { mixes, waiting };
+}
+
+const blendSettingStmt = db.prepare<[number], { blend: number }>(
+  "SELECT blend FROM users WHERE id = ?",
+);
+const setBlendStmt = db.prepare<[number, number]>("UPDATE users SET blend = ? WHERE id = ?");
+
+export async function getBlendSetting(userId: number) {
+  const enabled = blendSettingStmt.get(userId)?.blend === 1;
+  return { enabled, waiting: enabled ? (await getUserBlends(userId)).waiting : [] };
+}
+
+export function setBlendSetting(userId: number, enabled: boolean) {
+  setBlendStmt.run(enabled ? 1 : 0, userId);
+  return getBlendSetting(userId);
+}
+
 type CachedMixes = { expiresAt: number; day: number; lastPlayId: number; mixes: Promise<Mix[]> };
 
 const cache = new BoundedMap<number, CachedMixes>(500);
 
-export function getUserMixes(userId: number, now = Date.now()) {
+export async function getUserMixes(userId: number, now = Date.now()) {
+  const [blends, mixes] = await Promise.all([getUserBlends(userId, now), getOwnMixes(userId, now)]);
+  return blends.mixes.length ? [...mixes, ...blends.mixes] : mixes;
+}
+
+function getOwnMixes(userId: number, now: number) {
   const day = Math.floor(now / DAY_MS);
   const cached = cache.get(userId);
   if (cached && cached.day === day && cached.expiresAt > now) return cached.mixes;
@@ -477,9 +684,16 @@ export function getUserMixes(userId: number, now = Date.now()) {
 }
 
 export async function getUserMix(userId: number, id: string, now = Date.now()) {
-  return (await getUserMixes(userId, now)).find((mix) => mix.id === id) ?? null;
+  if (id.startsWith(BLEND_MIX_PREFIX)) {
+    const partnerId = Number(id.slice(BLEND_MIX_PREFIX.length));
+    const partners = blendPartners(userId, now).filter((partner) => partner.id === partnerId);
+    return (await blendsWith(userId, partners, now)).mixes[0] ?? null;
+  }
+  return (await getOwnMixes(userId, now)).find((mix) => mix.id === id) ?? null;
 }
 
 export function clearUserMixes() {
   cache.clear();
+  blendCache.clear();
+  artistSets.clear();
 }

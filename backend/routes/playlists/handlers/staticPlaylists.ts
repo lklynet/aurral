@@ -18,8 +18,14 @@ import { playlistOperationQueue } from "../../../services/playlists/playlistOper
 import { reorderStaticPlaylistTracks } from "../../../services/playlists/playlistOperations.ts";
 import { syncStaticPlaylistImport } from "../../../services/importLists/importListSync.ts";
 import {
+  addStaticPlaylistMember,
+  peopleToAdd,
+  removeStaticPlaylistMember,
+} from "../../../services/playlists/playlistMembers.ts";
+import {
   enqueueResearchTrack,
   getAccessibleStaticPlaylist,
+  ownerOnly,
   requirePlaylistAccess,
 } from "./utils.ts";
 import { asAppError } from "../../../../lib/errors.ts";
@@ -74,6 +80,7 @@ const playlistInput = v.object({
   downloadMissing: v.optional(v.boolean(), true),
 });
 const enabledInput = v.object({ enabled: v.boolean() });
+const memberInput = v.object({ username: v.pipe(v.string(), v.trim(), v.nonEmpty()) });
 const bulkInput = v.object({ jobIds: v.array(v.string()) });
 const orderInput = v.object({
   jobIds: v.pipe(
@@ -188,6 +195,22 @@ async function enqueueBulkAction<E extends AppEnv>(
 const bulkActionFailed = <E extends AppEnv>(c: Context<E>, error: unknown) =>
   c.json({ error: "Failed to queue playlist action", message: asAppError(error)?.message }, 500);
 
+const getManagedStaticPlaylist = (user: RequestUser, playlistId: string) => {
+  const playlist = getAccessibleStaticPlaylist(user, playlistId);
+  return {
+    playlist,
+    canManage: flowPlaylistConfig.canUserManageStaticPlaylist(user, playlist),
+  };
+};
+
+const memberEditFailed = <E extends AppEnv>(c: Context<E>, error: unknown) => {
+  const failure = asAppError(error);
+  return c.json(
+    { error: failure?.message || "Failed to update collaborators" },
+    errorStatus(failure),
+  );
+};
+
 const staticPlaylistRoutes = new Hono<AppEnv>()
   .post(
     "/:playlistId/track-removals",
@@ -296,6 +319,7 @@ const staticPlaylistRoutes = new Hono<AppEnv>()
           label: `static-playlist:${playlistId}:tracks:add`,
           playlistId,
           tracks: normalizedTracks,
+          actorUserId: c.var.user.id,
         });
 
         return c.json(
@@ -316,9 +340,9 @@ const staticPlaylistRoutes = new Hono<AppEnv>()
     validate("json", enabledInput),
     (c) => {
       const playlistId = c.req.param("playlistId");
-      if (!getAccessibleStaticPlaylist(c.var.user, playlistId)) {
-        return c.json({ error: "Playlist not found" }, 404);
-      }
+      const { playlist: current, canManage } = getManagedStaticPlaylist(c.var.user, playlistId);
+      if (!current) return c.json({ error: "Playlist not found" }, 404);
+      if (!canManage) return ownerOnly(c);
       const playlist = flowPlaylistConfig.updateStaticPlaylist(playlistId, {
         showTrackAvailability: c.req.valid("json").enabled,
       });
@@ -353,9 +377,9 @@ const staticPlaylistRoutes = new Hono<AppEnv>()
     validate("json", enabledInput),
     (c) => {
       const playlistId = c.req.param("playlistId");
-      if (!getAccessibleStaticPlaylist(c.var.user, playlistId)) {
-        return c.json({ error: "Playlist not found" }, 404);
-      }
+      const { playlist: current, canManage } = getManagedStaticPlaylist(c.var.user, playlistId);
+      if (!current) return c.json({ error: "Playlist not found" }, 404);
+      if (!canManage) return ownerOnly(c);
       const playlist = flowPlaylistConfig.updateStaticPlaylist(playlistId, {
         recordHistory: c.req.valid("json").enabled,
       });
@@ -372,9 +396,19 @@ const staticPlaylistRoutes = new Hono<AppEnv>()
       if (!hasNameUpdate && !hasTracksUpdate && !hasImportSourceUpdate) {
         return c.json({ error: "At least one playlist field is required" }, 400);
       }
-      const currentPlaylist = getAccessibleStaticPlaylist(c.var.user, playlistId);
+      const { playlist: currentPlaylist, canManage } = getManagedStaticPlaylist(
+        c.var.user,
+        playlistId,
+      );
       if (!currentPlaylist) {
         return c.json({ error: "Playlist not found" }, 404);
+      }
+      if (!canManage) return ownerOnly(c);
+      if (hasTracksUpdate && currentPlaylist.memberUserIds) {
+        return c.json(
+          { error: "Add, remove, or reorder tracks on a playlist with collaborators" },
+          409,
+        );
       }
       const safeName = hasNameUpdate
         ? String(body.name || "").trim()
@@ -405,6 +439,9 @@ const staticPlaylistRoutes = new Hono<AppEnv>()
         });
         if (!importSource) {
           return c.json({ error: "importSource is invalid" }, 400);
+        }
+        if (importSource.syncEnabled && currentPlaylist.memberUserIds) {
+          return c.json({ error: "A playlist with collaborators can't sync" }, 409);
         }
       }
 
@@ -484,9 +521,9 @@ const staticPlaylistRoutes = new Hono<AppEnv>()
   .delete("/:playlistId", requirePlaylistAccess, async (c) => {
     try {
       const playlistId = c.req.param("playlistId");
-      if (!getAccessibleStaticPlaylist(c.var.user, playlistId)) {
-        return c.json({ error: "Playlist not found" }, 404);
-      }
+      const { playlist, canManage } = getManagedStaticPlaylist(c.var.user, playlistId);
+      if (!playlist) return c.json({ error: "Playlist not found" }, 404);
+      if (!canManage) return ownerOnly(c);
       const deleted = await playlistOperationQueue.enqueuePayload({
         kind: "static-playlist-delete",
         label: `static-playlist:${playlistId}:delete`,
@@ -505,9 +542,16 @@ const staticPlaylistRoutes = new Hono<AppEnv>()
   })
   .post("/:playlistId/sync", requirePlaylistAccess, async (c) => {
     try {
-      const playlist = getAccessibleStaticPlaylist(c.var.user, c.req.param("playlistId"));
+      const { playlist, canManage } = getManagedStaticPlaylist(
+        c.var.user,
+        c.req.param("playlistId"),
+      );
       if (!playlist) {
         return c.json({ error: "Playlist not found" }, 404);
+      }
+      if (!canManage) return ownerOnly(c);
+      if (playlist.memberUserIds) {
+        return c.json({ error: "A playlist with collaborators can't sync" }, 409);
       }
       const result = await syncStaticPlaylistImport({
         playlistId: playlist.id,
@@ -524,6 +568,42 @@ const staticPlaylistRoutes = new Hono<AppEnv>()
     }
   });
 
+const memberRoutes = new Hono<AppEnv>()
+  .get("/:playlistId/people", requirePlaylistAccess, (c) => {
+    const { playlist, canManage } = getManagedStaticPlaylist(c.var.user, c.req.param("playlistId"));
+    if (!playlist) return c.json({ error: "Playlist not found" }, 404);
+    if (!canManage) return ownerOnly(c);
+    try {
+      return c.json({ people: peopleToAdd(playlist) }, 200);
+    } catch (error) {
+      return memberEditFailed(c, error);
+    }
+  })
+  .post("/:playlistId/members", requirePlaylistAccess, validate("json", memberInput), async (c) => {
+    const { playlist, canManage } = getManagedStaticPlaylist(c.var.user, c.req.param("playlistId"));
+    if (!playlist) return c.json({ error: "Playlist not found" }, 404);
+    if (!canManage) return ownerOnly(c);
+    try {
+      const members = await addStaticPlaylistMember(playlist.id, c.req.valid("json").username);
+      return c.json({ members }, 200);
+    } catch (error) {
+      return memberEditFailed(c, error);
+    }
+  })
+  .delete("/:playlistId/members/:userId", requirePlaylistAccess, async (c) => {
+    const { playlist, canManage } = getManagedStaticPlaylist(c.var.user, c.req.param("playlistId"));
+    if (!playlist) return c.json({ error: "Playlist not found" }, 404);
+    const userId = Number(c.req.param("userId"));
+    if (!canManage && userId !== c.var.user.id) return ownerOnly(c);
+    try {
+      const members = await removeStaticPlaylistMember(playlist.id, userId);
+      return c.json({ members }, 200);
+    } catch (error) {
+      return memberEditFailed(c, error);
+    }
+  });
+
 export default new Hono<AppEnv>()
   .basePath("/playlists")
+  .route("/static-playlists", memberRoutes)
   .route("/static-playlists", staticPlaylistRoutes);
