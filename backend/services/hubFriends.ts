@@ -97,9 +97,11 @@ export async function removeFriend(userId: number, input: string) {
 const setSharing = db.prepare<[number, number]>(
   "UPDATE hub_links SET share_listening = ? WHERE user_id = ?",
 );
-const sharingLinks = db.prepare<[], HubLinksRow>(
-  "SELECT * FROM hub_links WHERE linked_at IS NOT NULL AND broken = 0 AND share_listening = 1",
-);
+const sharingUsers = db
+  .prepare<[], number>(
+    "SELECT user_id FROM hub_links WHERE linked_at IS NOT NULL AND broken = 0 AND share_listening = 1",
+  )
+  .pluck();
 
 const sharingLink = (userId: number) => {
   if (!hubLinksEnabled()) return null;
@@ -143,8 +145,10 @@ async function shareTopPlays(link: HubLinksRow) {
 }
 
 export async function shareAllTopPlays() {
-  if (!hubLinksEnabled()) return;
-  for (const link of sharingLinks.all()) await shareTopPlays(link);
+  for (const userId of sharingUsers.all()) {
+    const link = sharingLink(userId);
+    if (link) await shareTopPlays(link);
+  }
 }
 
 export async function shareListening(userId: number, shared: boolean) {

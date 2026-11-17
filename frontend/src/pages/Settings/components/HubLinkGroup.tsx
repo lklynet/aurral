@@ -157,7 +157,7 @@ export function HubLinkGroup() {
           </button>
         </SettingsRow>
       ) : null}
-      {link.state === "linked" ? (
+      {linked ? (
         <SettingsRow
           label="Share with friends"
           help="What you're playing, and your top artists, albums, and tracks from the last 30 days."
