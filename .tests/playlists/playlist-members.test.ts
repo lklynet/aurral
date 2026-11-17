@@ -22,6 +22,7 @@ const [
   { playlistManager },
   subsonic,
   { trackAdders },
+  playlistOperations,
 ] = await setupIsolatedBackend(
   "playlist-members",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -34,6 +35,7 @@ const [
   () => import("../../backend/services/playlists/playlistManager.ts"),
   () => import("../../backend/services/subsonicLibraryService.ts"),
   () => import("../../backend/services/playlists/playlistMembers.ts"),
+  () => import("../../backend/services/playlists/playlistOperations.ts"),
 );
 
 const createUser = (username: string, role = "user", accessPlaylists = true): RequestUser => {
@@ -177,6 +179,14 @@ test("a playlist with collaborators can't sync or be replaced wholesale", async 
   });
   const syncedNow = await request(lee, `${path}/sync`, "POST");
   assert.deepEqual([replaced.status, synced.status, syncedNow.status], [409, 409, 409]);
+  await assert.rejects(
+    playlistOperations.updateStaticPlaylist({
+      playlistId: playlist.id,
+      hasImportSourceUpdate: true,
+      importSource: { ...playlist.importSource, syncEnabled: true },
+    }),
+    /collaborators/,
+  );
   assert.equal(
     requireFixture(flowPlaylistConfig.getStaticPlaylist(playlist.id)).importSource?.syncEnabled,
     false,

@@ -172,6 +172,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
       (entry) => `plugin:${entry.pluginId}` === importSource?.provider,
     )?.sync !== false;
   const isSyncable = fromPlugin ? pluginSyncs : isNativeImportProvider(importSource?.provider);
+  const canSync = isSyncable && !playlist.members?.length;
   const providerLabel = fromPlugin
     ? playlist.sourceName || "a plugin"
     : isSyncable
@@ -388,7 +389,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
           icon: Users,
           onSelect: () => setMembersOpen(true),
         },
-        ...(isSyncable
+        ...(canSync
           ? [
               {
                 id: "auto-sync",
@@ -416,7 +417,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
           id: "scrobble",
           label: "Scrobble tracks",
           checked: playlist.recordHistory !== false,
-          separatorBefore: !isSyncable,
+          separatorBefore: !canSync,
           onSelect: () => updateRecordHistory(playlist.recordHistory === false),
         }),
         optionMenuItem({
@@ -475,7 +476,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
           )
         }
         corner={
-          isSyncable && canManage ? (
+          canSync && canManage ? (
             <TooltipButton
               className="native-library-icon-button"
               label={syncing ? "Syncing…" : "Sync now"}

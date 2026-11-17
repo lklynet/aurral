@@ -623,6 +623,9 @@ async function updateStaticPlaylistLocked({
       ...(!!hasNameUpdate && { name: safeName }),
       ...(!!hasImportSourceUpdate && { importSource: nextImportSource(lockedImportSource) }),
     };
+    if (lockedPlaylist.memberUserIds && (hasTracksUpdate || metadata.importSource?.syncEnabled)) {
+      throw new Error("A playlist with collaborators can't sync or be replaced");
+    }
     if (!hasTracksUpdate) {
       return { playlist: flowPlaylistConfig.updateStaticPlaylist(safePlaylistId, metadata) };
     }
