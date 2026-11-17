@@ -61,6 +61,13 @@ const SAVE_COPY: Record<
     added: (name) => `Added ${name} to your playlists. It syncs daily.`,
     unavailable: "This mix was replaced by a newer one.",
   },
+  community: {
+    add: "Add synced playlist",
+    open: "Open synced playlist",
+    added: (name) =>
+      `Added ${name} to your playlists. It syncs daily, and missing songs will download.`,
+    unavailable: "This playlist is no longer public.",
+  },
 };
 
 export default function BrowsePlaylistDetailPage() {
@@ -231,7 +238,14 @@ function BrowsePlaylistDetail({
         }
         title={shown.name}
         subtitle={("description" in shown ? shown.description : undefined) || null}
-        meta={Number.isFinite(trackTotal) ? formatTrackTotal(trackTotal) : null}
+        meta={
+          [
+            provider === "community" && "curator" in shown ? shown.curator : null,
+            Number.isFinite(trackTotal) ? formatTrackTotal(trackTotal) : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || null
+        }
         actions={
           <>
             <CollectionPlayButtons

@@ -40,6 +40,8 @@ export function HubLinkGroup() {
     mutationFn: (_handle: string | null) => parseResponse(hubLinkClient.$delete()),
     onSuccess: (next, handle) => {
       settle(next);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.publicPlaylists(user?.id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.communityPlaylists(user?.id) });
       setConfirmUnlink(false);
       if (handle) showSuccess(`Unlinked @${handle}.`);
     },
@@ -132,7 +134,11 @@ export function HubLinkGroup() {
       <ConfirmModal
         open={confirmUnlink}
         title={linked ? `Unlink @${link.handle}?` : "Unlink?"}
-        body="This server can no longer publish as you on aurral.org. You can link again anytime."
+        body={`This server can no longer publish as you on aurral.org.${
+          link.publicPlaylists
+            ? ` ${link.publicPlaylists === 1 ? "Your public playlist stops" : `Your ${link.publicPlaylists} public playlists stop`} being public.`
+            : ""
+        } You can link again anytime.`}
         confirmLabel="Unlink"
         busyLabel="Unlinking…"
         tone="danger"

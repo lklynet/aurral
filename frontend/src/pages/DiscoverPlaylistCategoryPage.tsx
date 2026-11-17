@@ -8,15 +8,16 @@ import StatePanel from "../components/StatePanel";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { browsePlaylistPath } from "../navigation/playlistPaths.ts";
 import { resolveAuthenticatedApiAssetUrl } from "../utils/api/core.ts";
-import { formatTrackTotal } from "./playlists/playlistPageUtils";
+import { browsePlaylistMeta } from "./DiscoverPlaylistSection";
 import { usePlaylistCategories, usePlaylistClaims } from "./usePlaylistShelf";
 
 export default function DiscoverPlaylistCategoryPage() {
   const categoryId = useParams().categoryId ?? "";
-  const { categories, madeForYou, shelf } = usePlaylistCategories();
+  const { categories, madeForYou, shelf, community } = usePlaylistCategories();
   const claimOf = usePlaylistClaims();
   const category = categories.find((entry) => entry.id === categoryId);
-  const source = categoryId === "made-for-you" ? madeForYou : shelf;
+  const source =
+    categoryId === "made-for-you" ? madeForYou : categoryId === "community" ? community : shelf;
   useDocumentTitle(category?.name ?? "Playlists");
   const tint = useCollectionTint(
     resolveAuthenticatedApiAssetUrl(category?.playlists[0]?.artworkUrl),
@@ -37,8 +38,9 @@ export default function DiscoverPlaylistCategoryPage() {
                 }}
                 name={playlist.name}
                 artworkUrl={artworkUrl}
-                meta={formatTrackTotal(playlist.trackCount)}
+                meta={browsePlaylistMeta(playlist)}
                 claim={claimOf(playlist)}
+                titleCover={playlist.provider === "community"}
               />
             );
           })}

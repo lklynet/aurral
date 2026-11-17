@@ -23,10 +23,16 @@ const hashToken = (token: string) => createHash("sha256").update(token).digest("
 
 export const hubLinksEnabled = () => dbOps.getSettings().security.aurralAccounts !== false;
 
-const selectLink = db.prepare<[number], HubLinksRow>("SELECT * FROM hub_links WHERE user_id = ?");
+export const selectLink = db.prepare<[number], HubLinksRow>(
+  "SELECT * FROM hub_links WHERE user_id = ?",
+);
 const deleteLink = db.prepare<[number]>("DELETE FROM hub_links WHERE user_id = ?");
 
-const hubRequest = (origin: string, path: string, init: RequestInit = {}) =>
+const countPublications = db.prepare<[number], { count: number }>(
+  "SELECT COUNT(*) AS count FROM hub_publications WHERE user_id = ?",
+);
+
+export const hubRequest = (origin: string, path: string, init: RequestInit = {}) =>
   fetch(`${origin}${path}`, { ...init, signal: AbortSignal.timeout(HUB_TIMEOUT_MS) });
 
 function queueRevoke(link: HubLinksRow) {
@@ -35,6 +41,11 @@ function queueRevoke(link: HubLinksRow) {
     { maxAttempts: REVOKE_ATTEMPTS },
   );
 }
+
+export const markLinkBroken = db.transaction((userId: number) => {
+  db.prepare<[number]>("UPDATE hub_links SET broken = 1 WHERE user_id = ?").run(userId);
+  db.prepare<[number]>("DELETE FROM hub_publications WHERE user_id = ?").run(userId);
+});
 
 export const forgetHubLink = db.transaction((userId: number) => {
   const link = selectLink.get(userId);
@@ -71,7 +82,7 @@ async function checkHub(link: HubLinksRow) {
   const body: unknown = await response.json().catch(() => null);
   if (response.status === 401 && v.is(revokedSchema, body)) {
     if (link.linked_at) {
-      db.prepare<[number]>("UPDATE hub_links SET broken = 1 WHERE user_id = ?").run(link.user_id);
+      markLinkBroken(link.user_id);
     } else {
       deleteLink.run(link.user_id);
     }
@@ -90,7 +101,11 @@ export async function hubLinkStatus(userId: number) {
   const before = selectLink.get(userId);
   if (before && !before.broken && available) await checkHub(before);
   const link = before && available ? selectLink.get(userId) : before;
-  const base = { available, origin: link?.origin ?? SHARE_ORIGIN };
+  const base = {
+    available,
+    origin: link?.origin ?? SHARE_ORIGIN,
+    publicPlaylists: countPublications.get(userId)?.count ?? 0,
+  };
   if (!link) return { ...base, state: "none" as const };
   if (link.linked_at && link.handle) {
     return {

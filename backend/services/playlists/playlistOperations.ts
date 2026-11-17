@@ -594,10 +594,15 @@ async function updateStaticPlaylistLocked({
   const safeName = hasNameUpdate
     ? String(name || "").trim()
     : String(currentPlaylist.name || "").trim();
-  const nextImportSource = (stored: StaticPlaylist["importSource"]) =>
-    mergeImportSource && hasImportSourceUpdate
-      ? { ...stored, ...importSourcePatch }
-      : importSourcePatch;
+  const nextImportSource = (stored: StaticPlaylist["importSource"]) => {
+    const next =
+      mergeImportSource && hasImportSourceUpdate
+        ? { ...stored, ...importSourcePatch }
+        : importSourcePatch;
+    return next && stored && next.syncEnabled !== stored.syncEnabled
+      ? { ...next, lastSyncError: null }
+      : next;
+  };
   const normalizedTracks = hasTracksUpdate
     ? filterBlockedPlaylistTracks(currentPlaylist.ownerUserId, normalizeTrackList(tracks))
     : [];
@@ -821,7 +826,11 @@ async function deleteStaticPlaylist({ playlistId }: OperationPayload = {}) {
   const deleted = await withPlaylistMutationLock(safePlaylistId, () =>
     flowPlaylistConfig.deleteStaticPlaylist(safePlaylistId),
   );
-  if (deleted) await releaseLibraryJobs(safePlaylistId, jobIds);
+  if (deleted) {
+    await releaseLibraryJobs(safePlaylistId, jobIds);
+    const { unpublishDeletedPlaylist } = await import("../publicPlaylists.ts");
+    await unpublishDeletedPlaylist(safePlaylistId);
+  }
   playlistManager.requestPlaylistSync([safePlaylistId]);
   return deleted;
 }

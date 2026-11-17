@@ -1048,6 +1048,7 @@ test("renaming or changing sync settings leaves queued downloads alone", async (
       syncEnabled: true,
       syncIntervalHours: 24,
       keepRemovedTracks: true,
+      lastSyncError: "Deezer didn't answer",
     },
   });
   const [doneId, queuedId, heldId, failedId] = linked.map((track) => track.canonicalJobId);
@@ -1072,6 +1073,7 @@ test("renaming or changing sync settings leaves queued downloads alone", async (
   assert.equal(updated.name, "Renamed");
   assert.equal(updated.importSource?.syncIntervalHours, 72);
   assert.equal(updated.importSource?.keepRemovedTracks, false);
+  assert.equal(updated.importSource?.lastSyncError, "Deezer didn't answer");
   assert.equal(updated.tracks.length, 4);
   assert.deepEqual(
     Object.fromEntries(playlistJobs(playlist.id).map((job) => [job.id, job.status])),
@@ -1081,6 +1083,17 @@ test("renaming or changing sync settings leaves queued downloads alone", async (
       [heldId]: "blocked",
       [failedId]: "failed",
     },
+  );
+
+  await processPlaylistOperation({
+    kind: "static-playlist-update",
+    playlistId: playlist.id,
+    hasImportSourceUpdate: true,
+    importSource: { ...updated.importSource, syncEnabled: false },
+  });
+  assert.equal(
+    flowPlaylistConfig.getStaticPlaylist(playlist.id)?.importSource?.lastSyncError,
+    null,
   );
 });
 

@@ -4,7 +4,7 @@ import { test } from "vite-plus/test";
 import { AurralApi } from "../aurral.ts";
 import { local } from "../services/service.ts";
 import { LISTENER } from "../state.ts";
-import { has, ports, until } from "./eden.ts";
+import { api, has, ports, until } from "./eden.ts";
 
 const status = v.variant("state", [
   v.object({ state: v.literal("none") }),
@@ -51,7 +51,7 @@ function browser(hub: string) {
 }
 
 test.skipIf(!has("hub"))(
-  "a listener links to an aurral.org account, and unlinking removes it there",
+  "a listener links to an aurral.org account, publishes a playlist, and unlinking removes both there",
   async () => {
     const hub = local(ports.hub);
     const listener = new AurralApi(ports);
@@ -80,10 +80,41 @@ test.skipIf(!has("hub"))(
       handle: "grace_eden",
     });
 
+    const users = v.parse(
+      v.array(
+        v.object({
+          id: v.number(),
+          username: v.string(),
+          permissions: v.record(v.string(), v.boolean()),
+        }),
+      ),
+      await api.get("/users"),
+    );
+    const member = users.find((user) => user.username === LISTENER.username);
+    assert.ok(member);
+    await api.request("PATCH", `/users/${member.id}`, {
+      permissions: { ...member.permissions, accessPlaylists: true },
+    });
+    const { playlistId } = v.parse(
+      v.object({ playlistId: v.string() }),
+      await listener.post("/playlists/static-playlists", {
+        name: "Eden night",
+        tracks: [{ artistName: "Radiohead", trackName: "Reckoner" }],
+        downloadMissing: false,
+      }),
+    );
+    await until("the playlist to be public", () =>
+      listener.put(`/hub-link/public-playlists/${playlistId}`),
+    );
+    const shelf = async () => JSON.stringify(await (await fetch(`${hub}/v1/playlists`)).json());
+    assert.match(await shelf(), /"title":"Eden night".*"handle":"grace_eden"/);
+
     await listener.request("DELETE", "/hub-link");
     await until("aurral.org to forget the link", async () =>
       (await (await aurralOrg.follow(`${hub}/account`)).text()).includes("None yet"),
     );
+    assert.doesNotMatch(await shelf(), /Eden night/);
+    await api.request("PATCH", `/users/${member.id}`, { permissions: member.permissions });
     await aurralOrg.post("/account/delete", {});
   },
 );
