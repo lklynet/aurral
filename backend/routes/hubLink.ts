@@ -3,6 +3,7 @@ import * as v from "valibot";
 import { requireAuth, requireUserAccount } from "../middleware/guards.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { validate } from "../middleware/validate.ts";
+import { friendArt } from "../services/friendArt.ts";
 import {
   addFriend,
   FriendError,
@@ -17,6 +18,10 @@ import {
   PublicPlaylistError,
   publicPlaylistState,
 } from "../services/publicPlaylists.ts";
+import { sendImageFile } from "./shared/sendImageFile.ts";
+
+const name = v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(500));
+const artQuery = v.object({ artist: name, album: v.optional(name), w: v.optional(v.string()) });
 
 export default new Hono<AppEnv>()
   .basePath("/hub-link")
@@ -41,6 +46,25 @@ export default new Hono<AppEnv>()
       if (error instanceof FriendError) return c.json({ error: error.message }, error.status);
       throw error;
     }
+  })
+  .get("/friends/art", validate("query", artQuery), async (c) => {
+    const { artist, album, w } = c.req.valid("query");
+    const art = await friendArt(artist, album);
+    const missing = () => {
+      c.header("Cache-Control", "private, max-age=3600");
+      return c.json({ error: "Artwork not found" }, 404);
+    };
+    if ("file" in art && art.file) {
+      c.header("Cache-Control", "private, max-age=86400");
+      const sent = await sendImageFile(c, art.file.filePath, Number(w) || 0, {
+        contentType: art.file.contentType,
+        dotfiles: "deny",
+      });
+      return sent ?? missing();
+    }
+    if (!("url" in art) || !art.url) return missing();
+    c.header("Cache-Control", "private, max-age=86400");
+    return c.redirect(art.url, 302);
   })
   .put("/friends/:handle", async (c) => {
     try {

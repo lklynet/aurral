@@ -29,7 +29,7 @@ aurral.org gets accounts and a hub: a TypeScript Hono app on Cloudflare Workers 
 - Anything a user publishes: public playlists, now playing, and top plays as one 30-day snapshot per link that replaces the last one daily.
 - Friendships, and Blends between friends, computed from both friends' snapshots.
 
-It never stores a listening history, a Library, or files, and it keeps no history of now playing, in logs either. Now playing is one entry per link that expires after the track's duration. Aurral is not a scrobble provider for aurral.org: scrobble providers get every play queued for delivery, which is the full history.
+It never stores a listening history, a Library, or files, and it keeps no history of now playing, in logs either. Now playing is one entry per link that expires after the track's duration. A server reads its friends' listening with the friend list, for mutual friends only: the newest unexpired now playing, and the top plays of every link updated in the last 7 days, summed by name. Aurral finds art for them in the Library, then on Deezer by name, and never asks MusicBrainz about another person's music. Aurral is not a scrobble provider for aurral.org: scrobble providers get every play queued for delivery, which is the full history.
 
 ## Traps
 

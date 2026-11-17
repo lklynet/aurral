@@ -11,6 +11,7 @@ const trackLoad = <T>(load: () => Promise<T>) => {
 
 export const routeModules = {
   wrapped: trackLoad(() => import("../pages/WrappedPage")),
+  friend: trackLoad(() => import("../pages/FriendPage")),
   search: trackLoad(() => import("../pages/SearchResultsPage")),
   discover: trackLoad(() => import("../pages/DiscoverPage")),
   shows: trackLoad(() => import("../pages/ShowsPage")),
