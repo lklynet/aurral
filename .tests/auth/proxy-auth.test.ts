@@ -110,6 +110,20 @@ test("proxy auth trusts only the address that connects", () => {
     ip: "203.0.113.9",
   });
   assert.equal(proxied?.username, "alice");
+
+  const proxiedFrom = (headers: Record<string, string>) =>
+    resolveProxyUser(
+      proxyRequest(
+        { "x-forwarded-user": "alice", host: "music.example.com", ...headers },
+        "10.0.0.1",
+      ),
+    );
+  assert.equal(proxiedFrom({ "sec-fetch-site": "cross-site" }), null);
+  assert.equal(proxiedFrom({ origin: "https://elsewhere.example" }), null);
+  assert.equal(
+    proxiedFrom({ "sec-fetch-site": "same-origin", origin: "https://music.example.com" })?.username,
+    "alice",
+  );
 });
 
 test("explicitly disabling proxy auth overrides a configured header", () => {

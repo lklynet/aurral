@@ -232,7 +232,7 @@ test("trusted-local bypass rejects an inactive sole administrator", () => {
   assert.equal(auth.resolveLocalNetworkBypassUser(req), null);
 });
 
-test("trusted-local bypass accepts only direct requests from the server's private subnet", (t) => {
+test("trusted-local bypass accepts only direct, same-site requests from the server's private subnet", (t) => {
   userOps.createUser("lan-admin", bcrypt.hashSync("password123", 4), "admin");
   dbOps.updateSettings({
     onboardingComplete: true,
@@ -312,4 +312,21 @@ test("trusted-local bypass accepts only direct requests from the server's privat
     );
     assert.equal(auth.resolveLocalNetworkBypassUser(from("8.8.8.8", { [header]: value })), null);
   }
+  const fromPage = (headers: Record<string, string>) =>
+    auth.resolveLocalNetworkBypassUser(
+      from("192.168.4.20", { host: "192.168.4.115:3001", ...headers }),
+    );
+  for (const [header, value] of [
+    ["sec-fetch-site", "cross-site"],
+    ["sec-fetch-site", "same-site"],
+    ["origin", "https://elsewhere.example"],
+    ["origin", "null"],
+  ] as const) {
+    assert.equal(fromPage({ [header]: value }), null);
+  }
+  assert.equal(
+    fromPage({ "sec-fetch-site": "same-origin", origin: "http://192.168.4.115:3001" })?.username,
+    "lan-admin",
+  );
+  assert.equal(fromPage({ origin: "http://192.168.4.115:3001" })?.username, "lan-admin");
 });
