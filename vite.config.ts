@@ -24,7 +24,7 @@ export default defineConfig({
     categories: { correctness: "error" },
     env: { builtin: true, node: true },
     ignorePatterns: ["docs/**", "**/dist/**"],
-    options: { typeAware: true },
+    options: { typeAware: true, typeCheck: true },
     rules: {
       "no-undef": "error",
       "no-unused-vars": [

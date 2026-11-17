@@ -391,7 +391,7 @@ async function useArtistPhotos() {
     .png()
     .toBuffer();
   vi.mocked(imageSource.fetchDeezerArtistImageUrl).mockImplementation(
-    async ({ artistName } = {}) => `https://images.example.test/${artistName}.jpg`,
+    async (input) => `https://images.example.test/${input?.artistName}.jpg`,
   );
   return vi.spyOn(imageProxy, "fetchRemoteImage").mockResolvedValue({
     buffer: source,

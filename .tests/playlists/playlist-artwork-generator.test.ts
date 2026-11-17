@@ -24,7 +24,7 @@ const sourceMetadata = await sharp(source).metadata();
 const outputPath = path.join(state.dataDir, "cover.webp");
 beforeEach(() => {
   vi.spyOn(imageSource, "fetchDeezerArtistImageUrl").mockImplementation(
-    async ({ artistName } = {}) => `https://images.example.test/${artistName}.png`,
+    async (input) => `https://images.example.test/${input?.artistName}.png`,
   );
   vi.spyOn(imageProxy, "fetchRemoteImage").mockResolvedValue({
     buffer: source,
