@@ -92,6 +92,15 @@ export const madeForYouQueryOptions = (userId: MaybeId) =>
     gcTime: 10 * 60 * 1000,
   });
 
+export const communityPlaylistsQueryOptions = (userId: MaybeId) =>
+  queryOptions({
+    queryKey: queryKeys.communityPlaylists(userId),
+    queryFn: ({ signal }) =>
+      parseResponse(discoveryClient.playlists.community.$get(undefined, { init: { signal } })),
+    staleTime: 10 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+
 export const browsePlaylistQueryOptions = (
   userId: MaybeId,
   provider: BrowseProvider,

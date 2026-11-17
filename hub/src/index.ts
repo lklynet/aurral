@@ -18,6 +18,15 @@ import {
   unlinkForAccount,
 } from "./links.ts";
 import {
+  linkedLinkId,
+  publicPlaylist,
+  publish,
+  readPublication,
+  shelf,
+  unpublish,
+  updatePublication,
+} from "./publications.ts";
+import {
   accountPage,
   deletePage,
   handlePage,
@@ -80,6 +89,19 @@ const json = <Schema extends v.GenericSchema>(schema: Schema) =>
 const bearer = (c: Context<Env>) =>
   /^Bearer ([A-Za-z0-9_-]{43})$/.exec(c.req.header("authorization") ?? "")?.[1] ?? null;
 
+const REFUSALS = {
+  too_large: [413, "share_too_large"],
+  invalid: [400, "invalid_manifest"],
+  title_not_allowed: [422, "title_not_allowed"],
+} as const;
+
+const linkOf = async (c: Context<Env>) => {
+  const token = bearer(c);
+  return token ? linkedLinkId(c.env.DB, await sha256Hex(token)) : null;
+};
+
+const linkRevoked = (c: Context<Env>) => c.json({ error: "link_revoked" }, 401);
+
 const v1 = new Hono<Env>()
   .get("/health", (c) => c.json({ ok: true }))
   .on(["GET", "POST"], "/auth/*", (c) => authFor(c.env).handler(c.req.raw))
@@ -107,6 +129,45 @@ const v1 = new Hono<Env>()
     }
     await revokeLink(c.env.DB, body.instanceId, body.tokenHash.toLowerCase());
     return c.body(null, 204);
+  })
+  .post("/publications", async (c) => {
+    const linkId = await linkOf(c);
+    if (!linkId) return linkRevoked(c);
+    const body = readPublication(await c.req.text());
+    if (typeof body === "string") {
+      const [status, error] = REFUSALS[body];
+      return c.json({ error }, status);
+    }
+    if (!body.ref) return c.json({ error: "invalid_manifest" }, 400);
+    const published = await publish(c.env.DB, linkId, body.ref, body.playlist);
+    if (!published) return c.json({ error: "invalid_manifest" }, 400);
+    if (published.delisted) return c.json({ error: "delisted" }, 403);
+    return c.json({ id: published.id }, 201);
+  })
+  .put("/publications/:id", async (c) => {
+    const linkId = await linkOf(c);
+    if (!linkId) return linkRevoked(c);
+    const body = readPublication(await c.req.text());
+    if (typeof body === "string") {
+      const [status, error] = REFUSALS[body];
+      return c.json({ error }, status);
+    }
+    return (await updatePublication(c.env.DB, linkId, c.req.param("id"), body.playlist))
+      ? c.body(null, 204)
+      : c.json({ error: "not_found" }, 404);
+  })
+  .delete("/publications/:id", async (c) => {
+    const linkId = await linkOf(c);
+    if (!linkId) return linkRevoked(c);
+    await unpublish(c.env.DB, linkId, c.req.param("id"));
+    return c.body(null, 204);
+  })
+  .get("/playlists", async (c) =>
+    c.json({ playlists: await shelf(c.env.DB) }, 200, { "cache-control": "public, max-age=300" }),
+  )
+  .get("/playlists/:id", async (c) => {
+    const playlist = await publicPlaylist(c.env.DB, c.req.param("id"));
+    return playlist ? c.json(playlist) : c.json({ error: "not_public" }, 404);
   });
 
 const forwardCookies = (c: Context<Env>, headers: Headers) => {

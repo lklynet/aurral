@@ -4685,6 +4685,12 @@ textarea:disabled {
   font-size: var(--aurral-font-base);
 }
 
+.artist-modal__error {
+  margin: -0.5rem 0 1.25rem;
+  color: var(--aurral-danger);
+  font-size: var(--aurral-font-base);
+}
+
 .file-browser-modal__error {
   margin: 0;
   padding: 0.75rem 1.25rem 0;
@@ -5153,6 +5159,20 @@ textarea:disabled {
   align-items: center;
   justify-content: center;
   color: var(--aurral-text-muted);
+}
+
+.playlist-title-cover {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  align-items: flex-end;
+  padding: 0.75rem;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--aurral-text);
+  font-size: var(--aurral-font-lg);
+  font-weight: 700;
+  line-height: 1.1;
 }
 
 .artist-media-placeholder--discover .artist-icon-lg {

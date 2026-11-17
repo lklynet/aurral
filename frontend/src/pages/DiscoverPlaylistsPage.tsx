@@ -46,7 +46,7 @@ function CategoryTile({
 
 export default function DiscoverPlaylistsPage() {
   useDocumentTitle("Playlists");
-  const { browse, madeForYou, shelf } = usePlaylistCategories();
+  const { browse, madeForYou, shelf, community } = usePlaylistCategories();
   const [showAll, setShowAll] = useState(false);
   const featured = FEATURED_TILES.flatMap(([group, start, end]) =>
     browse.filter((category) => category.group === group).slice(start, end),
@@ -75,6 +75,11 @@ export default function DiscoverPlaylistsPage() {
         title="Your genres"
         playlists={shelf.data?.forYou}
         viewAllTo={playlistCategoryPath("for-you")}
+      />
+      <DiscoverPlaylistSection
+        title="Community"
+        playlists={community.data?.playlists}
+        viewAllTo={playlistCategoryPath("community")}
       />
       {loading && browse.length === 0 ? (
         <SkeletonStatus

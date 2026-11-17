@@ -290,6 +290,10 @@ export function getPlaylistStatusSnapshot({ user = null }: { user?: RequestUser 
               ? playlist.importSource.syncIntervalHours
               : 0,
             keepRemovedTracks: playlist.importSource.keepRemovedTracks !== false,
+            ...(!playlist.importSource.syncEnabled &&
+              playlist.importSource.lastSyncError && {
+                lastSyncError: playlist.importSource.lastSyncError,
+              }),
           }
         : null,
     };

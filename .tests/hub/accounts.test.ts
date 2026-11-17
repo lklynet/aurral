@@ -87,7 +87,7 @@ const rows = async () => ({
 
 const reset = () =>
   db.batch(
-    ["links", "instances", "handles", "accounts"].map((table) =>
+    ["publications", "links", "instances", "handles", "accounts"].map((table) =>
       db.prepare(`DELETE FROM ${table}`),
     ),
   );
@@ -341,4 +341,80 @@ test("a code approves one account once and only before it expires", async () => 
   assert.deepEqual(approvals.toSorted(), [false, true]);
   assert.equal(await approveLink(db, code(late), "a", expired), false);
   assert.equal(await linkStatus(db, "bb", expired), null);
+});
+
+test("a linked server publishes playlists to the shelf, and they leave with the link", async () => {
+  await reset();
+  const now = new Date().toISOString();
+  await db.batch([
+    db
+      .prepare(
+        "INSERT INTO accounts (id, name, email, email_verified, created_at, updated_at) VALUES ('lee', '', 'lee@users.aurral.org', 1, ?, ?)",
+      )
+      .bind(now, now),
+    db.prepare("INSERT INTO handles (handle, account_id) VALUES ('lee_k', 'lee')"),
+    db
+      .prepare(
+        "INSERT INTO links (id, instance_id, user_name, token_hash, account_id, linked_at) VALUES ('link', ?, 'lee', ?, 'lee', 1)",
+      )
+      .bind(INSTANCE.instanceId, await sha256Hex(linkToken)),
+  ]);
+  const track = { title: "Song", artistName: "Band", path: "tracks/1/2", size: 9, format: "flac" };
+  const send = (method: string, path: string, title: string, token = linkToken) =>
+    api(path, {
+      method,
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({ ref: title, manifest: { kind: "playlist", title, tracks: [track] } }),
+    });
+  const idOf = async (response: Response) =>
+    v.parse(v.object({ id: v.string() }), await response.json()).id;
+  const listed = v.object({
+    playlists: v.array(v.object({ id: v.string(), title: v.string(), handle: v.string() })),
+  });
+  const shelf = async () => v.parse(listed, await (await api("/v1/playlists")).json()).playlists;
+
+  assert.equal((await send("POST", "/v1/publications", "fuck this")).status, 422);
+  assert.equal((await send("POST", "/v1/publications", "Late", "u".repeat(43))).status, 401);
+  const ids = [];
+  for (const title of ["One", "Two", "Three", "Late night"]) {
+    const created = await send("POST", "/v1/publications", title);
+    assert.equal(created.status, 201);
+    ids.push(await idOf(created));
+  }
+  assert.equal(await idOf(await send("POST", "/v1/publications", "Two")), ids[1]);
+  const latest = ids.at(-1) ?? "";
+  assert.deepEqual(
+    (await shelf()).map(({ title, handle }) => `${handle}:${title}`),
+    ["lee_k:Late night", "lee_k:Three", "lee_k:Two"],
+  );
+
+  assert.equal((await send("PUT", `/v1/publications/${latest}`, "shit list")).status, 422);
+  assert.equal((await send("PUT", `/v1/publications/${latest}`, "Later night")).status, 204);
+  const opened = v.parse(
+    v.object({
+      handle: v.string(),
+      manifest: v.object({ title: v.string(), tracks: v.array(v.object({ path: v.null() })) }),
+    }),
+    await (await api(`/v1/playlists/${latest}`)).json(),
+  );
+  assert.equal(`${opened.handle}:${opened.manifest.title}`, "lee_k:Later night");
+
+  await db.prepare("UPDATE publications SET delisted = 1 WHERE id = ?").bind(latest).run();
+  assert.equal((await api(`/v1/playlists/${latest}`)).status, 404);
+  assert.deepEqual(
+    (await shelf()).map(({ title }) => title),
+    ["Three", "Two", "One"],
+  );
+  assert.equal((await send("DELETE", `/v1/publications/${latest}`, "")).status, 204);
+  const republished = await send("POST", "/v1/publications", "Late night");
+  const refusal: unknown = await republished.json();
+  assert.deepEqual(
+    { status: republished.status, refusal },
+    { status: 403, refusal: { error: "delisted" } },
+  );
+
+  assert.equal((await send("DELETE", `/v1/publications/${ids[0]}`, "")).status, 204);
+  assert.equal((await shelf()).length, 2);
+  await deleteAccount(db, "lee");
+  assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM publications").first("n"), 0);
 });

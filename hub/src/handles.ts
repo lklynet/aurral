@@ -34,6 +34,8 @@ const profanity = new RegExpMatcher({
   ...englishRecommendedTransformers,
 });
 
+export const allowedText = (value: string) => !profanity.hasMatch(value);
+
 export type HandleClaim = "claimed" | "invalid" | "reserved" | "not_allowed" | "taken";
 
 export const normalizeHandle = (input: string) => input.trim().replace(/^@/, "").toLowerCase();

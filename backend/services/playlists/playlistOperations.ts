@@ -821,7 +821,11 @@ async function deleteStaticPlaylist({ playlistId }: OperationPayload = {}) {
   const deleted = await withPlaylistMutationLock(safePlaylistId, () =>
     flowPlaylistConfig.deleteStaticPlaylist(safePlaylistId),
   );
-  if (deleted) await releaseLibraryJobs(safePlaylistId, jobIds);
+  if (deleted) {
+    await releaseLibraryJobs(safePlaylistId, jobIds);
+    const { unpublishDeletedPlaylist } = await import("../publicPlaylists.ts");
+    await unpublishDeletedPlaylist(safePlaylistId);
+  }
   playlistManager.requestPlaylistSync([safePlaylistId]);
   return deleted;
 }

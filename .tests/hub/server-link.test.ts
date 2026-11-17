@@ -11,12 +11,24 @@ process.env.AURRAL_SHARE_ORIGIN = HUB;
 
 const local = await localHub();
 const hubEnv: Bindings = { ...local.env, HUB_ORIGIN: HUB, AUTH_SECRET: "x".repeat(40) };
-const [paths, { db }, { dbOps, userOps }, link, { api }] = await setupIsolatedBackend(
+const [
+  paths,
+  { db },
+  { dbOps, userOps },
+  link,
+  { api },
+  published,
+  { flowPlaylistConfig },
+  { syncStaticPlaylistImportHere },
+] = await setupIsolatedBackend(
   "server-link",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/hubLink.ts"),
   () => import("../../backend/routes/api.ts"),
+  () => import("../../backend/services/publicPlaylists.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/importLists/importListSync.ts"),
 );
 afterAll(async () => {
   await local.dispose();
@@ -154,4 +166,78 @@ test("deleting a user revokes its link", async () => {
     .request(`/users/${doomed.id}`, { method: "DELETE" });
   assert.equal(response.status, 200);
   await revoked(1);
+});
+
+test("a public playlist reaches the shelf and its copies, stays fresh, and leaves with the link", async () => {
+  const pending = await link.startHubLink(lee);
+  await approve(pending.state === "pending" ? pending.code : "");
+  await link.hubLinkStatus(lee.id);
+  const owner = signedInAs(userOps.getUserById(lee.id) || undefined).route("/", api);
+  const setPublic = (method: "PUT" | "DELETE", playlistId: string) =>
+    owner.request(`/hub-link/public-playlists/${playlistId}`, { method });
+  const track = { trackName: "Song", artistName: "Band" };
+  const mine = flowPlaylistConfig.createStaticPlaylist({
+    name: "Late night",
+    ownerUserId: lee.id,
+    tracks: [track],
+  });
+  const synced = flowPlaylistConfig.createStaticPlaylist({
+    name: "Rap Life",
+    ownerUserId: lee.id,
+    tracks: [track],
+    importSource: {
+      provider: "deezer-playlist",
+      externalId: "1",
+      syncEnabled: true,
+      syncIntervalHours: 24,
+    },
+  });
+
+  assert.equal((await setPublic("PUT", synced.id)).status, 400);
+  published.resetCommunityShelf();
+  assert.deepEqual(await published.communityShelf(), []);
+  assert.equal((await setPublic("PUT", mine.id)).status, 200);
+  const [listed] = await published.communityShelf();
+  assert.deepEqual(
+    { title: listed?.title, handle: listed?.handle },
+    { title: "Late night", handle: "lee_k" },
+  );
+
+  flowPlaylistConfig.updateStaticPlaylist(mine.id, { name: "Later night" });
+  assert.equal((await published.refreshPublicPlaylists()).updated, 1);
+  assert.equal((await published.refreshPublicPlaylists()).updated, 0);
+  assert.equal((await published.communityPlaylist(listed?.id ?? "")).manifest.title, "Later night");
+
+  const copy = flowPlaylistConfig.createStaticPlaylist({
+    name: "Later night",
+    ownerUserId: admin.id,
+    tracks: [track],
+    importSource: {
+      provider: "aurral-community",
+      externalId: listed?.id,
+      syncEnabled: true,
+      syncIntervalHours: 24,
+    },
+  });
+  const accounts = (aurralAccounts: boolean) =>
+    dbOps.updateSettings({ security: { localNetworkBypass: { enabled: false }, aurralAccounts } });
+  accounts(false);
+  assert.equal((await setPublic("PUT", synced.id)).status, 409);
+  assert.equal((await setPublic("DELETE", mine.id)).status, 200);
+  accounts(true);
+  await syncStaticPlaylistImportHere({
+    playlistId: copy.id,
+    user: userOps.getUserById(admin.id) || undefined,
+    force: true,
+  });
+  const ended = flowPlaylistConfig.getStaticPlaylist(copy.id);
+  assert.equal(ended?.importSource?.syncEnabled, false);
+  assert.equal(ended?.tracks.length, 1);
+
+  assert.equal((await setPublic("PUT", mine.id)).status, 200);
+  link.forgetHubLink(lee.id);
+  assert.deepEqual(published.publicPlaylistState(lee.id).playlistIds, []);
+  await revoked(1);
+  published.resetCommunityShelf();
+  assert.deepEqual(await published.communityShelf(), []);
 });

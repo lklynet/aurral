@@ -166,6 +166,14 @@ export interface HubLinksRow {
   broken: number;
 }
 
+export interface HubPublicationsRow {
+  playlist_id: string;
+  user_id: number;
+  publication_id: string;
+  manifest_hash: string;
+  published_at: number;
+}
+
 export interface ImagesCacheRow {
   mbid: string | null;
   image_url: string | null;

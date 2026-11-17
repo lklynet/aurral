@@ -12,7 +12,13 @@ export interface BrowseShelfPlaylist {
   name: string;
   artworkUrl: string | null;
   trackCount: number;
+  curator: string | null;
 }
+
+export const browsePlaylistMeta = (playlist: BrowseShelfPlaylist) =>
+  playlist.provider === "community" && playlist.curator
+    ? `${playlist.curator} · ${formatTrackTotal(playlist.trackCount)}`
+    : formatTrackTotal(playlist.trackCount);
 
 export function DiscoverPlaylistSection({
   title,
@@ -39,8 +45,9 @@ export function DiscoverPlaylistSection({
               }}
               name={playlist.name}
               artworkUrl={artworkUrl}
-              meta={formatTrackTotal(playlist.trackCount)}
+              meta={browsePlaylistMeta(playlist)}
               claim={claimOf(playlist)}
+              titleCover={playlist.provider === "community"}
             />
           );
         })}

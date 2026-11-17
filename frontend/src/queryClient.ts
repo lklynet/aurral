@@ -47,6 +47,12 @@ export const queryKeys = {
     scope
       ? ["discovery", "playlists", "shelf", userId || null, scope]
       : ["discovery", "playlists", "shelf", userId || null],
+  communityPlaylists: (userId: MaybeId): QueryKey => [
+    "discovery",
+    "playlists",
+    "community",
+    userId || null,
+  ],
   madeForYou: (userId: MaybeId): QueryKey => [
     "discovery",
     "playlists",
@@ -279,6 +285,7 @@ export const queryKeys = {
   myPlaylistOrder: (userId: MaybeId): QueryKey => ["users", "me", "playlist-order", userId || null],
   myIdentities: (userId: MaybeId): QueryKey => ["auth", "identities", userId || null],
   hubLink: (userId: MaybeId): QueryKey => ["hub-link", userId || null],
+  publicPlaylists: (userId: MaybeId): QueryKey => ["hub-link", "public", userId || null],
   manualMissingSearchSources: (jobId: MaybeId, mode: string, playlistId: MaybeId): QueryKey => [
     "playlists",
     "manual-search-sources",

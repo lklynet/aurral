@@ -15,6 +15,7 @@ import { importAurralPlaylist } from "../discovery/aurralPlaylists.ts";
 import { normalizeImportSource } from "../playlists/flowPlaylistConfig.ts";
 import { normalizePlaylistTrack, type PlaylistTrack } from "../playlists/playlistTracks.ts";
 import { loadRemoteShare } from "../shareLinks/remote.ts";
+import { communityPlaylist } from "../publicPlaylists.ts";
 import type { ShareManifest } from "../../../lib/shareManifest.ts";
 import {
   IMPORT_PROVIDER_LABELS,
@@ -131,24 +132,32 @@ const nativeImportLists = {
     rotating: true,
     fetch: ({ userId, externalId }) => importAurralPlaylist("mix", userId, externalId),
   },
+  "aurral-community": {
+    fetch: async ({ externalId }) =>
+      importedShare(externalId, (await communityPlaylist(externalId)).manifest),
+  },
   "aurral-share": {
     fetch: async ({ externalId }) => {
       const { manifest } = await loadRemoteShare(externalId);
       if (manifest.kind !== "playlist") throw new Error("This share is not a playlist.");
-      const tracks = sharedPlaylistTracks(manifest);
-      return {
-        id: externalId,
-        name: manifest.title,
-        tracks,
-        stats: {
-          sourceItems: manifest.tracks.length,
-          incomplete: manifest.tracks.length - tracks.length,
-          duplicate: 0,
-        },
-      };
+      return importedShare(externalId, manifest);
     },
   },
 } satisfies Record<NativeImportProvider, Omit<ImportList, "label" | "sync">>;
+
+function importedShare(id: string, manifest: ShareManifest): ImportedPlaylist {
+  const tracks = sharedPlaylistTracks(manifest);
+  return {
+    id,
+    name: manifest.title,
+    tracks,
+    stats: {
+      sourceItems: manifest.tracks.length,
+      incomplete: manifest.tracks.length - tracks.length,
+      duplicate: 0,
+    },
+  };
+}
 
 export function importListFor(provider: string): ImportList | null {
   if (isNativeImportProvider(provider))

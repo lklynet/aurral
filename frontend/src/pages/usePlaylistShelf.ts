@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../contexts/AuthContext";
 import {
+  communityPlaylistsQueryOptions,
   madeForYouQueryOptions,
   playlistShelfQueryOptions,
   playlistStatusQueryOptions,
@@ -24,9 +25,15 @@ export function useMadeForYou() {
   });
 }
 
+export function useCommunityPlaylists() {
+  const { user } = useAuth();
+  return useQuery(communityPlaylistsQueryOptions(user?.id));
+}
+
 export function usePlaylistCategories() {
   const madeForYou = useMadeForYou();
   const shelf = usePlaylistShelf();
+  const community = useCommunityPlaylists();
   const browse = useMemo(
     () =>
       GROUP_ORDER.flatMap((group) =>
@@ -41,12 +48,13 @@ export function usePlaylistCategories() {
       ...[
         { id: "made-for-you", name: "Made for you", playlists: madeForYou.data?.playlists ?? [] },
         { id: "for-you", name: "Your genres", playlists: shelf.data?.forYou ?? [] },
+        { id: "community", name: "Community", playlists: community.data?.playlists ?? [] },
       ].filter((category) => category.playlists.length > 0),
       ...browse,
     ],
-    [madeForYou.data, shelf.data, browse],
+    [madeForYou.data, shelf.data, community.data, browse],
   );
-  return { categories, browse, madeForYou, shelf };
+  return { categories, browse, madeForYou, shelf, community };
 }
 
 export function usePlaylistClaims() {

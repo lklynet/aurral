@@ -42,6 +42,7 @@ import {
 } from "./playlistPageUtils";
 import { countAvailableTracks } from "../../utils/trackAvailability.ts";
 import { usePlaylistStatus } from "./usePlaylistStatus";
+import { usePublicPlaylist } from "./usePublicPlaylist.tsx";
 import { useHiddenPlaylistTracks } from "../../contexts/PlaylistBulkActions.ts";
 import type { PlaylistStats, PlaylistStatus, StaticPlaylist } from "../../utils/playlistStats.ts";
 import { apiFetchWithin, asApiError } from "../../utils/api/core.ts";
@@ -181,12 +182,15 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
       : formatTrackTotal(totalTracks);
   const owner = playlist.ownerUsername || user?.username || null;
   const syncInterval = importSource?.syncIntervalHours ?? 0;
-  const metaParts = [owner, trackLabel];
+  const publicPlaylist = usePublicPlaylist(playlist, () => setEditOpen(true));
+  const metaParts = [owner, publicPlaylist.isPublic ? "Public" : null, trackLabel];
   if (isSyncable || fromPlugin) {
     metaParts.push(
       importSource?.syncEnabled === true
         ? `Synced from ${providerLabel}`
-        : `Imported from ${providerLabel}`,
+        : importSource?.provider === "aurral-community" && importSource.lastSyncError
+          ? "No longer public"
+          : `Imported from ${providerLabel}`,
     );
   }
 
@@ -374,6 +378,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
                       playlist.name,
                     ),
                 },
+                ...(publicPlaylist.menuItem ? [publicPlaylist.menuItem] : []),
                 {
                   id: "edit",
                   label: "Edit details",
@@ -446,6 +451,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
         recordHistory={playlist.recordHistory !== false}
       />
 
+      {publicPlaylist.modal}
       {editOpen ? (
         <PlaylistEditModal
           entry={playlist}

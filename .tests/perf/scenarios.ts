@@ -177,6 +177,7 @@ export const scenarios: Scenario[] = [
   },
   { name: "listening history", requests: () => ["/api/users/me/listening-history"] },
   { name: "aurral.org account", requests: () => ["/api/hub-link"] },
+  { name: "community playlists", requests: () => ["/api/discover/playlists/community"] },
   { name: "subsonic getArtists", requests: () => ["/rest/getArtists"] },
   {
     name: "subsonic getAlbumList2",
