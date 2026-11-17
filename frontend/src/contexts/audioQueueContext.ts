@@ -14,6 +14,7 @@ export type AudioQueueValue = {
   currentTrack: QueueEntry | null;
   currentIndex: number;
   source: QueueSource | null;
+  activeSource: QueueSource | null;
   playbackError: string | null;
   isActive: boolean;
   isPlaying: boolean;

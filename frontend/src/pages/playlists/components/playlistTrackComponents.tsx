@@ -21,7 +21,7 @@ import { SkeletonStatus, SkeletonTrackList } from "../../../components/Skeletons
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import TooltipButton from "../../../components/TooltipButton";
 import { matchesPlaylistTrackQuery, sortPlaylistTracks } from "../../../utils/playlistTrackSort";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { normalizePlaylistQueueTrack } from "../../../utils/audioQueue";
 import {
@@ -490,6 +490,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
   onReorder,
   bulkActionLoading = false,
 }: PlaylistTracksPanelProps<T>) {
+  const [searchParams] = useSearchParams();
   const [sortKey, setSortKey] = useState("index");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [editMode, setEditMode] = useState(false);
@@ -946,6 +947,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
       ) : (
         <TrackList
           label={label}
+          highlightKey={searchParams.get("track")}
           rows={rows}
           showYear={showYear}
           showReason={reasonsVary}

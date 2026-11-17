@@ -12,6 +12,8 @@ import {
   normalizePreviewTrack,
   queueReducer,
   shouldRestartTrack,
+  withOrigin,
+  withTrackParam,
 } from "../../frontend/src/utils/audioQueue.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
 
@@ -306,6 +308,32 @@ const insert = (
   ids: string[],
   position: "next" | "end",
 ) => queueReducer(state, { type: "INSERT_TRACKS", tracks: ids.map(extra), position });
+
+test("playback remembers the page it started from, except radio and autoplay, and links to the playing track", () => {
+  const radio = { type: "radio", id: "{}", label: "Artist radio" };
+  assert.deepEqual(withOrigin(null, "/search?q=a"), {
+    type: "page",
+    id: "/search?q=a",
+    href: "/search?q=a",
+  });
+  assert.deepEqual(
+    withOrigin({ type: "playlist", id: "p1", label: "Mix" }, "/library/playlists/p1"),
+    {
+      type: "playlist",
+      id: "p1",
+      label: "Mix",
+      href: "/library/playlists/p1",
+    },
+  );
+  assert.equal(withOrigin(radio, "/library"), radio);
+  assert.equal(withOrigin(AUTOPLAY_SOURCE, "/library"), AUTOPLAY_SOURCE);
+  assert.equal(withTrackParam("/album/abc", 7), "/album/abc?track=7");
+  assert.equal(
+    withTrackParam("/library/tracks?page=3&sort=title", "12"),
+    "/library/tracks?page=3&sort=title&track=12",
+  );
+  assert.equal(withTrackParam("/album/abc?track=1", 2), "/album/abc?track=2");
+});
 
 test("play next goes right after the current track and add to queue goes last, without restarting it", () => {
   const playing = startQueue({ startTrackId: "t5" });

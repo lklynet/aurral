@@ -6,7 +6,7 @@ import "./index.css";
 import { reportClientError, startErrorReporting } from "./utils/errorReporting.ts";
 import { initializeTheme } from "./utils/theme.ts";
 import { getBootstrapStatus } from "./utils/appHealth.ts";
-import { getAppBasePath } from "./utils/basePath.ts";
+import { getAppRoutePath } from "./utils/basePath.ts";
 import { prefetchRoute } from "./navigation/routePrefetch.ts";
 
 const UPDATE_RELOAD_AT_KEY = "aurral:update-reload-at";
@@ -17,10 +17,7 @@ initializeTheme();
 const prefetchCurrentRoute = async () => {
   const bootstrap = await getBootstrapStatus();
   if (bootstrap.onboardingRequired || (bootstrap.authRequired && !bootstrap.user)) return;
-  const base = getAppBasePath();
-  const { pathname, search } = window.location;
-  const path = base === "/" ? pathname : pathname.slice(base.length) || "/";
-  await prefetchRoute(path + search, { userId: bootstrap.user?.id ?? null });
+  await prefetchRoute(getAppRoutePath(), { userId: bootstrap.user?.id ?? null });
 };
 
 if (!window.location.pathname.endsWith("/oauth.html")) {

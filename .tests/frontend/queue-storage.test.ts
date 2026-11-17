@@ -30,7 +30,7 @@ const playing = (
   queueReducer(initialQueueState, {
     type: "PLAY_QUEUE",
     tracks: tracks.map((track) => normalizeQueueTrack(track)),
-    source: { type: "playlist", id: "p1", label: "Mix" },
+    source: { type: "playlist", id: "p1", label: "Mix", href: "/library/playlists/p1" },
     ...options,
   });
 
@@ -59,6 +59,7 @@ test("a reload brings back the same queue, order, and place, paused", () => {
   assert.equal(restored.isShuffleEnabled, true);
   assert.equal(restored.repeatMode, "all");
   assert.equal(restored.source?.label, "Mix");
+  assert.equal(restored.source?.href, "/library/playlists/p1");
   assert.equal(restored.autoplay, false);
   assert.equal(
     parseStoredQueue(serializeQueue(state, { owner: "u1", position: 42.5 }), { owner: "u1" })

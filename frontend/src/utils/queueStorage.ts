@@ -132,7 +132,8 @@ const isStoredTrack = (track: unknown): track is Record<string, unknown> & { src
 const isQueueSource = (source: unknown): source is QueueSource =>
   isRecord(source) &&
   typeof source.type === "string" &&
-  (typeof source.id === "string" || typeof source.id === "number");
+  (typeof source.id === "string" || typeof source.id === "number") &&
+  (source.href === undefined || typeof source.href === "string");
 
 function isPermutation(order: unknown, length: number): order is number[] {
   if (!Array.isArray(order) || order.length !== length) return false;
