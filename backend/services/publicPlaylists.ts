@@ -47,6 +47,7 @@ const shelfSchema = v.object({
   ),
 });
 const playlistSchema = v.object({ id: v.string(), handle: v.string(), manifest: v.unknown() });
+const profileSchema = v.object({ handle: v.string(), playlists: shelfSchema.entries.playlists });
 
 const selectPublication = db.prepare<[string], HubPublicationsRow>(
   "SELECT * FROM hub_publications WHERE playlist_id = ?",
@@ -253,4 +254,16 @@ export async function communityPlaylist(id: string) {
     });
   }
   return { id, handle: body.output.handle, manifest };
+}
+
+export async function communityProfile(handle: string) {
+  const response = await fetch(`${SHARE_ORIGIN}/v1/profiles/${encodeURIComponent(handle)}`, {
+    signal: AbortSignal.timeout(SHELF_TIMEOUT_MS),
+  }).catch(() => null);
+  if (response?.status === 404 && (await refusalOf(response)) === "no_account") return null;
+  const body = response?.ok
+    ? v.safeParse(profileSchema, await response.json().catch(() => null))
+    : null;
+  if (!body?.success) throw new PublicPlaylistError("Couldn't reach aurral.org. Try again.", 502);
+  return body.output;
 }

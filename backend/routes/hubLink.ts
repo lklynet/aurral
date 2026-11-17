@@ -3,11 +3,13 @@ import * as v from "valibot";
 import { requireAuth, requireUserAccount } from "../middleware/guards.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { validate } from "../middleware/validate.ts";
+import { getCommunityProfile } from "../services/discovery/browsePlaylists.ts";
 import { friendArt } from "../services/friendArt.ts";
 import {
   addFriend,
   FriendError,
   friendLists,
+  handleOf,
   removeFriend,
   shareListening,
 } from "../services/hubFriends.ts";
@@ -68,6 +70,19 @@ export default new Hono<AppEnv>()
     c.header("Cache-Control", "private, max-age=86400");
     const sized = width > 0 && imageSizes(art.url).find((size) => size.width >= width)?.url;
     return c.redirect(sized || art.url, 302);
+  })
+  .get("/profiles/:handle", async (c) => {
+    try {
+      const profile = await getCommunityProfile(handleOf(c.req.param("handle")));
+      return profile
+        ? c.json(profile, 200)
+        : c.json({ error: "No one on aurral.org has that handle." }, 404);
+    } catch (error) {
+      if (error instanceof PublicPlaylistError || error instanceof FriendError) {
+        return c.json({ error: error.message }, error.status);
+      }
+      throw error;
+    }
   })
   .put("/friends/:handle", async (c) => {
     try {

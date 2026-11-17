@@ -59,9 +59,14 @@ function queueRevoke(link: HubLinksRow) {
   );
 }
 
+const forgetFriendNotices = db.prepare<[number]>(
+  "DELETE FROM inbox_items WHERE user_id = ? AND kind = 'friend'",
+);
+
 export const markLinkBroken = db.transaction((userId: number) => {
   db.prepare<[number]>("UPDATE hub_links SET broken = 1 WHERE user_id = ?").run(userId);
   db.prepare<[number]>("DELETE FROM hub_publications WHERE user_id = ?").run(userId);
+  forgetFriendNotices.run(userId);
 });
 
 export const forgetHubLink = db.transaction((userId: number) => {
@@ -69,6 +74,7 @@ export const forgetHubLink = db.transaction((userId: number) => {
   if (!link) return;
   queueRevoke(link);
   deleteLink.run(userId);
+  forgetFriendNotices.run(userId);
 });
 
 export async function startHubLink(user: { id: number; username: string }) {

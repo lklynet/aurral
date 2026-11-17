@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { useAuth } from "../../../contexts/AuthContext";
@@ -11,6 +11,8 @@ import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.ts";
 import { logIn } from "../../../utils/session.ts";
 import { DotLoader } from "../../../components/DotLoader";
 import PillToggle from "../../../components/PillToggle";
+import { useHubLink } from "../../../components/PlayerFriends";
+import { friendPath, personPath } from "../../../../../lib/profilePaths.ts";
 import { ApiKeyRow } from "../components/ApiKeyRow";
 import { ConnectedAccountsSection, useMyIdentities } from "../components/ConnectedAccountsSection";
 import { HubLinkGroup } from "../components/HubLinkGroup";
@@ -250,14 +252,24 @@ function ApiAccessGroup({ userId }: { userId: number }) {
 
 export function ProfileSection() {
   const { user } = useAuth();
+  const hubLink = useHubLink();
   useConnectedNotice();
+  const profilePath =
+    hubLink.data?.state === "linked"
+      ? friendPath(hubLink.data.handle)
+      : personPath(user?.username ?? "");
 
   return (
     <SettingsPage title="Profile">
       {user?.username ? (
         <SettingsGroup>
           <SettingsRow label="Username">
-            <span className="settings-row__value">{user.username}</span>
+            <>
+              <span className="settings-row__value">{user.username}</span>
+              <Link className="btn btn-secondary btn-sm" to={profilePath}>
+                View profile
+              </Link>
+            </>
           </SettingsRow>
           {user.id != null ? <BlendRow userId={user.id} /> : null}
         </SettingsGroup>

@@ -9,6 +9,8 @@ import type { InboxItem } from "../db/helpers/inbox.ts";
 import type { AppEnv, RequestUser } from "../middleware/requestUser.ts";
 import { errorStatus } from "./shared/errorStatus.ts";
 import { libraryManager } from "../services/libraryManager.ts";
+import { refreshFriendNotices } from "../services/hubFriends.ts";
+import { logger } from "../services/logger.ts";
 import {
   enqueueInboxRefreshForUser,
   getInboxForUser,
@@ -82,6 +84,9 @@ export default new Hono<AppEnv>()
   .basePath("/inbox")
   .use(requireAuth)
   .get("/", validate("query", listQuery), (c) => {
+    void refreshFriendNotices(c.var.user.id).catch((error: unknown) => {
+      logger.warn("inbox", "Friend notices failed", { error: asAppError(error)?.message });
+    });
     try {
       const result = getInboxForUser(c.var.user.id, c.req.valid("query"));
       c.header("Cache-Control", "private, no-cache, no-store, must-revalidate");

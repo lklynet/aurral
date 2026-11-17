@@ -23,6 +23,7 @@ const [
   browse,
   friends,
   playEvents,
+  inbox,
 ] = await setupIsolatedBackend(
   "server-link",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -35,6 +36,7 @@ const [
   () => import("../../backend/services/discovery/browsePlaylists.ts"),
   () => import("../../backend/services/hubFriends.ts"),
   () => import("../../backend/services/playEventService.ts"),
+  () => import("../../backend/services/inboxService.ts"),
 );
 afterAll(async () => {
   await local.dispose();
@@ -360,6 +362,53 @@ test("linked users add each other as friends, and a failing aurral.org changes n
   hubCalls = 0;
   assert.deepEqual(await friends.friendLists(mia.id), { state: "broken" });
   assert.equal(hubCalls, 0);
+});
+
+test("friend requests and acceptances reach the Inbox at most every 15 minutes and leave once answered", async () => {
+  const ana = userOps.createUser("ana", "hash");
+  const ben = userOps.createUser("ben", "hash");
+  assert.ok(ana && ben);
+  for (const [user, account, handle] of [
+    [ana, "account-5", "ana_k"],
+    [ben, "account-6", "ben_k"],
+  ] as const) {
+    const pending = await link.startHubLink(user);
+    await approve(pending.state === "pending" ? pending.code : "", account, handle);
+    await link.hubLinkStatus(user.id);
+  }
+  const notices = (userId: number) =>
+    inbox.getInboxForUser(userId).items.map((item) => `${item?.title} ${item?.subtitle}`);
+  let clock = Date.now();
+  const time = vi.spyOn(Date, "now").mockImplementation(() => clock);
+  const check = async (userId: number) => {
+    clock += 15 * 60_000;
+    await friends.refreshFriendNotices(userId);
+  };
+
+  await friends.addFriend(ana.id, "ben_k");
+  await check(ben.id);
+  assert.deepEqual(notices(ben.id), ["@ana_k Wants to be friends"]);
+  hubCalls = 0;
+  clock += 60_000;
+  await friends.refreshFriendNotices(ben.id);
+  assert.equal(hubCalls, 0);
+
+  await friends.removeFriend(ana.id, "ben_k");
+  await check(ben.id);
+  assert.deepEqual(notices(ben.id), []);
+
+  await friends.addFriend(ana.id, "ben_k");
+  await check(ben.id);
+  await friends.addFriend(ben.id, "ana_k");
+  assert.deepEqual(notices(ben.id), []);
+  await check(ana.id);
+  await check(ben.id);
+  assert.deepEqual(notices(ana.id), ["@ben_k Accepted your friend request"]);
+  assert.deepEqual(notices(ben.id), []);
+
+  link.forgetHubLink(ana.id);
+  assert.deepEqual(notices(ana.id), []);
+  time.mockRestore();
 });
 
 test("sharing sends now playing and top plays, Off clears aurral.org, and relinking keeps it off", async () => {

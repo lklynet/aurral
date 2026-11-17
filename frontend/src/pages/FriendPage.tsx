@@ -1,11 +1,17 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router";
-import type { InferResponseType } from "hono/client";
+import { parseResponse, type InferResponseType } from "hono/client";
 import { AlertCircle, Users } from "../components/icons";
 import StatePanel from "../components/StatePanel";
-import { FriendArt, useFriends } from "../components/PlayerFriends";
-import { SettingsLink } from "../navigation/settingsRoute";
+import { FriendButton } from "../components/FriendButton";
+import { FriendArt, useFriends, useHubLink } from "../components/PlayerFriends";
+import { useAuth } from "../contexts/AuthContext";
+import { queryKeys } from "../queryClient";
+import { hubLinkClient } from "../utils/api/clients/hubLink.ts";
+import { peopleClient } from "../utils/api/clients/people.ts";
+import { readApiError } from "../utils/api/errors.ts";
+import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
 import { resolveAlbumPath, resolveArtistPath } from "../navigation/resolveLinks.ts";
-import type { peopleClient } from "../utils/api/clients/people.ts";
 
 const plays = (count: number) => `${count} ${count === 1 ? "play" : "plays"}`;
 const searchPath = (query: string) => `/search?${new URLSearchParams({ q: query })}`;
@@ -120,54 +126,105 @@ export function TopPlayLists({ top }: { top: TopPlays }) {
   );
 }
 
+function useOwnTopPlays(enabled: boolean) {
+  const { user } = useAuth();
+  const username = user?.username ?? "";
+  return useQuery({
+    queryKey: queryKeys.person(user?.id, username),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        peopleClient[":username"].$get(
+          { param: { username: encodeURIComponent(username) } },
+          { init: { signal } },
+        ),
+      ),
+    enabled: enabled && !!username,
+  });
+}
+
 export default function FriendPage() {
-  const { handle = "" } = useParams();
+  const { handle: param = "" } = useParams();
+  const handle = param.replace(/^@/, "").toLowerCase();
+  const { user } = useAuth();
+  const profile = useQuery({
+    queryKey: queryKeys.hubProfile(user?.id, handle),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        hubLinkClient.profiles[":handle"].$get(
+          { param: { handle: encodeURIComponent(handle) } },
+          { init: { signal } },
+        ),
+      ),
+    retry: false,
+  });
   const friends = useFriends(true, true);
-  const data = friends.data;
+  const link = useHubLink();
   const friend =
-    data?.state === "linked" ? data.friends.find((row) => row.handle === handle) : null;
+    friends.data?.state === "linked"
+      ? friends.data.friends.find((row) => row.handle === handle)
+      : null;
+  const self = link.data?.state === "linked" && link.data.handle === handle;
+  const own = useOwnTopPlays(self);
+  const top = self ? own.data?.topPlays : friend?.topPlays;
+  const name = `@${handle}`;
 
-  const state =
-    friends.isError && !data ? (
-      <StatePanel
-        icon={<AlertCircle />}
-        title="Couldn't load friends"
-        role="alert"
-        onRetry={() => friends.refetch()}
-        retrying={friends.isFetching}
-      />
-    ) : !data ? null : data.state === "off" ? (
-      <StatePanel
-        icon={<Users />}
-        title="Friends are off"
-        message="An admin turned off aurral.org accounts on this server."
-      />
-    ) : data.state !== "linked" ? (
-      <StatePanel icon={<Users />} title="Not linked to aurral.org">
-        <SettingsLink to="profile" className="btn btn-secondary">
-          {data.state === "broken" ? "Relink in Profile" : "Link in Profile"}
-        </SettingsLink>
-      </StatePanel>
-    ) : !friend ? (
-      <StatePanel icon={<Users />} title={`You and @${handle} aren't friends`} />
-    ) : null;
+  const lists = friend ? (
+    hasTopPlays(top) ? (
+      <TopPlayLists top={top} />
+    ) : (
+      <p className="friend-page__empty">No top plays from {name} yet.</p>
+    )
+  ) : self ? (
+    <>
+      {friends.data?.state === "linked" && !friends.data.sharing ? (
+        <p className="friend-page__empty">
+          {"Friends don't see your listening. Share it in Profile."}
+        </p>
+      ) : null}
+      {hasTopPlays(top) ? <TopPlayLists top={top} /> : null}
+    </>
+  ) : (
+    <p className="friend-page__empty">Friends see what {name} is playing and their top plays.</p>
+  );
 
-  const top = friend?.topPlays;
   return (
-    <div className="library-page native-library-page" aria-busy={!data}>
+    <div className="library-page native-library-page" aria-busy={profile.isPending}>
       <header className="native-library-header">
-        <h1 className="page-title">@{handle}</h1>
+        <div className="native-library-title-row friend-page__title">
+          <h1 className="page-title">{name}</h1>
+          {profile.data ? <FriendButton handle={handle} /> : null}
+        </div>
         <FriendNowPlaying playing={friend?.nowPlaying} />
       </header>
       <div className="native-library-content">
-        {!data && !friends.isError
-          ? null
-          : (state ??
-            (hasTopPlays(top) ? (
-              <TopPlayLists top={top} />
+        {profile.isError ? (
+          readApiError(profile.error).status === 404 ? (
+            <StatePanel icon={<Users />} title={`No one on aurral.org is ${name}`} />
+          ) : (
+            <StatePanel
+              icon={<AlertCircle />}
+              title={`Couldn't load ${name}`}
+              role="alert"
+              onRetry={() => profile.refetch()}
+              retrying={profile.isFetching}
+            />
+          )
+        ) : profile.data ? (
+          <>
+            {profile.data.playlists.length ? (
+              <DiscoverPlaylistSection
+                title="Public playlists"
+                playlists={profile.data.playlists.map((playlist) => ({
+                  ...playlist,
+                  curator: null,
+                }))}
+              />
             ) : (
-              <p className="friend-page__empty">No top plays from @{handle} yet.</p>
-            )))}
+              <p className="friend-page__empty">No public playlists from {name} yet.</p>
+            )}
+            {lists}
+          </>
+        ) : null}
       </div>
     </div>
   );

@@ -1,11 +1,9 @@
 import type { InferResponseType } from "hono/client";
 import type { peopleClient } from "../utils/api/clients/people.ts";
+import { friendPath, personPath } from "../../../lib/profilePaths.ts";
 
 type LocalPerson = InferResponseType<typeof peopleClient.$get>["people"][number];
 type HubFriend = { handle: string; nowPlaying?: LocalPerson["nowPlaying"] };
-
-export const friendPath = (handle: string) => `/friends/${encodeURIComponent(handle)}`;
-export const personPath = (username: string) => `/people/${encodeURIComponent(username)}`;
 
 export function mergeFriendRows(local: LocalPerson[], hub: HubFriend[]) {
   const hubPlaying = new Map(hub.map((friend) => [friend.handle, friend.nowPlaying ?? null]));

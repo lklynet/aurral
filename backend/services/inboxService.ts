@@ -13,6 +13,7 @@ import { withLock } from "./jobs/queue.ts";
 import { inboxTaskQueue } from "./jobs/queues.ts";
 import { enqueueSystemTask } from "./jobs/systemTasks.ts";
 import { albumPath } from "../../lib/albumPath.ts";
+import { hubLinksEnabled } from "./hubLink.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RELEASE_PAST_DAYS = 30;
@@ -48,6 +49,7 @@ const getEnabledKinds = (preferences: ReturnType<typeof getInboxPreferences>) =>
     news: preferences.news,
     recommendedNews: preferences.recommendedNews,
     discovery: preferences.discoveries,
+    friend: hubLinksEnabled(),
   })
     .filter(([, enabled]) => enabled)
     .map(([kind]) => kind);

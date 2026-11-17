@@ -26,6 +26,14 @@ export function listPeople(userId: number, now = Date.now()) {
 
 export async function personProfile(user: RequestUser, username: string, now = Date.now()) {
   const name = username.toLowerCase();
+  if (name === user.username.toLowerCase()) {
+    return {
+      id: user.id,
+      username: user.username,
+      topPlays: topPlaysWithArt(topPlaysOf(user.id, now)),
+      playlists: [],
+    };
+  }
   const person = visiblePeople(user.id, now).find((each) => each.username.toLowerCase() === name);
   if (!person) return null;
   return {

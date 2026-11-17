@@ -338,7 +338,24 @@ test("linked servers add friends by handle, both asking makes friends, friends s
       method,
       headers: { authorization: `Bearer ${token}` },
     });
-  const lists = async (token: string): Promise<unknown> => (await friends(token)).json();
+  const timed = v.object({
+    handle: v.string(),
+    sentAt: v.nullable(v.number()),
+    receivedAt: v.nullable(v.number()),
+  });
+  const listsSchema = v.object({
+    friends: v.array(v.looseObject(timed.entries)),
+    incoming: v.array(timed),
+    outgoing: v.array(timed),
+  });
+  const timesOf = async (token: string) =>
+    v.parse(listsSchema, await (await friends(token)).json());
+  const lists = async (token: string) => {
+    const untimed = <Row extends { sentAt: unknown; receivedAt: unknown }>(rows: Row[]) =>
+      rows.map(({ sentAt: _sent, receivedAt: _received, ...row }) => row);
+    const { friends: mutual, incoming, outgoing } = await timesOf(token);
+    return { friends: untimed(mutual), incoming: untimed(incoming), outgoing: untimed(outgoing) };
+  };
   const rowCount = async () =>
     (await db.prepare("SELECT COUNT(*) AS n FROM friends").first("n")) ?? 0;
 
@@ -383,7 +400,13 @@ test("linked servers add friends by handle, both asking makes friends, friends s
     outgoing: [{ handle: "bob" }],
   });
 
+  const requested = (await timesOf(tokens.bob)).incoming[0]?.receivedAt;
+  assert.equal(typeof requested, "number");
   assert.deepEqual(await (await friends(tokens.bob, "PUT", "ann")).json(), { status: "friends" });
+  const accepted = (await timesOf(tokens.ann)).friends[0];
+  assert.ok(accepted);
+  assert.equal(accepted.sentAt, requested);
+  assert.ok(Number(accepted.receivedAt) >= Number(requested));
   await db
     .prepare(
       "INSERT INTO links (id, instance_id, user_name, token_hash, account_id, linked_at) VALUES ('bob-2', 'inst', 'bob', 'h2', 'bob', 1), ('bob-3', 'inst', 'bob', 'h3', 'bob', 1)",
@@ -556,6 +579,15 @@ test("a linked server publishes playlists to the shelf, and they leave with the 
     ),
   });
   const shelf = async () => v.parse(listed, await (await api("/v1/playlists")).json()).playlists;
+  const profile = async (handle: string) => {
+    const response = await api(`/v1/profiles/${handle}`);
+    if (!response.ok) return response.status;
+    const body = v.parse(
+      v.strictObject({ handle: v.string(), playlists: listed.entries.playlists }),
+      await response.json(),
+    );
+    return body.playlists.map(({ title, handle: owner }) => `${owner}:${title}`);
+  };
 
   assert.equal((await send("POST", "/v1/publications", "fuck this")).status, 422);
   assert.equal((await send("POST", "/v1/publications", "Late", "u".repeat(43))).status, 401);
@@ -571,6 +603,24 @@ test("a linked server publishes playlists to the shelf, and they leave with the 
     (await shelf()).map(({ title, handle, artist }) => `${handle}:${title}:${artist}`),
     ["lee_k:Late night:Band", "lee_k:Three:Band", "lee_k:Two:Band"],
   );
+  await db
+    .prepare(
+      "INSERT INTO listening (link_id, now_playing, playing_until, top_plays, top_plays_at) VALUES ('link', ?, ?, ?, ?)",
+    )
+    .bind(
+      JSON.stringify({ title: "Song", artist: "Band", album: null }),
+      Date.now() + 60_000,
+      JSON.stringify({ artists: [{ name: "Band", plays: 3 }], albums: [], tracks: [] }),
+      Date.now(),
+    )
+    .run();
+  assert.deepEqual(await profile("@LEE_K"), [
+    "lee_k:Late night",
+    "lee_k:Three",
+    "lee_k:Two",
+    "lee_k:One",
+  ]);
+  assert.equal(await profile("nobody"), 404);
 
   assert.equal((await send("PUT", `/v1/publications/${latest}`, "shit list")).status, 422);
   assert.equal((await send("PUT", `/v1/publications/${latest}`, "Later night")).status, 204);
@@ -589,6 +639,7 @@ test("a linked server publishes playlists to the shelf, and they leave with the 
     (await shelf()).map(({ title }) => title),
     ["Three", "Two", "One"],
   );
+  assert.deepEqual(await profile("lee_k"), ["lee_k:Three", "lee_k:Two", "lee_k:One"]);
   assert.equal((await send("DELETE", `/v1/publications/${latest}`, "")).status, 204);
   const republished = await send("POST", "/v1/publications", "Late night");
   const refusal: unknown = await republished.json();
@@ -601,4 +652,5 @@ test("a linked server publishes playlists to the shelf, and they leave with the 
   assert.equal((await shelf()).length, 2);
   await deleteAccount(db, "lee");
   assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM publications").first("n"), 0);
+  assert.equal(await profile("lee_k"), 404);
 });

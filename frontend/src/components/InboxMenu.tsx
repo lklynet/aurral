@@ -9,8 +9,10 @@ import {
   SlidersHorizontal,
   Sparkles,
   Check,
+  Users,
   type IconComponent,
 } from "./icons";
+import { useFriendActions } from "./PlayerFriends";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { inboxClient } from "../utils/api/clients/inbox.ts";
 import { useAuth } from "../contexts/AuthContext.tsx";
@@ -34,6 +36,7 @@ const ITEM_ICONS: Partial<Record<string, IconComponent>> = {
   news: Newspaper,
   recommendedNews: Newspaper,
   discovery: Sparkles,
+  friend: Users,
 };
 
 const isExternalHref = (href: string | null | undefined) =>
@@ -61,7 +64,32 @@ const FILTER_OPTIONS = [
   { value: "news", label: "Library artist news" },
   { value: "recommendedNews", label: "Recommended artist news" },
   { value: "discovery", label: "Discoveries" },
+  { value: "friend", label: "Friend requests" },
 ] as const;
+
+function FriendRequestActions({ handle }: { handle: string }) {
+  const { add, remove, busy } = useFriendActions();
+  return (
+    <>
+      <button
+        type="button"
+        className="btn btn-primary btn-sm"
+        disabled={busy}
+        onClick={() => add.mutate(handle)}
+      >
+        Accept
+      </button>
+      <button
+        type="button"
+        className="btn btn-secondary btn-sm"
+        disabled={busy}
+        onClick={() => remove.mutate({ handle, done: `Declined @${handle}.` })}
+      >
+        Decline
+      </button>
+    </>
+  );
+}
 
 function InboxItem({
   item,
@@ -88,6 +116,14 @@ function InboxItem({
     typeof releaseDateValue === "string" || typeof releaseDateValue === "number"
       ? releaseDateValue
       : null;
+  const friendAt =
+    item.kind === "friend" && typeof item.metadata?.at === "number" ? item.metadata.at : null;
+  const requester =
+    item.kind === "friend" &&
+    item.metadata?.request === true &&
+    typeof item.metadata.handle === "string"
+      ? item.metadata.handle
+      : null;
   const content = (
     <>
       <span className="app-inbox-menu__item-icon" aria-hidden="true">
@@ -104,6 +140,12 @@ function InboxItem({
               <>
                 {" · "}
                 <RelativeTime value={releaseDate} unit="day" />
+              </>
+            ) : null}
+            {friendAt ? (
+              <>
+                {" · "}
+                <RelativeTime value={friendAt} />
               </>
             ) : null}
           </span>
@@ -141,6 +183,7 @@ function InboxItem({
         </button>
       )}
       <span className="app-inbox-menu__item-actions">
+        {requester ? <FriendRequestActions handle={requester} /> : null}
         <Tooltip content="Remove from inbox">
           <button
             type="button"

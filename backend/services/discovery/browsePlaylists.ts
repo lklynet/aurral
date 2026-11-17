@@ -26,7 +26,7 @@ import {
 import { getDeezerArtistPlaylists, type ShelfScope } from "../importLists/deezerPlaylists.ts";
 import type { RequestUser } from "../../middleware/requestUser.ts";
 import type { LibraryArtistsRow } from "../../db/rows.ts";
-import { communityPlaylist, communityShelf } from "../publicPlaylists.ts";
+import { communityPlaylist, communityProfile, communityShelf } from "../publicPlaylists.ts";
 import { requireImportList } from "../importLists/importPlaylist.ts";
 import type { ShareManifest } from "../../../lib/shareManifest.ts";
 import { deezerPreviewSearchPath } from "../apiClients/deezer.ts";
@@ -160,8 +160,8 @@ export async function getPlaylistShelf(user: RequestUser, scope?: ShelfScope) {
   };
 }
 
-export const getCommunityPlaylists = async () =>
-  (await communityShelf()).map((playlist): BrowsePlaylist => ({
+const communityCard = (playlist: Awaited<ReturnType<typeof communityShelf>>[number]) =>
+  ({
     provider: "community",
     id: playlist.id,
     name: playlist.title,
@@ -173,7 +173,14 @@ export const getCommunityPlaylists = async () =>
       communityCover(playlist.id, playlist.title, playlist.artist),
     ),
     trackCount: playlist.trackCount,
-  }));
+  }) satisfies BrowsePlaylist;
+
+export const getCommunityPlaylists = async () => (await communityShelf()).map(communityCard);
+
+export async function getCommunityProfile(handle: string) {
+  const profile = await communityProfile(handle);
+  return profile && { handle: profile.handle, playlists: profile.playlists.map(communityCard) };
+}
 
 export const getArtistPlaylists = async (deezerArtistId: string) =>
   (await getDeezerArtistPlaylists(deezerArtistId)).map(deezer);

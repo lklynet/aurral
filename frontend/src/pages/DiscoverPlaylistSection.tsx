@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import { DiscoverRail } from "../components/DiscoverRail";
 import PlaylistCard from "../components/PlaylistCard";
 import { browsePlaylistPath } from "../navigation/playlistPaths.ts";
@@ -5,6 +6,7 @@ import { resolveAuthenticatedApiAssetUrl } from "../utils/api/core.ts";
 import { formatTrackTotal } from "./playlists/playlistPageUtils";
 import type { BrowseProvider } from "../../../lib/browsePlaylists.ts";
 import { usePlaylistClaims } from "./usePlaylistShelf";
+import { friendPath } from "../../../lib/profilePaths.ts";
 
 export interface BrowseShelfPlaylist {
   provider: BrowseProvider;
@@ -15,10 +17,22 @@ export interface BrowseShelfPlaylist {
   curator: string | null;
 }
 
+export function CuratorLink({ curator }: { curator: string }) {
+  return (
+    <Link className="playlist-card__curator" to={friendPath(curator.replace(/^@/, ""))}>
+      {curator}
+    </Link>
+  );
+}
+
 export const browsePlaylistMeta = (playlist: BrowseShelfPlaylist) =>
-  playlist.provider === "community" && playlist.curator
-    ? `${playlist.curator} · ${formatTrackTotal(playlist.trackCount)}`
-    : formatTrackTotal(playlist.trackCount);
+  playlist.provider === "community" && playlist.curator ? (
+    <>
+      <CuratorLink curator={playlist.curator} /> · {formatTrackTotal(playlist.trackCount)}
+    </>
+  ) : (
+    formatTrackTotal(playlist.trackCount)
+  );
 
 export function DiscoverPlaylistSection({
   title,
