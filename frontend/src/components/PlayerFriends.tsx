@@ -96,13 +96,15 @@ export function useFriendActions() {
   return { add, remove, busy: add.isPending || remove.isPending };
 }
 
+export const friendArtSrc = (src: string) => resolveAuthenticatedApiAssetUrl(`${src}&w=96`);
+
 export function FriendArt({ src, round = false }: { src?: string | null; round?: boolean }) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   return (
     <span className={`player-queue__art${round ? " is-round" : ""}`} aria-hidden="true">
       {src && src !== failedSrc ? (
         <ArtworkImage
-          src={resolveAuthenticatedApiAssetUrl(`${src}&w=96`)}
+          src={friendArtSrc(src)}
           thumbnail={false}
           alt=""
           onError={() => setFailedSrc(src)}

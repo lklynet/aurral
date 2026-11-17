@@ -1,5 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types/index.ts";
 import * as v from "valibot";
+import { MBID_PATTERN } from "../../lib/mbid.ts";
 
 const DEFAULT_TRACK_MS = 4 * 60_000;
 const MAX_TRACK_MS = 30 * 60_000;
@@ -14,6 +15,8 @@ const text = v.pipe(
   v.transform((value) => value.slice(0, 500)),
 );
 const plays = v.pipe(v.number(), v.integer(), v.minValue(1));
+const count = v.pipe(v.number(), v.integer(), v.minValue(0));
+const mbid = v.nullish(v.pipe(v.string(), v.regex(MBID_PATTERN)));
 const top = <Entries extends v.ObjectEntries>(entries: Entries) =>
   v.pipe(v.array(v.object({ ...entries, plays })), v.maxLength(TOP_LIMIT));
 
@@ -25,9 +28,17 @@ export const nowPlayingSchema = v.object({
 });
 
 export const topPlaysSchema = v.object({
-  artists: top({ name: text }),
-  albums: top({ title: text, artist: text }),
-  tracks: top({ title: text, artist: text }),
+  artists: top({ name: text, mbid }),
+  albums: top({ title: text, artist: text, mbid }),
+  tracks: top({ title: text, artist: text, mbid, albumMbid: mbid }),
+  stats: v.nullish(
+    v.object({
+      plays: count,
+      minutes: count,
+      artists: count,
+      hours: v.pipe(v.array(count), v.length(24)),
+    }),
+  ),
 });
 
 const blendTracksSchema = v.pipe(
@@ -126,9 +137,23 @@ const sum = <Entry extends { plays: number }>(
 
 const lower = (...parts: string[]) => parts.map((part) => part.toLowerCase()).join("\u0000");
 
+const mergeStats = (snapshots: TopPlays[]) => {
+  const stats = snapshots.flatMap((top) => (top.stats ? [top.stats] : []));
+  if (!stats.length) return null;
+  return {
+    plays: stats.reduce((total, each) => total + each.plays, 0),
+    minutes: stats.reduce((total, each) => total + each.minutes, 0),
+    artists: Math.max(...stats.map((each) => each.artists)),
+    hours: Array.from({ length: 24 }, (_, hour) =>
+      stats.reduce((total, each) => total + (each.hours[hour] ?? 0), 0),
+    ),
+  };
+};
+
 export function mergeTopPlays(snapshots: TopPlays[]): TopPlays | null {
   if (!snapshots.length) return null;
   return {
+    stats: mergeStats(snapshots),
     artists: sum(
       snapshots.map((top) => top.artists),
       (entry) => lower(entry.name),

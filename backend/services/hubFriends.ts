@@ -13,7 +13,7 @@ import {
   refusalOf,
   selectLink,
 } from "./hubLink.ts";
-import { topPlaysWithArt, withArt } from "./friendArt.ts";
+import { topPlaysSchema, topPlaysWithArt, withArt } from "./friendArt.ts";
 import { logger } from "./logger.ts";
 
 const HANDLE = /^[a-z0-9_]{3,20}$/;
@@ -23,8 +23,6 @@ const friendSchema = v.object({
   sentAt: v.nullish(v.number()),
   receivedAt: v.nullish(v.number()),
 });
-const ranked = <Entries extends v.ObjectEntries>(entries: Entries) =>
-  v.array(v.object({ ...entries, plays: v.number() }));
 const trackSchema = v.object({
   title: v.string(),
   artist: v.string(),
@@ -34,13 +32,7 @@ const listeningSchema = v.object({
   ...friendSchema.entries,
   nowPlaying: v.nullish(trackSchema),
   lastPlayed: v.nullish(v.object({ ...trackSchema.entries, at: v.number() })),
-  topPlays: v.nullish(
-    v.object({
-      artists: ranked({ name: v.string() }),
-      albums: ranked({ title: v.string(), artist: v.string() }),
-      tracks: ranked({ title: v.string(), artist: v.string() }),
-    }),
-  ),
+  topPlays: v.nullish(topPlaysSchema),
 });
 const listsSchema = v.object({
   friends: v.array(listeningSchema),
