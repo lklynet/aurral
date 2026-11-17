@@ -11,12 +11,10 @@ import {
   refusalOf,
   selectLink,
 } from "./hubLink.ts";
+import { friendArtUrl, topPlaysWithArt } from "./friendArt.ts";
 import { logger } from "./logger.ts";
 
 const HANDLE = /^[a-z0-9_]{3,20}$/;
-const TOP_PLAYS_DAYS = 30;
-const TOP_TRACKS = 10;
-const DAY_MS = 86_400_000;
 
 const friendSchema = v.object({ handle: v.string() });
 const ranked = <Entries extends v.ObjectEntries>(entries: Entries) =>
@@ -48,9 +46,6 @@ export class FriendError extends Error {
     this.status = status;
   }
 }
-
-const friendArtUrl = (artist: string, album?: string | null) =>
-  `/api/hub-link/friends/art?${new URLSearchParams(album ? { artist, album } : { artist })}`;
 
 const unreachable = () => new FriendError("Couldn't reach aurral.org. Try again.", 502);
 const relink = () =>
@@ -103,19 +98,7 @@ export async function friendLists(userId: number) {
       nowPlaying: nowPlaying
         ? { ...nowPlaying, artworkUrl: friendArtUrl(nowPlaying.artist, nowPlaying.album) }
         : null,
-      topPlays: topPlays
-        ? {
-            artists: topPlays.artists.map((artist) => ({
-              ...artist,
-              artworkUrl: friendArtUrl(artist.name),
-            })),
-            albums: topPlays.albums.map((album) => ({
-              ...album,
-              artworkUrl: friendArtUrl(album.artist, album.title),
-            })),
-            tracks: topPlays.tracks,
-          }
-        : null,
+      topPlays: topPlays ? topPlaysWithArt(topPlays) : null,
     })),
     incoming,
     outgoing,
@@ -167,23 +150,8 @@ export async function shareNowPlaying(
 }
 
 async function shareTopPlays(link: HubLinksRow) {
-  const { readLocalWrappedHistory } = await import("./wrapped/history.ts");
-  const { calculateWrapped } = await import("./wrapped/metrics.ts");
-  const now = Date.now();
-  const period = {
-    year: new Date(now).getUTCFullYear(),
-    timeZone: "UTC",
-    start: now - TOP_PLAYS_DAYS * DAY_MS,
-    end: now,
-  };
-  const top = calculateWrapped(readLocalWrappedHistory(link.user_id, period), period);
-  const snapshot = {
-    artists: top.topArtists.map(({ name, plays }) => ({ name, plays })),
-    albums: top.topAlbums.map(({ name, artist, plays }) => ({ title: name, artist, plays })),
-    tracks: top.topSongs
-      .slice(0, TOP_TRACKS)
-      .map(({ name, artist, plays }) => ({ title: name, artist, plays })),
-  };
+  const { topPlaysOf } = await import("./wrapped/topPlays.ts");
+  const snapshot = topPlaysOf(link.user_id);
   await callHub(link, "PUT", "/v1/listening/top-plays", snapshot).catch(quietly("top plays"));
 }
 

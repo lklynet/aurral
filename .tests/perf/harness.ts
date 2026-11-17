@@ -11,7 +11,12 @@ import {
   createMockHttpServer,
   listeningAddress,
 } from "../helpers/backendTestHarness.ts";
-import { seedPerfLibrary, seedPerfListening, seedPerfPlaylistJobs } from "./seed.ts";
+import {
+  seedPerfLibrary,
+  seedPerfListening,
+  seedPerfNeighbor,
+  seedPerfPlaylistJobs,
+} from "./seed.ts";
 import type { PerfContext, Scenario } from "./scenarios.ts";
 
 const SUBSONIC_AUTH = { u: "test", p: "password", v: "1.16.1", c: "perf", f: "json" };
@@ -190,6 +195,9 @@ export async function startPerfApp({ artists }: { artists: number }) {
   const { token } = createSession(user.id);
   const library = seedPerfLibrary(db, { artists, musicRoot: join(paths.baseDir, "music") });
   seedPerfListening(db, user.id, library);
+  const neighbor = userOps.createUser("mia", hashPassword("password"));
+  if (!neighbor) throw new Error("Couldn't create the perf neighbor");
+  seedPerfNeighbor(db, neighbor.id, library);
   rebuildLibrarySearchIndex();
   rebuildStoredLibraryGenreStats(db);
   const { playlists: playlistTracks, editSongs } = seedPerfPlaylistJobs(db, library);

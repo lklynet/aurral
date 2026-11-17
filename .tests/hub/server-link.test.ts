@@ -203,8 +203,21 @@ test("a public playlist reaches the shelf and its copies, stays fresh, and leave
     },
   });
 
+  const theirs = flowPlaylistConfig.createStaticPlaylist({
+    name: "mia's tracks",
+    ownerUserId: lee.id,
+    tracks: [track],
+    importSource: {
+      provider: "aurral-mix",
+      externalId: "listens-2",
+      syncEnabled: true,
+      syncIntervalHours: 24,
+    },
+  });
+
   published.resetCommunityShelf();
   assert.deepEqual(await published.communityShelf(), []);
+  assert.equal((await setPublic("PUT", theirs.id)).status, 400);
   assert.equal((await setPublic("PUT", mine.id)).status, 200);
   const [listed] = await published.communityShelf();
   assert.deepEqual(

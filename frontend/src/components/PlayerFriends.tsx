@@ -12,6 +12,9 @@ import { useToast } from "../contexts/ToastContext";
 import { SettingsLink } from "../navigation/settingsRoute";
 import { queryKeys } from "../queryClient";
 import { hubLinkClient } from "../utils/api/clients/hubLink.ts";
+import { peopleClient } from "../utils/api/clients/people.ts";
+import { formatRelativeTime } from "../utils/dateTime.ts";
+import { mergeFriendRows } from "./friendRows.ts";
 import { resolveAuthenticatedApiAssetUrl } from "../utils/api/core.ts";
 import { readApiError } from "../utils/api/errors.ts";
 
@@ -20,6 +23,17 @@ const SHARING = "Friends see what you're playing and your top plays from the las
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
 const LIVE_MS = 60_000;
+
+export function useLocalPeople(enabled = true, live = false) {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: queryKeys.people(user?.id),
+    queryFn: ({ signal }) => parseResponse(peopleClient.$get({}, { init: { signal } })),
+    staleTime: 0,
+    refetchInterval: live ? LIVE_MS : false,
+    enabled,
+  });
+}
 
 export function useFriends(enabled = true, live = false) {
   const { user } = useAuth();
@@ -31,8 +45,6 @@ export function useFriends(enabled = true, live = false) {
     enabled,
   });
 }
-
-export const friendPath = (handle: string) => `/friends/${encodeURIComponent(handle)}`;
 
 export function FriendArt({ src, round = false }: { src?: string | null; round?: boolean }) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
@@ -50,7 +62,17 @@ export function FriendArt({ src, round = false }: { src?: string | null; round?:
   );
 }
 
-function FriendRow({ title, note, art }: { title: string; note?: string; art?: ReactNode }) {
+function FriendRow({
+  title,
+  note,
+  art,
+  local = false,
+}: {
+  title: string;
+  note?: string;
+  art?: ReactNode;
+  local?: boolean;
+}) {
   return (
     <span className="player-queue__now">
       {art ?? (
@@ -59,11 +81,78 @@ function FriendRow({ title, note, art }: { title: string; note?: string; art?: R
         </span>
       )}
       <span className="player-queue__copy">
-        <span className="player-queue__name">{title}</span>
+        <span className="player-queue__name">
+          {title}
+          {local ? <span className="player-friends__local">Local</span> : null}
+        </span>
         {note ? <span className="player-queue__artist">{note}</span> : null}
       </span>
     </span>
   );
+}
+
+function HubPanel({ friends }: { friends: ReturnType<typeof useFriends> }) {
+  const data = friends.data;
+  if (friends.isError && !data) {
+    return (
+      <StatePanel
+        icon={<AlertCircle />}
+        title="Couldn't load friends"
+        role="alert"
+        onRetry={() => friends.refetch()}
+        retrying={friends.isFetching}
+      />
+    );
+  }
+  if (!data) return null;
+  return data.state === "off" ? (
+    <StatePanel
+      icon={<Users />}
+      title="Friends are off"
+      message="An admin turned off aurral.org accounts on this server."
+    />
+  ) : (
+    <StatePanel
+      icon={<Users />}
+      title={
+        data.state === "broken"
+          ? "Your aurral.org link stopped working"
+          : "Not linked to aurral.org"
+      }
+      message={
+        data.state === "broken"
+          ? "Relink to see your friends."
+          : "Link an aurral.org account to add friends and see what they're playing."
+      }
+    >
+      <SettingsLink to="profile" className="btn btn-secondary">
+        {data.state === "broken" ? "Relink in Profile" : "Link in Profile"}
+      </SettingsLink>
+    </StatePanel>
+  );
+}
+
+function HubFooter({ friends }: { friends: ReturnType<typeof useFriends> }) {
+  const state = friends.data?.state;
+  if (friends.isError && !friends.data) {
+    return <p className="player-friends__hint">{"Couldn't load friends on aurral.org."}</p>;
+  }
+  if (state === "none") {
+    return (
+      <p className="player-friends__hint">
+        <SettingsLink to="profile">Link aurral.org</SettingsLink> to add friends on other servers.
+      </p>
+    );
+  }
+  if (state === "broken") {
+    return (
+      <p className="player-friends__hint">
+        {"Your aurral.org link stopped working. "}
+        <SettingsLink to="profile">Relink in Profile</SettingsLink>
+      </p>
+    );
+  }
+  return null;
 }
 
 export default function PlayerFriends({
@@ -74,74 +163,48 @@ export default function PlayerFriends({
   onManage: () => void;
 }) {
   const friends = useFriends(true, true);
+  const people = useLocalPeople(true, true);
   const className = `player-friends player-friends--${variant}`;
-  const data = friends.data;
+  const linked = friends.data?.state === "linked" ? friends.data : null;
+  const rows = mergeFriendRows(people.data?.people ?? [], linked?.friends ?? []);
+  const localHint =
+    people.isError && !people.data ? (
+      <p className="player-friends__hint">{"Couldn't load people on this server."}</p>
+    ) : people.data?.sharing === false ? (
+      <p className="player-friends__hint">
+        {"To see people on this server, turn on "}
+        <SettingsLink to="profile">Share listening on this server</SettingsLink>
+        {" in Profile."}
+      </p>
+    ) : null;
 
-  if (friends.isError && !data) {
-    return (
-      <div className={className}>
-        <StatePanel
-          icon={<AlertCircle />}
-          title="Couldn't load friends"
-          role="alert"
-          onRetry={() => friends.refetch()}
-          retrying={friends.isFetching}
-        />
-      </div>
-    );
+  if (people.isPending || (!rows.length && !linked && friends.isPending)) {
+    return <div className={className} aria-busy="true" />;
   }
-  if (!data) return <div className={className} aria-busy="true" />;
-  if (data.state === "off") {
+  if (!rows.length && !linked) {
     return (
       <div className={className}>
-        <StatePanel
-          icon={<Users />}
-          title="Friends are off"
-          message="An admin turned off aurral.org accounts on this server."
-        />
-      </div>
-    );
-  }
-  if (data.state !== "linked") {
-    return (
-      <div className={className}>
-        <StatePanel
-          icon={<Users />}
-          title={
-            data.state === "broken"
-              ? "Your aurral.org link stopped working"
-              : "Not linked to aurral.org"
-          }
-          message={
-            data.state === "broken"
-              ? "Relink to see your friends."
-              : "Link an aurral.org account to add friends and see what they're playing."
-          }
-        >
-          <SettingsLink to="profile" className="btn btn-secondary">
-            {data.state === "broken" ? "Relink in Profile" : "Link in Profile"}
-          </SettingsLink>
-        </StatePanel>
+        <HubPanel friends={friends} />
+        {localHint}
       </div>
     );
   }
 
-  const { incoming, friends: list, sharing } = data;
-  const sorted = [...list].sort(
-    (a, b) => Number(Boolean(b.nowPlaying)) - Number(Boolean(a.nowPlaying)),
-  );
+  const incoming = linked?.incoming ?? [];
   return (
     <div className={className}>
       {variant === "sheet" ? (
         <div className="player-friends__header">
           <h3 className="player-queue__heading">Friends</h3>
-          <TooltipButton
-            label="Add friends"
-            className="btn btn-ghost btn-icon btn-xs"
-            onClick={onManage}
-          >
-            <Plus className="artist-icon-sm" aria-hidden="true" />
-          </TooltipButton>
+          {linked ? (
+            <TooltipButton
+              label="Add friends"
+              className="btn btn-ghost btn-icon btn-xs"
+              onClick={onManage}
+            >
+              <Plus className="artist-icon-sm" aria-hidden="true" />
+            </TooltipButton>
+          ) : null}
         </div>
       ) : null}
       {incoming.length ? (
@@ -152,15 +215,22 @@ export default function PlayerFriends({
           />
         </button>
       ) : null}
-      {sorted.length ? (
+      {rows.length ? (
         <ul className="player-friends__list">
-          {sorted.map(({ handle, nowPlaying }) => (
-            <li key={handle}>
-              <Link className="player-friends__friend" to={friendPath(handle)}>
+          {rows.map((row) => (
+            <li key={row.key}>
+              <Link className="player-friends__friend" to={row.to}>
                 <FriendRow
-                  title={`@${handle}`}
-                  note={nowPlaying ? `${nowPlaying.title} · ${nowPlaying.artist}` : undefined}
-                  art={<FriendArt src={nowPlaying?.artworkUrl} />}
+                  title={row.name}
+                  local={row.local}
+                  note={
+                    row.nowPlaying
+                      ? `${row.nowPlaying.title} · ${row.nowPlaying.artist}`
+                      : row.local
+                        ? `Played ${formatRelativeTime(new Date(row.lastPlayedAt))}`
+                        : undefined
+                  }
+                  art={<FriendArt src={row.nowPlaying?.artworkUrl} />}
                 />
               </Link>
             </li>
@@ -173,12 +243,14 @@ export default function PlayerFriends({
           </button>
         </StatePanel>
       )}
-      {sharing ? null : (
+      {linked && !linked.sharing ? (
         <p className="player-friends__hint">
           {"Friends can't see what you play. "}
           <SettingsLink to="profile">Share in Profile</SettingsLink>
         </p>
-      )}
+      ) : null}
+      <HubFooter friends={friends} />
+      {localHint}
     </div>
   );
 }

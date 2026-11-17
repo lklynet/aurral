@@ -910,6 +910,22 @@ test("playlist shares keep missing entries and never expose tracks added after c
     },
   });
   assert.equal(created.status, 201, JSON.stringify(created.body));
+  const theirs = flowPlaylistConfig.createStaticPlaylist({
+    name: "mia's tracks",
+    ownerUserId: playlistOwner.id,
+    tracks: [{ trackName: "Opening Song", artistName: artist.name }],
+    importSource: { provider: "aurral-mix", externalId: "listens-2", syncEnabled: true },
+  });
+  const refused = await callApi("POST", "", {
+    user: playlistOwner,
+    body: {
+      kind: "playlist",
+      playlistId: theirs.id,
+      manifest: { kind: "playlist", title: theirs.name },
+      shareFiles: false,
+    },
+  });
+  assert.equal(refused.status, 400, JSON.stringify(refused.body));
   const row = db
     .prepare<[number], { manifest: string }>("SELECT manifest FROM share_links WHERE id = ?")
     .get(created.body.link.id);

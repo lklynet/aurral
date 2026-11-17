@@ -4,7 +4,7 @@ import BoundedMap from "../boundedMap.ts";
 import { buildRadio } from "../radio.ts";
 import { matchesArtistKeys } from "./artistKeys.ts";
 import { getBlockedArtistKeys } from "./feedback.ts";
-import { BLEND_MIX_PREFIX } from "../../../lib/browsePlaylists.ts";
+import { BLEND_MIX_PREFIX, LISTENS_MIX_PREFIX } from "../../../lib/browsePlaylists.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MIX_SIZE = 50;
@@ -467,17 +467,34 @@ async function buildMixes(userId: number, now: number): Promise<Mix[]> {
 
 type BlendSource = "both" | number;
 
-type BlendPartner = { id: number; username: string; viewer: string };
+type BlendPartner = {
+  id: number;
+  username: string;
+  viewer: string;
+  handle: string | null;
+  lastPlayedAt: number;
+};
 
-const blendPartnersStmt = db.prepare<[number, number], BlendPartner>(`
-  SELECT partner.id, partner.username, viewer.username AS viewer
-  FROM users AS viewer
-  JOIN users AS partner
-    ON partner.blend = 1 AND partner.status = 'active' AND partner.id <> viewer.id
-  WHERE viewer.id = ? AND viewer.blend = 1 AND viewer.status = 'active'
-    AND EXISTS (SELECT 1 FROM play_events WHERE user_id = partner.id AND played_at >= ?)
-  ORDER BY partner.username COLLATE NOCASE
+const visiblePeopleStmt = db.prepare<[number, number], BlendPartner>(`
+  SELECT * FROM (
+    SELECT partner.id, partner.username, viewer.username AS viewer,
+           CASE WHEN link.origin = mine.origin THEN link.handle END AS handle,
+           (SELECT MAX(played_at) FROM play_events WHERE user_id = partner.id) AS lastPlayedAt
+    FROM users AS viewer
+    JOIN users AS partner
+      ON partner.blend = 1 AND partner.status = 'active' AND partner.id <> viewer.id
+    LEFT JOIN hub_links AS link
+      ON link.user_id = partner.id AND link.linked_at IS NOT NULL AND link.broken = 0
+    LEFT JOIN hub_links AS mine
+      ON mine.user_id = viewer.id AND mine.linked_at IS NOT NULL AND mine.broken = 0
+    WHERE viewer.id = ? AND viewer.blend = 1 AND viewer.status = 'active'
+  )
+  WHERE lastPlayedAt >= ?
+  ORDER BY username COLLATE NOCASE
 `);
+
+export const visiblePeople = (userId: number, now = Date.now()) =>
+  visiblePeopleStmt.all(userId, now - REWIND_MS);
 
 const recentArtistsStmt = db.prepare<[number, number], { artist: string }>(
   "SELECT DISTINCT lower(artist) AS artist FROM play_events WHERE user_id = ? AND played_at >= ?",
@@ -611,11 +628,40 @@ function getBlend(userId: number, partnerId: number, now: number) {
   return sources;
 }
 
-const blendPartners = (userId: number, now: number) =>
-  blendPartnersStmt.all(userId, now - REWIND_MS);
-
 export function getUserBlends(userId: number, now = Date.now()) {
-  return blendsWith(userId, closestPartners(userId, blendPartners(userId, now), now), now);
+  return blendsWith(userId, closestPartners(userId, visiblePeople(userId, now), now), now);
+}
+
+const recentPlaysStmt = db.prepare<[number, number, number], TrackPlays>(`
+  SELECT MIN(track_id) AS trackId, MIN(artist) AS artist, MIN(title) AS title,
+         COUNT(*) AS total, COUNT(*) AS recent, 0 AS rewind, COUNT(*) AS season,
+         MAX(played_at) AS lastPlayedAt
+  FROM play_events
+  WHERE user_id = ? AND played_at >= ? AND played_at <= ?
+  GROUP BY lower(artist), lower(title)
+  ORDER BY total DESC, lastPlayedAt DESC
+  LIMIT ${BLEND_WINDOW}
+`);
+
+function listensOf(userId: number, person: BlendPartner, now: number): Mix | null {
+  const blocked = getBlockedArtistKeys(userId);
+  const plays = recentPlaysStmt
+    .all(person.id, now - ON_REPEAT_MS, now)
+    .filter((play) => !matchesArtistKeys({ name: play.artist }, blocked));
+  const trackIds = ranked(
+    plays,
+    resolvePlays(plays),
+    () => true,
+    (play) => play.total,
+  );
+  return trackIds.length >= MIN_MIX_TRACKS
+    ? {
+        id: `${LISTENS_MIX_PREFIX}${person.id}`,
+        name: `${person.username}'s tracks`,
+        description: `What ${person.username} played most in the last 30 days`,
+        trackIds,
+      }
+    : null;
 }
 
 async function blendsWith(userId: number, partners: BlendPartner[], now: number) {
@@ -649,8 +695,10 @@ const blendSettingStmt = db.prepare<[number], { blend: number }>(
 );
 const setBlendStmt = db.prepare<[number, number]>("UPDATE users SET blend = ? WHERE id = ?");
 
+export const sharesListening = (userId: number) => blendSettingStmt.get(userId)?.blend === 1;
+
 export async function getBlendSetting(userId: number) {
-  const enabled = blendSettingStmt.get(userId)?.blend === 1;
+  const enabled = sharesListening(userId);
   return { enabled, waiting: enabled ? (await getUserBlends(userId)).waiting : [] };
 }
 
@@ -684,10 +732,14 @@ function getOwnMixes(userId: number, now: number) {
 }
 
 export async function getUserMix(userId: number, id: string, now = Date.now()) {
-  if (id.startsWith(BLEND_MIX_PREFIX)) {
-    const partnerId = Number(id.slice(BLEND_MIX_PREFIX.length));
-    const partners = blendPartners(userId, now).filter((partner) => partner.id === partnerId);
-    return (await blendsWith(userId, partners, now)).mixes[0] ?? null;
+  const prefix = [BLEND_MIX_PREFIX, LISTENS_MIX_PREFIX].find((each) => id.startsWith(each));
+  if (prefix) {
+    const personId = Number(id.slice(prefix.length));
+    const person = visiblePeople(userId, now).find((each) => each.id === personId);
+    if (!person) return null;
+    return prefix === LISTENS_MIX_PREFIX
+      ? listensOf(userId, person, now)
+      : ((await blendsWith(userId, [person], now)).mixes[0] ?? null);
   }
   return (await getOwnMixes(userId, now)).find((mix) => mix.id === id) ?? null;
 }

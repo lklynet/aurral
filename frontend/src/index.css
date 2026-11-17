@@ -13321,6 +13321,13 @@ button.playlist-detail__cover {
   text-decoration: none;
 }
 
+.player-friends__local {
+  margin-inline-start: 0.375rem;
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-xs);
+  font-weight: 400;
+}
+
 .player-friends__hint {
   margin: 0;
   padding: 0.5rem 0.375rem 0;

@@ -4,7 +4,7 @@
       "cold": 13,
       "warm": 13
     },
-    "bytes": 1564,
+    "bytes": 1652,
     "scans": []
   },
   "library home": {
@@ -289,6 +289,22 @@
       "warm": 4
     },
     "bytes": 16,
+    "scans": []
+  },
+  "people on this server": {
+    "queries": {
+      "cold": 5,
+      "warm": 5
+    },
+    "bytes": 114,
+    "scans": []
+  },
+  "person profile": {
+    "queries": {
+      "cold": 31,
+      "warm": 27
+    },
+    "bytes": 2564,
     "scans": []
   },
   "community playlists": {

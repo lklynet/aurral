@@ -218,6 +218,9 @@ test("Blends mix two people's plays with their 3 closest listeners until either 
   plays([nova], ["Nova"]);
   plays([sam], ["Sam"]);
   plays([kit], ["Kit", "Kit B"]);
+  for (const track of addArtist("Mia Old", 3).tracks) {
+    insertPlay.run(mia, `lastfm:${track.title}`, track.title, "Mia Old", NOW - 40 * DAY);
+  }
   insertPlay.run(zed, "lastfm:Kit 0", "Kit 0", "Kit", NOW - DAY);
   for (let index = 0; index < 250; index += 1) {
     for (let time = 0; time < 3; time += 1) {
@@ -257,11 +260,19 @@ test("Blends mix two people's plays with their 3 closest listeners until either 
     externalId: `blend-${mia}`,
   });
   assert.deepEqual(saved.tracks.length > 0 && saved.tracks.filter((track) => track.reason), []);
+  const miasTracks = await getUserMix(lee, `listens-${mia}`, NOW);
+  assert.equal(miasTracks?.name, "mia's tracks");
+  assert.deepEqual(
+    new Set(miasTracks?.trackIds.map(artistOf)),
+    new Set(["Shared A", "Shared B", "Mia A", "Mia B", "Mia C"]),
+  );
+  assert.equal(await getUserMix(lee, `listens-${kit}`, NOW), null);
   addDiscoveryFeedback(mia, { action: "block_artist", artistName: "Lee A" });
   assert.ok((await blendOf(lee, mia))?.trackIds.every((id) => artistOf(id) !== "Lee A"));
 
   await setBlendSetting(mia, false);
   assert.equal(await getUserMix(lee, `blend-${mia}`, NOW), null);
+  assert.equal(await getUserMix(lee, `listens-${mia}`, NOW), null);
   await setBlendSetting(mia, true);
   await setBlendSetting(lee, false);
   assert.equal(await getUserMix(mia, `blend-${lee}`, NOW), null);
