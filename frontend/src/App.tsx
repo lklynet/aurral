@@ -389,14 +389,7 @@ const appRoutes = createRoutesFromElements(
   </Route>,
 );
 
-let appRouter: ReturnType<typeof createBrowserRouter> | null = null;
-
-function AppRouter() {
-  appRouter ??= createBrowserRouter(appRoutes, {
-    basename: getAppBasePath(),
-  });
-  return <RouterProvider router={appRouter} />;
-}
+const appRouter = createBrowserRouter(appRoutes, { basename: getAppBasePath() });
 
 function App() {
   return (
@@ -405,7 +398,7 @@ function App() {
         <AuthProvider>
           <AudioQueueProvider>
             <ShareProvider>
-              <AppRouter />
+              <RouterProvider router={appRouter} />
               <ThemeSync />
               <ReloadPrompt />
             </ShareProvider>

@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import type { LinkProps } from "react-router";
 import { Download, Music, Pause, Play } from "./icons";
 import AddActionButton from "./AddActionButton";
 import { DotLoader } from "./DotLoader";
@@ -130,7 +129,7 @@ export function SongDownload({
   );
 }
 
-function TextLink({ link, text }: { link: Pick<LinkProps, "to" | "state"> | null; text: string }) {
+function TextLink({ link, text }: { link: { to: string; state?: unknown } | null; text: string }) {
   if (!link) return text;
   return (
     <RouteLink to={link.to} state={link.state} className="search-song__link">

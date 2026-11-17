@@ -10,13 +10,21 @@ overrides:
   node-taglib-sharp>uuid: ^11.1.1
   workbox-build>glob: ^14.0.2
 
-peerDependencyRules:
-  allowedVersions:
-    vite: ^1
-
 allowBuilds:
   bcrypt: true
   fsevents: true
   better-sqlite3: false
   esbuild: false
   workerd: false
+
+minimumReleaseAgeExclude:
+  - "@voidzero-dev/vite-plus-core@8.3.8000"
+  - "@voidzero-dev/vite-plus-darwin-arm64@1.7.0"
+  - "@voidzero-dev/vite-plus-darwin-x64@1.7.0"
+  - "@voidzero-dev/vite-plus-linux-arm64-gnu@1.7.0"
+  - "@voidzero-dev/vite-plus-linux-arm64-musl@1.7.0"
+  - "@voidzero-dev/vite-plus-linux-x64-gnu@1.7.0"
+  - "@voidzero-dev/vite-plus-linux-x64-musl@1.7.0"
+  - "@voidzero-dev/vite-plus-win32-arm64-msvc@1.7.0"
+  - "@voidzero-dev/vite-plus-win32-x64-msvc@1.7.0"
+  - vite-plus@1.7.0

@@ -15,9 +15,9 @@
   "scripts": {
     "build": "pnpm --filter aurral-frontend run build",
     "start": "node --max-semi-space-size=4 --env-file=backend/.env backend/server.ts",
-    "check": "vp check && node frontend/scripts/lint-ui-css.mts && node scripts/db-types.mts --check && tsc -p . && node scripts/lint-any.mts",
+    "check": "vp check && node frontend/scripts/lint-ui-css.mts && node scripts/db-types.mts --check && node scripts/lint-any.mts",
     "lint": "vp lint && node frontend/scripts/lint-ui-css.mts",
-    "typecheck": "tsc -p .",
+    "typecheck": "vp check --no-fmt --no-lint",
     "lint:any": "node scripts/lint-any.mts",
     "lint:ui": "node frontend/scripts/lint-ui-css.mts && vp lint frontend/src",
     "format": "vp fmt",
@@ -61,8 +61,8 @@
     "sharp": "^0.35.5",
     "typescript": "^7.0.2",
     "valibot": "^1.5.0",
-    "vite": "npm:@voidzero-dev/vite-plus-core@1.5.0",
-    "vite-plus": "1.5.0",
+    "vite": "npm:@voidzero-dev/vite-plus-core@8.3.8000",
+    "vite-plus": "1.7.0",
     "ws": "^8.22.0"
   },
   "engines": {
