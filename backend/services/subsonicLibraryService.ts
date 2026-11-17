@@ -1821,29 +1821,50 @@ const libraryTrackByKey = db.prepare<[string], Pick<LibraryTracksRow, "id">>(
   "SELECT id FROM library_tracks WHERE identity_key = ?",
 );
 
-function playlistSongId(user: SubsonicUser, job: DownloadJob) {
-  const flow = job.playlistType ? flowPlaylistConfig.getFlowForUser(user, job.playlistType) : null;
-  if (flow && playlistOwnsJob(flow, job)) return idFor("flow-song", `${flow.id}:${job.id}`);
-  const shared = flowPlaylistConfig
-    .getStaticPlaylistsForUser(user)
-    .find((playlist) => playlistOwnsJob(playlist, job));
-  return shared ? idFor("shared-song", `${shared.id}:${job.id}`) : null;
+function playlistSongIdsFor(user: SubsonicUser) {
+  const listedIn = new Map<string, string>();
+  for (const playlist of flowPlaylistConfig.getStaticPlaylistsForUser(user)) {
+    for (const track of playlist.tracks) {
+      if (track.canonicalJobId && !listedIn.has(track.canonicalJobId)) {
+        listedIn.set(track.canonicalJobId, playlist.id);
+      }
+    }
+  }
+  return (job: DownloadJob) => {
+    const owner = job.playlistType;
+    if (owner && flowPlaylistConfig.getFlowForUser(user, owner)) {
+      return idFor("flow-song", `${owner}:${job.id}`);
+    }
+    const shared =
+      (owner && flowPlaylistConfig.getStaticPlaylistForUser(user, owner)?.id) ||
+      listedIn.get(job.id);
+    return shared ? idFor("shared-song", `${shared}:${job.id}`) : null;
+  };
 }
 
-export function songIdForQueueEntry(
-  user: SubsonicUser,
-  entry: { trackId: number } | { jobId: string },
-) {
-  if ("trackId" in entry) {
-    const row = libraryTrackKey.get(entry.trackId);
-    return row ? idFor("song", row.identity_key) : null;
-  }
-  const job = downloadTracker.getJob(entry.jobId);
-  if (!job || !isPlayableJob(job)) return null;
-  const owned = findAvailableLibraryTrack(trackFromJob(job));
-  return owned?.track.identityKey
-    ? idFor("song", owned.track.identityKey)
-    : playlistSongId(user, job);
+export type QueueEntry = { trackId: number } | { jobId: string };
+
+export function songIdsForQueueEntries(user: SubsonicUser, entries: (QueueEntry | null)[]) {
+  const jobs = downloadTracker.getJobs(
+    entries.flatMap((entry) => (entry && "jobId" in entry ? [entry.jobId] : [])),
+  );
+  const playableJob = (entry: QueueEntry | null) => {
+    const job = entry && "jobId" in entry ? jobs.get(entry.jobId) : undefined;
+    return job && isPlayableJob(job) ? job : null;
+  };
+  const owned = resolveLibraryTracks(entries.map((entry) => trackFromJob(playableJob(entry))));
+  const playlistSongId = playlistSongIdsFor(user);
+  return entries.map((entry, index) => {
+    if (!entry) return null;
+    if ("trackId" in entry) {
+      const row = libraryTrackKey.get(entry.trackId);
+      return row ? idFor("song", row.identity_key) : null;
+    }
+    const job = playableJob(entry);
+    if (!job) return null;
+    const identityKey = owned[index]?.track.identityKey;
+    return identityKey ? idFor("song", identityKey) : playlistSongId(job);
+  });
 }
 
 export function queueEntryForSong(user: SubsonicUser, value: string) {
