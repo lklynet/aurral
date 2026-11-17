@@ -204,6 +204,9 @@ export const linkConfirmPage = (handle: string, userName: string, code: string) 
       <p class="muted">Code ${formatCode(code)}</p>
       <ul>
         <li>That server can publish playlists as @${handle}.</li>
+        <li>
+          It can add friends for you, share what you play with them, and read what they share.
+        </li>
         <li>Its admin can do anything this link can.</li>
         <li>Linking gives aurral.org no access to your server.</li>
       </ul>

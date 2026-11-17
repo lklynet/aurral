@@ -21,6 +21,7 @@ const [
   { flowPlaylistConfig },
   { syncStaticPlaylistImportHere },
   browse,
+  friends,
 ] = await setupIsolatedBackend(
   "server-link",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -31,6 +32,7 @@ const [
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/importLists/importListSync.ts"),
   () => import("../../backend/services/discovery/browsePlaylists.ts"),
+  () => import("../../backend/services/hubFriends.ts"),
 );
 afterAll(async () => {
   await local.dispose();
@@ -86,9 +88,9 @@ const hubAccount = async (id: string, handle: string) => {
   ]);
 };
 
-const approve = async (code: string) => {
-  await hubAccount("account-1", "lee_k");
-  assert.ok(await approveLink(hubEnv.DB, code.replace("-", ""), "account-1"));
+const approve = async (code: string, account = "account-1", handle = "lee_k") => {
+  await hubAccount(account, handle);
+  assert.ok(await approveLink(hubEnv.DB, code.replace("-", ""), account));
 };
 
 test("a user links through a code, and unlinking tells aurral.org to forget the link", async () => {
@@ -260,4 +262,68 @@ test("a public playlist reaches the shelf and its copies, stays fresh, and leave
   await revoked(1);
   published.resetCommunityShelf();
   assert.deepEqual(await published.communityShelf(), []);
+});
+
+test("linked users add each other as friends, and a failing aurral.org changes nothing", async () => {
+  const mia = userOps.createUser("mia", "hash");
+  assert.ok(mia);
+  for (const [user, account, handle] of [
+    [lee, "account-1", "lee_k"],
+    [mia, "account-2", "mia_k"],
+  ] as const) {
+    const pending = await link.startHubLink(user);
+    await approve(pending.state === "pending" ? pending.code : "", account, handle);
+    await link.hubLinkStatus(user.id);
+  }
+
+  await assert.rejects(friends.addFriend(lee.id, "@nobody"), { status: 404 });
+  hubCalls = 0;
+  await assert.rejects(friends.addFriend(lee.id, "not a handle"), { status: 404 });
+  assert.equal(hubCalls, 0);
+  assert.deepEqual(await friends.addFriend(lee.id, "@Mia_K"), { status: "sent" });
+  assert.deepEqual(await friends.friendLists(mia.id), {
+    state: "linked",
+    friends: [],
+    incoming: [{ handle: "lee_k" }],
+    outgoing: [],
+  });
+  assert.deepEqual(await friends.addFriend(mia.id, "lee_k"), { status: "friends" });
+  assert.deepEqual(await friends.friendLists(lee.id), {
+    state: "linked",
+    friends: [{ handle: "mia_k" }],
+    incoming: [],
+    outgoing: [],
+  });
+
+  hubReachable = false;
+  await assert.rejects(friends.friendLists(lee.id), { status: 502 });
+  assert.equal((await link.hubLinkStatus(lee.id)).state, "linked");
+
+  hubReachable = true;
+  dbOps.updateSettings({
+    security: { localNetworkBypass: { enabled: false }, aurralAccounts: false },
+  });
+  hubCalls = 0;
+  assert.deepEqual(await friends.friendLists(lee.id), { state: "off" });
+  await assert.rejects(friends.addFriend(lee.id, "mia_k"), { status: 409 });
+  assert.equal(hubCalls, 0);
+  await friends.removeFriend(lee.id, "mia_k");
+  dbOps.updateSettings({
+    security: { localNetworkBypass: { enabled: false }, aurralAccounts: true },
+  });
+  assert.deepEqual(await friends.friendLists(mia.id), {
+    state: "linked",
+    friends: [],
+    incoming: [],
+    outgoing: [],
+  });
+
+  const linkId = await hubEnv.DB.prepare(
+    "SELECT id FROM links WHERE account_id = 'account-2' AND token_hash IS NOT NULL ORDER BY linked_at DESC",
+  ).first<string>("id");
+  await unlinkForAccount(hubEnv.DB, "account-2", linkId ?? "");
+  assert.deepEqual(await friends.friendLists(mia.id), { state: "broken" });
+  hubCalls = 0;
+  assert.deepEqual(await friends.friendLists(mia.id), { state: "broken" });
+  assert.equal(hubCalls, 0);
 });

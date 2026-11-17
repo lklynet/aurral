@@ -1,14 +1,22 @@
 import { createHash } from "node:crypto";
 import * as v from "valibot";
 import { db } from "../config/db-sqlite.ts";
-import type { HubLinksRow, HubPublicationsRow } from "../db/rows.ts";
+import type { HubPublicationsRow } from "../db/rows.ts";
 import { MAX_SHARE_BYTES, parseShareManifest, withoutShareFiles } from "../../lib/shareManifest.ts";
 import { asAppError } from "../../lib/errors.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
 import { resolveShareManifest } from "./shareLinks/metadata.ts";
 import { SHARE_ORIGIN } from "./shareLinks/store.ts";
-import { hubLinksEnabled, hubRequest, markLinkBroken, selectLink } from "./hubLink.ts";
+import {
+  authorized,
+  hubLinksEnabled,
+  hubRequest,
+  linkedLink,
+  markLinkBroken,
+  refusalOf,
+  selectLink,
+} from "./hubLink.ts";
 import { logger } from "./logger.ts";
 
 const SHELF_TTL_MS = 10 * 60 * 1000;
@@ -25,7 +33,6 @@ export class PublicPlaylistError extends Error {
 }
 
 const createdSchema = v.object({ id: v.string() });
-const refusalSchema = v.object({ error: v.string() });
 const shelfSchema = v.object({
   playlists: v.array(
     v.object({
@@ -47,17 +54,6 @@ const deletePublication = db.prepare<[string]>(
   "DELETE FROM hub_publications WHERE playlist_id = ?",
 );
 
-const linkedLink = (userId: number) => {
-  const link = selectLink.get(userId);
-  return link?.linked_at && !link.broken ? link : null;
-};
-
-const authorized = (link: HubLinksRow, method: string, body?: unknown) => ({
-  method,
-  headers: { Authorization: `Bearer ${link.token}`, "Content-Type": "application/json" },
-  ...(body !== undefined && { body: JSON.stringify(body) }),
-});
-
 function playlistManifest(playlistId: string) {
   const manifest = resolveShareManifest(
     { kind: "playlist", targetRef: playlistId, albumRef: null },
@@ -68,11 +64,6 @@ function playlistManifest(playlistId: string) {
   const json = JSON.stringify(details);
   if (Buffer.byteLength(json) > MAX_SHARE_BYTES - 1024) return "too_large" as const;
   return { manifest: details, hash: createHash("sha256").update(json).digest("hex") };
-}
-
-async function refusalOf(response: Response) {
-  const body = v.safeParse(refusalSchema, await response.json().catch(() => null));
-  return body.success ? body.output.error : null;
 }
 
 export function publicPlaylistState(userId: number) {

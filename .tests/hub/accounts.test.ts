@@ -87,7 +87,7 @@ const rows = async () => ({
 
 const reset = () =>
   db.batch(
-    ["publications", "links", "instances", "handles", "accounts"].map((table) =>
+    ["friends", "publications", "links", "instances", "handles", "accounts"].map((table) =>
       db.prepare(`DELETE FROM ${table}`),
     ),
   );
@@ -312,6 +312,68 @@ test("a server links a user once a signed-in account approves its code, and eith
   assert.equal((await revoke("x".repeat(43))).status, 403);
   assert.equal((await revoke(INSTANCE.secret)).status, 204);
   assert.equal((await serverStatus()).status, 401);
+});
+
+test("linked servers add friends by handle, both asking makes friends, and either side ends it", async () => {
+  await reset();
+  const now = new Date().toISOString();
+  const tokens = { ann: "a".repeat(43), bob: "b".repeat(43) };
+  for (const [handle, token] of Object.entries(tokens)) {
+    await db
+      .prepare(
+        "INSERT INTO accounts (id, name, email, email_verified, created_at, updated_at) VALUES (?, '', ?, 1, ?, ?)",
+      )
+      .bind(handle, `test-${handle}@users.aurral.org`, now, now)
+      .run();
+    await claimHandle(db, handle, handle);
+    await db
+      .prepare(
+        "INSERT INTO links (id, instance_id, user_name, token_hash, account_id, linked_at) VALUES (?, 'inst', ?, ?, ?, 1)",
+      )
+      .bind(handle, handle, await sha256Hex(token), handle)
+      .run();
+  }
+  const friends = (token: string, method = "GET", handle = "") =>
+    api(`/v1/friends${handle && `/${handle}`}`, {
+      method,
+      headers: { authorization: `Bearer ${token}` },
+    });
+  const lists = async (token: string): Promise<unknown> => (await friends(token)).json();
+  const rowCount = async () =>
+    (await db.prepare("SELECT COUNT(*) AS n FROM friends").first("n")) ?? 0;
+
+  assert.equal((await friends("x".repeat(43))).status, 401);
+  assert.equal((await friends(tokens.ann, "PUT", "nobody")).status, 404);
+  assert.equal((await friends(tokens.ann, "PUT", "ANN")).status, 422);
+  assert.deepEqual(await (await friends(tokens.ann, "PUT", "Bob")).json(), { status: "sent" });
+  assert.deepEqual(await lists(tokens.ann), {
+    friends: [],
+    incoming: [],
+    outgoing: [{ handle: "bob" }],
+  });
+  assert.deepEqual(await lists(tokens.bob), {
+    friends: [],
+    incoming: [{ handle: "ann" }],
+    outgoing: [],
+  });
+
+  assert.deepEqual(await (await friends(tokens.bob, "PUT", "ann")).json(), { status: "friends" });
+  assert.deepEqual(await lists(tokens.ann), {
+    friends: [{ handle: "bob" }],
+    incoming: [],
+    outgoing: [],
+  });
+
+  assert.equal((await friends(tokens.bob, "DELETE", "ann")).status, 204);
+  assert.equal(await rowCount(), 0);
+  assert.equal((await friends(tokens.bob, "PUT", "ann")).status, 200);
+  await friends(tokens.ann, "DELETE", "bob");
+  assert.equal(await rowCount(), 0);
+
+  assert.equal((await friends(tokens.bob, "PUT", "ann")).status, 200);
+  assert.equal(await rowCount(), 1);
+  await deleteAccount(db, "bob");
+  assert.equal(await rowCount(), 0);
 });
 
 test("a code approves one account once and only before it expires", async () => {

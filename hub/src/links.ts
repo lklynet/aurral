@@ -59,6 +59,12 @@ export async function linkStatus(db: D1Database, tokenHash: string, now = Date.n
   return null;
 }
 
+export const linkedAccountId = (db: D1Database, tokenHash: string) =>
+  db
+    .prepare("SELECT account_id FROM links WHERE token_hash = ? AND account_id IS NOT NULL")
+    .bind(tokenHash)
+    .first<string>("account_id");
+
 export const revokeLink = (db: D1Database, instanceId: string, tokenHash: string) =>
   db
     .prepare("DELETE FROM links WHERE instance_id = ? AND token_hash = ?")
