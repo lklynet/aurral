@@ -193,7 +193,6 @@ test("a public playlist reaches the shelf and its copies, stays fresh, and leave
     },
   });
 
-  assert.equal((await setPublic("PUT", synced.id)).status, 400);
   published.resetCommunityShelf();
   assert.deepEqual(await published.communityShelf(), []);
   assert.equal((await setPublic("PUT", mine.id)).status, 200);
@@ -225,6 +224,7 @@ test("a public playlist reaches the shelf and its copies, stays fresh, and leave
   assert.equal((await setPublic("PUT", synced.id)).status, 409);
   assert.equal((await setPublic("DELETE", mine.id)).status, 200);
   accounts(true);
+  assert.equal((await setPublic("PUT", synced.id)).status, 200);
   await syncStaticPlaylistImportHere({
     playlistId: copy.id,
     user: userOps.getUserById(admin.id) || undefined,

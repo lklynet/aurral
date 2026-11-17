@@ -100,8 +100,8 @@ export async function makePlaylistPublic(user: RequestUser, playlistId: string) 
   const link = linkedLink(user.id);
   if (!link) throw new PublicPlaylistError("Link an aurral.org account first.", 409);
   const source = playlist.importSource;
-  if (source && (source.syncEnabled || NOT_REPUBLISHABLE.has(source.provider))) {
-    throw new PublicPlaylistError("Playlists that sync from somewhere else can't be public.", 400);
+  if (source && NOT_REPUBLISHABLE.has(source.provider)) {
+    throw new PublicPlaylistError("Copies of other Aurral playlists can't be public.", 400);
   }
   const built = playlistManifest(playlistId);
   if (built === "too_large" || !built) {

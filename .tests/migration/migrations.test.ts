@@ -328,3 +328,28 @@ test("upgrading turns a Gotify setup into a webhook that still reads its token",
     ],
   });
 });
+
+test("upgrading gives playlists and flows from before owners to the first admin", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, -1));
+  db.exec(`
+    INSERT INTO users (id, username, password_hash, role) VALUES
+      (1, 'listener', 'hash', 'user'), (2, 'lee', 'hash', 'admin'), (3, 'ada', 'hash', 'admin');
+  `);
+  const store = db.prepare<[string, string]>("INSERT INTO settings (key, value) VALUES (?, ?)");
+  store.run("staticPlaylists", JSON.stringify([{ id: "old" }, { id: "mine", ownerUserId: 1 }]));
+  store.run("flows", JSON.stringify([{ id: "flow", ownerUserId: null }]));
+
+  migrate(db);
+
+  const owners = (key: string) =>
+    db
+      .prepare<[string], string>(
+        "SELECT json_group_array(item.value ->> '$.ownerUserId') FROM settings, json_each(settings.value) AS item WHERE settings.key = ?",
+      )
+      .pluck()
+      .get(key);
+  assert.equal(owners("staticPlaylists"), "[2,1]");
+  assert.equal(owners("flows"), "[2]");
+});

@@ -21,10 +21,9 @@ export function usePublicPlaylist(playlist: StaticPlaylist, onEditDetails: () =>
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState<{ message: string; rename: boolean } | null>(null);
   const queryKey = queryKeys.publicPlaylists(user?.id);
-  const source = playlist.importSource;
   const eligible =
     playlist.ownerUserId === user?.id &&
-    !(source && (source.syncEnabled || REPUBLISH_BLOCKED.has(source.provider)));
+    !REPUBLISH_BLOCKED.has(playlist.importSource?.provider ?? "");
   const state = useQuery({
     queryKey,
     queryFn: () => parseResponse(hubLinkClient["public-playlists"].$get()),
