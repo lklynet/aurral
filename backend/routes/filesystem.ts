@@ -2,7 +2,7 @@ import { Hono, type Context } from "hono";
 import * as v from "valibot";
 import { dbOps } from "../db/helpers/index.ts";
 import { noCache } from "../middleware/cacheHeaders.ts";
-import { resolveRequestUser } from "../services/auth.ts";
+import { isCrossSite, resolveRequestUser } from "../services/auth.ts";
 import { validate } from "../middleware/validate.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { ensureDownloadFolderPath, listBrowseDirectory } from "../services/downloadFolderConfig.ts";
@@ -10,10 +10,9 @@ import { requestCredentials } from "./shared/requestCredentials.ts";
 import { asAppError } from "../../lib/errors.ts";
 
 function canBrowseFilesystem<E extends AppEnv>(c: Context<E>) {
-  if (!dbOps.getSettings().onboardingComplete) {
-    return true;
-  }
-  return resolveRequestUser(requestCredentials(c))?.role === "admin";
+  const credentials = requestCredentials(c);
+  if (!dbOps.getSettings().onboardingComplete && !isCrossSite(credentials)) return true;
+  return resolveRequestUser(credentials)?.role === "admin";
 }
 
 const pathInput = v.object({ path: v.optional(v.string()) });

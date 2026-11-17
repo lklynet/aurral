@@ -7,6 +7,7 @@ import { asAppError } from "../../lib/errors.ts";
 import { APP_VERSION } from "../config/constants.ts";
 import { logger } from "./logger.ts";
 import {
+  isCrossSite,
   isProxyAuthEnabled,
   resolveLocalNetworkBypassUser,
   resolveSessionUserFromToken,
@@ -101,7 +102,7 @@ class WebSocketService extends EventEmitter {
   handleConnection(ws: WebSocket, req: IncomingMessage) {
     let sessionUser: WebSocketClient["user"] = null;
     let authSource: WebSocketClient["authSource"] = null;
-    if (isAuthRequired()) {
+    if (isAuthRequired() || isCrossSite(req)) {
       const requestUrl = new URL(req.url || "", "http://localhost");
       const token = requestUrl.searchParams.get("token");
       sessionUser = resolveSessionUserFromToken(token);

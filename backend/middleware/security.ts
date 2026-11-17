@@ -11,21 +11,31 @@ const isPublic = (c: Context<AppEnv>) => {
   );
 };
 
-const allowedOrigins = (process.env.CORS_ORIGIN || "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const appOrigin = (process.env.AURRAL_APP_ORIGIN || "https://music.aurral.org").replace(/\/+$/, "");
+
+const allowedOrigins = new Set([
+  appOrigin,
+  ...(process.env.CORS_ORIGIN || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+]);
 
 export const corsHeaders = createMiddleware<AppEnv>(async (c, next) => {
   const publicRoute = isPublic(c);
-  if (!publicRoute && allowedOrigins.length === 0) return next();
-  const origin = c.req.header("origin") ?? "";
-  const allowOrigin = publicRoute ? "*" : allowedOrigins.includes(origin) ? origin : null;
-  if (allowOrigin) c.res.headers.set("Access-Control-Allow-Origin", allowOrigin);
   if (!publicRoute) c.res.headers.append("Vary", "Origin");
+  const origin = c.req.header("origin") ?? "";
+  const allowOrigin = publicRoute ? "*" : allowedOrigins.has(origin) ? origin : null;
+  if (!allowOrigin) return next();
+  c.res.headers.set("Access-Control-Allow-Origin", allowOrigin);
+  c.res.headers.set(
+    "Access-Control-Expose-Headers",
+    "Content-Range, Content-Disposition, X-Aurral-Loudness",
+  );
   if (c.req.method !== "OPTIONS") return next();
   c.res.headers.set("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE");
-  c.res.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  c.res.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, Range");
+  c.res.headers.set("Access-Control-Max-Age", "600");
   return c.body(null, 204);
 });
 
@@ -66,6 +76,7 @@ const headers = Object.entries({
 
 export const securityHeaders = createMiddleware<AppEnv>(async (c, next) => {
   for (const [name, value] of headers) c.res.headers.set(name, value);
-  c.res.headers.set("Cross-Origin-Resource-Policy", isPublic(c) ? "cross-origin" : "same-origin");
+  const crossOrigin = isPublic(c) || c.req.path.startsWith("/api/");
+  c.res.headers.set("Cross-Origin-Resource-Policy", crossOrigin ? "cross-origin" : "same-origin");
   await next();
 });
