@@ -83,10 +83,11 @@ export async function startHubLink(user: { id: number; username: string }) {
   const started = response?.ok ? v.safeParse(startedSchema, await response.json()) : null;
   if (!started?.success) throw new HubLinkError("Couldn't reach aurral.org. Try again.");
   db.transaction(() => {
+    const sharing = selectLink.get(user.id)?.share_listening ?? 1;
     forgetHubLink(user.id);
-    db.prepare<[number, string, string, string, number]>(
-      "INSERT INTO hub_links (user_id, origin, token, user_code, expires_at) VALUES (?, ?, ?, ?, ?)",
-    ).run(user.id, SHARE_ORIGIN, token, started.output.userCode, started.output.expiresAt);
+    db.prepare<[number, string, string, string, number, number]>(
+      "INSERT INTO hub_links (user_id, origin, token, user_code, expires_at, share_listening) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run(user.id, SHARE_ORIGIN, token, started.output.userCode, started.output.expiresAt, sharing);
   })();
   return hubLinkStatus(user.id);
 }
@@ -130,6 +131,7 @@ export async function hubLinkStatus(userId: number) {
       state: link.broken ? ("broken" as const) : ("linked" as const),
       handle: link.handle,
       linkedAt: link.linked_at,
+      sharing: link.share_listening === 1,
     };
   }
   if (link.user_code && link.expires_at && link.expires_at > Date.now()) {

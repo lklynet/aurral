@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { ConfirmModal } from "../../../components/ConfirmModal";
+import PillToggle from "../../../components/PillToggle";
 import { FriendsDialog } from "../../../components/PlayerFriends";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
@@ -39,6 +40,12 @@ export function HubLinkGroup() {
   const start = useMutation({
     mutationFn: () => parseResponse(hubLinkClient.$post()),
     onSuccess: settle,
+    onError: (error) => showError(readApiError(error).error || "Couldn't reach aurral.org."),
+  });
+  const share = useMutation({
+    mutationFn: (shared: boolean) =>
+      parseResponse(hubLinkClient.sharing.$put({ json: { shared } })),
+    onSuccess: (next) => queryClient.setQueryData(queryKey, next),
     onError: (error) => showError(readApiError(error).error || "Couldn't reach aurral.org."),
   });
   const unlink = useMutation({
@@ -148,6 +155,20 @@ export function HubLinkGroup() {
           >
             Manage
           </button>
+        </SettingsRow>
+      ) : null}
+      {link.state === "linked" ? (
+        <SettingsRow
+          label="Share with friends"
+          help="What you're playing, and your top artists, albums, and tracks from the last 30 days."
+        >
+          <PillToggle
+            id="hub-share-listening"
+            checked={share.isPending ? share.variables : link.sharing}
+            disabled={share.isPending}
+            aria-label="Share with friends"
+            onChange={(event) => share.mutate(event.target.checked)}
+          />
         </SettingsRow>
       ) : null}
       <FriendsDialog open={managingFriends} onClose={() => setManagingFriends(false)} />

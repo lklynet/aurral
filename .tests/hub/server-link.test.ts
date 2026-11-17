@@ -22,6 +22,7 @@ const [
   { syncStaticPlaylistImportHere },
   browse,
   friends,
+  playEvents,
 ] = await setupIsolatedBackend(
   "server-link",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -33,6 +34,7 @@ const [
   () => import("../../backend/services/importLists/importListSync.ts"),
   () => import("../../backend/services/discovery/browsePlaylists.ts"),
   () => import("../../backend/services/hubFriends.ts"),
+  () => import("../../backend/services/playEventService.ts"),
 );
 afterAll(async () => {
   await local.dispose();
@@ -326,4 +328,72 @@ test("linked users add each other as friends, and a failing aurral.org changes n
   hubCalls = 0;
   assert.deepEqual(await friends.friendLists(mia.id), { state: "broken" });
   assert.equal(hubCalls, 0);
+});
+
+test("sharing sends now playing and top plays, Off clears aurral.org, and relinking keeps it off", async () => {
+  const pending = await link.startHubLink(lee);
+  await approve(pending.state === "pending" ? pending.code : "");
+  await link.hubLinkStatus(lee.id);
+  const listening = () =>
+    hubEnv.DB.prepare("SELECT now_playing, top_plays FROM listening").first<{
+      now_playing: string | null;
+      top_plays: string | null;
+    }>();
+  const sharing = async () => {
+    const status = await link.hubLinkStatus(lee.id);
+    return status.state === "linked" && status.sharing;
+  };
+  for (const [index, title] of ["Reckoner", "Reckoner", "Nude"].entries()) {
+    playEvents.recordPlayEvent(lee.id, {
+      trackId: title,
+      title,
+      artist: "Radiohead",
+      album: "In Rainbows",
+      playedAt: Date.now() - (index + 1) * 600_000,
+      source: "native-player",
+    });
+  }
+  playEvents.recordPlayEvent(lee.id, {
+    trackId: "old",
+    title: "Creep",
+    artist: "Radiohead",
+    playedAt: Date.now() - 31 * 86_400_000,
+  });
+
+  await playEvents.sendNowPlaying(lee.id, { title: "Nude", artist: "Radiohead" });
+  await friends.shareAllTopPlays();
+  const shared = await listening();
+  assert.deepEqual(JSON.parse(shared?.now_playing ?? ""), {
+    title: "Nude",
+    artist: "Radiohead",
+    album: null,
+  });
+  assert.deepEqual(JSON.parse(shared?.top_plays ?? ""), {
+    artists: [{ name: "Radiohead", plays: 3 }],
+    albums: [{ title: "In Rainbows", artist: "Radiohead", plays: 3 }],
+    tracks: [
+      { title: "Reckoner", artist: "Radiohead", plays: 2 },
+      { title: "Nude", artist: "Radiohead", plays: 1 },
+    ],
+  });
+
+  hubReachable = false;
+  await assert.rejects(friends.shareListening(lee.id, false), { status: 502 });
+  hubReachable = true;
+  assert.equal(await sharing(), true);
+
+  await friends.shareListening(lee.id, false);
+  assert.equal(await listening(), null);
+  assert.equal(await sharing(), false);
+  hubCalls = 0;
+  await playEvents.sendNowPlaying(lee.id, { title: "Nude", artist: "Radiohead" });
+  await friends.shareAllTopPlays();
+  assert.equal(hubCalls, 0);
+
+  const relink = await link.startHubLink(lee);
+  await approve(relink.state === "pending" ? relink.code : "");
+  assert.equal(await sharing(), false);
+  await friends.shareListening(lee.id, true);
+  assert.ok((await listening())?.top_plays);
+  await revoked(1);
 });
