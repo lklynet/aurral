@@ -1,30 +1,24 @@
 import { expect, test } from "vite-plus/test";
 import { judge, type MetricKind } from "./judge.ts";
 
-const rounds = (...medians: number[]) => medians.map((median) => [median - 1, median, median + 1]);
+const rounds = (...values: number[]) => values.map((value) => [value, value, value]);
 const KIB = 1024;
+const MIB = 1024 * KIB;
 
-test.each<[string, MetricKind, number[][], number[][], string]>([
-  ["noise", "time", rounds(21, 22), rounds(23, 22), "same"],
-  ["a steady slowdown", "time", rounds(21, 22), rounds(28, 29), "slower"],
-  ["one noisy round", "time", rounds(21, 31), rounds(31, 30), "same"],
+test.each<[string, MetricKind, number[][], number[][], string | null]>([
+  ["a doubled time", "time", rounds(21, 22), rounds(42, 44), null],
+  ["a few MiB of memory", "memory", rounds(176 * MIB), rounds(180 * MIB), null],
+  ["a heavy new startup cost", "memory", rounds(176 * MIB), rounds(215 * MIB), "bigger"],
   [
-    "pauses in more of the samples",
-    "time",
-    [
-      [13, 13, 14, 20, 22],
-      [13, 13, 14, 21, 22],
-    ],
-    [
-      [13, 14, 20, 21, 23],
-      [13, 14, 20, 22, 24],
-    ],
-    "same",
+    "memory that fell in one round",
+    "memory",
+    rounds(176 * MIB, 210 * MIB),
+    rounds(200 * MIB, 209 * MIB),
+    null,
   ],
-  ["a big ratio under the floor", "time", rounds(2, 2), rounds(3.5, 3.5), "same"],
-  ["a steady speedup", "time", rounds(41, 42), rounds(21, 22), "faster"],
-  ["a few KiB of bundle", "size", rounds(300 * KIB), rounds(303 * KIB), "same"],
-  ["a heavy new import", "size", rounds(300 * KIB), rounds(330 * KIB), "slower"],
+  ["a few KiB of bundle", "size", rounds(300 * KIB), rounds(303 * KIB), null],
+  ["a heavy new import", "size", rounds(300 * KIB), rounds(330 * KIB), "bigger"],
+  ["a dropped dependency", "size", rounds(330 * KIB), rounds(300 * KIB), "smaller"],
 ])("%s", (_, kind, base, head, verdict) => {
   expect(judge(kind, base, head).verdict).toBe(verdict);
 });

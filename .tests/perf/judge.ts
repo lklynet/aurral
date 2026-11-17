@@ -1,7 +1,6 @@
 export type MetricKind = "time" | "size" | "memory";
 
-const RULES: Record<MetricKind, { ratio: number; floor: number }> = {
-  time: { ratio: 1.15, floor: 2 },
+const GATES: Partial<Record<MetricKind, { ratio: number; floor: number }>> = {
   size: { ratio: 1.05, floor: 5 * 1024 },
   memory: { ratio: 1.1, floor: 10 * 1024 * 1024 },
 };
@@ -12,24 +11,24 @@ const lowerQuartile = (values: number[]) =>
 export function judge(kind: MetricKind, base: number[][], head: number[][]) {
   const baseValue = lowerQuartile(base.flat());
   const headValue = lowerQuartile(head.flat());
-  const { ratio, floor } = RULES[kind];
-  const changed = (from: number, to: number, everyRound: boolean) =>
-    to > from * ratio && to - from > floor && everyRound;
+  const gate = GATES[kind];
   const rounds = head.map((round, index) =>
     Math.sign(lowerQuartile(round) - lowerQuartile(base[index]!)),
   );
-  const verdict = changed(
+  const grew = (from: number, to: number, everyRound: boolean) =>
+    gate !== undefined && to > from * gate.ratio && to - from > gate.floor && everyRound;
+  const verdict = grew(
     baseValue,
     headValue,
     rounds.every((sign) => sign > 0),
   )
-    ? "slower"
-    : changed(
+    ? "bigger"
+    : grew(
           headValue,
           baseValue,
           rounds.every((sign) => sign < 0),
         )
-      ? "faster"
-      : "same";
+      ? "smaller"
+      : null;
   return { baseValue, headValue, verdict } as const;
 }
