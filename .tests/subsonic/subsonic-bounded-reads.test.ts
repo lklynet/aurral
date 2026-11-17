@@ -13,6 +13,9 @@ const [
   libraryStore,
   { rebuildLibraryGenreStats },
   { forwardWorkerBroadcast },
+  { flowPlaylistConfig },
+  { downloadTracker },
+  { savePlayerQueue, getPlayQueue },
 ] = await setupIsolatedBackend(
   "subsonic-bounded-reads",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -20,6 +23,9 @@ const [
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryQueryService.ts"),
   () => import("../../backend/services/appRuntime.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/playQueueService.ts"),
 );
 
 let album: import("../../backend/db/rows.ts").LibraryAlbumsRow;
@@ -138,4 +144,47 @@ test("Subsonic genres come from the last library scan until the library changes"
     available: false,
   });
   assert.deepEqual(subsonic.getGenres(), []);
+});
+
+test("saving a long playlist queue looks up the Library once, not once per track", () => {
+  db.prepare("INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)").run(
+    41,
+    "queue-owner",
+    "test",
+  );
+  const user = { id: 41, username: "queue-owner", role: "admin", permissions: {} };
+  const tracks = Array.from({ length: 60 }, (_, index) => ({
+    artistName: "Queue Artist",
+    trackName: `Queue Track ${index}`,
+  }));
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Long Queue", tracks });
+  const jobIds = tracks.map((track) => {
+    const jobId = downloadTracker.addJob(track, playlist.id);
+    assert.ok(jobId != null);
+    downloadTracker.setDone(jobId, `/tmp/${track.trackName}.mp3`);
+    return jobId;
+  });
+  const prepared: string[] = [];
+  const prepare = db.prepare.bind(db);
+  vi.spyOn(db, "prepare").mockImplementation((sql) => {
+    prepared.push(String(sql));
+    return prepare(sql);
+  });
+  const save = (ids: string[]) => {
+    prepared.length = 0;
+    savePlayerQueue(user, {
+      entries: ids.map((jobId) => ({ jobId })),
+      current: 0,
+      positionMs: 0,
+      device: "test",
+    });
+    return prepared.length;
+  };
+
+  assert.equal(save(jobIds), save(jobIds.slice(0, 2)));
+  assert.deepEqual(
+    getPlayQueue(user).entry.map((song) => song.title),
+    tracks.slice(0, 2).map((track) => track.trackName),
+  );
+  vi.restoreAllMocks();
 });

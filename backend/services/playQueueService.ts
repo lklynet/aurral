@@ -5,7 +5,12 @@ import { listOf } from "../db/helpers/storedSchemas.ts";
 import type { SubsonicPlayQueuesRow } from "../db/rows.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import { websocketService } from "./websocketService.ts";
-import { getSong, queueEntryForSong, songIdForQueueEntry } from "./subsonicLibraryService.ts";
+import {
+  getSong,
+  queueEntryForSong,
+  songIdsForQueueEntries,
+  type QueueEntry,
+} from "./subsonicLibraryService.ts";
 
 const readQueue = db.prepare<[number], SubsonicPlayQueuesRow>(
   "SELECT * FROM subsonic_play_queues WHERE user_id = ?",
@@ -55,13 +60,13 @@ export function savePlayerQueue(
     positionMs,
     device,
   }: {
-    entries: (Parameters<typeof songIdForQueueEntry>[1] | null)[];
+    entries: (QueueEntry | null)[];
     current: number;
     positionMs: number;
     device: string;
   },
 ) {
-  const ids = entries.map((entry) => entry && songIdForQueueEntry(user, entry));
+  const ids = songIdsForQueueEntries(user, entries);
   const currentId = ids[current];
   if (!currentId) return null;
   return savePlayQueue(user, {

@@ -51,6 +51,9 @@ updates:
       time: "07:00"
       timezone: "UTC"
     open-pull-requests-limit: 1
+    ignore:
+      - dependency-name: "node"
+        versions: ["26.13.1"]
     groups:
       root-docker:
         patterns:
