@@ -8228,8 +8228,8 @@ button.native-library-card__artist:focus-visible {
 .native-library-track {
   --native-library-track-columns: 2rem 2rem 2.35rem minmax(12rem, 1.4fr) minmax(8rem, 1fr)
     minmax(8rem, 1fr) var(--native-library-track-reason-column,)
-    var(--native-library-track-year-column,) var(--native-library-track-time-column, 4.5rem) 1.7rem
-    1.7rem 1.7rem;
+    var(--native-library-track-added-by-column,) var(--native-library-track-year-column,)
+    var(--native-library-track-time-column, 4.5rem) 1.7rem 1.7rem 1.7rem;
 
   display: grid;
   min-width: 44rem;
@@ -8549,11 +8549,16 @@ button.native-library-card__artist:focus-visible {
   --native-library-track-reason-column: minmax(6rem, 1.2fr);
 }
 
+.native-library-track-list--added-by {
+  --native-library-track-added-by-column: minmax(5rem, 0.6fr);
+}
+
 .native-library-track-list--wide-time {
   --native-library-track-time-column: 7rem;
 }
 
-.native-library-track__reason {
+.native-library-track__reason,
+.native-library-track__added-by {
   overflow: hidden;
   color: var(--aurral-text-muted);
   text-overflow: ellipsis;
@@ -9206,7 +9211,8 @@ button.native-library-genre-row:focus-visible {
   white-space: nowrap;
 }
 
-.native-library-detail__edition {
+.native-library-detail__edition,
+.playlist-detail__members {
   display: inline-flex;
   max-width: 100%;
   gap: 0.125rem;
@@ -9231,18 +9237,21 @@ button.native-library-genre-row:focus-visible {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .native-library-detail__edition:hover {
+  .native-library-detail__edition:hover,
+  .playlist-detail__members:hover {
     background: var(--aurral-surface-hover);
   }
 }
 
 @media (pointer: coarse) {
   .native-library-detail__edition,
+  .playlist-detail__members,
   .native-library-album-status__actions .btn-sm {
     position: relative;
   }
 
   .native-library-detail__edition::after,
+  .playlist-detail__members::after,
   .native-library-album-status__actions .btn-sm::after {
     content: "";
     position: absolute;
@@ -9526,8 +9535,8 @@ button.native-library-genre-row:focus-visible {
   .native-library-track {
     --native-library-track-columns: 2.75rem 2.2rem 2.75rem minmax(12rem, 1.4fr) minmax(8rem, 1fr)
       minmax(8rem, 1fr) var(--native-library-track-reason-column,)
-      var(--native-library-track-year-column,) var(--native-library-track-time-column, 4.5rem)
-      2.75rem 2.75rem 2.75rem;
+      var(--native-library-track-added-by-column,) var(--native-library-track-year-column,)
+      var(--native-library-track-time-column, 4.5rem) 2.75rem 2.75rem 2.75rem;
   }
 
   .native-library-track-list--release .native-library-track {
@@ -9772,6 +9781,7 @@ button.native-library-genre-row:focus-visible {
   .native-library-track__artist,
   .native-library-track__album,
   .native-library-track__reason,
+  .native-library-track__added-by,
   .native-library-track__year {
     display: none;
   }
@@ -11453,6 +11463,9 @@ button.native-library-genre-row:focus-visible {
   height: 100%;
   padding: 0;
   border: 0;
+}
+
+button.playlist-detail__cover {
   cursor: pointer;
 }
 
@@ -12601,6 +12614,46 @@ button.native-library-genre-row:focus-visible {
 
 .playlist-modal--edit {
   max-width: 24rem;
+}
+
+.playlist-members__add {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.playlist-members__add .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.playlist-members__hint,
+.playlist-members__note {
+  margin: 0;
+  color: var(--aurral-text-muted);
+  font-size: var(--aurral-font-sm);
+}
+
+.playlist-members__list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.playlist-members__row {
+  display: flex;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.playlist-members__name {
+  overflow: hidden;
+  color: var(--aurral-text);
+  font-size: var(--aurral-font-base);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .match-modal {

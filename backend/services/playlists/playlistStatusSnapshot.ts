@@ -11,6 +11,7 @@ import {
 import type { DownloadOwnerStatus } from "../downloadJobs/downloadOwnerClient.ts";
 import { slskdClient } from "../slskdClient.ts";
 import { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } from "./flowPlaylistConfig.ts";
+import { listPlaylistMembers } from "./playlistMembers.ts";
 import { buildPlaylistTrackIdentity } from "./playlistTracks.ts";
 import type { FlowConfig, StaticPlaylist } from "./flowPlaylistConfig.ts";
 import { playlistOperationQueue } from "./playlistOperationQueue.ts";
@@ -270,6 +271,7 @@ export function getPlaylistStatusSnapshot({ user = null }: { user?: RequestUser 
       id: playlist.id,
       name: playlist.name,
       ownerUserId: playlist.ownerUserId ?? null,
+      ...(playlist.memberUserIds && { members: listPlaylistMembers(playlist) }),
       sourceName: playlist.sourceName,
       sourceFlowId: playlist.sourceFlowId,
       importedAt: playlist.importedAt,

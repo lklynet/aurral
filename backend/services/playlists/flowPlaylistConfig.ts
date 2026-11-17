@@ -26,6 +26,7 @@ import type { RequestUser } from "../../middleware/requestUser.ts";
 
 type AccessUser = (Pick<RequestUser, "id"> & Partial<Pick<RequestUser, "role">>) | null | undefined;
 type OwnedEntity = { ownerUserId?: number | null };
+type SharedEntity = OwnedEntity & { memberUserIds?: readonly number[] };
 
 type FlowMixInput = Partial<Record<FlowSource, unknown>>;
 
@@ -95,6 +96,7 @@ interface StoredStaticPlaylist {
   id?: string;
   name?: unknown;
   ownerUserId?: unknown;
+  memberUserIds?: unknown;
   sourceName?: unknown;
   sourceFlowId?: unknown;
   discoverPresetId?: unknown;
@@ -110,6 +112,8 @@ interface StoredStaticPlaylist {
 
 export interface StaticPlaylistUpdates {
   name?: string;
+  ownerUserId?: number | null;
+  memberUserIds?: number[];
   sourceName?: string | null;
   sourceFlowId?: string | null;
   discoverPresetId?: string | null;
@@ -118,6 +122,7 @@ export interface StaticPlaylistUpdates {
   showTrackAvailability?: unknown;
   importSource?: StoredImportSource | null;
   tracks?: PlaylistTrackInput[];
+  actorUserId?: number | null;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -147,6 +152,13 @@ const normalizeOwnerUserId = (value: unknown) => {
   const userId = Number(value);
   return Number.isSafeInteger(userId) && userId > 0 ? userId : null;
 };
+
+const normalizeMemberUserIds = (value: unknown, ownerUserId: number | null) =>
+  Array.isArray(value)
+    ? [...new Set(value.map(normalizeOwnerUserId))].filter(
+        (userId): userId is number => userId != null && userId !== ownerUserId,
+      )
+    : [];
 
 const resolveYearRangeUpdate = (
   current: { yearFrom?: unknown; yearTo?: unknown } | null | undefined,
@@ -299,6 +311,8 @@ const normalizeStaticPlaylist = (playlist: StoredStaticPlaylist | null | undefin
     return { ...track, membershipId };
   });
   const importSource = normalizeImportSource(playlist?.importSource);
+  const ownerUserId = normalizeOwnerUserId(playlist?.ownerUserId);
+  const memberUserIds = normalizeMemberUserIds(playlist?.memberUserIds, ownerUserId);
   const createdAt =
     playlist?.createdAt != null && Number.isFinite(Number(playlist.createdAt))
       ? Number(playlist.createdAt)
@@ -306,7 +320,8 @@ const normalizeStaticPlaylist = (playlist: StoredStaticPlaylist | null | undefin
   return {
     id: playlist?.id || randomUUID(),
     name: name || "Playlist",
-    ownerUserId: normalizeOwnerUserId(playlist?.ownerUserId),
+    ownerUserId,
+    ...(memberUserIds.length > 0 && { memberUserIds }),
     sourceName: String(playlist?.sourceName || "").trim() || null,
     sourceFlowId: String(playlist?.sourceFlowId || "").trim() || null,
     discoverPresetId: String(playlist?.discoverPresetId || "").trim() || null,
@@ -387,6 +402,9 @@ const canUserAccessOwnerScopedEntity = (user: AccessUser, ownerUserId: number | 
   return Number(user.id) === Number(ownerUserId);
 };
 
+const addedBy = (playlist: StaticPlaylist, actorUserId: number | null | undefined) =>
+  actorUserId != null && actorUserId !== playlist.ownerUserId ? actorUserId : null;
+
 const isOwnedByUser = (entity: OwnedEntity | null | undefined, userId: number | null) =>
   Number(entity?.ownerUserId) === Number(userId);
 
@@ -395,10 +413,12 @@ export const flowPlaylistConfig = {
     return canUserAccessOwnerScopedEntity(user, flow?.ownerUserId ?? null);
   },
 
-  canUserAccessStaticPlaylist<T extends OwnedEntity>(
-    user: AccessUser,
-    playlist: T | null | undefined,
-  ) {
+  canUserAccessStaticPlaylist(user: AccessUser, playlist: SharedEntity | null | undefined) {
+    if (canUserAccessOwnerScopedEntity(user, playlist?.ownerUserId ?? null)) return true;
+    return !!user && !!playlist?.memberUserIds?.includes(Number(user.id));
+  },
+
+  canUserManageStaticPlaylist(user: AccessUser, playlist: OwnedEntity | null | undefined) {
     return canUserAccessOwnerScopedEntity(user, playlist?.ownerUserId ?? null);
   },
 
@@ -674,7 +694,7 @@ export const flowPlaylistConfig = {
       importSource,
       description,
       recordHistory,
-      tracks,
+      tracks: tracks.map((track) => ({ ...track, addedByUserId: null })),
       importedAt: Date.now(),
       createdAt: Date.now(),
     });
@@ -683,7 +703,11 @@ export const flowPlaylistConfig = {
     return playlist;
   },
 
-  appendStaticPlaylistTracks(playlistId: string, tracks: PlaylistTrackInput[]) {
+  appendStaticPlaylistTracks(
+    playlistId: string,
+    tracks: PlaylistTrackInput[],
+    actorUserId: number | null = null,
+  ) {
     const playlists = getStoredStaticPlaylists();
     const index = playlists.findIndex((playlist) => playlist.id === playlistId);
     const current = playlists[index];
@@ -691,6 +715,7 @@ export const flowPlaylistConfig = {
     const appendedTracks = filterMissingPlaylistTracks(current.tracks, tracks).map((track) => ({
       ...track,
       membershipId: randomUUID(),
+      addedByUserId: addedBy(current, actorUserId),
     }));
     const next = stampEdit(
       current,
@@ -717,6 +742,8 @@ export const flowPlaylistConfig = {
       normalizeStaticPlaylist({
         ...current,
         name: nextName,
+        ownerUserId: updates?.ownerUserId !== undefined ? updates.ownerUserId : current.ownerUserId,
+        memberUserIds: updates?.memberUserIds ?? current.memberUserIds,
         sourceName: updates?.sourceName ?? current.sourceName,
         description: updates?.description !== undefined ? updates.description : current.description,
         recordHistory:
@@ -737,7 +764,13 @@ export const flowPlaylistConfig = {
                   entry.canonicalJobId === track.canonicalJobId &&
                   tracksShareMembership(entry, track),
               );
-              return { ...track, membershipId: previous?.membershipId || randomUUID() };
+              return {
+                ...track,
+                membershipId: previous?.membershipId || randomUUID(),
+                addedByUserId:
+                  track.addedByUserId ??
+                  (previous ? previous.addedByUserId : addedBy(current, updates?.actorUserId)),
+              };
             })
           : current.tracks,
         importedAt: current.importedAt,

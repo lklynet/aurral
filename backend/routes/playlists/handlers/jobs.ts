@@ -11,6 +11,7 @@ import { activityCauseKey } from "../../../../lib/activity.ts";
 import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.ts";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
 import { orderJobsByPlaylistTracks } from "../../../services/playlists/playlistTracks.ts";
+import { trackAdders } from "../../../services/playlists/playlistMembers.ts";
 import {
   getPlaylistStatusSnapshot,
   getPlaylistsContainingTrack,
@@ -257,11 +258,13 @@ export default new Hono<AppEnv>()
         "playlist-track",
         accessibleJobs.map((job) => job.id),
       );
+      const addedBy = staticPlaylist?.memberUserIds ? trackAdders(staticPlaylist) : null;
       return c.json(
         accessibleJobs.map((job, index) => ({
           ...toPublicJob(job, profile, readOnlyRoots),
           libraryOwned: libraryOwnership[index] === true,
           favoriteId: favoriteIds[index],
+          ...(addedBy && { addedBy: addedBy.get(job.id) ?? null }),
           ...trackArtwork(job, customArtwork, playlistId),
         })),
         200,

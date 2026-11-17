@@ -14,6 +14,7 @@ export interface StaticPlaylist {
   name: string;
   ownerUserId: number | null;
   ownerUsername: string | null;
+  members?: { id: number; username: string }[];
   sourceName: string | null;
   sourceFlowId: string | null;
   trackCount: number;

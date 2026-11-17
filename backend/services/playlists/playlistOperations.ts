@@ -516,7 +516,11 @@ async function createStaticPlaylist({
   };
 }
 
-async function appendStaticPlaylistTracks({ playlistId, tracks = [] }: OperationPayload = {}) {
+async function appendStaticPlaylistTracks({
+  playlistId,
+  tracks = [],
+  actorUserId = null,
+}: OperationPayload = {}) {
   const safePlaylistId = String(playlistId || "").trim();
   const playlist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
   if (!playlist) return { missing: true };
@@ -529,7 +533,11 @@ async function appendStaticPlaylistTracks({ playlistId, tracks = [] }: Operation
   }
   const linked = await linkTracksToLibrary(tracksToAdd, { startedByPlaylist: safePlaylistId });
   const updatedPlaylist = await withPlaylistMutationLock(safePlaylistId, () =>
-    flowPlaylistConfig.appendStaticPlaylistTracks(safePlaylistId, linked.tracks),
+    flowPlaylistConfig.appendStaticPlaylistTracks(
+      safePlaylistId,
+      linked.tracks,
+      Number(actorUserId) || null,
+    ),
   );
   if (!updatedPlaylist) {
     await discardLibraryJobs(linked.createdJobIds);
