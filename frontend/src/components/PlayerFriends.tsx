@@ -81,17 +81,27 @@ function FriendRow({
         </span>
       )}
       <span className="player-queue__copy">
-        <span className="player-queue__name">
-          {title}
-          {local ? <span className="player-friends__local">Local</span> : null}
-        </span>
+        {local ? (
+          <span className="player-friends__name">
+            <span className="player-queue__name">{title}</span>
+            <span className="player-friends__local">Local</span>
+          </span>
+        ) : (
+          <span className="player-queue__name">{title}</span>
+        )}
         {note ? <span className="player-queue__artist">{note}</span> : null}
       </span>
     </span>
   );
 }
 
-function HubPanel({ friends }: { friends: ReturnType<typeof useFriends> }) {
+function HubPanel({
+  friends,
+  onRetry,
+}: {
+  friends: ReturnType<typeof useFriends>;
+  onRetry: () => void;
+}) {
   const data = friends.data;
   if (friends.isError && !data) {
     return (
@@ -99,7 +109,7 @@ function HubPanel({ friends }: { friends: ReturnType<typeof useFriends> }) {
         icon={<AlertCircle />}
         title="Couldn't load friends"
         role="alert"
-        onRetry={() => friends.refetch()}
+        onRetry={onRetry}
         retrying={friends.isFetching}
       />
     );
@@ -184,7 +194,13 @@ export default function PlayerFriends({
   if (!rows.length && !linked) {
     return (
       <div className={className}>
-        <HubPanel friends={friends} />
+        <HubPanel
+          friends={friends}
+          onRetry={() => {
+            void friends.refetch();
+            void people.refetch();
+          }}
+        />
         {localHint}
       </div>
     );

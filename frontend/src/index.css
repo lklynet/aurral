@@ -13321,7 +13321,14 @@ button.playlist-detail__cover {
   text-decoration: none;
 }
 
+.player-friends__name {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+}
+
 .player-friends__local {
+  flex: none;
   margin-inline-start: 0.375rem;
   color: var(--aurral-text-subtle);
   font-size: var(--aurral-font-xs);
