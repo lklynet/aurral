@@ -19,7 +19,7 @@ import { friendPath } from "../../../lib/profilePaths.ts";
 import { resolveAuthenticatedApiAssetUrl } from "../utils/api/core.ts";
 import { readApiError } from "../utils/api/errors.ts";
 
-const SHARING = "Friends see what you're playing and your top plays from the last 30 days.";
+const SHARING = "Friends see what you play and your top plays from the last 30 days.";
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
@@ -117,11 +117,13 @@ function FriendRow({
   note,
   art,
   local = false,
+  time,
 }: {
   title: string;
   note?: string;
   art?: ReactNode;
   local?: boolean;
+  time?: string;
 }) {
   return (
     <span className="player-queue__now">
@@ -131,10 +133,11 @@ function FriendRow({
         </span>
       )}
       <span className="player-queue__copy">
-        {local ? (
+        {local || time ? (
           <span className="player-friends__name">
             <span className="player-queue__name">{title}</span>
-            <span className="player-friends__local">Local</span>
+            {local ? <span className="player-friends__local">Local</span> : null}
+            {time ? <span className="player-friends__time">{time}</span> : null}
           </span>
         ) : (
           <span className="player-queue__name">{title}</span>
@@ -283,24 +286,26 @@ export default function PlayerFriends({
       ) : null}
       {rows.length ? (
         <ul className="player-friends__list">
-          {rows.map((row) => (
-            <li key={row.key}>
-              <Link className="player-friends__friend" to={row.to}>
-                <FriendRow
-                  title={row.name}
-                  local={row.local}
-                  note={
-                    row.nowPlaying
-                      ? `${row.nowPlaying.title} · ${row.nowPlaying.artist}`
-                      : row.local
-                        ? `Played ${formatRelativeTime(new Date(row.lastPlayedAt))}`
+          {rows.map((row) => {
+            const track = row.nowPlaying ?? row.lastPlayed;
+            return (
+              <li key={row.key}>
+                <Link className="player-friends__friend" to={row.to}>
+                  <FriendRow
+                    title={row.name}
+                    local={row.local}
+                    note={track ? `${track.title} · ${track.artist}` : undefined}
+                    time={
+                      !row.nowPlaying && row.lastPlayed
+                        ? formatRelativeTime(new Date(row.lastPlayed.at))
                         : undefined
-                  }
-                  art={<FriendArt src={row.nowPlaying?.artworkUrl} />}
-                />
-              </Link>
-            </li>
-          ))}
+                    }
+                    art={<FriendArt src={track?.artworkUrl} />}
+                  />
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       ) : incoming.length ? null : (
         <StatePanel icon={<Users />} title="No friends yet" message={SHARING}>

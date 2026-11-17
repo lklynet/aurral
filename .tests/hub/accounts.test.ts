@@ -381,14 +381,16 @@ test("linked servers add friends by handle, both asking makes friends, friends s
     top: object,
     at: number,
     blend: string[] = [],
+    playedAt: number | null = null,
   ) =>
     db
       .prepare(
-        "INSERT INTO listening (link_id, now_playing, playing_until, top_plays, top_plays_at, blend_tracks) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO listening (link_id, now_playing, played_at, playing_until, top_plays, top_plays_at, blend_tracks) VALUES (?, ?, ?, ?, ?, ?, ?)",
       )
       .bind(
         link,
         nowPlaying && JSON.stringify(nowPlaying),
+        playedAt,
         until,
         JSON.stringify(top),
         at,
@@ -445,6 +447,7 @@ test("linked servers add friends by handle, both asking makes friends, friends s
     },
     time - 1,
     ["nude", "Lucky"],
+    time - 300_000,
   );
   await share("bob-3", null, 0, top(50), time - 8 * 86_400_000, ["Creep"]);
   assert.deepEqual(await (await blendTracks(tokens.ann)).json(), {
@@ -461,6 +464,7 @@ test("linked servers add friends by handle, both asking makes friends, friends s
       {
         handle: "bob",
         nowPlaying: { title: "Nude", artist: "Radiohead", album: null },
+        lastPlayed: { title: "Old", artist: "Radiohead", album: null, at: time - 300_000 },
         topPlays: {
           artists: [
             { name: "Radiohead", plays: 5 },
@@ -475,7 +479,7 @@ test("linked servers add friends by handle, both asking makes friends, friends s
     outgoing: [],
   });
   assert.deepEqual(await lists(tokens.bob), {
-    friends: [{ handle: "ann", nowPlaying: null, topPlays: null }],
+    friends: [{ handle: "ann", nowPlaying: null, lastPlayed: null, topPlays: null }],
     incoming: [],
     outgoing: [],
   });
@@ -508,12 +512,17 @@ test("a linked server shares now playing and top plays, and they leave with the 
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   const stored = () =>
-    db.prepare("SELECT now_playing, playing_until, top_plays, blend_tracks FROM listening").first<{
-      now_playing: string | null;
-      playing_until: number;
-      top_plays: string | null;
-      blend_tracks: string | null;
-    }>();
+    db
+      .prepare(
+        "SELECT now_playing, played_at, playing_until, top_plays, blend_tracks FROM listening",
+      )
+      .first<{
+        now_playing: string | null;
+        played_at: number;
+        playing_until: number;
+        top_plays: string | null;
+        blend_tracks: string | null;
+      }>();
 
   const before = Date.now();
   const track = { title: " Reckoner ", artist: "Radiohead", album: null, durationMs: 290_000 };
@@ -534,7 +543,8 @@ test("a linked server shares now playing and top plays, and they leave with the 
     artist: "Radiohead",
     album: null,
   });
-  assert.ok(shared && shared.playing_until >= before + 290_000);
+  assert.ok(shared && shared.played_at >= before);
+  assert.equal(shared.playing_until, shared.played_at + 290_000);
   assert.deepEqual(JSON.parse(shared?.top_plays ?? ""), top);
   assert.deepEqual(JSON.parse(shared?.blend_tracks ?? ""), blendTracks);
 

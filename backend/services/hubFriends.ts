@@ -13,7 +13,7 @@ import {
   refusalOf,
   selectLink,
 } from "./hubLink.ts";
-import { friendArtUrl, topPlaysWithArt } from "./friendArt.ts";
+import { topPlaysWithArt, withArt } from "./friendArt.ts";
 import { logger } from "./logger.ts";
 
 const HANDLE = /^[a-z0-9_]{3,20}$/;
@@ -25,11 +25,15 @@ const friendSchema = v.object({
 });
 const ranked = <Entries extends v.ObjectEntries>(entries: Entries) =>
   v.array(v.object({ ...entries, plays: v.number() }));
+const trackSchema = v.object({
+  title: v.string(),
+  artist: v.string(),
+  album: v.nullable(v.string()),
+});
 const listeningSchema = v.object({
   ...friendSchema.entries,
-  nowPlaying: v.nullish(
-    v.object({ title: v.string(), artist: v.string(), album: v.nullable(v.string()) }),
-  ),
+  nowPlaying: v.nullish(trackSchema),
+  lastPlayed: v.nullish(v.object({ ...trackSchema.entries, at: v.number() })),
   topPlays: v.nullish(
     v.object({
       artists: ranked({ name: v.string() }),
@@ -162,11 +166,10 @@ export async function friendLists(userId: number) {
   return {
     state: "linked" as const,
     sharing: link.share_listening === 1,
-    friends: friends.map(({ handle, nowPlaying, topPlays }) => ({
+    friends: friends.map(({ handle, nowPlaying, lastPlayed, topPlays }) => ({
       handle,
-      nowPlaying: nowPlaying
-        ? { ...nowPlaying, artworkUrl: friendArtUrl(nowPlaying.artist, nowPlaying.album) }
-        : null,
+      nowPlaying: nowPlaying ? withArt(nowPlaying) : null,
+      lastPlayed: lastPlayed ? withArt(lastPlayed) : null,
       topPlays: topPlays ? topPlaysWithArt(topPlays) : null,
     })),
     incoming: incoming.map(({ handle }) => ({ handle })),

@@ -48,13 +48,15 @@ export const setNowPlaying = (
 ) =>
   db
     .prepare(
-      `INSERT INTO listening (link_id, now_playing, playing_until) VALUES (?, ?, ?)
+      `INSERT INTO listening (link_id, now_playing, played_at, playing_until) VALUES (?, ?, ?, ?)
        ON CONFLICT (link_id) DO UPDATE SET
-         now_playing = excluded.now_playing, playing_until = excluded.playing_until`,
+         now_playing = excluded.now_playing, played_at = excluded.played_at,
+         playing_until = excluded.playing_until`,
     )
     .bind(
       linkId,
       JSON.stringify({ title, artist, album: album ?? null }),
+      now,
       now + Math.min(durationMs ?? DEFAULT_TRACK_MS, MAX_TRACK_MS),
     )
     .run();
@@ -79,13 +81,16 @@ export const clearListening = (db: D1Database, linkId: string) =>
   db.prepare("DELETE FROM listening WHERE link_id = ?").bind(linkId).run();
 
 type TopPlays = v.InferOutput<typeof topPlaysSchema>;
+type Track = v.InferOutput<typeof storedNowPlaying>;
 type Listening = {
-  nowPlaying: { title: string; artist: string; album: string | null } | null;
+  nowPlaying: Track | null;
+  lastPlayed: (Track & { at: number }) | null;
   topPlays: TopPlays | null;
 };
-export type ListeningRow = {
+type ListeningRow = {
   handle: string;
   now_playing: string | null;
+  played_at: number | null;
   playing_until: number | null;
   top_plays: string | null;
   top_plays_at: number | null;
@@ -145,27 +150,35 @@ export function mergeTopPlays(snapshots: TopPlays[]): TopPlays | null {
 export async function friendsListening(db: D1Database, accountId: string, now = Date.now()) {
   const { results } = await db
     .prepare(
-      `SELECT handles.handle, listening.now_playing, listening.playing_until,
+      `SELECT handles.handle, listening.now_playing, listening.played_at, listening.playing_until,
          listening.top_plays, listening.top_plays_at
        FROM friends AS asked
        JOIN friends AS back ON back.account_id = asked.friend_id AND back.friend_id = asked.account_id
        JOIN handles ON handles.account_id = asked.friend_id
        JOIN links ON links.account_id = asked.friend_id
        JOIN listening ON listening.link_id = links.id
-       WHERE asked.account_id = ?1 AND (listening.playing_until > ?2 OR listening.top_plays_at > ?3)`,
+       WHERE asked.account_id = ?1`,
     )
-    .bind(accountId, now, now - TOP_PLAYS_FRESH_MS)
+    .bind(accountId)
     .all<ListeningRow>();
   const byHandle = new Map<
     string,
-    { until: number; nowPlaying: Listening["nowPlaying"]; snapshots: TopPlays[] }
+    Omit<Listening, "topPlays"> & { until: number; snapshots: TopPlays[] }
   >();
   for (const row of results) {
-    const entry = byHandle.get(row.handle) ?? { until: 0, nowPlaying: null, snapshots: [] };
+    const entry = byHandle.get(row.handle) ?? {
+      until: 0,
+      nowPlaying: null,
+      lastPlayed: null,
+      snapshots: [],
+    };
     const until = row.playing_until ?? 0;
-    if (until > now && until > entry.until) {
-      const playing = stored(storedNowPlaying, row.now_playing);
-      if (playing) Object.assign(entry, { until, nowPlaying: playing });
+    const playing = stored(storedNowPlaying, row.now_playing);
+    if (playing && until > now && until > entry.until) {
+      Object.assign(entry, { until, nowPlaying: playing });
+    }
+    if (playing && row.played_at && row.played_at > (entry.lastPlayed?.at ?? 0)) {
+      entry.lastPlayed = { ...playing, at: row.played_at };
     }
     const top =
       (row.top_plays_at ?? 0) > now - TOP_PLAYS_FRESH_MS && stored(topPlaysSchema, row.top_plays);
@@ -173,9 +186,9 @@ export async function friendsListening(db: D1Database, accountId: string, now = 
     byHandle.set(row.handle, entry);
   }
   return new Map(
-    [...byHandle].map(([handle, { nowPlaying, snapshots }]): [string, Listening] => [
+    [...byHandle].map(([handle, { nowPlaying, lastPlayed, snapshots }]): [string, Listening] => [
       handle,
-      { nowPlaying, topPlays: mergeTopPlays(snapshots) },
+      { nowPlaying, lastPlayed, topPlays: mergeTopPlays(snapshots) },
     ]),
   );
 }

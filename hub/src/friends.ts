@@ -65,6 +65,7 @@ export async function friendLists(db: D1Database, accountId: string) {
       .map((row) => ({
         ...row,
         nowPlaying: listening.get(row.handle)?.nowPlaying ?? null,
+        lastPlayed: listening.get(row.handle)?.lastPlayed ?? null,
         topPlays: listening.get(row.handle)?.topPlays ?? null,
       })),
     incoming: results.filter((row) => row.sentAt === null),

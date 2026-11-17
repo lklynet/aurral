@@ -3,21 +3,34 @@ import type { peopleClient } from "../utils/api/clients/people.ts";
 import { friendPath, personPath } from "../../../lib/profilePaths.ts";
 
 type LocalPerson = InferResponseType<typeof peopleClient.$get>["people"][number];
-type HubFriend = { handle: string; nowPlaying?: LocalPerson["nowPlaying"] };
+type LastPlayed = LocalPerson["lastPlayed"];
+type HubFriend = {
+  handle: string;
+  nowPlaying?: LocalPerson["nowPlaying"];
+  lastPlayed?: LastPlayed | null;
+};
+
+const latest = (...plays: (LastPlayed | null | undefined)[]) =>
+  plays.reduce<LastPlayed | null>(
+    (found, play) => (play && (!found || play.at > found.at) ? play : found),
+    null,
+  );
 
 export function mergeFriendRows(local: LocalPerson[], hub: HubFriend[]) {
-  const hubPlaying = new Map(hub.map((friend) => [friend.handle, friend.nowPlaying ?? null]));
+  const byHandle = new Map(hub.map((friend) => [friend.handle, friend]));
   const localHandles = new Set(local.flatMap((person) => (person.handle ? [person.handle] : [])));
   return [
-    ...local.map((person) => ({
-      key: `local:${person.id}`,
-      name: person.username,
-      local: true,
-      to: personPath(person.username),
-      nowPlaying:
-        person.nowPlaying ?? (person.handle ? (hubPlaying.get(person.handle) ?? null) : null),
-      lastPlayedAt: person.lastPlayedAt,
-    })),
+    ...local.map((person) => {
+      const friend = person.handle ? byHandle.get(person.handle) : undefined;
+      return {
+        key: `local:${person.id}`,
+        name: person.username,
+        local: true,
+        to: personPath(person.username),
+        nowPlaying: person.nowPlaying ?? friend?.nowPlaying ?? null,
+        lastPlayed: latest(person.lastPlayed, friend?.lastPlayed),
+      };
+    }),
     ...hub
       .filter((friend) => !localHandles.has(friend.handle))
       .map((friend) => ({
@@ -26,11 +39,11 @@ export function mergeFriendRows(local: LocalPerson[], hub: HubFriend[]) {
         local: false,
         to: friendPath(friend.handle),
         nowPlaying: friend.nowPlaying ?? null,
-        lastPlayedAt: 0,
+        lastPlayed: friend.lastPlayed ?? null,
       })),
   ].sort(
     (left, right) =>
       Number(!!right.nowPlaying) - Number(!!left.nowPlaying) ||
-      right.lastPlayedAt - left.lastPlayedAt,
+      (right.lastPlayed?.at ?? 0) - (left.lastPlayed?.at ?? 0),
   );
 }

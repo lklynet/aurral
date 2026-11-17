@@ -293,23 +293,29 @@ test("linked users add each other as friends, and a failing aurral.org changes n
     outgoing: [],
   });
   assert.deepEqual(await friends.addFriend(mia.id, "lee_k"), { status: "friends" });
+  const sharedAt = Date.now();
   await playEvents.sendNowPlaying(lee.id, {
     title: "Nude",
     artist: "Radiohead",
     album: "In Rainbows",
   });
-  assert.deepEqual(await friends.friendLists(mia.id), {
+  const miasFriends = await friends.friendLists(mia.id);
+  const at = miasFriends.state === "linked" ? (miasFriends.friends[0]?.lastPlayed?.at ?? 0) : 0;
+  assert.ok(at >= sharedAt && at <= Date.now());
+  const nude = {
+    title: "Nude",
+    artist: "Radiohead",
+    album: "In Rainbows",
+    artworkUrl: "/api/hub-link/friends/art?artist=Radiohead&album=In+Rainbows",
+  };
+  assert.deepEqual(miasFriends, {
     state: "linked",
     sharing: true,
     friends: [
       {
         handle: "lee_k",
-        nowPlaying: {
-          title: "Nude",
-          artist: "Radiohead",
-          album: "In Rainbows",
-          artworkUrl: "/api/hub-link/friends/art?artist=Radiohead&album=In+Rainbows",
-        },
+        nowPlaying: nude,
+        lastPlayed: { ...nude, at },
         topPlays: null,
       },
     ],

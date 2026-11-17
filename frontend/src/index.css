@@ -13437,6 +13437,10 @@ button.playlist-detail__cover {
   text-decoration: none;
 }
 
+.player-friends__friend .player-queue__copy {
+  flex: 1;
+}
+
 .player-friends__name {
   display: flex;
   min-width: 0;
@@ -13449,6 +13453,14 @@ button.playlist-detail__cover {
   color: var(--aurral-text-subtle);
   font-size: var(--aurral-font-xs);
   font-weight: 400;
+}
+
+.player-friends__time {
+  flex: none;
+  margin-inline-start: auto;
+  padding-inline-start: 0.5rem;
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-xs);
 }
 
 .player-friends__hint {
