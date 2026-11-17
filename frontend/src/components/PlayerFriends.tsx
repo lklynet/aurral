@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { AlertCircle, Plus, Users } from "./icons";
 import ArtworkImage from "./ArtworkImage";
+import RelativeTime from "./RelativeTime";
 import StatePanel from "./StatePanel";
 import TooltipButton from "./TooltipButton";
 import { ModalShell } from "./PlaylistModals";
@@ -13,7 +14,6 @@ import { SettingsLink } from "../navigation/settingsRoute";
 import { queryKeys } from "../queryClient";
 import { hubLinkClient } from "../utils/api/clients/hubLink.ts";
 import { peopleClient } from "../utils/api/clients/people.ts";
-import { formatRelativeTime } from "../utils/dateTime.ts";
 import { mergeFriendRows } from "./friendRows.ts";
 import { friendPath } from "../../../lib/profilePaths.ts";
 import { resolveAuthenticatedApiAssetUrl } from "../utils/api/core.ts";
@@ -123,7 +123,7 @@ function FriendRow({
   note?: string;
   art?: ReactNode;
   local?: boolean;
-  time?: string;
+  time?: ReactNode;
 }) {
   return (
     <span className="player-queue__now">
@@ -296,9 +296,9 @@ export default function PlayerFriends({
                     local={row.local}
                     note={track ? `${track.title} · ${track.artist}` : undefined}
                     time={
-                      !row.nowPlaying && row.lastPlayed
-                        ? formatRelativeTime(new Date(row.lastPlayed.at))
-                        : undefined
+                      !row.nowPlaying && row.lastPlayed ? (
+                        <RelativeTime value={row.lastPlayed.at} />
+                      ) : undefined
                     }
                     art={<FriendArt src={track?.artworkUrl} />}
                   />
