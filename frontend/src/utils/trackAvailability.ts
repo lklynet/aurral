@@ -31,6 +31,12 @@ export function countAvailableTracks(tracks: PlaylistTrack[]) {
   return tracks.filter((track) => track.status === "done" && track.streamUrl).length;
 }
 
+export function countMissingTracks(tracks: PlaylistTrack[]) {
+  return tracks.filter(
+    (track) => track.status !== "saved" && getTrackAvailability(track).status === "failed",
+  ).length;
+}
+
 export function getTrackAvailability(track: PlaylistTrack) {
   if (track.isPreview && !track.streamUrl) return { status: "failed", label: "No preview" };
   if (track.status === "done" && track.streamUrl) return { status: "done", label: "Available" };

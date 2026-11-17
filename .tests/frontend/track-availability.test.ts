@@ -2,6 +2,7 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
   countAvailableTracks,
+  countMissingTracks,
   getTrackAvailability,
   getTrackSearchAction,
 } from "../../frontend/src/utils/trackAvailability.ts";
@@ -15,12 +16,23 @@ test("availability counts playable completed tracks, including tracks reused fro
     { id: "track", status: "pending" },
     { id: "track", status: "failed" },
     { id: "track", status: "blocked" },
+    { id: "track", status: "saved" },
   ];
   assert.equal(countAvailableTracks(tracks), 2);
+  assert.equal(countMissingTracks(tracks), 2);
   assert.equal(countAvailableTracks([]), 0);
   assert.deepEqual(
     tracks.map((track) => getTrackAvailability(track).label),
-    ["Available", "Available", "Missing", "Downloading", "Queued", "Missing", "Needs review"],
+    [
+      "Available",
+      "Available",
+      "Missing",
+      "Downloading",
+      "Queued",
+      "Missing",
+      "Needs review",
+      "Not downloaded",
+    ],
   );
   tracks[3] = { id: "track", status: "done", streamUrl: "/stream/3" };
   assert.equal(countAvailableTracks(tracks), 3);

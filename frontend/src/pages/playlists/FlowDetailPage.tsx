@@ -38,6 +38,8 @@ import { getFlowDisplayTrackCount } from "../../utils/playlistStats";
 import { formatAlbumDuration } from "../ArtistDetails/utils";
 import { describeFlowRecipe, formatFlowFreshness, formatFlowSchedule } from "./flowPageUtils";
 import { PlaylistTracks } from "./PlaylistTracks.tsx";
+import { joinMeta, PlaylistTrackCount } from "./components/PlaylistTrackCount.tsx";
+import { countMissingTracks } from "../../utils/trackAvailability.ts";
 import { usePlaylistTrackPlayback } from "./components/playlistTrackComponents.tsx";
 import { formatTrackTotal, getFlowActivity, usePlaylistTracks } from "./playlistPageUtils";
 import { usePlaylistStatus } from "./usePlaylistStatus";
@@ -154,9 +156,15 @@ function FlowDetail({ flow }: { flow: Flow }) {
     ? [
         owner,
         formatFlowFreshness(flow.lastRunAt, countdownNow),
-        tracks.length > 0
-          ? [formatTrackTotal(trackCount), duration].filter(Boolean).join(", ")
-          : null,
+        tracks.length > 0 ? (
+          <>
+            <PlaylistTrackCount
+              available={trackCount - countMissingTracks(tracks)}
+              total={trackCount}
+            />
+            {duration ? `, ${duration}` : null}
+          </>
+        ) : null,
         formatFlowSchedule(flow.scheduleDays, flow.scheduleTime),
       ]
     : [owner];
@@ -280,7 +288,7 @@ function FlowDetail({ flow }: { flow: Flow }) {
         }
         title={flow.name}
         subtitle={describeFlowRecipe(flow)}
-        meta={facts.filter(Boolean).join(" · ")}
+        meta={joinMeta(facts)}
         status={
           !enabled ? (
             <p className="native-library-detail__meta playlist-detail__activity">
