@@ -134,10 +134,10 @@ async function compare(baseCheckout: string) {
       head.push(runIn(repoRoot, path.join(scratch, `head-${round}.json`)));
     }
     if (options.json) writeFileSync(options.json, JSON.stringify({ base, head }));
-    const { markdown, slower } = renderComparison({ base, head });
+    const { markdown, grew } = renderComparison({ base, head });
     console.log(markdown);
     if (summary) appendFileSync(summary, markdown);
-    if (slower && !options["report-only"]) process.exitCode = 1;
+    if (grew && !options["report-only"]) process.exitCode = 1;
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }

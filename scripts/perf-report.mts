@@ -83,19 +83,21 @@ export function renderComparison({ base, head }: Comparison) {
     const { baseValue, headValue, verdict } = judge(kind, baseRounds, headRounds);
     const percent = Math.round(((headValue - baseValue) / baseValue) * 100) || 0;
     const delta = `${percent > 0 ? "+" : ""}${percent}%`;
-    const change = verdict === "same" ? delta : `**${verdict}** (${delta})`;
+    const change = verdict ? `**${verdict}** (${delta})` : delta;
     const queries = queryChange(base[0]?.metrics[name]?.queries, firstHead.metrics[name]?.queries);
     return {
       verdict,
       line: `| ${name} | ${format(kind, baseValue)} | ${format(kind, headValue)} | ${change} | ${queries} |`,
     };
   });
-  const slower = rows.filter((row) => typeof row !== "string" && row.verdict === "slower").length;
-  const headline = slower
-    ? `${slower} ${slower === 1 ? "measurement is" : "measurements are"} slower than main.`
-    : "Nothing is slower than main.";
+  const grew = rows.filter((row) => typeof row !== "string" && row.verdict === "bigger").length;
+  const headline = grew
+    ? `${grew} ${grew === 1 ? "measurement grew" : "measurements grew"} past budget.`
+    : "Nothing grew past its budget.";
   const details = [
     `${firstHead.seed.tracks.toLocaleString("en-US")} tracks, ${head.length} alternating rounds per side, lower quartiles.`,
+    "",
+    "Only bundle size and startup memory can fail this check. Times swing up to 35% between identical runs on a shared runner, so they are here to read, not to judge. Query counts, response sizes, table scans, and outbound calls are gated exactly by `pnpm test`.",
     "",
     "| | main | this PR | change | queries |",
     "| --- | ---: | ---: | --- | ---: |",
@@ -103,16 +105,16 @@ export function renderComparison({ base, head }: Comparison) {
     "",
   ].join("\n");
   const markdown = `## Performance\n\n${headline}\n\n${details}`;
-  return { markdown, headline, details, slower };
+  return { markdown, headline, details, grew };
 }
 
 if (import.meta.main) {
   const [file] = process.argv.slice(2);
   if (!file) throw new Error("Usage: node scripts/perf-report.mts <comparison.json>");
-  const { headline, details, slower } = renderComparison(
+  const { headline, details, grew } = renderComparison(
     parseComparison(JSON.parse(readFileSync(file, "utf8"))),
   );
   process.stdout.write(
-    `<details${slower ? " open" : ""}>\n<summary>Performance: ${headline}</summary>\n\n${details}\n</details>\n`,
+    `<details${grew ? " open" : ""}>\n<summary>Performance: ${headline}</summary>\n\n${details}\n</details>\n`,
   );
 }
