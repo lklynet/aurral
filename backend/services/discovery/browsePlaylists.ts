@@ -14,7 +14,7 @@ import {
   getEditorialShelf,
 } from "./editorialPlaylists.ts";
 import { getAurralPlaylist, importAurralPlaylist, withOwnedTracks } from "./aurralPlaylists.ts";
-import { getUserMix, getUserMixes, type Mix } from "./mixes.ts";
+import { getUserMix, getUserMixes, visiblePeople, type Mix } from "./mixes.ts";
 import { browseCoverTemplate, browseCoverUrl, type BrowseCover } from "./browseCovers.ts";
 import {
   BLEND_MIX_PREFIX,
@@ -179,9 +179,13 @@ const communityCard = (playlist: Awaited<ReturnType<typeof communityShelf>>[numb
 export const getCommunityPlaylists = async () => (await communityShelf()).map(communityCard);
 
 export async function getCommunityProfile(user: RequestUser, handle: string) {
+  const here = visiblePeople(user.id).find((person) => person.handle === handle);
   const [profile, blend] = await Promise.all([
     communityProfile(handle),
-    getUserMix(user.id, `${FRIEND_BLEND_MIX_PREFIX}${handle}`),
+    getUserMix(
+      user.id,
+      here ? `${BLEND_MIX_PREFIX}${here.id}` : `${FRIEND_BLEND_MIX_PREFIX}${handle}`,
+    ),
   ]);
   return (
     profile && {

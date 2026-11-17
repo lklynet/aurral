@@ -307,6 +307,18 @@ test("a friend Blend mixes your plays with a friend's ranked tracks found in you
     ["Elsewhere", "Not in this Library"],
   ]);
   addDiscoveryFeedback(userId, { action: "block_artist", artistName: "Blocked" });
+  const mia = db
+    .prepare<[], { id: number }>(
+      "INSERT INTO users (username, password_hash) VALUES ('mia', 'x') RETURNING id",
+    )
+    .get()!.id;
+  db.prepare(
+    "INSERT INTO hub_links (user_id, origin, token, handle, linked_at) VALUES (?, 'https://aurral.org', 'm', 'mia_k', 1)",
+  ).run(mia);
+  const mias = [...shared, ...tracksOf("Mia", 3)];
+  for (const [artist, title] of mias)
+    insertPlay.run(mia, `lastfm:${title}`, title, artist, NOW - DAY);
+  friendTracks("mia_k", mias);
 
   const blend = await getUserMix(userId, "friend-blend-nova_k", NOW);
   assert.equal(blend?.name, "Blend with @nova_k");
@@ -322,7 +334,7 @@ test("a friend Blend mixes your plays with a friend's ranked tracks found in you
     (await getUserMixes(userId, NOW))
       .filter((mix) => mix.id.includes("blend"))
       .map((mix) => mix.id),
-    ["friend-blend-nova_k"],
+    [`blend-${mia}`, "friend-blend-nova_k"],
   );
 
   db.prepare("UPDATE hub_links SET share_listening = 0").run();

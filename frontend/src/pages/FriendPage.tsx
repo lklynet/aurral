@@ -12,7 +12,7 @@ import { peopleClient } from "../utils/api/clients/people.ts";
 import { readApiError } from "../utils/api/errors.ts";
 import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
 import { resolveAlbumPath, resolveArtistPath } from "../navigation/resolveLinks.ts";
-import { FRIEND_BLEND_MIX_PREFIX } from "../../../lib/browsePlaylists.ts";
+import { BLEND_MIX_PREFIX, FRIEND_BLEND_MIX_PREFIX } from "../../../lib/browsePlaylists.ts";
 
 const plays = (count: number) => `${count} ${count === 1 ? "play" : "plays"}`;
 const searchPath = (query: string) => `/search?${new URLSearchParams({ q: query })}`;
@@ -174,7 +174,9 @@ export default function FriendPage() {
     friend &&
     friends.data?.state === "linked" &&
     friends.data.sharing &&
-    !playlists.some((playlist) => playlist.id.startsWith(FRIEND_BLEND_MIX_PREFIX)) ? (
+    !playlists.some((playlist) =>
+      [BLEND_MIX_PREFIX, FRIEND_BLEND_MIX_PREFIX].some((prefix) => playlist.id.startsWith(prefix)),
+    ) ? (
       <p className="friend-page__empty">
         Your Blend with {name} fills in once you both play a few more tracks.
       </p>
