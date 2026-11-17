@@ -19,6 +19,7 @@ import { reorderStaticPlaylistTracks } from "../../../services/playlists/playlis
 import { syncStaticPlaylistImport } from "../../../services/importLists/importListSync.ts";
 import {
   addStaticPlaylistMember,
+  peopleToAdd,
   removeStaticPlaylistMember,
 } from "../../../services/playlists/playlistMembers.ts";
 import {
@@ -568,6 +569,16 @@ const staticPlaylistRoutes = new Hono<AppEnv>()
   });
 
 const memberRoutes = new Hono<AppEnv>()
+  .get("/:playlistId/people", requirePlaylistAccess, (c) => {
+    const { playlist, canManage } = getManagedStaticPlaylist(c.var.user, c.req.param("playlistId"));
+    if (!playlist) return c.json({ error: "Playlist not found" }, 404);
+    if (!canManage) return ownerOnly(c);
+    try {
+      return c.json({ people: peopleToAdd(playlist) }, 200);
+    } catch (error) {
+      return memberEditFailed(c, error);
+    }
+  })
   .post("/:playlistId/members", requirePlaylistAccess, validate("json", memberInput), async (c) => {
     const { playlist, canManage } = getManagedStaticPlaylist(c.var.user, c.req.param("playlistId"));
     if (!playlist) return c.json({ error: "Playlist not found" }, 404);

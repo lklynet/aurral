@@ -130,9 +130,20 @@ test("members edit tracks and only the owner or an admin changes the playlist", 
   );
 });
 
-test("adding a collaborator explains each refusal", async () => {
+test("the owner sees who can be added and each refusal is explained", async () => {
   createUser("nova-off", "user", false);
+  db.prepare(
+    "INSERT INTO hub_links (user_id, origin, token, handle, linked_at) VALUES (?, 'https://hub.test', 't', 'kat', 1)",
+  ).run(kit.id);
   const playlist = sharedPlaylist({ name: "Road trip" });
+  const people = `/playlists/static-playlists/${playlist.id}/people`;
+  assert.deepEqual((await request(lee, people)).body, {
+    people: [
+      { id: kit.id, username: "kit", handle: "kat" },
+      { id: root.id, username: "root", handle: null },
+    ],
+  });
+  assert.equal((await request(mia, people)).status, 403);
   const syncing = flowPlaylistConfig.createStaticPlaylist({
     name: "Synced",
     ownerUserId: lee.id,
@@ -150,6 +161,11 @@ test("adding a collaborator explains each refusal", async () => {
     [playlist.id, "nova-off", 409, "nova-off can't use playlists on this server."],
     [syncing.id, "kit", 409, "This playlist syncs from Spotify, so it can't have collaborators."],
   ] as const;
+  const syncingPeople = await request(lee, `/playlists/static-playlists/${syncing.id}/people`);
+  assert.deepEqual(
+    [syncingPeople.status, syncingPeople.body],
+    [409, { error: "This playlist syncs from Spotify, so it can't have collaborators." }],
+  );
   for (const [id, username, status, error] of cases) {
     const response = await request(lee, `/playlists/static-playlists/${id}/members`, "POST", {
       username,
@@ -161,8 +177,8 @@ test("adding a collaborator explains each refusal", async () => {
   });
   assert.deepEqual(added.body, {
     members: [
-      { id: mia.id, username: "mia" },
-      { id: kit.id, username: "kit" },
+      { id: mia.id, username: "mia", handle: null },
+      { id: kit.id, username: "kit", handle: "kat" },
     ],
   });
 });
@@ -199,13 +215,13 @@ test("a member who leaves loses the playlist at once and can't remove others", a
   const members = `/playlists/static-playlists/${playlist.id}/members`;
   const snapshot = getPlaylistStatusSnapshot({ user: mia });
   assert.deepEqual(requireFixture(snapshot.staticPlaylists[0]).members, [
-    { id: mia.id, username: "mia" },
-    { id: kit.id, username: "kit" },
+    { id: mia.id, username: "mia", handle: null },
+    { id: kit.id, username: "kit", handle: null },
   ]);
 
   assert.equal((await request(mia, `${members}/${kit.id}`, "DELETE")).status, 403);
   const left = await request(mia, `${members}/${mia.id}`, "DELETE");
-  assert.deepEqual(left.body, { members: [{ id: kit.id, username: "kit" }] });
+  assert.deepEqual(left.body, { members: [{ id: kit.id, username: "kit", handle: null }] });
   assert.equal((await request(mia, `/playlists/jobs/${playlist.id}`)).status, 404);
   assert.equal(getPlaylistStatusSnapshot({ user: mia }).staticPlaylists.length, 0);
   assert.equal(subsonic.getSubsonicPlaylist(`shared:${playlist.id}`, mia), null);

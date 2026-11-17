@@ -8,7 +8,7 @@ const [
   ,
   { db },
   store,
-  { getUserMixes, clearUserMixes },
+  { getUserMixes, getUserMix, clearUserMixes },
   browse,
   covers,
   operations,
@@ -188,17 +188,20 @@ test("Daily Mixes group the most played artists by shared genre", async () => {
   assert.notEqual(await getUserMixes(userId, later + 31 * 60_000), built);
 });
 
-test("a Blend mixes what two people play, only while both turn it on", async () => {
+test("Blends mix two people's plays with their 3 closest listeners until either turns it off", async () => {
   const { setBlendSetting, getBlendSetting } =
     await import("../../backend/services/discovery/mixes.ts");
   const { addDiscoveryFeedback } = await import("../../backend/services/discovery/feedback.ts");
+  vi.spyOn(Date, "now").mockReturnValue(NOW);
   const person = (username: string) =>
     db
       .prepare<[string], { id: number }>(
         "INSERT INTO users (username, password_hash) VALUES (?, 'x') RETURNING id",
       )
       .get(username)!.id;
-  const [lee, mia, kit] = ["lee", "mia", "kit"].map(person) as [number, number, number];
+  const [lee, mia, kit, nova, sam, zed] = ["lee", "mia", "kit", "nova", "sam", "zed"].map(
+    person,
+  ) as [number, number, number, number, number, number];
   const plays = (listeners: number[], names: string[]) => {
     for (const name of names) {
       for (const track of addArtist(name, 3).tracks) {
@@ -208,23 +211,32 @@ test("a Blend mixes what two people play, only while both turn it on", async () 
       }
     }
   };
-  plays([lee, mia], ["Shared A", "Shared B"]);
+  plays([lee, mia, nova, sam], ["Shared A"]);
+  plays([lee, mia], ["Shared B"]);
   plays([lee], ["Lee A", "Lee B", "Lee C"]);
   plays([mia], ["Mia A", "Mia B", "Mia C", "Blocked"]);
-  plays([kit], ["Kit"]);
+  plays([nova], ["Nova"]);
+  plays([sam], ["Sam"]);
+  plays([kit], ["Kit", "Kit B"]);
+  insertPlay.run(zed, "lastfm:Kit 0", "Kit 0", "Kit", NOW - DAY);
   for (let index = 0; index < 250; index += 1) {
     for (let time = 0; time < 3; time += 1) {
       insertPlay.run(mia, `lastfm:ghost-${index}`, `Ghost ${index}`, "Ghost", NOW - DAY - time);
     }
   }
   addDiscoveryFeedback(lee, { action: "block_artist", artistName: "Blocked" });
-  for (const id of [lee, mia, kit]) await setBlendSetting(id, true);
 
   const blendOf = async (viewer: number, partner: number) =>
     (await getUserMixes(viewer, NOW)).find((mix) => mix.id === `blend-${partner}`);
+  const blendNames = async (viewer: number) =>
+    (await getUserMixes(viewer, NOW))
+      .filter((mix) => mix.id.startsWith("blend-"))
+      .map((mix) => mix.name);
+  assert.deepEqual(await blendNames(lee), ["Blend with mia", "Blend with nova", "Blend with sam"]);
+  assert.equal((await getUserMix(lee, `blend-${kit}`, NOW))?.name, "Blend with kit");
+  assert.deepEqual(await getBlendSetting(kit), { enabled: true, waiting: ["zed"] });
   const forLee = await blendOf(lee, mia);
   const forMia = await blendOf(mia, lee);
-  assert.equal(forLee?.name, "Blend with mia");
   assert.deepEqual(forMia?.trackIds, forLee?.trackIds);
   const reasons = (blend: typeof forLee) =>
     new Set(
@@ -240,7 +252,6 @@ test("a Blend mixes what two people play, only while both turn it on", async () 
     "Mia: From you",
     "Shared: You both play this",
   ]);
-  assert.deepEqual(await getBlendSetting(lee), { enabled: true, waiting: ["kit"] });
   const saved = await requireImportList("aurral-mix").fetch({
     userId: lee,
     externalId: `blend-${mia}`,
@@ -250,10 +261,10 @@ test("a Blend mixes what two people play, only while both turn it on", async () 
   assert.ok((await blendOf(lee, mia))?.trackIds.every((id) => artistOf(id) !== "Lee A"));
 
   await setBlendSetting(mia, false);
-  assert.equal(await blendOf(lee, mia), undefined);
+  assert.equal(await getUserMix(lee, `blend-${mia}`, NOW), null);
   await setBlendSetting(mia, true);
   await setBlendSetting(lee, false);
-  assert.equal(await blendOf(mia, lee), undefined);
+  assert.equal(await getUserMix(mia, `blend-${lee}`, NOW), null);
   await setBlendSetting(lee, true);
   db.prepare("UPDATE users SET status = 'disabled' WHERE id = ?").run(mia);
   assert.equal(await blendOf(lee, mia), undefined);

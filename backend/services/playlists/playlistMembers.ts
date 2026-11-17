@@ -1,5 +1,7 @@
 import { IMPORT_PROVIDER_LABELS, isNativeImportProvider } from "../../../lib/importProviders.ts";
+import { db } from "../../config/db-sqlite.ts";
 import { userOps } from "../../db/helpers/index.ts";
+import type { UserRecord } from "../../db/helpers/users.ts";
 import { hasPermission } from "../auth.ts";
 import { withPlaylistMutationLock } from "../downloadJobs/downloadLocks.ts";
 import {
@@ -11,17 +13,50 @@ import {
 const memberError = (message: string, statusCode: number) =>
   Object.assign(new Error(message), { statusCode });
 
-const syncingFrom = (playlist: Pick<StaticPlaylist, "importSource">) => {
+const refuseSyncing = (playlist: Pick<StaticPlaylist, "importSource">) => {
   const provider = playlist.importSource?.syncEnabled ? playlist.importSource.provider : null;
-  if (!provider) return null;
-  return isNativeImportProvider(provider) ? IMPORT_PROVIDER_LABELS[provider] : "another service";
+  if (!provider) return;
+  const source = isNativeImportProvider(provider)
+    ? IMPORT_PROVIDER_LABELS[provider]
+    : "another service";
+  throw memberError(`This playlist syncs from ${source}, so it can't have collaborators.`, 409);
 };
+
+const handleStmt = db.prepare<[number], { handle: string | null }>(
+  "SELECT handle FROM hub_links WHERE user_id = ? AND linked_at IS NOT NULL AND broken = 0",
+);
+
+const peopleStmt = db.prepare<[], { id: number; handle: string | null }>(`
+  SELECT users.id, link.handle
+  FROM users
+  LEFT JOIN hub_links AS link
+    ON link.user_id = users.id AND link.linked_at IS NOT NULL AND link.broken = 0
+  WHERE users.status = 'active'
+  ORDER BY users.username COLLATE NOCASE
+`);
 
 export const listPlaylistMembers = (playlist: Pick<StaticPlaylist, "memberUserIds">) =>
   (playlist.memberUserIds ?? []).flatMap((id) => {
     const username = userOps.getUserById(id)?.username;
-    return username ? [{ id, username }] : [];
+    return username ? [{ id, username, handle: handleStmt.get(id)?.handle ?? null }] : [];
   });
+
+const cantJoin = (playlist: StaticPlaylist, user: UserRecord) =>
+  user.id === playlist.ownerUserId
+    ? `${user.username} owns this playlist.`
+    : playlist.memberUserIds?.includes(user.id)
+      ? `${user.username} is already on this playlist.`
+      : user.status !== "active" || !hasPermission(user, "accessPlaylists")
+        ? `${user.username} can't use playlists on this server.`
+        : null;
+
+export function peopleToAdd(playlist: StaticPlaylist) {
+  refuseSyncing(playlist);
+  return peopleStmt.all().flatMap(({ id, handle }) => {
+    const user = userOps.getUserById(id);
+    return user && !cantJoin(playlist, user) ? [{ id, username: user.username, handle }] : [];
+  });
+}
 
 const editFreshPlaylist = (
   playlistId: string,
@@ -37,22 +72,12 @@ const editFreshPlaylist = (
 
 export const addStaticPlaylistMember = (playlistId: string, username: string) =>
   editFreshPlaylist(playlistId, (playlist) => {
-    const source = syncingFrom(playlist);
-    if (source) {
-      throw memberError(`This playlist syncs from ${source}, so it can't have collaborators.`, 409);
-    }
+    refuseSyncing(playlist);
     const name = username.trim();
     const user = name ? userOps.getUserByUsername(name) : null;
     if (!user) throw memberError(`No one on this server is called ${name}.`, 404);
-    if (user.id === playlist.ownerUserId) {
-      throw memberError(`${user.username} owns this playlist.`, 409);
-    }
-    if (playlist.memberUserIds?.includes(user.id)) {
-      throw memberError(`${user.username} is already on this playlist.`, 409);
-    }
-    if (user.status !== "active" || !hasPermission(user, "accessPlaylists")) {
-      throw memberError(`${user.username} can't use playlists on this server.`, 409);
-    }
+    const refusal = cantJoin(playlist, user);
+    if (refusal) throw memberError(refusal, 409);
     return flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
       memberUserIds: [...(playlist.memberUserIds ?? []), user.id],
     });

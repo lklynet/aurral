@@ -1,12 +1,24 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { ModalShell } from "../../components/PlaylistModals.tsx";
 import { DotLoader } from "../../components/DotLoader";
 import { staticPlaylistsClient } from "../../utils/api/clients/staticPlaylists.ts";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
+import { queryKeys } from "../../queryClient.ts";
 import type { StaticPlaylist } from "../../utils/playlistStats.ts";
 
-const members = staticPlaylistsClient["static-playlists"][":playlistId"].members;
+const playlistRoutes = staticPlaylistsClient["static-playlists"][":playlistId"];
+const members = playlistRoutes.members;
+
+function PersonName({ username, handle }: { username: string; handle?: string | null }) {
+  return (
+    <span className="playlist-members__name">
+      {username}
+      {handle ? <span className="playlist-members__handle">@{handle}</span> : null}
+    </span>
+  );
+}
 
 export function PlaylistMembersModal({
   playlist,
@@ -23,10 +35,25 @@ export function PlaylistMembersModal({
   onLeave: () => void;
   onClose: () => void;
 }) {
-  const [username, setUsername] = useState("");
+  const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const param = { playlistId: encodeURIComponent(playlist.id) };
+  const typed = query.trim().replace(/^@/, "").toLowerCase();
+  const memberIds = (playlist.members ?? []).map((member) => member.id);
+  const found = useQuery({
+    queryKey: queryKeys.playlistPeople(playlist.id, memberIds),
+    queryFn: ({ signal }) =>
+      parseResponse(playlistRoutes.people.$get({ param }, { init: { signal } })),
+    enabled: canManage,
+    staleTime: 0,
+  });
+  const suggestions = (found.data?.people ?? []).filter(
+    (person) =>
+      person.username.toLowerCase().startsWith(typed) ||
+      !!person.handle?.toLowerCase().startsWith(typed),
+  );
+  const enterTarget = typed ? suggestions[0] : undefined;
 
   const run = async (key: string, action: () => Promise<unknown>) => {
     setBusy(key);
@@ -43,11 +70,14 @@ export function PlaylistMembersModal({
     }
   };
 
-  const add = async () => {
-    const name = username.trim();
-    if (!name || busy) return;
-    if (await run("add", () => parseResponse(members.$post({ param, json: { username: name } })))) {
-      setUsername("");
+  const add = async (username: string) => {
+    if (busy) return;
+    if (
+      await run(`add:${username}`, () =>
+        parseResponse(members.$post({ param, json: { username } })),
+      )
+    ) {
+      setQuery("");
     }
   };
 
@@ -58,7 +88,7 @@ export function PlaylistMembersModal({
 
   const people = [
     ...(playlist.ownerUserId != null && playlist.ownerUsername
-      ? [{ id: playlist.ownerUserId, username: playlist.ownerUsername, owner: true }]
+      ? [{ id: playlist.ownerUserId, username: playlist.ownerUsername, handle: null, owner: true }]
       : []),
     ...(playlist.members ?? []).map((member) => ({ ...member, owner: false })),
   ];
@@ -85,36 +115,62 @@ export function PlaylistMembersModal({
       <div className="playlist-modal__fields">
         {canManage ? (
           <form
-            className="playlist-members__add"
+            className="playlist-members__find"
+            role="search"
+            aria-busy={found.isFetching}
             onSubmit={(event) => {
               event.preventDefault();
-              void add();
+              if (enterTarget) void add(enterTarget.username);
             }}
           >
             <input
-              type="text"
+              type="search"
               className="input"
-              value={username}
+              value={query}
               onChange={(event) => {
-                setUsername(event.target.value);
+                setQuery(event.target.value);
                 if (error) setError("");
               }}
-              placeholder="Username"
-              aria-label="Username"
+              placeholder="Find people on this server"
+              aria-label="Find people on this server"
               autoCapitalize="none"
               autoCorrect="off"
+              autoComplete="off"
               spellCheck={false}
-              autoFocus
             />
-            <button type="submit" className="btn btn-primary" disabled={!username.trim() || !!busy}>
-              {busy === "add" ? <DotLoader size="sm" label={null} /> : null}
-              Add
-            </button>
+            {suggestions.length ? (
+              <div
+                className="playlist-members__suggestions"
+                onMouseDown={(event) => event.preventDefault()}
+              >
+                {suggestions.map((person) => (
+                  <button
+                    type="button"
+                    key={person.id}
+                    className={`artist-menu-item${person === enterTarget ? " is-active" : ""}`}
+                    disabled={busy !== null}
+                    onClick={() => void add(person.username)}
+                    aria-label={`Add ${person.username}`}
+                  >
+                    <PersonName username={person.username} handle={person.handle} />
+                    {busy === `add:${person.username}` ? (
+                      <DotLoader size="sm" label={null} />
+                    ) : (
+                      <span className="playlist-members__note">Add</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            ) : typed && found.isSuccess ? (
+              <p className="playlist-members__hint">No one here matches {query.trim()}.</p>
+            ) : found.data?.people.length === 0 ? (
+              <p className="playlist-members__hint">No one else here can be added.</p>
+            ) : null}
           </form>
         ) : null}
-        {error ? (
+        {error || found.error ? (
           <p className="artist-error-text" role="alert">
-            {error}
+            {error || getApiErrorMessage(found.error, "Couldn't load people on this server")}
           </p>
         ) : canManage ? (
           <p className="playlist-members__hint">They can add, remove, and reorder tracks.</p>
@@ -122,7 +178,7 @@ export function PlaylistMembersModal({
         <ul className="playlist-members__list">
           {people.map((person) => (
             <li key={person.id} className="playlist-members__row">
-              <span className="playlist-members__name">{person.username}</span>
+              <PersonName username={person.username} handle={person.handle} />
               {person.owner ? (
                 <span className="playlist-members__note">Owner</span>
               ) : canManage ? (
