@@ -16,6 +16,7 @@ export const isBrowseProvider = (value: unknown): value is BrowseProvider =>
 
 export const BLEND_MIX_PREFIX = "blend-";
 export const LISTENS_MIX_PREFIX = "listens-";
+export const FRIEND_BLEND_MIX_PREFIX = "friend-blend-";
 
 export const fromSomeonesListening = (
   source: { provider: string; externalId?: string | null } | null | undefined,

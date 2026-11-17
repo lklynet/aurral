@@ -73,7 +73,7 @@ export default new Hono<AppEnv>()
   })
   .get("/profiles/:handle", async (c) => {
     try {
-      const profile = await getCommunityProfile(handleOf(c.req.param("handle")));
+      const profile = await getCommunityProfile(c.var.user, handleOf(c.req.param("handle")));
       return profile
         ? c.json(profile, 200)
         : c.json({ error: "No one on aurral.org has that handle." }, 404);

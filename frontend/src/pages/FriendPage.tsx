@@ -12,6 +12,7 @@ import { peopleClient } from "../utils/api/clients/people.ts";
 import { readApiError } from "../utils/api/errors.ts";
 import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
 import { resolveAlbumPath, resolveArtistPath } from "../navigation/resolveLinks.ts";
+import { FRIEND_BLEND_MIX_PREFIX } from "../../../lib/browsePlaylists.ts";
 
 const plays = (count: number) => `${count} ${count === 1 ? "play" : "plays"}`;
 const searchPath = (query: string) => `/search?${new URLSearchParams({ q: query })}`;
@@ -168,6 +169,17 @@ export default function FriendPage() {
   const top = self ? own.data?.topPlays : friend?.topPlays;
   const name = `@${handle}`;
 
+  const playlists = profile.data?.playlists ?? [];
+  const blendNote =
+    friend &&
+    friends.data?.state === "linked" &&
+    friends.data.sharing &&
+    !playlists.some((playlist) => playlist.id.startsWith(FRIEND_BLEND_MIX_PREFIX)) ? (
+      <p className="friend-page__empty">
+        Your Blend with {name} fills in once you both play a few more tracks.
+      </p>
+    ) : null;
+
   const lists = friend ? (
     hasTopPlays(top) ? (
       <TopPlayLists top={top} />
@@ -211,17 +223,15 @@ export default function FriendPage() {
           )
         ) : profile.data ? (
           <>
-            {profile.data.playlists.length ? (
+            {playlists.length ? (
               <DiscoverPlaylistSection
-                title="Public playlists"
-                playlists={profile.data.playlists.map((playlist) => ({
-                  ...playlist,
-                  curator: null,
-                }))}
+                title="Playlists"
+                playlists={playlists.map((playlist) => ({ ...playlist, curator: null }))}
               />
             ) : (
               <p className="friend-page__empty">No public playlists from {name} yet.</p>
             )}
+            {blendNote}
             {lists}
           </>
         ) : null}

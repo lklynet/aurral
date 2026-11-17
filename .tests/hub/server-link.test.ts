@@ -411,6 +411,65 @@ test("friend requests and acceptances reach the Inbox at most every 15 minutes a
   time.mockRestore();
 });
 
+test("friends' tracks for Blends arrive while both share and leave with sharing or the friendship", async () => {
+  const cara = userOps.createUser("cara", "hash");
+  const dev = userOps.createUser("dev", "hash");
+  assert.ok(cara && dev);
+  for (const [user, account, handle] of [
+    [cara, "account-7", "cara_k"],
+    [dev, "account-8", "dev_k"],
+  ] as const) {
+    const pending = await link.startHubLink(user);
+    await approve(pending.state === "pending" ? pending.code : "", account, handle);
+    await link.hubLinkStatus(user.id);
+  }
+  for (const [index, title] of ["Reckoner", "Reckoner", "Nude"].entries()) {
+    playEvents.recordPlayEvent(cara.id, {
+      trackId: title,
+      title,
+      artist: "Radiohead",
+      playedAt: Date.now() - (index + 1) * 600_000,
+      source: "native-player",
+    });
+  }
+  const stored = (userId: number) =>
+    db
+      .prepare<[number], { handle: string; tracks: string }>(
+        "SELECT handle, tracks FROM hub_friend_tracks WHERE user_id = ?",
+      )
+      .all(userId)
+      .map(({ handle, tracks }) => ({ handle, tracks: JSON.parse(tracks) as unknown }));
+  const caras = [
+    {
+      handle: "cara_k",
+      tracks: [
+        { title: "Reckoner", artist: "Radiohead" },
+        { title: "Nude", artist: "Radiohead" },
+      ],
+    },
+  ];
+
+  await friends.addFriend(cara.id, "dev_k");
+  await friends.addFriend(dev.id, "cara_k");
+  await friends.shareAllTopPlays();
+  assert.deepEqual(stored(dev.id), caras);
+
+  await friends.shareListening(dev.id, false);
+  assert.deepEqual(stored(dev.id), []);
+  await friends.shareListening(dev.id, true);
+  assert.deepEqual(stored(dev.id), caras);
+
+  await friends.shareListening(cara.id, false);
+  await friends.refreshFriendNotices(dev.id);
+  assert.deepEqual(stored(dev.id), []);
+  await friends.shareListening(cara.id, true);
+  await friends.shareAllTopPlays();
+  assert.deepEqual(stored(dev.id), caras);
+
+  await friends.removeFriend(dev.id, "cara_k");
+  assert.deepEqual(stored(dev.id), []);
+});
+
 test("sharing sends now playing and top plays, Off clears aurral.org, and relinking keeps it off", async () => {
   await hubEnv.DB.prepare("DELETE FROM listening").run();
   const pending = await link.startHubLink(lee);

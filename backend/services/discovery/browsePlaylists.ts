@@ -18,6 +18,7 @@ import { getUserMix, getUserMixes, type Mix } from "./mixes.ts";
 import { browseCoverTemplate, browseCoverUrl, type BrowseCover } from "./browseCovers.ts";
 import {
   BLEND_MIX_PREFIX,
+  FRIEND_BLEND_MIX_PREFIX,
   BROWSE_IMPORT_PROVIDERS,
   BROWSE_PROVIDERS,
   LISTENS_MIX_PREFIX,
@@ -177,9 +178,17 @@ const communityCard = (playlist: Awaited<ReturnType<typeof communityShelf>>[numb
 
 export const getCommunityPlaylists = async () => (await communityShelf()).map(communityCard);
 
-export async function getCommunityProfile(handle: string) {
-  const profile = await communityProfile(handle);
-  return profile && { handle: profile.handle, playlists: profile.playlists.map(communityCard) };
+export async function getCommunityProfile(user: RequestUser, handle: string) {
+  const [profile, blend] = await Promise.all([
+    communityProfile(handle),
+    getUserMix(user.id, `${FRIEND_BLEND_MIX_PREFIX}${handle}`),
+  ]);
+  return (
+    profile && {
+      handle: profile.handle,
+      playlists: [...mixCards(blend ? [blend] : []), ...profile.playlists.map(communityCard)],
+    }
+  );
 }
 
 export const getArtistPlaylists = async (deezerArtistId: string) =>

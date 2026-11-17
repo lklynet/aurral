@@ -66,6 +66,7 @@ const forgetFriendNotices = db.prepare<[number]>(
 export const markLinkBroken = db.transaction((userId: number) => {
   db.prepare<[number]>("UPDATE hub_links SET broken = 1 WHERE user_id = ?").run(userId);
   db.prepare<[number]>("DELETE FROM hub_publications WHERE user_id = ?").run(userId);
+  db.prepare<[number]>("DELETE FROM hub_friend_tracks WHERE user_id = ?").run(userId);
   forgetFriendNotices.run(userId);
 });
 

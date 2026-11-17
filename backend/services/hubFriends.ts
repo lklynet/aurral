@@ -44,6 +44,10 @@ const listsSchema = v.object({
   outgoing: v.array(friendSchema),
 });
 const requestedSchema = v.object({ status: v.picklist(["sent", "friends"]) });
+const tracksSchema = v.array(v.object({ title: v.string(), artist: v.string() }));
+const friendTracksSchema = v.object({
+  friends: v.array(v.object({ handle: v.string(), tracks: tracksSchema })),
+});
 
 export class FriendError extends Error {
   status: 404 | 409 | 422 | 502;
@@ -87,6 +91,65 @@ export const handleOf = (input: string) => {
   return handle;
 };
 
+const forgetFriendTracks = db.prepare<[number]>("DELETE FROM hub_friend_tracks WHERE user_id = ?");
+const forgetTracksOf = db.prepare<[number, string]>(
+  "DELETE FROM hub_friend_tracks WHERE user_id = ? AND handle = ?",
+);
+const keepTracksOf = db.prepare<[number, string]>(
+  "DELETE FROM hub_friend_tracks WHERE user_id = ? AND handle NOT IN (SELECT value FROM json_each(?))",
+);
+const insertFriendTracks = db.prepare<[number, string, string, number]>(
+  "INSERT INTO hub_friend_tracks (user_id, handle, tracks, fetched_at) VALUES (?, ?, ?, ?)",
+);
+
+const sharedFriendTracksStmt = db.prepare<
+  [number],
+  { handle: string; tracks: string; fetchedAt: number; viewer: string }
+>(`
+  SELECT friend.handle, friend.tracks, friend.fetched_at AS fetchedAt, viewer.username AS viewer
+  FROM hub_friend_tracks AS friend
+  JOIN hub_links AS link ON link.user_id = friend.user_id
+    AND link.linked_at IS NOT NULL AND link.broken = 0 AND link.share_listening = 1
+  JOIN users AS viewer ON viewer.id = friend.user_id
+  WHERE friend.user_id = ?
+  ORDER BY friend.handle
+`);
+
+export function sharedFriendTracks(userId: number) {
+  if (!hubLinksEnabled()) return [];
+  return sharedFriendTracksStmt.all(userId).flatMap((row) => {
+    let tracks: unknown = null;
+    try {
+      tracks = JSON.parse(row.tracks);
+    } catch {}
+    const parsed = v.safeParse(tracksSchema, tracks);
+    return parsed.success ? [{ ...row, tracks: parsed.output }] : [];
+  });
+}
+
+export type FriendTracks = ReturnType<typeof sharedFriendTracks>[number];
+
+const keepSharingFriends = (userId: number, friends: v.InferOutput<typeof listeningSchema>[]) =>
+  keepTracksOf.run(
+    userId,
+    JSON.stringify(friends.filter(({ topPlays }) => topPlays).map(({ handle }) => handle)),
+  );
+
+async function refreshFriendTracks(link: HubLinksRow, now = Date.now()) {
+  const response = await callHub(link, "GET", "/v1/friends/blend-tracks").catch(
+    quietly("friends' tracks"),
+  );
+  const parsed =
+    response && v.safeParse(friendTracksSchema, await response.json().catch(() => null));
+  if (!parsed?.success) return;
+  db.transaction(() => {
+    forgetFriendTracks.run(link.user_id);
+    for (const { handle, tracks } of parsed.output.friends) {
+      insertFriendTracks.run(link.user_id, handle, JSON.stringify(tracks), now);
+    }
+  })();
+}
+
 export async function friendLists(userId: number) {
   if (!hubLinksEnabled()) return { state: "off" as const };
   const link = selectLink.get(userId);
@@ -129,6 +192,8 @@ export async function addFriend(userId: number, input: string) {
   const added = v.safeParse(requestedSchema, await response.json().catch(() => null));
   if (!added.success) throw unreachable();
   forgetRequest.run(userId, requestKey(handle));
+  const sharing = added.output.status === "friends" && sharingLink(userId);
+  if (sharing) await refreshFriendTracks(sharing);
   return added.output;
 }
 
@@ -137,6 +202,7 @@ export async function removeFriend(userId: number, input: string) {
   const handle = handleOf(input);
   if (!(await callHub(link, "DELETE", `/v1/friends/${handle}`))) throw relink();
   forgetRequest.run(userId, requestKey(handle));
+  forgetTracksOf.run(userId, handle);
 }
 
 const NOTICE_EVERY_MS = 15 * 60_000;
@@ -154,6 +220,7 @@ export async function refreshFriendNotices(userId: number, now = Date.now()) {
   const lists = response && v.safeParse(listsSchema, await response.json().catch(() => null));
   if (!lists?.success) return;
   const { friends, incoming } = lists.output;
+  keepSharingFriends(userId, friends);
   const accepted = friends.filter(
     ({ sentAt, receivedAt }) => sentAt != null && receivedAt != null && receivedAt > sentAt,
   );
@@ -219,25 +286,28 @@ export async function shareNowPlaying(
 }
 
 async function shareTopPlays(link: HubLinksRow) {
-  const { topPlaysOf } = await import("./wrapped/topPlays.ts");
-  const snapshot = topPlaysOf(link.user_id);
+  const { sharedTopPlaysOf } = await import("./wrapped/topPlays.ts");
+  const snapshot = sharedTopPlaysOf(link.user_id);
   await callHub(link, "PUT", "/v1/listening/top-plays", snapshot).catch(quietly("top plays"));
 }
 
 export async function shareAllTopPlays() {
-  for (const userId of sharingUsers.all()) {
-    const link = sharingLink(userId);
-    if (link) await shareTopPlays(link);
-  }
+  const links = sharingUsers.all().flatMap((userId) => sharingLink(userId) ?? []);
+  for (const link of links) await shareTopPlays(link);
+  for (const link of links) await refreshFriendTracks(link);
 }
 
 export async function shareListening(userId: number, shared: boolean) {
   const link = selectLink.get(userId);
   if (!link?.linked_at) throw new FriendError("Link an aurral.org account first.", 409);
   setSharing.run(shared ? 1 : 0, userId);
+  if (!shared) forgetFriendTracks.run(userId);
   if (shared) {
     const sharing = sharingLink(userId);
-    if (sharing) await shareTopPlays(sharing);
+    if (sharing) {
+      await shareTopPlays(sharing);
+      await refreshFriendTracks(sharing);
+    }
     return;
   }
   if (link.broken) return;

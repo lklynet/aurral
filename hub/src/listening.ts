@@ -4,6 +4,7 @@ import * as v from "valibot";
 const DEFAULT_TRACK_MS = 4 * 60_000;
 const MAX_TRACK_MS = 30 * 60_000;
 const TOP_LIMIT = 10;
+const BLEND_LIMIT = 100;
 const TOP_PLAYS_FRESH_MS = 7 * 86_400_000;
 
 const text = v.pipe(
@@ -29,6 +30,16 @@ export const topPlaysSchema = v.object({
   tracks: top({ title: text, artist: text }),
 });
 
+const blendTracksSchema = v.pipe(
+  v.array(v.object({ title: text, artist: text })),
+  v.maxLength(BLEND_LIMIT),
+);
+
+export const sharedTopPlaysSchema = v.object({
+  ...topPlaysSchema.entries,
+  blendTracks: v.optional(blendTracksSchema),
+});
+
 export const setNowPlaying = (
   db: D1Database,
   linkId: string,
@@ -51,16 +62,17 @@ export const setNowPlaying = (
 export const setTopPlays = (
   db: D1Database,
   linkId: string,
-  snapshot: v.InferOutput<typeof topPlaysSchema>,
+  { blendTracks, ...snapshot }: v.InferOutput<typeof sharedTopPlaysSchema>,
   now = Date.now(),
 ) =>
   db
     .prepare(
-      `INSERT INTO listening (link_id, top_plays, top_plays_at) VALUES (?, ?, ?)
+      `INSERT INTO listening (link_id, top_plays, top_plays_at, blend_tracks) VALUES (?, ?, ?, ?)
        ON CONFLICT (link_id) DO UPDATE SET
-         top_plays = excluded.top_plays, top_plays_at = excluded.top_plays_at`,
+         top_plays = excluded.top_plays, top_plays_at = excluded.top_plays_at,
+         blend_tracks = excluded.blend_tracks`,
     )
-    .bind(linkId, JSON.stringify(snapshot), now)
+    .bind(linkId, JSON.stringify(snapshot), now, blendTracks ? JSON.stringify(blendTracks) : null)
     .run();
 
 export const clearListening = (db: D1Database, linkId: string) =>
@@ -166,4 +178,44 @@ export async function friendsListening(db: D1Database, accountId: string, now = 
       { nowPlaying, topPlays: mergeTopPlays(snapshots) },
     ]),
   );
+}
+
+export async function friendsBlendTracks(db: D1Database, accountId: string, now = Date.now()) {
+  const { results } = await db
+    .prepare(
+      `SELECT handles.handle, listening.blend_tracks
+       FROM friends AS asked
+       JOIN friends AS back ON back.account_id = asked.friend_id AND back.friend_id = asked.account_id
+       JOIN handles ON handles.account_id = asked.friend_id
+       JOIN links ON links.account_id = asked.friend_id
+       JOIN listening ON listening.link_id = links.id
+       WHERE asked.account_id = ?1 AND listening.top_plays_at > ?2
+         AND listening.blend_tracks IS NOT NULL
+       ORDER BY handles.handle, listening.top_plays_at DESC`,
+    )
+    .bind(accountId, now - TOP_PLAYS_FRESH_MS)
+    .all<{ handle: string; blend_tracks: string }>();
+  const byHandle = new Map<string, v.InferOutput<typeof blendTracksSchema>[]>();
+  for (const row of results) {
+    const tracks = stored(blendTracksSchema, row.blend_tracks);
+    if (tracks) byHandle.set(row.handle, [...(byHandle.get(row.handle) ?? []), tracks]);
+  }
+  return [...byHandle].map(([handle, lists]) => {
+    const seen = new Set<string>();
+    const tracks = [];
+    for (
+      let rank = 0;
+      tracks.length < BLEND_LIMIT && lists.some((list) => rank < list.length);
+      rank += 1
+    ) {
+      for (const track of lists.flatMap((list) => list[rank] ?? [])) {
+        const key = lower(track.artist, track.title);
+        if (tracks.length < BLEND_LIMIT && !seen.has(key)) {
+          seen.add(key);
+          tracks.push(track);
+        }
+      }
+    }
+    return { handle, tracks };
+  });
 }

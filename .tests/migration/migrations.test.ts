@@ -332,7 +332,7 @@ test("upgrading turns a Gotify setup into a webhook that still reads its token",
 test("upgrading gives ownerless playlists and flows to the first admin and turns Blends on", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  migrate(db, migrations.slice(0, -4));
+  migrate(db, migrations.slice(0, -5));
   db.exec(`
     INSERT INTO users (id, username, password_hash, role) VALUES
       (1, 'listener', 'hash', 'user'), (2, 'lee', 'hash', 'admin'), (3, 'ada', 'hash', 'admin');

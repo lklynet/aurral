@@ -160,7 +160,7 @@ export function HubLinkGroup() {
       {linked ? (
         <SettingsRow
           label="Share with friends"
-          help="What you're playing, and your top artists, albums, and tracks from the last 30 days."
+          help="What you're playing and your top 100 tracks from the last 30 days, for your profile and Blends."
         >
           <PillToggle
             id="hub-share-listening"

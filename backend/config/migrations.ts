@@ -290,6 +290,17 @@ const blendByDefault: Migration = (db) =>
     ALTER TABLE users ADD COLUMN blend INTEGER NOT NULL DEFAULT 1;
   `);
 
+const storeFriendBlendTracks: Migration = (db) =>
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS hub_friend_tracks (
+      user_id INTEGER NOT NULL REFERENCES hub_links(user_id) ON DELETE CASCADE,
+      handle TEXT NOT NULL,
+      tracks TEXT NOT NULL,
+      fetched_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, handle)
+    );
+  `);
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -310,6 +321,7 @@ export const migrations: Migration[] = [
   shareListeningWithFriends,
   blendWithPeopleOnServer,
   blendByDefault,
+  storeFriendBlendTracks,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

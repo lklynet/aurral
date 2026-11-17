@@ -323,8 +323,8 @@
   },
   "aurral.org profile": {
     "queries": {
-      "cold": 3,
-      "warm": 3
+      "cold": 4,
+      "warm": 4
     },
     "bytes": 33,
     "scans": [],

@@ -26,10 +26,12 @@ aurral.org gets accounts and a hub: a TypeScript Hono app on Cloudflare Workers 
 ## What aurral.org stores
 
 - Accounts: the provider's account ID, the handle, sessions, and the account's links. Never the provider's tokens, name, email, or avatar, and sessions keep no IP address or user agent. Sign-in asks GitHub for `read:user` and Discord for `identify` only.
-- Anything a user publishes: public playlists, now playing, and top plays as one 30-day snapshot per link that replaces the last one daily.
-- Friendships, and Blends between friends, computed from both friends' snapshots.
+- Anything a user publishes: public playlists, now playing, and top plays as one 30-day snapshot per link that replaces the last one daily. The snapshot also carries up to 100 top tracks, names in rank order with no play counts, for Blends.
+- Friendships.
 
-It never stores a listening history, a Library, or files, and it keeps no history of now playing, in logs either. Now playing is one entry per link that expires after the track's duration. A server reads its friends' listening with the friend list, for mutual friends only: the newest unexpired now playing, and the top plays of every link updated in the last 7 days, summed by name. Aurral finds art for them in the Library, then on Deezer by name, and never asks MusicBrainz about another person's music. Aurral is not a scrobble provider for aurral.org: scrobble providers get every play queued for delivery, which is the full history.
+It never stores a listening history, a Library, or files, and it keeps no history of now playing, in logs either. Now playing is one entry per link that expires after the track's duration. A server reads its friends' listening with the friend list, for mutual friends only: the newest unexpired now playing, and the top plays of every link updated in the last 7 days, summed by name. Blend tracks come from their own endpoint, so the friend list stays small.
+
+Each server builds its own Blends with friends. It mixes its user's local plays with the friend's ranked tracks and keeps only tracks in its own Library, so the two friends see different Blends. aurral.org never computes or stores a Blend. A server stores each friend's tracks until the next daily refresh, and drops them once either side stops sharing or the friendship ends. Aurral finds art for them in the Library, then on Deezer by name, and never asks MusicBrainz about another person's music. Aurral is not a scrobble provider for aurral.org: scrobble providers get every play queued for delivery, which is the full history.
 
 ## Traps
 

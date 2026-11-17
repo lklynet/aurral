@@ -294,10 +294,9 @@ export const queryKeys = {
   hubLink: (userId: MaybeId): QueryKey => ["hub-link", userId || null],
   publicPlaylists: (userId: MaybeId): QueryKey => ["hub-link", "public", userId || null],
   friends: (userId: MaybeId): QueryKey => ["hub-link", "friends", userId || null],
+  hubProfiles: (userId: MaybeId): QueryKey => ["hub-link", "profiles", userId || null],
   hubProfile: (userId: MaybeId, handle: string): QueryKey => [
-    "hub-link",
-    "profiles",
-    userId || null,
+    ...queryKeys.hubProfiles(userId),
     handle,
   ],
   people: (userId: MaybeId): QueryKey => ["people", userId || null],
