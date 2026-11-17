@@ -1,5 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router";
 import { Info, Pause, Play, Shuffle, Sparkles } from "../../components/icons";
 import { LibraryItemMenu, type LibraryMenuItem } from "../../components/LibraryItemMenu";
 import { FavoriteButton, TrackList } from "../../components/TrackList";
@@ -81,6 +82,7 @@ export function LibraryArtistDetail({
   loadTracks: () => Promise<LibraryCollection>;
   renderAlbumCard: RenderAlbumCard;
 }) {
+  const [searchParams] = useSearchParams();
   const artworkStyle = useSharedArtworkStyle();
   const { data: plays } = useQuery({
     ...libraryArtistPlaysQueryOptions(String(artist.id)),
@@ -199,6 +201,7 @@ export function LibraryArtistDetail({
           <TrackList
             label={`${name} most played`}
             variant="compact"
+            highlightKey={searchParams.get("track")}
             rows={mostPlayed.map((track, index) => {
               const row = actions.buildLibraryTrackRow(track, index, mostPlayed);
               return { ...row, subtitle: row.album?.label };

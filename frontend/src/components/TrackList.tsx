@@ -324,15 +324,32 @@ export function TrackList({
   const isCollection = variant === "collection";
   const hasCover = variant !== "release";
 
+  const [flashKey, setFlashKey] = useState<string | null>(null);
+  const scrolledKey = useRef<string | null>(null);
+  const target = highlightKey ? String(highlightKey) : null;
+  const targetShown = target !== null && rows.some((row) => String(row.key) === target);
+
   useEffect(() => {
-    if (!highlightKey) return undefined;
-    const row = rowRefs.current.get(String(highlightKey));
-    if (!row) return undefined;
-    row.classList.add("is-search-focused");
-    row.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    const timeout = window.setTimeout(() => row.classList.remove("is-search-focused"), 2400);
+    if (!target) {
+      scrolledKey.current = null;
+      return undefined;
+    }
+    if (!targetShown || scrolledKey.current === target) return undefined;
+    // Layout resets the page scroll after child effects run, so scroll on the next frame.
+    // A smooth scroll renders the content-visibility rows it passes, which shrink and push it off target.
+    const frame = window.requestAnimationFrame(() => {
+      scrolledKey.current = target;
+      rowRefs.current.get(target)?.scrollIntoView({ block: "center" });
+      setFlashKey(target);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [target, targetShown]);
+
+  useEffect(() => {
+    if (!flashKey) return undefined;
+    const timeout = window.setTimeout(() => setFlashKey(null), 2400);
     return () => window.clearTimeout(timeout);
-  }, [highlightKey, rows.length]);
+  }, [flashKey]);
 
   const renderRow = (row: TrackListRow, drag: RowDrag | null) => {
     const playLabel = row.playing
@@ -353,6 +370,7 @@ export function TrackList({
           "native-library-track" +
           (drag?.dragging ? " is-dragging" : "") +
           (row.active ? " is-active" : "") +
+          (flashKey === String(row.key) ? " is-search-focused" : "") +
           (row.missing ? " is-missing" : "") +
           (row.missing && row.previewOnly ? " is-preview" : "")
         }

@@ -43,6 +43,12 @@ export function withOrigin(source: QueueSource | null, href: string): QueueSourc
   return source ? { ...source, href } : { type: "page", id: href, href };
 }
 
+export function withTrackParam(href: string, trackId: string | number) {
+  const url = new URL(href, "http://aurral.local");
+  url.searchParams.set("track", String(trackId));
+  return url.pathname + url.search;
+}
+
 export type RepeatMode = "off" | "all" | "one";
 
 export type QueueTrackInput = {

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { useAudioQueue } from "../contexts/audioQueueContext";
+import { withTrackParam } from "../utils/audioQueue";
 
 type PlayerOriginLinkProps = {
   className?: string;
@@ -15,11 +16,12 @@ export default function PlayerOriginLink({
   onClick,
   children,
 }: PlayerOriginLinkProps) {
-  const origin = useAudioQueue().activeSource?.href;
+  const { activeSource, currentTrack } = useAudioQueue();
+  const origin = activeSource?.href;
   if (origin) {
     return (
       <Link
-        to={origin}
+        to={currentTrack?.id != null ? withTrackParam(origin, currentTrack.id) : origin}
         className={className}
         onClick={onClick}
         {...(cover && { tabIndex: -1, "aria-hidden": true })}
