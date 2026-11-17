@@ -347,7 +347,6 @@ const FLOW_EXCEPTIONS = [
   { status: "downloading", label: "downloading", tone: "subtle" },
   { status: "pending", label: "queued", tone: "subtle" },
   { status: "blocked", label: "need review", tone: "review" },
-  { status: "failed", label: "missing", tone: "warning" },
 ] as const;
 
 function FlowTrackStatus({ track, searching }: { track: PlaylistPanelTrack; searching: boolean }) {

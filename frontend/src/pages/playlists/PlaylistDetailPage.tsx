@@ -32,6 +32,7 @@ import { getStaticPlaylistTrackCount } from "../../utils/playlistStats";
 import { PlaylistEditModal } from "./PlaylistEditModal.tsx";
 import { PlaylistMembersModal } from "./PlaylistMembersModal.tsx";
 import { PlaylistTracks } from "./PlaylistTracks.tsx";
+import { joinMeta, PlaylistTrackCount } from "./components/PlaylistTrackCount.tsx";
 import { usePlaylistTrackPlayback } from "./components/playlistTrackComponents.tsx";
 import {
   SYNC_INTERVAL_OPTIONS,
@@ -184,9 +185,11 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
       (savedTracks.length - tracks.length),
   );
   const trackLabel =
-    showTrackAvailability && !loading && !error
-      ? `${countAvailableTracks(tracks)}/${totalTracks} available`
-      : formatTrackTotal(totalTracks);
+    showTrackAvailability && !loading && !error ? (
+      <PlaylistTrackCount available={countAvailableTracks(tracks)} total={totalTracks} />
+    ) : (
+      formatTrackTotal(totalTracks)
+    );
   const owner = playlist.ownerUsername || user?.username || null;
   const syncInterval = importSource?.syncIntervalHours ?? 0;
   const publicPlaylist = usePublicPlaylist(playlist, () => setEditOpen(true));
@@ -255,25 +258,21 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
         Boolean(name),
       )
     : null;
-  const meta = (
-    <>
-      {memberNames ? (
-        <button
-          type="button"
-          className="playlist-detail__members"
-          onClick={() => setMembersOpen(true)}
-        >
-          {nameList.format(memberNames)}
-        </button>
-      ) : (
-        owner
-      )}
-      {metaParts
-        .filter(Boolean)
-        .map((part) => ` · ${part}`)
-        .join("")}
-    </>
-  );
+  const meta = joinMeta([
+    memberNames ? (
+      <button
+        key="members"
+        type="button"
+        className="playlist-detail__members"
+        onClick={() => setMembersOpen(true)}
+      >
+        {nameList.format(memberNames)}
+      </button>
+    ) : (
+      owner
+    ),
+    ...metaParts,
+  ]);
 
   const handleSync = async () => {
     if (syncing) return;
