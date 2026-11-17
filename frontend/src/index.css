@@ -13480,63 +13480,6 @@ button.playlist-detail__cover {
   border-radius: 50%;
 }
 
-.friend-page__now {
-  margin-top: 0.75rem;
-  max-width: 24rem;
-}
-
-.friend-page__lists {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 2rem;
-}
-
-.friend-page__window {
-  color: var(--aurral-text-subtle);
-  font-size: var(--aurral-font-sm);
-  font-weight: 500;
-  letter-spacing: normal;
-}
-
-.friend-page__list {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.friend-page__row {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.625rem;
-  padding: 0.375rem;
-  border-radius: var(--aurral-radius-sm);
-  color: inherit;
-  text-decoration: none;
-}
-
-.friend-page__rank {
-  width: 1.25rem;
-  flex-shrink: 0;
-  color: var(--aurral-text-subtle);
-  font-size: var(--aurral-font-sm);
-  text-align: right;
-}
-
-.friend-page__empty {
-  margin: 0;
-  color: var(--aurral-text-muted);
-  font-size: var(--aurral-font-sm);
-}
-
-@media (max-width: 767px) {
-  .friend-page__lists {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 1.5rem;
-  }
-}
-
 .friends-dialog {
   display: grid;
   gap: 1rem;
@@ -13569,15 +13512,141 @@ button.playlist-detail__cover {
 }
 
 .friend-page__title {
+  min-height: 0;
   flex-wrap: wrap;
-  row-gap: 0.5rem;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.5rem 0.875rem;
 }
 
-.friend-page__header {
+.friend-page__now {
+  display: inline-flex;
+  max-width: min(100%, 28rem);
+  margin: 0.75rem 0 0 -0.375rem;
+  padding-inline-end: 0.75rem;
+}
+
+.friend-page__now .player-queue__art {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--aurral-radius);
+}
+
+.friend-page__now .player-queue__name {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.friend-page__now .track-playing-indicator {
+  flex: none;
+}
+
+.friend-page__now-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.friend-page__now time {
+  color: var(--aurral-text-subtle);
+}
+
+.friend-page__sections {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 20rem);
-  align-items: end;
-  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2.5rem;
+  container-type: inline-size;
+}
+
+.friend-page__notes {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.friend-page__empty {
+  margin: 0;
+  color: var(--aurral-text-muted);
+  font-size: var(--aurral-font-sm);
+}
+
+.friend-page__playlists,
+.friend-page__lists {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  column-gap: 2rem;
+}
+
+@container (min-width: 1100px) {
+  .friend-page__lists:not([data-stats]) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.friend-page__playlists,
+.friend-page__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.friend-page__playlists .discover-feed-tile {
+  margin-inline: -0.5rem;
+}
+
+.friend-page__playlists .playlist-card__claim {
+  position: static;
+  flex: none;
+  margin-inline-end: 0.75rem;
+}
+
+.friend-page__section {
+  min-width: 0;
+}
+
+.friend-page__list {
+  display: grid;
+  margin-inline: -0.375rem;
+}
+
+.friend-page__list .player-queue__art:not(.is-round) {
+  border-radius: var(--aurral-radius);
+}
+
+.friend-page__section--tracks {
+  grid-column: span 2;
+}
+
+.friend-page__section--tracks .friend-page__list {
+  grid-template-rows: repeat(5, auto);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-flow: column;
+  column-gap: 1.25rem;
+}
+
+.friend-page__row {
+  display: flex;
+  min-width: 0;
+  min-height: 3rem;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.375rem;
+  border-radius: var(--aurral-radius-sm);
+  color: inherit;
+  text-decoration: none;
+}
+
+.friend-page__row .player-queue__artist,
+.friend-page__rank {
+  font-variant-numeric: tabular-nums;
+}
+
+.friend-page__rank {
+  width: 1.25rem;
+  flex-shrink: 0;
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-sm);
+  text-align: right;
 }
 
 .friend-stats__totals {
@@ -13596,14 +13665,22 @@ button.playlist-detail__cover {
 .friend-stats__totals strong {
   display: block;
   color: var(--aurral-text);
-  font-size: var(--aurral-font-xl);
+  font-size: var(--aurral-font-lg);
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   letter-spacing: var(--aurral-tracking-title);
+  line-height: 1.2;
+}
+
+.friend-stats__peak {
+  margin: 0 0 0.75rem;
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-xs);
 }
 
 .friend-stats__hours {
   display: flex;
-  height: 3.5rem;
+  height: 4rem;
   align-items: flex-end;
   gap: 2px;
 }
@@ -13613,11 +13690,15 @@ button.playlist-detail__cover {
   height: calc(var(--share) * 100%);
   flex: 1;
   border-radius: var(--aurral-radius-xs) var(--aurral-radius-xs) 0 0;
-  background: color-mix(in srgb, var(--aurral-text) 72%, transparent);
+  background: var(--aurral-text-subtle);
 }
 
 .friend-stats__hour[data-empty] {
   background: color-mix(in srgb, var(--aurral-text) 14%, transparent);
+}
+
+.friend-stats__hour[data-peak] {
+  background: var(--aurral-text);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -13627,17 +13708,55 @@ button.playlist-detail__cover {
 }
 
 .friend-stats__axis {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: repeat(24, minmax(0, 1fr));
+  column-gap: 2px;
   margin-top: 0.375rem;
   color: var(--aurral-text-subtle);
   font-size: var(--aurral-font-2xs);
 }
 
-@media (max-width: 767px) {
-  .friend-page__header {
+.friend-stats__axis span {
+  grid-row: 1;
+}
+
+@container (max-width: 1099px) {
+  .friend-page__playlists,
+  .friend-page__lists {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .friend-page__lists {
+    row-gap: 2.5rem;
+  }
+
+  .friend-page__section--tracks {
+    grid-column: 1 / -1;
+  }
+}
+
+@container (max-width: 639px) {
+  .friend-page__playlists,
+  .friend-page__lists {
     grid-template-columns: minmax(0, 1fr);
-    gap: 1rem;
+  }
+
+  .friend-page__lists {
+    row-gap: 2rem;
+  }
+
+  .friend-page__section--tracks {
+    grid-column: auto;
+  }
+
+  .friend-page__section--tracks .friend-page__list {
+    grid-template-rows: none;
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-flow: row;
+  }
+
+  .friend-stats__hours {
+    height: 3.5rem;
   }
 }
 
