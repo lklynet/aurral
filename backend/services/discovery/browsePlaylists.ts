@@ -190,7 +190,8 @@ export async function getCommunityProfile(user: RequestUser, handle: string) {
   return (
     profile && {
       handle: profile.handle,
-      playlists: [...mixCards(blend ? [blend] : []), ...profile.playlists.map(communityCard)],
+      playlists: profile.playlists.map(communityCard),
+      blend: mixCards(blend ? [blend] : [])[0] ?? null,
     }
   );
 }
