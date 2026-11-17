@@ -6,6 +6,13 @@ import * as v from "valibot";
 import { authFor, socialProviders } from "./auth.ts";
 import { friendLists, removeFriend, requestFriend } from "./friends.ts";
 import { claimHandle, deleteAccount, handleOf } from "./handles.ts";
+import {
+  clearListening,
+  nowPlayingSchema,
+  setNowPlaying,
+  setTopPlays,
+  topPlaysSchema,
+} from "./listening.ts";
 import { authorizeInstance, sha256Hex } from "./instances.ts";
 import {
   accountLink,
@@ -186,6 +193,24 @@ const v1 = new Hono<Env>()
     const accountId = await accountOfLink(c);
     if (!accountId) return linkRevoked(c);
     await removeFriend(c.env.DB, accountId, c.req.param("handle"));
+    return c.body(null, 204);
+  })
+  .put("/listening/now-playing", json(nowPlayingSchema), async (c) => {
+    const linkId = await linkOf(c);
+    if (!linkId) return linkRevoked(c);
+    await setNowPlaying(c.env.DB, linkId, c.req.valid("json"));
+    return c.body(null, 204);
+  })
+  .put("/listening/top-plays", json(topPlaysSchema), async (c) => {
+    const linkId = await linkOf(c);
+    if (!linkId) return linkRevoked(c);
+    await setTopPlays(c.env.DB, linkId, c.req.valid("json"));
+    return c.body(null, 204);
+  })
+  .delete("/listening", async (c) => {
+    const linkId = await linkOf(c);
+    if (!linkId) return linkRevoked(c);
+    await clearListening(c.env.DB, linkId);
     return c.body(null, 204);
   })
   .get("/playlists", async (c) =>

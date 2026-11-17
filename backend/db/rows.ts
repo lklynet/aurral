@@ -164,6 +164,7 @@ export interface HubLinksRow {
   handle: string | null;
   linked_at: number | null;
   broken: number;
+  share_listening: number;
 }
 
 export interface HubPublicationsRow {

@@ -1,7 +1,15 @@
 import { Hono } from "hono";
+import * as v from "valibot";
 import { requireAuth, requireUserAccount } from "../middleware/guards.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
-import { addFriend, FriendError, friendLists, removeFriend } from "../services/hubFriends.ts";
+import { validate } from "../middleware/validate.ts";
+import {
+  addFriend,
+  FriendError,
+  friendLists,
+  removeFriend,
+  shareListening,
+} from "../services/hubFriends.ts";
 import { forgetHubLink, HubLinkError, hubLinkStatus, startHubLink } from "../services/hubLink.ts";
 import {
   makePlaylistPrivate,
@@ -46,6 +54,15 @@ export default new Hono<AppEnv>()
     try {
       await removeFriend(c.var.user.id, c.req.param("handle"));
       return c.json({ ok: true });
+    } catch (error) {
+      if (error instanceof FriendError) return c.json({ error: error.message }, error.status);
+      throw error;
+    }
+  })
+  .put("/sharing", validate("json", v.object({ shared: v.boolean() })), async (c) => {
+    try {
+      await shareListening(c.var.user.id, c.req.valid("json").shared);
+      return c.json(await hubLinkStatus(c.var.user.id));
     } catch (error) {
       if (error instanceof FriendError) return c.json({ error: error.message }, error.status);
       throw error;

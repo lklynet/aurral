@@ -87,8 +87,8 @@ const rows = async () => ({
 
 const reset = () =>
   db.batch(
-    ["friends", "publications", "links", "instances", "handles", "accounts"].map((table) =>
-      db.prepare(`DELETE FROM ${table}`),
+    ["listening", "friends", "publications", "links", "instances", "handles", "accounts"].map(
+      (table) => db.prepare(`DELETE FROM ${table}`),
     ),
   );
 
@@ -374,6 +374,56 @@ test("linked servers add friends by handle, both asking makes friends, and eithe
   assert.equal(await rowCount(), 1);
   await deleteAccount(db, "bob");
   assert.equal(await rowCount(), 0);
+});
+
+test("a linked server shares now playing and top plays, and they leave with the link", async () => {
+  await reset();
+  githubId = 4242;
+  const jar = await signInWithGitHub();
+  await startServerLink();
+  const code = await db.prepare("SELECT user_code FROM links").first<string>("user_code");
+  assert.ok(code);
+  await form("/account/handle", jar, { handle: "lee_k", code });
+  await form("/link", jar, { code });
+  const share = (path: string, method: string, body?: unknown) =>
+    api(`/v1/listening${path}`, {
+      method,
+      headers: { authorization: `Bearer ${linkToken}`, "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  const stored = () =>
+    db
+      .prepare("SELECT now_playing, playing_until, top_plays FROM listening")
+      .first<{ now_playing: string | null; playing_until: number; top_plays: string | null }>();
+
+  const before = Date.now();
+  const track = { title: " Reckoner ", artist: "Radiohead", album: null, durationMs: 290_000 };
+  assert.equal((await share("/now-playing", "PUT", track)).status, 204);
+  const top = {
+    artists: [{ name: "Radiohead", plays: 12 }],
+    albums: [{ title: "In Rainbows", artist: "Radiohead", plays: 9 }],
+    tracks: [{ title: "Reckoner", artist: "Radiohead", plays: 4 }],
+  };
+  assert.equal((await share("/top-plays", "PUT", top)).status, 204);
+  const shared = await stored();
+  assert.deepEqual(JSON.parse(shared?.now_playing ?? ""), {
+    title: "Reckoner",
+    artist: "Radiohead",
+    album: null,
+  });
+  assert.ok(shared && shared.playing_until >= before + 290_000);
+  assert.deepEqual(JSON.parse(shared?.top_plays ?? ""), top);
+
+  const tooMany = { ...top, tracks: Array.from({ length: 11 }, () => top.tracks[0]) };
+  assert.equal((await share("/top-plays", "PUT", tooMany)).status, 400);
+  assert.equal((await share("", "DELETE")).status, 204);
+  assert.equal(await stored(), null);
+
+  await share("/now-playing", "PUT", track);
+  const linkId = await db.prepare("SELECT id FROM links").first<string>("id");
+  await form(`/account/unlink/${linkId}`, jar, {});
+  assert.equal(await stored(), null);
+  assert.equal((await share("/now-playing", "PUT", track)).status, 401);
 });
 
 test("a code approves one account once and only before it expires", async () => {
