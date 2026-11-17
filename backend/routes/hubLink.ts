@@ -18,6 +18,7 @@ import {
   PublicPlaylistError,
   publicPlaylistState,
 } from "../services/publicPlaylists.ts";
+import { imageSizes } from "../../lib/imageSizes.ts";
 import { sendImageFile } from "./shared/sendImageFile.ts";
 
 const name = v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(500));
@@ -49,6 +50,7 @@ export default new Hono<AppEnv>()
   })
   .get("/friends/art", validate("query", artQuery), async (c) => {
     const { artist, album, w } = c.req.valid("query");
+    const width = Number(w) || 0;
     const art = await friendArt(artist, album);
     const missing = () => {
       c.header("Cache-Control", "private, max-age=3600");
@@ -56,7 +58,7 @@ export default new Hono<AppEnv>()
     };
     if ("file" in art && art.file) {
       c.header("Cache-Control", "private, max-age=86400");
-      const sent = await sendImageFile(c, art.file.filePath, Number(w) || 0, {
+      const sent = await sendImageFile(c, art.file.filePath, width, {
         contentType: art.file.contentType,
         dotfiles: "deny",
       });
@@ -64,7 +66,8 @@ export default new Hono<AppEnv>()
     }
     if (!("url" in art) || !art.url) return missing();
     c.header("Cache-Control", "private, max-age=86400");
-    return c.redirect(art.url, 302);
+    const sized = width > 0 && imageSizes(art.url).find((size) => size.width >= width)?.url;
+    return c.redirect(sized || art.url, 302);
   })
   .put("/friends/:handle", async (c) => {
     try {

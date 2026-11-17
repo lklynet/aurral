@@ -1,7 +1,6 @@
 import { db } from "../config/db-sqlite.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { findDeezerAlbumCover, getDeezerArtist } from "./apiClients/deezer.ts";
-import { buildStableImageProxyUrl } from "./imageProxyService.ts";
 import { getLibraryArtwork } from "./libraryArtwork.ts";
 import { wrappedKey } from "./wrapped/metrics.ts";
 
@@ -39,11 +38,11 @@ export async function friendArt(artist: string, album: string | undefined) {
   if (file) return { file };
   const key = `friend:${wrappedKey(artist)}\u0000${album ? wrappedKey(album) : ""}`;
   const cached = dbOps.getImage(key)?.imageUrl;
-  if (cached) return { url: cached === NOT_FOUND ? null : buildStableImageProxyUrl(cached) };
+  if (cached) return { url: cached === NOT_FOUND ? null : cached };
   let lookup = lookups.get(key);
   if (!lookup) {
     lookup = deezerArt(key, artist, album).finally(() => lookups.delete(key));
     lookups.set(key, lookup);
   }
-  return { url: buildStableImageProxyUrl(await lookup) };
+  return { url: await lookup };
 }

@@ -77,7 +77,7 @@ export default function PlayerFriends({
   const className = `player-friends player-friends--${variant}`;
   const data = friends.data;
 
-  if (friends.isError) {
+  if (friends.isError && !data) {
     return (
       <div className={className}>
         <StatePanel

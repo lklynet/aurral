@@ -194,7 +194,10 @@ test("a friend's cover is looked up on Deezer by name once, and a miss isn't ask
   assert.equal(found.headers.get("location"), cover);
   assert.equal((await art("artist=Nobody+Here")).status, 404);
   assert.equal((await art("artist=nobody+here")).status, 404);
-  assert.equal((await art("artist=Radiohead&album=In+Rainbows")).status, 302);
+  assert.equal(
+    (await art("artist=Radiohead&album=In+Rainbows&w=96")).headers.get("location"),
+    cover.replace("1000x1000", "120x120"),
+  );
   assert.deepEqual(requests, [
     "https://api.deezer.com/search/album",
     "https://api.deezer.com/search/artist",

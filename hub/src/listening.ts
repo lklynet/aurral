@@ -110,7 +110,7 @@ const sum = <Entry extends { plays: number }>(
 const lower = (...parts: string[]) => parts.map((part) => part.toLowerCase()).join("\u0000");
 
 export function mergeTopPlays(snapshots: TopPlays[]): TopPlays | null {
-  if (snapshots.length < 2) return snapshots[0] ?? null;
+  if (!snapshots.length) return null;
   return {
     artists: sum(
       snapshots.map((top) => top.artists),

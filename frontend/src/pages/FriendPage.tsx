@@ -55,32 +55,37 @@ export default function FriendPage() {
   const friend =
     data?.state === "linked" ? data.friends.find((row) => row.handle === handle) : null;
 
-  const state = friends.isError ? (
-    <StatePanel
-      icon={<AlertCircle />}
-      title="Couldn't load friends"
-      role="alert"
-      onRetry={() => friends.refetch()}
-      retrying={friends.isFetching}
-    />
-  ) : !data ? null : data.state === "off" ? (
-    <StatePanel
-      icon={<Users />}
-      title="Friends are off"
-      message="An admin turned off aurral.org accounts on this server."
-    />
-  ) : data.state !== "linked" ? (
-    <StatePanel icon={<Users />} title="Not linked to aurral.org">
-      <SettingsLink to="profile" className="btn btn-secondary">
-        {data.state === "broken" ? "Relink in Profile" : "Link in Profile"}
-      </SettingsLink>
-    </StatePanel>
-  ) : !friend ? (
-    <StatePanel icon={<Users />} title={`You and @${handle} aren't friends`} />
-  ) : null;
+  const state =
+    friends.isError && !data ? (
+      <StatePanel
+        icon={<AlertCircle />}
+        title="Couldn't load friends"
+        role="alert"
+        onRetry={() => friends.refetch()}
+        retrying={friends.isFetching}
+      />
+    ) : !data ? null : data.state === "off" ? (
+      <StatePanel
+        icon={<Users />}
+        title="Friends are off"
+        message="An admin turned off aurral.org accounts on this server."
+      />
+    ) : data.state !== "linked" ? (
+      <StatePanel icon={<Users />} title="Not linked to aurral.org">
+        <SettingsLink to="profile" className="btn btn-secondary">
+          {data.state === "broken" ? "Relink in Profile" : "Link in Profile"}
+        </SettingsLink>
+      </StatePanel>
+    ) : !friend ? (
+      <StatePanel icon={<Users />} title={`You and @${handle} aren't friends`} />
+    ) : null;
 
   const playing = friend?.nowPlaying;
-  const top = friend?.topPlays;
+  const shared = friend?.topPlays;
+  const top =
+    shared && shared.artists.length + shared.albums.length + shared.tracks.length > 0
+      ? shared
+      : null;
   return (
     <div className="library-page native-library-page" aria-busy={!data}>
       <header className="native-library-header">
