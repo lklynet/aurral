@@ -252,6 +252,7 @@ type BootstrapPayload = {
   authRequired: boolean;
   proxyAuthEnabled: boolean;
   oidcEnabled: boolean;
+  oidcLoginOnly: boolean;
   oidcLogoutUrl: string | null;
   googleLoginEnabled: boolean;
   ssoOnly: boolean;
@@ -317,6 +318,7 @@ function buildBootstrapPayload(req: CredentialRequest) {
     authRequired,
     proxyAuthEnabled: isProxyAuthEnabled(),
     oidcEnabled: oidcInfo.oidcEnabled,
+    oidcLoginOnly: process.env.OIDC_LOGIN_ONLY === "true",
     oidcLogoutUrl: oidcInfo.oidcLogoutUrl,
     googleLoginEnabled: isGoogleLoginEnabled(),
     ssoOnly: true,

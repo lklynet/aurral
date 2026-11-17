@@ -26,8 +26,8 @@ const Login = () => {
   const oidcEnabled = !!bootstrap?.oidcEnabled;
   const googleEnabled = !!bootstrap?.googleLoginEnabled;
   const hasSsoOption = oidcEnabled || googleEnabled;
-  const localFormVisible = !hasSsoOption || showLocalForm;
-
+  const oidcLoginOnly = !!bootstrap?.oidcLoginOnly;
+  const localFormVisible = !oidcLoginOnly && (!hasSsoOption || showLocalForm);
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (submitting) return;
@@ -165,13 +165,16 @@ const Login = () => {
                 {error}
               </p>
             )}
-            <button
-              type="button"
-              className="login-local-toggle"
-              onClick={() => setShowLocalForm(true)}
-            >
-              Sign in with a local account instead
-            </button>
+
+            {!oidcLoginOnly && (
+              <button
+                type="button"
+                className="login-local-toggle"
+                onClick={() => setShowLocalForm(true)}
+              >
+                Sign in with a local account instead
+              </button>
+            )}
           </>
         )}
       </div>

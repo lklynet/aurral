@@ -57,6 +57,10 @@ const exchangeBody = v.object({ code: v.optional(v.string()) });
 export default new Hono<AppEnv>()
   .basePath("/auth")
   .post("/login", validate("json", loginBody), (c) => {
+    if (process.env.OIDC_LOGIN_ONLY === "true") {
+      return c.json({ error: "Local password login is disabled" }, 403);
+    }
+
     try {
       const body = c.req.valid("json");
       const username = (body.username || "").trim().toLowerCase();
