@@ -30,7 +30,10 @@ const loadBuild = async (version: string) => {
 };
 
 const start = async () => {
-  if (window.location.pathname === "/pair") return show(pairScreen());
+  if (window.location.pathname === "/pair") {
+    window.addEventListener("hashchange", () => window.location.reload(), { once: true });
+    return show(pairScreen());
+  }
   if (window.location.pathname === "/connect" || !activeServer) return show({ kind: "connect" });
   const { address } = activeServer;
   const server = await checkServer(address).catch(() => null);
