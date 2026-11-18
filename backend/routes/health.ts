@@ -44,6 +44,7 @@ import { prowlarrClient } from "../services/prowlarrClient.ts";
 import { getDownloadClient } from "../services/download/downloadClientSettings.ts";
 import { getMatcherStatus } from "../services/trackMatching/index.ts";
 import { getMusicDataSourceName } from "../services/musicDataSource/index.ts";
+import { isLastfmKeyRejected } from "../services/apiClients/lastfm.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { isRunningInDocker } from "../services/runtimeInfo.ts";
 
@@ -224,6 +225,7 @@ type HealthResponse = BootstrapPayload & {
   library?: { artistCount: number; lastScan: null };
   discovery?: ReturnType<typeof getDiscoveryStatus> & {
     provider: string;
+    lastfmKeyRejected: boolean;
     recommendationsCount: number;
     globalTopCount: number;
     artworkLinkCount: number;
@@ -403,6 +405,7 @@ export default new Hono<AppEnv>()
         const nativeImageCacheSizeBytes = await getImageProxyCacheSizeBytes();
         payload.discovery = {
           provider: getMusicDataSourceName(),
+          lastfmKeyRejected: isLastfmKeyRejected(),
           ...getDiscoveryStatus(currentUser.id),
           recommendationsCount: discoveryCache?.recommendations?.length || 0,
           globalTopCount: discoveryCache?.globalTop?.length || 0,

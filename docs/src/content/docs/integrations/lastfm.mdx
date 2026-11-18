@@ -11,6 +11,8 @@ On artist pages, Aurral reads genres from BrainzMash first. For artists that Bra
 
 An admin adds the Last.fm **API key** and **Shared secret** in **Settings > Discovery > Last.fm**. Aurral uses the key for discovery data. It uses the key and the secret together to connect scrobbling accounts.
 
+From December 1, 2026, Last.fm API keys need Last.fm Pro. When Last.fm rejects the key, Aurral uses Deezer and ListenBrainz for discovery and says so in **Settings > Discovery**. It asks Last.fm again every 6 hours, and switches back once the key works.
+
 ## Scrobble to Last.fm
 
 1. Open **Settings > Listening > Last.fm**.

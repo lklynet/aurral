@@ -1,4 +1,8 @@
-import { deezerGetArtistTopTrackList, getLastfmApiKey } from "../apiClients/index.ts";
+import {
+  deezerGetArtistTopTrackList,
+  getLastfmApiKey,
+  isLastfmKeyRejected,
+} from "../apiClients/index.ts";
 import { getCachedArtistByMbid } from "../providers/brainzmashProvider.ts";
 import { getLinkedDeezerArtistId } from "../providers/brainzmashMappers.ts";
 import { normalizeMbid, text } from "./common.ts";
@@ -15,7 +19,8 @@ type SourceArg<M extends SourceMethod, I extends number> = LastfmSource[M] exten
   ? A[I]
   : never;
 
-const activeSource = () => (getLastfmApiKey() ? lastfmSource : listenbrainzSource);
+const activeSource = () =>
+  getLastfmApiKey() && !isLastfmKeyRejected() ? lastfmSource : listenbrainzSource;
 
 export const getMusicDataSourceName = () => activeSource().name;
 
