@@ -172,6 +172,9 @@ interface MergedRecommendation extends DiscoveryRecommendation {
 
 export const STARTER_SEED_SOURCE = "charts";
 
+export const isChartPick = ({ sourceTypes = [] }: Pick<DiscoveryRecommendation, "sourceTypes">) =>
+  sourceTypes.length > 0 && sourceTypes.every((source) => source === STARTER_SEED_SOURCE);
+
 const SOURCE_BASE_WEIGHTS = {
   library: 1,
   local: 1.25,
@@ -1132,15 +1135,22 @@ export const mergeRetainedRecommendationPool = ({
         runStartedMs,
       }),
   );
-  const retained = (Array.isArray(existingRecommendations) ? existingRecommendations : []).map(
-    (recommendation, index) =>
+  const existing = Array.isArray(existingRecommendations) ? existingRecommendations : [];
+  const chartPickNames = new Set(existing.filter(isChartPick).map(({ name }) => name));
+  const viaChartPicks = ({ sourceTypes = [], sourceArtists = [] }: DiscoveryRecommendation) =>
+    sourceTypes.every((source) => source === "lastfm_related") &&
+    sourceArtists.length > 0 &&
+    sourceArtists.every((name) => chartPickNames.has(name));
+  const retained = existing
+    .filter((recommendation) => !isChartPick(recommendation) && !viaChartPicks(recommendation))
+    .map((recommendation, index) =>
       applyRecommendationPoolMetadata(recommendation, {
         fresh: false,
         index,
         runStartedAt,
         runStartedMs,
       }),
-  );
+    );
   const merged = mergeResolvedRecommendations([...fresh, ...retained], existingArtistKeys);
 
   return rerankRecommendations(merged, normalizedLimit, {

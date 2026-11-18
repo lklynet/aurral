@@ -14,6 +14,7 @@ import { getSimilarArtists } from "../musicDataSource/index.ts";
 import {
   addRecommendationCandidate,
   finalizeRecommendationAccumulator,
+  isChartPick,
   mergeResolvedRecommendations,
   normalizeArtistIdentityKeys,
   rerankRecommendations,
@@ -22,6 +23,7 @@ import {
   type RecommendationAccumulator,
   type RecommendationCandidate,
   type RecommendationSeed,
+  STARTER_SEED_SOURCE,
 } from "./recommendationPipeline.ts";
 import {
   fetchArtistGenreTags,
@@ -99,7 +101,7 @@ const toBridgeSeed = (bridge: DiscoveryRecommendation) => {
   return {
     mbid: bridge.id || bridge.mbid || null,
     artistName: bridge.name!,
-    source: "lastfm_related",
+    source: isChartPick(bridge) ? STARTER_SEED_SOURCE : "lastfm_related",
     profileBucket: "two_hop_bridge",
     weight,
     affinityWeight: weight,

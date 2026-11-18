@@ -154,6 +154,46 @@ test("rotation drops lowest retained artists when fresh batch arrives", () => {
   );
 });
 
+test("picks from chart seeds alone never carry over to the next rebuild", () => {
+  artists.reset();
+  const retained = artists.makeBatch(5, 300, "retained").map((artist, index) => ({
+    ...artist,
+    sourceTypes: [
+      ["charts"],
+      ["charts", "spotify"],
+      ["spotify"],
+      ["lastfm_related"],
+      ["lastfm_related"],
+    ][index],
+    sourceArtists: [
+      ["Chart"],
+      ["Chart", "Seed"],
+      ["retained-0"],
+      ["retained-0"],
+      ["retained-0", "retained-0", "retained-0", "retained-0", "Seed"],
+    ][index],
+  }));
+  const fresh = artists
+    .makeBatch(2, 100, "fresh")
+    .map((artist, index) => ({ ...artist, sourceTypes: [["charts"], ["spotify"]][index] }));
+
+  const pool = mergeRetainedRecommendationPool({
+    freshRecommendations: fresh,
+    existingRecommendations: retained,
+    limit: POOL_LIMIT,
+    runStartedAt: "2026-06-18T12:00:00.000Z",
+    discoveryMode: "balanced",
+  });
+
+  assert.deepEqual(pool.map((item) => item.name).sort(), [
+    "fresh-5",
+    "fresh-6",
+    "retained-1",
+    "retained-2",
+    "retained-4",
+  ]);
+});
+
 test("serveRecommendations ranks less-like artists lower and hides only exact blocks", () => {
   const storedPool = artists.makeBatch(5, 180, "stored");
   const hidden = requireFixture(storedPool[2]);
