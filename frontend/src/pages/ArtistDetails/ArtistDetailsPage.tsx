@@ -269,7 +269,6 @@ function ArtistDetailsPage() {
       albumName: track.album || "",
       artistMbid: mbid || "",
       albumMbid: "",
-      trackMbid: track.id,
       releaseYear: null,
       durationMs: track?.duration_ms,
       reason: "Artist preview",
