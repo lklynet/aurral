@@ -369,12 +369,6 @@ export interface LibraryReleaseCalendarRow {
   updated_at: number;
 }
 
-export interface LibraryReleaseCalendarArtistsRow {
-  artist_id: number;
-  refreshed_at: number | null;
-  failed_at: number | null;
-}
-
 export interface LibraryScanRunsRow {
   id: number;
   source: string;
@@ -534,6 +528,15 @@ export interface PluginsRow {
   broken_in_a_row: number;
   update_manifest: string | null;
   updated_at: number;
+}
+
+export interface ReleaseFeedRow {
+  artist_mbid: string;
+  release_group_mbid: string;
+  title: string;
+  release_date: string;
+  release_type: string;
+  fetched_at: number;
 }
 
 export interface SessionsRow {

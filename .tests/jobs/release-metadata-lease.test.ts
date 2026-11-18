@@ -46,24 +46,20 @@ test("a metadata refresh waiting on another's lease stops without running or spe
   }
 });
 
-test("losing the lease aborts a blocked provider request", async () => {
+test("losing the lease ends a refresh blocked on ListenBrainz", async () => {
   const { refreshReleaseMetadata } = await import("../../backend/services/releaseMetadataSync.ts");
+  const { upsertLibraryArtist } = await import("../../backend/services/libraryMediaStore.ts");
   const { http } = await import("../../lib/http.ts");
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"], now: 0 });
+  const mbid = "45454545-4545-4454-8454-454545454545";
+  const artist = upsertLibraryArtist({ identityKey: `mbid:${mbid}`, mbid, name: "Blocked Artist" });
   const lease = await acquireReleaseMetadataLease();
   const requested = Promise.withResolvers<void>();
-  vi.spyOn(http, "get").mockImplementation(
-    (_url, config) =>
-      new Promise<never>((_resolve, reject) => {
-        const signal = config?.signal;
-        signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
-        requested.resolve();
-      }),
-  );
-  const refresh = refreshReleaseMetadata({
-    lease,
-    artists: [{ id: 999, mbid: "45454545-4545-4454-8454-454545454545" }],
+  vi.spyOn(http, "get").mockImplementation(() => {
+    requested.resolve();
+    return new Promise<never>(() => {});
   });
+  const refresh = refreshReleaseMetadata({ lease });
   try {
     await requested.promise;
     db.prepare("UPDATE job_locks SET owner = ? WHERE name = ?").run(
@@ -75,6 +71,7 @@ test("losing the lease aborts a blocked provider request", async () => {
   } finally {
     lease.release();
     db.prepare("DELETE FROM job_locks WHERE name = ?").run("release-metadata-refresh");
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
     vi.useRealTimers();
   }
 });

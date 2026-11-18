@@ -14,6 +14,7 @@ const freshReleaseSchema = v.fallback(
     release_date: nullableText,
     release_group_mbid: nullableText,
     release_group_primary_type: nullableText,
+    release_group_secondary_type: nullableText,
     release_name: nullableText,
   }),
   {},
@@ -27,6 +28,7 @@ const slim = (release: ListenbrainzFreshRelease) => {
   const releaseGroupMbid = release.release_group_mbid?.trim();
   const title = release.release_name?.trim();
   const type = release.release_group_primary_type || "";
+  const secondaryType = release.release_group_secondary_type?.trim();
   const artistMbids = (release.artist_mbids || []).filter(Boolean);
   return releaseGroupMbid && title && release.release_date && FRESH_RELEASE_TYPES.has(type)
     ? [
@@ -34,6 +36,7 @@ const slim = (release: ListenbrainzFreshRelease) => {
           releaseGroupMbid,
           title,
           type,
+          secondaryTypes: secondaryType ? [secondaryType] : [],
           artistMbids,
           artistName: release.artist_credit_name?.trim() || "Unknown Artist",
           releaseDate: release.release_date,
@@ -45,15 +48,19 @@ const slim = (release: ListenbrainzFreshRelease) => {
 let snapshot: { fetchedAt: number; releases: ReturnType<typeof slim> } | null = null;
 let refreshing: Promise<void> | null = null;
 
-export function refreshFreshReleases() {
-  refreshing ??= listenbrainzRequest(
+export async function fetchFreshReleases(days: number, { timeoutMs = 30_000 } = {}) {
+  const data = await listenbrainzRequest(
     "/1/explore/fresh-releases/",
-    { days: 30, past: "true", future: "true" },
-    { timeoutMs: 30_000 },
-  )
-    .then((data) => {
-      const releases = v.parse(freshReleasesSchema, data).payload?.releases ?? [];
-      snapshot = { fetchedAt: Date.now(), releases: releases.flatMap(slim) };
+    { days, past: "true", future: "true" },
+    { timeoutMs },
+  );
+  return (v.parse(freshReleasesSchema, data).payload?.releases ?? []).flatMap(slim);
+}
+
+export function refreshFreshReleases() {
+  refreshing ??= fetchFreshReleases(30)
+    .then((releases) => {
+      snapshot = { fetchedAt: Date.now(), releases };
     })
     .catch(() => {
       snapshot = {

@@ -2,11 +2,7 @@ import * as v from "valibot";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import { listOf } from "../db/helpers/storedSchemas.ts";
 import { MONITORED_AURRAL_ALBUM_CONDITION } from "./monitoring.ts";
-import type {
-  LibraryArtistsRow,
-  LibraryReleaseCalendarArtistsRow,
-  LibraryReleaseCalendarRow,
-} from "../db/rows.ts";
+import type { LibraryReleaseCalendarRow, ReleaseFeedRow } from "../db/rows.ts";
 
 type CalendarEntryRow = LibraryReleaseCalendarRow & {
   artist_mbid: string | null;
@@ -46,54 +42,8 @@ const upsertRelease = db.prepare(`
     updated_at = excluded.updated_at
 `);
 
-const selectArtistReleases = db.prepare<
-  [number],
-  Pick<
-    LibraryReleaseCalendarRow,
-    "release_group_mbid" | "release_date" | "refreshed_at" | "present"
-  >
->(`
-  SELECT release_group_mbid, release_date, refreshed_at, present
-  FROM library_release_calendar
-  WHERE artist_id = ?
-`);
-
-const markReleaseAbsent = db.prepare(`
-  UPDATE library_release_calendar
-  SET present = 0, updated_at = ?
-  WHERE release_group_mbid = ? AND artist_id = ?
-`);
-
-const selectCalendarArtists = db.prepare<[], Pick<LibraryArtistsRow, "id"> & { mbid: string }>(`
-  SELECT id, mbid
-  FROM library_artists
-  WHERE mbid IS NOT NULL AND TRIM(mbid) != ''
-  ORDER BY id
-`);
-
-const selectArtistRefreshes = db.prepare<[], LibraryReleaseCalendarArtistsRow>(`
-  SELECT artist_id, refreshed_at, failed_at
-  FROM library_release_calendar_artists
-`);
-
-const selectLibraryArtist = db.prepare<[number], Pick<LibraryArtistsRow, "id">>(
-  "SELECT id FROM library_artists WHERE id = ?",
-);
-
-export function isLibraryArtist(artistId: number) {
-  return selectLibraryArtist.get(Number(artistId)) !== undefined;
-}
-
-const upsertArtistRefreshed = db.prepare(`
-  INSERT INTO library_release_calendar_artists (artist_id, refreshed_at, failed_at)
-  VALUES (?, ?, NULL)
-  ON CONFLICT(artist_id) DO UPDATE SET refreshed_at = excluded.refreshed_at, failed_at = NULL
-`);
-
-const upsertArtistFailed = db.prepare(`
-  INSERT INTO library_release_calendar_artists (artist_id, refreshed_at, failed_at)
-  VALUES (?, NULL, ?)
-  ON CONFLICT(artist_id) DO UPDATE SET failed_at = excluded.failed_at
+const selectCalendarArtist = db.prepare(`
+  SELECT 1 FROM library_artists WHERE mbid IS NOT NULL AND TRIM(mbid) != '' LIMIT 1
 `);
 
 const ownedReleaseGroupCondition = (releaseGroupMbid: string) => `EXISTS (
@@ -109,10 +59,6 @@ const ownedReleaseGroupCondition = (releaseGroupMbid: string) => `EXISTS (
     )
     AND owned_media.available = 1
 )`;
-
-const selectReleaseGroupOwned = db.prepare<[Record<string, unknown>], { owned: number }>(
-  `SELECT ${ownedReleaseGroupCondition("@releaseGroupMbid")} AS owned`,
-);
 
 export function upsertReleaseCalendarEntry({
   releaseGroupMbid,
@@ -148,61 +94,85 @@ export function upsertReleaseCalendarEntry({
   );
 }
 
-export function listReleaseCalendarArtists() {
-  return selectCalendarArtists.all();
+export function hasReleaseCalendarArtists() {
+  return Boolean(selectCalendarArtist.get());
 }
 
-export function getReleaseCalendarArtistRefreshes() {
-  return new Map(
-    selectArtistRefreshes
-      .all()
-      .map((row) => [
-        String(row.artist_id),
-        { refreshedAt: Number(row.refreshed_at) || 0, failedAt: Number(row.failed_at) || 0 },
-      ]),
-  );
+const selectFeedFetchedAt = db.prepare<[], { fetched_at: ReleaseFeedRow["fetched_at"] | null }>(
+  "SELECT MAX(fetched_at) AS fetched_at FROM release_feed",
+);
+const clearFeed = db.prepare("DELETE FROM release_feed");
+const insertFeedRelease = db.prepare<[string, string, string, string, string, number]>(`
+  INSERT OR REPLACE INTO release_feed (
+    artist_mbid, release_group_mbid, title, release_date, release_type, fetched_at
+  ) VALUES (?, ?, ?, ?, ?, ?)
+`);
+const projectFeed = db.prepare<[number, number, number]>(`
+  INSERT INTO library_release_calendar (
+    release_group_mbid, artist_id, title, release_date, release_type,
+    secondary_types_json, release_statuses_json, present, refreshed_at, created_at, updated_at
+  )
+  SELECT feed.release_group_mbid, artist.id, feed.title, feed.release_date, feed.release_type,
+    '[]', '[]', 1, ?, ?, ?
+  FROM release_feed AS feed
+  JOIN library_artists AS artist ON LOWER(artist.mbid) = feed.artist_mbid
+  WHERE true
+  ON CONFLICT(release_group_mbid, artist_id) DO UPDATE SET
+    title = excluded.title,
+    release_date = excluded.release_date,
+    release_type = excluded.release_type,
+    secondary_types_json = excluded.secondary_types_json,
+    release_statuses_json = excluded.release_statuses_json,
+    present = 1,
+    refreshed_at = excluded.refreshed_at,
+    updated_at = excluded.updated_at
+`);
+const markGone = db.prepare<[number, string, string]>(`
+  UPDATE library_release_calendar AS entry
+  SET present = 0, updated_at = ?
+  WHERE present = 1
+    AND release_date BETWEEN ? AND ?
+    AND NOT EXISTS (
+      SELECT 1 FROM release_feed AS feed
+      JOIN library_artists AS artist ON LOWER(artist.mbid) = feed.artist_mbid
+      WHERE feed.release_group_mbid = entry.release_group_mbid AND artist.id = entry.artist_id
+    )
+`);
+
+export function releaseFeedFetchedAt() {
+  return selectFeedFetchedAt.get()?.fetched_at ?? null;
 }
 
-export function markReleaseCalendarArtistRefreshed(artistId: number, refreshedAt: number) {
-  upsertArtistRefreshed.run(Number(artistId), Number(refreshedAt));
-}
-
-export function markReleaseCalendarArtistFailed(artistId: number, failedAt: number) {
-  upsertArtistFailed.run(Number(artistId), Number(failedAt));
-}
-
-export function getArtistReleaseCalendar(artistId: number) {
-  return new Map(
-    selectArtistReleases
-      .all(Number(artistId))
-      .map((row) => [
-        row.release_group_mbid,
-        { releaseDate: row.release_date, refreshedAt: Number(row.refreshed_at) },
-      ]),
-  );
-}
-
-export function isReleaseGroupOwned(releaseGroupMbid: string) {
-  return (
-    selectReleaseGroupOwned.get({
-      releaseGroupMbid: String(releaseGroupMbid || "").trim(),
-    })!.owned === 1
-  );
-}
-
-export function markUnseenReleaseCalendarEntries(
-  artistId: number,
-  seenReleaseGroupMbids: Iterable<string>,
-  refreshedAt = Date.now(),
+export function replaceReleaseFeed(
+  releases: {
+    artistMbids: string[];
+    releaseGroupMbid: string;
+    title: string;
+    releaseDate: string;
+    type: string;
+  }[],
+  at: number,
 ) {
-  const seen = new Set(seenReleaseGroupMbids);
-  const timestamp = Number(refreshedAt) || Date.now();
-  let stale = 0;
-  for (const row of selectArtistReleases.all(Number(artistId))) {
-    if (seen.has(row.release_group_mbid) || row.present === 0) continue;
-    stale += markReleaseAbsent.run(timestamp, row.release_group_mbid, Number(artistId)).changes;
+  clearFeed.run();
+  for (const release of releases) {
+    for (const artistMbid of release.artistMbids) {
+      insertFeedRelease.run(
+        artistMbid,
+        release.releaseGroupMbid,
+        release.title,
+        release.releaseDate,
+        release.type,
+        at,
+      );
+    }
   }
-  return stale;
+}
+
+export function projectReleaseFeed({ from, to, at }: { from: string; to: string; at: number }) {
+  return {
+    releases: projectFeed.run(at, at, at).changes,
+    gone: markGone.run(at, from, to).changes,
+  };
 }
 
 export function getReleaseCalendarEntries({
