@@ -336,14 +336,17 @@ function openMetadataCircuit(baseUrl: string, status: number, error: unknown) {
   setMetadataProviderCooldown(baseUrl, status, Date.now() + cooldownMs);
 }
 
-function countMetadataCall(baseUrl: string, path: string, status: unknown) {
+function countMetadataCall(baseUrl: string, path: string, status: unknown, sentAt: number) {
   try {
-    recordMetadataCall({
-      server: new URL(baseUrl).host,
-      endpoint: path.slice(1, isEntityMetadataPath(path) ? path.lastIndexOf("/") : undefined),
-      work: describeCurrentWork() ?? "other",
-      status: String(status),
-    });
+    recordMetadataCall(
+      {
+        server: new URL(baseUrl).host,
+        endpoint: path.slice(1, isEntityMetadataPath(path) ? path.lastIndexOf("/") : undefined),
+        work: describeCurrentWork() ?? "other",
+        status: String(status),
+      },
+      sentAt,
+    );
   } catch {}
 }
 
@@ -600,6 +603,7 @@ function refreshMetadata<Schema extends v.GenericSchema>(
               const circuitAfterWait = getMetadataCircuitError(baseUrl);
               if (circuitAfterWait) throw circuitAfterWait;
               providerRequestStarted = true;
+              const sentAt = Date.now();
               return http
                 .get(`${baseUrl}${path}`, {
                   query: params,
@@ -612,7 +616,7 @@ function refreshMetadata<Schema extends v.GenericSchema>(
                 })
                 .then(
                   (response) => {
-                    countMetadataCall(baseUrl, path, response.status);
+                    countMetadataCall(baseUrl, path, response.status, sentAt);
                     return response;
                   },
                   (error: unknown) => {
@@ -621,6 +625,7 @@ function refreshMetadata<Schema extends v.GenericSchema>(
                       baseUrl,
                       path,
                       failure?.response?.status ?? failure?.code ?? "error",
+                      sentAt,
                     );
                     throw error;
                   },
