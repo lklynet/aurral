@@ -120,17 +120,6 @@ export const listenbrainz: Outside = {
       }));
       return { payload: { artists, range: param("range"), count: artists.length } };
     }
-    if (path === "/1/stats/sitewide/recordings") {
-      const recordings = pageOf(music.hits, url, "count", "offset").map((track) => ({
-        artist_mbids: [track.artist.id],
-        artist_name: track.artist.name,
-        track_name: track.title,
-        release_name: track.album.title,
-        recording_mbid: track.id,
-        listen_count: track.album.votes * 2000,
-      }));
-      return { payload: { recordings, range: param("range"), count: recordings.length } };
-    }
     if (path === "/1/explore/fresh-releases") {
       const releases = music.fresh.map((album) => ({
         artist_credit_name: album.artist.name,

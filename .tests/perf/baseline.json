@@ -466,5 +466,19 @@
         "warm": 0
       }
     }
+  },
+  "subsonic getSimilarSongs": {
+    "queries": {
+      "cold": 26,
+      "warm": 24
+    },
+    "bytes": 44565,
+    "scans": [],
+    "calls": {
+      "labs.api.listenbrainz.org": {
+        "cold": 1,
+        "warm": 0
+      }
+    }
   }
 }

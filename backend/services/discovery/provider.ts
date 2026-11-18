@@ -24,7 +24,7 @@ import {
   type RecommendationFeedback,
 } from "./recommendationPipeline.ts";
 import type { DiscoveryCache, DiscoveryCacheUpdate } from "../../db/helpers/discovery.ts";
-import { getMusicDataSourceName, getTrendingArtists } from "../musicDataSource/index.ts";
+import { getMusicDataSourceName } from "../musicDataSource/index.ts";
 import { withLock } from "../jobs/queue.ts";
 import { websocketService } from "../websocketService.ts";
 import {
@@ -180,7 +180,15 @@ const resolveRecommendationCandidates = async (
 };
 
 const fetchTrendingArtists = async (existingArtistKeys: Set<string>) => {
-  const trendingArtists = await getTrendingArtists({ limit: 100 });
+  const { getChartArtists } = await import("./trendingCharts.ts");
+  const trendingArtists = getChartArtists(100).map((artist, index) => ({
+    id: artist.mbid,
+    name: artist.artistName,
+    image: artist.imageUrl,
+    type: "Artist",
+    popularityLabel: "Trending on Deezer",
+    popularityRank: index + 1,
+  }));
   const globalTop = mergeResolvedRecommendations(trendingArtists, existingArtistKeys).slice(0, 32);
   await resolveArtistMbids(globalTop);
   return mergeResolvedRecommendations(globalTop, existingArtistKeys)
@@ -222,21 +230,15 @@ export const updateDiscoveryCache = async (options: { skipLock?: boolean } = {})
 
   try {
     const provider = getMusicDataSourceName();
-    logger.info("discovery", `Fetching global trending artists from ${provider}...`);
+    logger.info("discovery", "Reading global trending artists from the Deezer charts...");
     recordDiscoveryUpdateProgress("fetching_trending", "Fetching global trending artists", 40, {
       provider,
     });
     const runStartedAt = new Date().toISOString();
-    let globalTop = discoveryCache.provider === provider ? discoveryCache.globalTop || [] : [];
-    try {
-      globalTop = await fetchTrendingArtists(
-        buildExistingArtistKeySet(getLibraryArtistKeyProjection()),
-      );
-      logger.info("discovery", `Found ${globalTop.length} trending artists.`);
-    } catch (error) {
-      const failure = asAppError(error);
-      logger.error("discovery", `Failed to fetch global trending artists: ${failure?.message}`);
-    }
+    const globalTop = await fetchTrendingArtists(
+      buildExistingArtistKeySet(getLibraryArtistKeyProjection()),
+    );
+    logger.info("discovery", `Found ${globalTop.length} trending artists.`);
 
     try {
       const queuedUserRefreshes = enqueueAllUserDiscoveryRefreshes("global_refresh_completed");

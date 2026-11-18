@@ -72,7 +72,7 @@ const [
   { default: preview },
   { getArtistImage },
   { fetchReleaseGroupCoverUrl },
-  { listenbrainzSource },
+  { getArtistTopTracks },
 ] = await setupIsolatedBackend(
   "brainzmash-linked-metadata",
   () => import("../lib/http.ts"),
@@ -82,7 +82,7 @@ const [
   () => import("../backend/routes/artists/handlers/preview.ts"),
   () => import("../backend/services/imageService.ts"),
   () => import("../backend/services/releaseGroupCoverService.ts"),
-  () => import("../backend/services/musicDataSource/listenbrainz.ts"),
+  () => import("../backend/services/musicDataSource/index.ts"),
 );
 
 afterAll(async () => {
@@ -212,11 +212,11 @@ test("top tracks use the Deezer artist linked on a saved BrainzMash artist, and 
   const requests = recordExternalRequests();
   providerPaths.length = 0;
 
-  const saved = await listenbrainzSource.getArtistTopTracks({
+  const saved = await getArtistTopTracks({
     name: "Queen",
     mbid: linkedArtistMbid,
   });
-  const unsaved = await listenbrainzSource.getArtistTopTracks({
+  const unsaved = await getArtistTopTracks({
     name: "Queens",
     mbid: "78787878-7878-4787-8787-787878787878",
   });

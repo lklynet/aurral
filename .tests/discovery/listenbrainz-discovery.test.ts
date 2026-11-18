@@ -36,6 +36,7 @@ const mbid = (index: number) => `00000000-0000-4000-8000-${String(index).padStar
 const LIKED = { name: "Liked Artist", mbid: mbid(1) };
 const LIBRARY = { name: "Library One", mbid: mbid(2) };
 const QUIET = { name: "Quiet Artist", mbid: mbid(3) };
+const FLOW_SEED = { name: "Flow Seed", mbid: mbid(6) };
 const NEIGHBOR = { name: "Neighbor Artist", mbid: mbid(4) };
 const TAGGED = { name: "Tagged Artist", mbid: mbid(5) };
 const RELATED = { name: "Related Pick", mbid: mbid(31) };
@@ -104,18 +105,6 @@ const respond = (url: URL) => {
         })),
     );
   }
-  if (url.hostname === "api.listenbrainz.org" && url.pathname === "/1/stats/sitewide/recordings") {
-    return json({
-      payload: {
-        recordings: Array.from({ length: 60 }, (_, index) => ({
-          artist_name: `Chart Artist ${index}`,
-          artist_mbids: [mbid(100 + index)],
-          track_name: `Chart Song ${index}`,
-          release_name: `Chart Album ${index}`,
-        })),
-      },
-    });
-  }
   if (url.hostname === "musicbrainz.org" && url.pathname === "/ws/2/artist") {
     return json({
       count: 3,
@@ -129,6 +118,8 @@ const respond = (url: URL) => {
   if (url.hostname === "api.deezer.com" && url.pathname === "/search/artist") {
     if (url.searchParams.get("q") === QUIET.name)
       return json({ data: [{ id: 9, name: QUIET.name }] });
+    if (url.searchParams.get("q") === FLOW_SEED.name)
+      return json({ data: [{ id: 10, name: FLOW_SEED.name }] });
     return json({
       data: [
         { id: 8, name: "Library Onesie" },
@@ -143,6 +134,9 @@ const respond = (url: URL) => {
         { id: 32, name: "Unknown To MusicBrainz" },
       ],
     });
+  }
+  if (url.hostname === "api.deezer.com" && url.pathname === "/artist/10/related") {
+    return json({ data: [{ id: 41, name: "Flow Pick" }] });
   }
   if (url.hostname === "lidarrapi.brainzmash.cc" && url.pathname === `/artist/${QUIET.mbid}`) {
     return json({ id: QUIET.mbid, artistname: QUIET.name, links: [], Albums: [] });
@@ -254,7 +248,7 @@ test("without a Last.fm key tag search lists MusicBrainz's artists for the tag",
   assert.equal(search.searchParams.get("query"), 'tag:"shoegaze"');
 });
 
-test("without a Last.fm key artist pages list ListenBrainz similar artists and keep them across restarts", async () => {
+test("without a Last.fm key artist pages fall back to ListenBrainz similar artists and keep them across restarts", async () => {
   const loadSimilar = async () => {
     const response = await similar.request(
       `/artists/${NEIGHBOR.mbid}/similar?${new URLSearchParams({ artistName: NEIGHBOR.name })}`,
@@ -303,7 +297,7 @@ test("without a Last.fm key artist tags are kept across restarts and refreshed i
   assert.equal(lookups(), 2);
 });
 
-test("without a Last.fm key artist pages fall back to Deezer's related artists when ListenBrainz has none", async () => {
+test("without a Last.fm key artist pages list Deezer's related artists that MusicBrainz knows", async () => {
   const response = await similar.request(
     `/artists/${QUIET.mbid}/similar?${new URLSearchParams({ artistName: QUIET.name })}`,
   );
@@ -321,11 +315,21 @@ test("flows that only know an artist's MBID still get Deezer's related artists",
   const artists = await new FlowTrackSource()._getSimilarArtists(QUIET.mbid);
 
   assert.deepEqual(
+    artists.map((artist) => artist.name),
+    [RELATED.name, "Unknown To MusicBrainz"],
+  );
+});
+
+test("flows take Deezer's related artists by name without looking each one up", async () => {
+  const artists = await new FlowTrackSource()._getSimilarArtists(FLOW_SEED.name);
+
+  assert.deepEqual(
     artists.map((artist) => [artist.mbid, artist.name]),
-    [
-      [RELATED.mbid, RELATED.name],
-      [null, "Unknown To MusicBrainz"],
-    ],
+    [[null, "Flow Pick"]],
+  );
+  assert.equal(
+    requests.some((url) => url.hostname === "lidarrapi.brainzmash.cc"),
+    false,
   );
 });
 
@@ -348,30 +352,4 @@ test("without a Last.fm key a Mix flow picks the library artist's own Deezer top
     requests.some((url) => url.pathname === "/artist/8/top"),
     false,
   );
-});
-
-test("without a Last.fm key flows of any size share one ListenBrainz trending request", async () => {
-  const source = new FlowTrackSource();
-  const small = await source.getTrendingTracks(5);
-  const large = await source.getTrendingTracks(40);
-
-  assert.equal(small.length, 5);
-  assert.equal(large.length, 40);
-  assert.equal(requests.filter((url) => url.pathname === "/1/stats/sitewide/recordings").length, 1);
-});
-
-test("switching sources never keeps the other source's trending artists when ListenBrainz fails", async () => {
-  Object.assign(discovery.getDiscoveryCache(), {
-    provider: "lastfm",
-    globalTop: [
-      { id: mbid(90), name: "Last.fm Chart Artist", popularityLabel: "1M listeners on Last.fm" },
-    ],
-  });
-
-  await discovery.updateDiscoveryCache();
-
-  const cache = dbOps.getDiscoveryCache();
-  assert.equal(cache.provider, "listenbrainz");
-  assert.deepEqual([...cache.globalTop], []);
-  assert.ok(requests.some((url) => url.pathname === "/1/stats/sitewide/artists"));
 });

@@ -2,6 +2,8 @@ import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
 import { listenbrainzGetReleaseGroupStats } from "../../../services/apiClients/listenbrainz.ts";
 import { getArtistTagLists, getSimilarArtists } from "../../../services/musicDataSource/index.ts";
 import { isKnownGenre } from "../../../services/musicGenres.ts";
+import { guessArtistMbid } from "../../../services/artistMatch.ts";
+import { mapWithConcurrency } from "../../../services/discovery/helpers.ts";
 import type { musicbrainzGetArtistReleaseGroups } from "../../../services/apiClients/index.ts";
 import type { NormalizedArtist } from "../../../services/providers/brainzmashMappers.ts";
 
@@ -61,14 +63,13 @@ export async function getSimilarArtistCards(
     const name = await resolveArtistName().catch(() => null);
     if (name) artists = await getSimilarArtists({ name }, { limit, signal });
   }
-  return artists
-    .filter((artist) => artist.mbid)
-    .map((artist) => ({
-      id: artist.mbid,
-      name: artist.name,
-      image: buildImageProxyUrl(artist.image),
-      match: Math.round(artist.match * 100),
-    }));
+  const cards = await mapWithConcurrency(artists.slice(0, limit), 4, async (artist) => ({
+    id: artist.mbid || (await guessArtistMbid(artist.name)),
+    name: artist.name,
+    image: buildImageProxyUrl(artist.image),
+    match: Math.round(artist.match * 100),
+  }));
+  return cards.filter((card) => card.id);
 }
 
 const LISTENBRAINZ_WAIT_MS = 2000;
