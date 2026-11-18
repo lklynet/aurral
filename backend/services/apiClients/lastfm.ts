@@ -10,6 +10,7 @@ import { getLastfmApiKey, getLastfmApiSecret } from "./config.ts";
 import { runSharedInflight, type InflightRequests } from "../sharedInflight.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { lenient, lenientCount, lenientText, oneOrMany, readOne } from "../integrationData.ts";
+import { dbOps } from "../../db/helpers/index.ts";
 
 interface LastfmTrackEvent {
   artist: string;
@@ -91,6 +92,35 @@ const lastfmLimiter = createRateLimiter(200, { shared: LASTFM_API });
 const LASTFM_TIMEOUT_MS =
   Math.max(3000, parseInt(String(process.env.AURRAL_LASTFM_TIMEOUT_MS), 10) || 0) || 15000;
 const LASTFM_MAX_RETRIES = 2;
+
+const REJECTED_KEY_SETTING = "lastfmRejectedKey";
+const REJECTED_KEY_ERRORS = new Set([10, 26]);
+const PRIVATE_PROFILE_ERROR = 17;
+
+const keyFingerprint = (apiKey: string) =>
+  createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
+
+export const isLastfmKeyRejected = (apiKey = getLastfmApiKey()) =>
+  apiKey !== undefined &&
+  apiKey !== "" &&
+  dbOps.getJSONSetting(REJECTED_KEY_SETTING, v.string()) === keyFingerprint(apiKey);
+
+const recordKeyAnswer = (apiKey: string, rejected: boolean) => {
+  if (rejected === isLastfmKeyRejected(apiKey)) return;
+  dbOps.setJSONSetting(REJECTED_KEY_SETTING, rejected ? keyFingerprint(apiKey) : "");
+  if (rejected) {
+    logger.warn(
+      "api",
+      "Last.fm rejected the API key, so discovery uses Deezer and ListenBrainz until it works again",
+    );
+  } else {
+    logger.info("api", "Last.fm accepts the API key again");
+  }
+};
+
+const isRejectedKeyAnswer = (status: number | null, code: unknown) =>
+  REJECTED_KEY_ERRORS.has(Number(code)) ||
+  (status === 403 && Number(code) !== PRIVATE_PROFILE_ERROR);
 
 const lastfmInflightRequests: InflightRequests = new Map();
 const lastfmErrorLogAt = new Map<string, number>();
@@ -225,6 +255,7 @@ export async function lastfmRequest(
             service: "Last.fm",
             endpoint: method,
           });
+          recordKeyAnswer(apiKey, isRejectedKeyAnswer(response.status, data.error));
           lastfmCache.set(cacheKey, data);
           return data;
         } catch (error) {
@@ -245,6 +276,16 @@ export async function lastfmRequest(
           responseData !== null &&
           (Reflect.get(responseData, "message") || Reflect.get(responseData, "error"))) ||
         null;
+      if (
+        isRejectedKeyAnswer(
+          status,
+          typeof responseData === "object" && responseData !== null
+            ? Reflect.get(responseData, "error")
+            : null,
+        )
+      ) {
+        recordKeyAnswer(apiKey, true);
+      }
       const details = {
         method,
         status,

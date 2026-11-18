@@ -148,7 +148,15 @@ function CacheGroup() {
       <SettingsRow
         label="Source"
         help={
-          provider === "listenbrainz" ? (
+          health?.discovery?.lastfmKeyRejected ? (
+            <>
+              Last.fm rejected the{" "}
+              <SettingsLink to="discovery/lastfm" className="settings-link">
+                API key
+              </SettingsLink>
+              . Aurral asks again every 6 hours.
+            </>
+          ) : provider === "listenbrainz" ? (
             <>
               <SettingsLink to="discovery/lastfm" className="settings-link">
                 Add a Last.fm API key
