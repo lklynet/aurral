@@ -12,19 +12,13 @@ import {
 
 import { insertJob } from "../helpers/jobs.ts";
 
-const [
-  paths,
-  { releaseMetadataQueue, systemTaskQueue },
-  { dbOps },
-  { upsertLibraryArtist },
-  { db },
-] = await setupIsolatedBackend(
-  "metadata-process-isolation",
-  () => import("../../backend/services/jobs/queues.ts"),
-  () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/services/libraryMediaStore.ts"),
-  () => import("../../backend/config/db-sqlite.ts"),
-);
+const [paths, { releaseMetadataQueue, systemTaskQueue }, { upsertLibraryArtist }, { db }] =
+  await setupIsolatedBackend(
+    "metadata-process-isolation",
+    () => import("../../backend/services/jobs/queues.ts"),
+    () => import("../../backend/services/libraryMediaStore.ts"),
+    () => import("../../backend/config/db-sqlite.ts"),
+  );
 afterAll(() => cleanupIsolatedState(paths));
 
 test(
@@ -38,27 +32,31 @@ test(
     const responseReleased = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const server = await createMockHttpServer(async (request, response) => {
+    const mbid = randomUUID();
+    const artist = upsertLibraryArtist({
+      identityKey: `mbid:${mbid}`,
+      mbid,
+      name: "Process Isolation Artist",
+    });
+    const server = await createMockHttpServer(async (_request, response) => {
       requested();
       await responseReleased;
       response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({ id: String(request.url).split("/").pop(), Albums: [] }));
-    });
-    const previous = dbOps.getSettings();
-    dbOps.updateSettings({
-      ...previous,
-      integrations: {
-        ...previous.integrations,
-        metadata: {
-          ...previous.integrations?.metadata,
-          baseUrl: server.url,
-        },
-      },
-    });
-    const artist = upsertLibraryArtist({
-      identityKey: `mbid:${randomUUID()}`,
-      mbid: randomUUID(),
-      name: "Process Isolation Artist",
+      response.end(
+        JSON.stringify({
+          payload: {
+            releases: [
+              {
+                release_group_mbid: randomUUID(),
+                release_name: "Isolated Release",
+                artist_mbids: [mbid],
+                release_group_primary_type: "Album",
+                release_date: new Date().toISOString().slice(0, 10),
+              },
+            ],
+          },
+        }),
+      );
     });
     const children: import("node:child_process").ChildProcess[] = [];
     const ready = new Map();
@@ -74,7 +72,11 @@ test(
         fileURLToPath(new URL("../fixtures/metadata-worker-child.mts", import.meta.url)),
         [],
         {
-          env: { ...process.env, AURRAL_BACKGROUND_WORKER_GROUP: group },
+          env: {
+            ...process.env,
+            AURRAL_BACKGROUND_WORKER_GROUP: group,
+            LISTENBRAINZ_MOCK_URL: server.url,
+          },
           stdio: ["ignore", "ignore", "pipe", "ipc"],
         },
       );
@@ -126,7 +128,6 @@ test(
             }),
         ),
       );
-      dbOps.updateSettings(previous);
       db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
       await server.close();
     }

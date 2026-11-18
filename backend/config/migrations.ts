@@ -386,6 +386,20 @@ const dropLastfm: Migration = (db) => {
   `);
 };
 
+const storeReleaseFeed: Migration = (db) =>
+  db.exec(`
+    DROP TABLE IF EXISTS library_release_calendar_artists;
+    CREATE TABLE IF NOT EXISTS release_feed (
+      artist_mbid TEXT NOT NULL,
+      release_group_mbid TEXT NOT NULL,
+      title TEXT NOT NULL,
+      release_date TEXT NOT NULL,
+      release_type TEXT NOT NULL,
+      fetched_at INTEGER NOT NULL,
+      PRIMARY KEY (artist_mbid, release_group_mbid)
+    ) WITHOUT ROWID;
+  `);
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -411,6 +425,7 @@ export const migrations: Migration[] = [
   restoreStoredTrackArtistCredits,
   syncRestoredFileArtistTags,
   dropLastfm,
+  storeReleaseFeed,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

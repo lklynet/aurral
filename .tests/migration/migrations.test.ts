@@ -330,7 +330,7 @@ test("upgrading turns a Gotify setup into a webhook that still reads its token",
 test("upgrading gives ownerless playlists and flows to the first admin and turns Blends on", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  migrate(db, migrations.slice(0, -9));
+  migrate(db, migrations.slice(0, -10));
   db.exec(`
     INSERT INTO users (id, username, password_hash, role) VALUES
       (1, 'listener', 'hash', 'user'), (2, 'lee', 'hash', 'admin'), (3, 'ada', 'hash', 'admin');
@@ -356,7 +356,7 @@ test("upgrading gives ownerless playlists and flows to the first admin and turns
 test("upgrading restores track credits from stored ARTISTS tags", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  migrate(db, migrations.slice(0, -3));
+  migrate(db, migrations.slice(0, -4));
   db.prepare("INSERT INTO settings (key, value) VALUES ('librarySearchIndexVersion', '3')").run();
   const insert = db.prepare<[string, string, string, string]>(
     `INSERT INTO library_tracks
@@ -455,7 +455,7 @@ test("upgrading restores track credits from stored ARTISTS tags", () => {
 test("upgrading drops what only Last.fm read and keeps the rest", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  migrate(db, migrations.slice(0, -1));
+  migrate(db, migrations.slice(0, -2));
   db.exec(`
     ALTER TABLE users ADD COLUMN lastfm_username TEXT;
     CREATE TABLE lastfm_link_states (token_hash TEXT PRIMARY KEY);
