@@ -39,6 +39,7 @@ import {
 } from "./downloadUtils.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { isPathWithin } from "./libraryFolders.ts";
+import { trackArtistCreditFromTags } from "../../lib/artistCredit.ts";
 
 type ScannedMetadata = {
   common?: Partial<ICommonTagsResult>;
@@ -210,7 +211,7 @@ function buildMetadataRecord(metadata: ScannedMetadata, filePath: string, rootPa
     albumName,
     trackKey,
     trackMbid,
-    trackArtistName: text(common.artist),
+    trackArtistName: trackArtistCreditFromTags(common.artist, common.artists),
     title,
     trackNumber,
     discNumber,

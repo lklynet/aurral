@@ -332,7 +332,7 @@ test("upgrading turns a Gotify setup into a webhook that still reads its token",
 test("upgrading gives ownerless playlists and flows to the first admin and turns Blends on", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  migrate(db, migrations.slice(0, -6));
+  migrate(db, migrations.slice(0, -7));
   db.exec(`
     INSERT INTO users (id, username, password_hash, role) VALUES
       (1, 'listener', 'hash', 'user'), (2, 'lee', 'hash', 'admin'), (3, 'ada', 'hash', 'admin');
@@ -353,4 +353,73 @@ test("upgrading gives ownerless playlists and flows to the first admin and turns
   assert.equal(owners("staticPlaylists"), "[2,1]");
   assert.equal(owners("flows"), "[2]");
   assert.deepEqual(db.prepare("SELECT DISTINCT blend FROM users").pluck().all(), [1]);
+});
+
+test("upgrading restores track credits from stored ARTISTS tags", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, -1));
+  db.prepare("INSERT INTO settings (key, value) VALUES ('librarySearchIndexVersion', '3')").run();
+  const insert = db.prepare<[string, string, string, string]>(
+    `INSERT INTO library_tracks
+       (identity_key, title, artist_name, metadata_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 10, 20)`,
+  );
+  insert.run(
+    "missing-guest",
+    "Missing Guest",
+    "PinkPantheress",
+    JSON.stringify({
+      tags: {
+        artist: "PinkPantheress",
+        albumartist: "PinkPantheress",
+        artists: ["PinkPantheress", "Anitta"],
+      },
+    }),
+  );
+  insert.run(
+    "full-credit",
+    "Full Credit",
+    "PinkPantheress with Anitta",
+    JSON.stringify({
+      tags: {
+        artist: "PinkPantheress with Anitta",
+        albumartist: "PinkPantheress",
+        artists: ["PinkPantheress", "Anitta"],
+      },
+    }),
+  );
+  insert.run(
+    "corrected",
+    "Corrected",
+    "Manual credit",
+    JSON.stringify({
+      tags: {
+        artist: "PinkPantheress",
+        albumartist: "PinkPantheress",
+        artists: ["PinkPantheress", "Anitta"],
+      },
+    }),
+  );
+
+  migrate(db);
+
+  assert.deepEqual(
+    db
+      .prepare("SELECT identity_key, artist_name, updated_at FROM library_tracks ORDER BY id")
+      .all(),
+    [
+      { identity_key: "missing-guest", artist_name: "PinkPantheress, Anitta", updated_at: 20 },
+      {
+        identity_key: "full-credit",
+        artist_name: "PinkPantheress with Anitta",
+        updated_at: 20,
+      },
+      { identity_key: "corrected", artist_name: "Manual credit", updated_at: 20 },
+    ],
+  );
+  assert.equal(
+    db.prepare("SELECT value FROM settings WHERE key = 'librarySearchIndexVersion'").get(),
+    undefined,
+  );
 });

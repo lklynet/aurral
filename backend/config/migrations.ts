@@ -2,7 +2,8 @@ import type Database from "better-sqlite3";
 import { createAurral3Schema } from "./aurral-3-schema.ts";
 import { NOTIFICATION_EVENTS } from "../../lib/notificationEvents.ts";
 import { isRecord } from "../../lib/isRecord.ts";
-import type { SettingsRow, UsersRow } from "../db/rows.ts";
+import { trackArtistCreditFromTags } from "../../lib/artistCredit.ts";
+import type { LibraryTracksRow, SettingsRow, UsersRow } from "../db/rows.ts";
 
 type Migration = (db: Database.Database) => void;
 
@@ -309,6 +310,33 @@ const renewSessionsOnUse: Migration = (db) => {
   }
 };
 
+const restoreStoredTrackArtistCredits: Migration = (db) => {
+  const rows = db
+    .prepare<
+      [],
+      Pick<LibraryTracksRow, "id" | "artist_name" | "metadata_json">
+    >(`SELECT id, artist_name, metadata_json FROM library_tracks
+       WHERE json_valid(metadata_json)
+         AND json_type(metadata_json, '$.tags.artists') IN ('array', 'text')`)
+    .all();
+  const update = db.prepare<[string, number]>(
+    "UPDATE library_tracks SET artist_name = ? WHERE id = ?",
+  );
+  let changed = false;
+  for (const row of rows) {
+    const metadata: unknown = JSON.parse(row.metadata_json ?? "null");
+    if (!isRecord(metadata) || !isRecord(metadata.tags)) continue;
+    const current = String(row.artist_name ?? "").trim();
+    const tagged = String(metadata.tags.artist ?? metadata.tags.albumartist ?? "").trim();
+    if (current && current.toLocaleLowerCase() !== tagged.toLocaleLowerCase()) continue;
+    const credit = trackArtistCreditFromTags(metadata.tags.artist, metadata.tags.artists);
+    if (!credit || credit === current) continue;
+    update.run(credit, row.id);
+    changed = true;
+  }
+  if (changed) db.prepare("DELETE FROM settings WHERE key = 'librarySearchIndexVersion'").run();
+};
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -331,6 +359,7 @@ export const migrations: Migration[] = [
   blendByDefault,
   storeFriendBlendTracks,
   renewSessionsOnUse,
+  restoreStoredTrackArtistCredits,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {
