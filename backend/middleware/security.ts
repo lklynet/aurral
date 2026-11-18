@@ -11,7 +11,10 @@ const isPublic = (c: Context<AppEnv>) => {
   );
 };
 
-const appOrigin = (process.env.AURRAL_APP_ORIGIN || "https://music.aurral.org").replace(/\/+$/, "");
+export const appOrigin = (process.env.AURRAL_APP_ORIGIN || "https://music.aurral.org").replace(
+  /\/+$/,
+  "",
+);
 
 const allowedOrigins = new Set(
   (process.env.CORS_ORIGIN || "")

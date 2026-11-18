@@ -4,8 +4,10 @@ import { X } from "../components/icons";
 import TooltipButton from "../components/TooltipButton";
 import { listeningHistoryQueryOptions, spotifyHistoryQueryOptions } from "../queryOptions.ts";
 import { SettingsLink } from "../navigation/settingsRoute";
+import { serverScoped } from "../utils/server.ts";
 
-const dismissedKey = (userId: string | number) => `aurral:discover-history-prompt:${userId}`;
+const dismissedKey = (userId: string | number) =>
+  serverScoped(`aurral:discover-history-prompt:${userId}`);
 
 export function DiscoverHistoryPrompt({ userId }: { userId: string | number | undefined }) {
   const { data: history } = useQuery(listeningHistoryQueryOptions(userId));

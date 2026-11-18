@@ -48,6 +48,7 @@ import { asApiError } from "../../utils/api/core.ts";
 import { copyText } from "../../utils/shareLink.ts";
 import { routeStateOf } from "../../navigation/routeState.ts";
 import { normalizeNameKey, reserveUniqueName } from "../../utils/staticPlaylists.ts";
+import { serverUrl } from "../../utils/server.ts";
 
 const FlowEditor = lazy(() => import("./FlowEditor.tsx"));
 
@@ -246,10 +247,7 @@ function FlowDetail({ flow }: { flow: Flow }) {
       );
       const token = String(response?.token || "").trim();
       if (!token) throw new Error("Feed URL unavailable");
-      const url = new URL(
-        `/api/feeds/lidarr/flows/${encodeURIComponent(flow.id)}.json`,
-        window.location.origin,
-      );
+      const url = new URL(serverUrl(`/api/feeds/lidarr/flows/${encodeURIComponent(flow.id)}.json`));
       url.searchParams.set("token", token);
       if (!(await copyText(url.toString())))
         throw new Error("Could not copy the Lidarr import URL");

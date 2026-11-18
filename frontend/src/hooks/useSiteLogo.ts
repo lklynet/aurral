@@ -6,6 +6,9 @@ const OCTOBER = 9;
 export function useSiteLogo() {
   const mode = useSyncExternalStore(subscribeToTheme, getPaintedThemeMode);
   return new Date().getMonth() === OCTOBER
-    ? { src: `/arralogo-halloween-${mode}.svg`, className: " site-logo--pumpkin" }
-    : { src: "/arralogo.svg", className: "" };
+    ? {
+        src: `${import.meta.env.BASE_URL}arralogo-halloween-${mode}.svg`,
+        className: " site-logo--pumpkin",
+      }
+    : { src: `${import.meta.env.BASE_URL}arralogo.svg`, className: "" };
 }

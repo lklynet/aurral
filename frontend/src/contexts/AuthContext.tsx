@@ -20,6 +20,7 @@ import { clearLibraryFavoritesCache } from "../utils/api/endpoints/library.ts";
 import { setDateTimeFormat } from "../utils/dateTime.ts";
 import { queryClient } from "../queryClient.ts";
 import type { ReactNode } from "react";
+import { forgetActiveServer, HOSTED } from "../utils/server.ts";
 
 type AuthUser = {
   id?: number;
@@ -158,6 +159,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const logout = useCallback(async () => {
+    if (HOSTED) {
+      await logOut().catch(() => {});
+      return forgetActiveServer();
+    }
     const externalLogoutUrl = bootstrap?.oidcLogoutUrl || bootstrap?.proxyLogoutUrl;
     if (externalLogoutUrl) {
       void logOut().catch(() => {});
@@ -189,7 +194,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     [user],
   );
 
-  const canLogOut = !bootstrap?.proxyAuthEnabled || !!bootstrap?.proxyLogoutUrl;
+  const canLogOut = HOSTED || !bootstrap?.proxyAuthEnabled || !!bootstrap?.proxyLogoutUrl;
 
   return (
     <AuthContext.Provider

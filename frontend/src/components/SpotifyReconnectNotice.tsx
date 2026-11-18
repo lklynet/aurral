@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { parseResponse } from "hono/client";
 import { playlistImportsClient } from "../utils/api/clients/playlistImports.ts";
+import { serverScoped } from "../utils/server.ts";
 
 const NOTICE_KEY_PREFIX = "aurral-spotify-reconnect-notice:";
 
@@ -12,7 +13,7 @@ export default function SpotifyReconnectNotice() {
   const { addToast } = useToast();
   const navigate = useNavigate();
   const canImport = isAuthenticated && hasPermission("accessPlaylists");
-  const noticeKey = `${NOTICE_KEY_PREFIX}${user?.id ?? "local"}`;
+  const noticeKey = serverScoped(`${NOTICE_KEY_PREFIX}${user?.id ?? "local"}`);
 
   useEffect(() => {
     if (!canImport || sessionStorage.getItem(noticeKey)) return undefined;

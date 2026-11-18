@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vp dev",
     "build": "vp build",
+    "build:hosted": "vp build --mode hosted",
     "preview": "vp preview"
   },
   "dependencies": {

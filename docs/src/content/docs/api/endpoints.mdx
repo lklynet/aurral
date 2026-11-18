@@ -29,7 +29,7 @@ can change Aurral, files, users, or external services.
 | `GET`    | `/api/auth/me`                | Current authenticated identity                                                                   |
 | `POST`   | `/api/auth/pairing-codes`     | Issue a one-time code that signs another device in as you. Needs a Bearer session                |
 | `POST`   | `/api/auth/pair`              | Exchange a pairing code for a session                                                            |
-| `GET`    | `/api/auth/sessions`          | Your signed-in sessions                                                                          |
+| `GET`    | `/api/auth/sessions`          | Your signed-in sessions, and the hosted app's origin                                             |
 | `DELETE` | `/api/auth/sessions/:id`      | Sign one of your sessions out                                                                    |
 | `GET`    | `/api/auth/api-key`           | Read or create the instance API key. Administrators only                                         |
 | `POST`   | `/api/auth/api-key/rotate`    | Replace the instance API key. Administrators only                                                |

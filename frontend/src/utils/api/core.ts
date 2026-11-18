@@ -1,6 +1,8 @@
 import { getAppBasePath } from "../basePath.ts";
+import { activeServer, HOSTED, updateActiveServer } from "../server.ts";
 
 const getDefaultApiBaseUrl = () => {
+  if (HOSTED) return `${activeServer?.address ?? ""}/api`;
   if (import.meta.env.DEV) return "/api";
   const basePath = getAppBasePath();
   if (basePath === "/") return "/api";
@@ -47,7 +49,7 @@ const dropServiceWorker = async () => {
 };
 
 const reauthenticateThroughProxy = () => {
-  if (reauthStarted || typeof window === "undefined") return;
+  if (HOSTED || reauthStarted || typeof window === "undefined") return;
   const lastAt = Number(globalThis?.sessionStorage?.getItem(REAUTH_AT_KEY) || 0);
   if (Date.now() - lastAt < REAUTH_COOLDOWN_MS) return;
   reauthStarted = true;
@@ -126,6 +128,7 @@ function readAuthFromStorage(storage: Storage | null | undefined) {
 }
 
 export const getStoredAuth = () => {
+  if (HOSTED) return { token: activeServer?.token ?? "" };
   const localAuth = readAuthFromStorage(globalThis?.localStorage);
   if (localAuth.token) return localAuth;
   const sessionAuth = readAuthFromStorage(globalThis?.sessionStorage);
@@ -139,6 +142,7 @@ export const getStoredAuth = () => {
 export const getRequestToken = () => getStoredAuth().token;
 
 export const setStoredAuth = ({ token = "" }: { token?: string } = {}) => {
+  if (HOSTED) return updateActiveServer({ token });
   if (!token) {
     globalThis?.sessionStorage?.removeItem(AUTH_TOKEN_KEY);
     globalThis?.localStorage?.removeItem(AUTH_TOKEN_KEY);
@@ -149,6 +153,7 @@ export const setStoredAuth = ({ token = "" }: { token?: string } = {}) => {
 };
 
 export const clearAuthStorage = () => {
+  if (HOSTED) return updateActiveServer({ token: "" });
   globalThis?.sessionStorage?.removeItem(AUTH_TOKEN_KEY);
   globalThis?.localStorage?.removeItem(AUTH_TOKEN_KEY);
 };
