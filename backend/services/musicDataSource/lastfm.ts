@@ -1,8 +1,8 @@
 import { lastfmRequest } from "../apiClients/index.ts";
-import type { LastfmArtist, LastfmImage, LastfmTrack } from "../apiClients/lastfm.ts";
+import type { LastfmImage } from "../apiClients/lastfm.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import type { SourceHealth } from "../discovery/tasteProfile.ts";
-import type { MusicArtistRef, MusicTrendingArtist } from "./index.ts";
+import type { MusicArtistRef } from "./index.ts";
 import { normalizeMbid, recordHealth, text } from "./common.ts";
 
 const LASTFM_PLACEHOLDER_IMAGE_HASH = "2a96cbd8b46e442fc41c2b86b821562f";
@@ -23,21 +23,6 @@ export const pickLastfmImage = (images: LastfmImage | LastfmImage[] | null | und
     list.at(-1);
   const url = text(image?.["#text"]);
   return url && !url.includes(LASTFM_PLACEHOLDER_IMAGE_HASH) ? url : null;
-};
-
-const formatCount = (value: number, noun: string) =>
-  `${new Intl.NumberFormat("en-US", {
-    notation: value >= 100000 ? "compact" : "standard",
-    maximumFractionDigits: value >= 100000 ? 1 : 0,
-  }).format(value)} ${noun} on Last.fm`;
-
-const formatTrendingPopularity = (artist: LastfmArtist) => {
-  const listeners = parseInt(String(artist?.listeners || 0), 10) || 0;
-  if (listeners > 0) return formatCount(listeners, "listeners");
-  const playcount = parseInt(String(artist?.playcount || 0), 10) || 0;
-  if (playcount > 0) return formatCount(playcount, "plays");
-  const rank = parseInt(String(artist?.["@attr"]?.rank || artist?.rank || 0), 10) || 0;
-  return rank > 0 ? `Trending #${rank} on Last.fm` : "Trending on Last.fm";
 };
 
 const callLastfm = async (
@@ -65,13 +50,6 @@ const callForArtist = async (
   const name = text(artist?.name);
   return name ? callLastfm(method, { artist: name, ...params }, options) : null;
 };
-
-const toTrack = (track: LastfmTrack) => ({
-  artistName: text(track?.artist?.name || track?.artist?.["#text"]),
-  artistMbid: normalizeMbid(track?.artist?.mbid),
-  name: text(track?.name),
-  albumName: text(track?.album?.title || track?.album?.["#text"]) || null,
-});
 
 const getArtistTags = async (artist: MusicArtistRef, options: LastfmCallOptions = {}) => {
   const data = await callForArtist("artist.getTopTags", artist, {}, options);
@@ -102,21 +80,6 @@ export const lastfmSource = {
     return mapWithConcurrency(artists, TAG_LOOKUP_CONCURRENCY, (artist: MusicArtistRef) =>
       getArtistTags(artist, { health }),
     );
-  },
-
-  async getArtistTopTracks(artist: MusicArtistRef, { limit = 25 }: { limit?: number } = {}) {
-    const name = text(artist?.name);
-    if (!name) return [];
-    const data = await callLastfm("artist.getTopTracks", { artist: name, limit });
-    return asArray(data?.toptracks?.track)
-      .map((track) => ({
-        name: text(track?.name),
-        albumName: text(track?.album?.title || track?.album?.["#text"]) || null,
-        mbid: normalizeMbid(track?.mbid),
-        durationMs: null,
-        popularity: Number(track?.playcount || track?.listeners || 0) || 0,
-      }))
-      .filter((track) => track.name);
   },
 
   async getTagArtists(
@@ -151,41 +114,5 @@ export const lastfmSource = {
       artists: artists.slice(offset, offset + limit),
       hasMore: !exhausted || artists.length > required,
     };
-  },
-
-  async getTrendingArtists({ limit = 100 } = {}) {
-    const data = await callLastfm("chart.getTopArtists", { limit });
-    if (!data) throw new Error("Last.fm trending artists are unavailable");
-    return asArray(data?.artists?.artist)
-      .map((artist): MusicTrendingArtist | null => {
-        const name = text(artist?.name || artist?.["#text"]);
-        if (!name) return null;
-        return {
-          id: normalizeMbid(artist?.mbid),
-          name,
-          image: pickLastfmImage(artist?.image),
-          type: "Artist",
-          popularityLabel: formatTrendingPopularity(artist),
-          listeners: parseInt(String(artist?.listeners || 0), 10) || 0,
-          playcount: parseInt(String(artist?.playcount || 0), 10) || 0,
-          popularityRank:
-            parseInt(String(artist?.["@attr"]?.rank || artist?.rank || 0), 10) || null,
-        };
-      })
-      .filter((artist): artist is MusicTrendingArtist => artist !== null);
-  },
-
-  async getTrendingTracks({ limit = 50 } = {}) {
-    const data = await callLastfm("chart.getTopTracks", { limit });
-    return asArray(data?.tracks?.track)
-      .map(toTrack)
-      .filter((track) => track.artistName && track.name);
-  },
-
-  async getPopularTags() {
-    const data = await callLastfm("chart.getTopTags", { limit: 100 });
-    return asArray(data?.tags?.tag)
-      .map((tag) => text(tag?.name))
-      .filter(Boolean);
   },
 };

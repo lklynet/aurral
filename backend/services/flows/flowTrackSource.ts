@@ -2,7 +2,6 @@ import {
   deezerGetAlbumTracks,
   getDeezerAlbumsForArtist,
   getDeezerArtist,
-  lastfmRequest,
   normalizeTitle,
 } from "../apiClients/index.ts";
 import * as musicData from "../musicDataSource/index.ts";
@@ -144,8 +143,6 @@ type AlbumTrackRow = Partial<
   NormalizedTrack &
     ArtistTopTrack & {
       releaseMbid: string | null;
-      "@attr": { rank?: string | number };
-      attr: { rank?: string | number };
       trackName: string;
       position: number | string;
       track_number: number | string;
@@ -450,7 +447,7 @@ export class FlowTrackSource {
     return null;
   }
 
-  _pickTrackFromRangesWithOwnedAlbumsUsingListMetadata(
+  _pickTrackFromRangesWithOwnedAlbums(
     trackList: ArtistTopTrack[],
     ownedTitles: Set<string>,
     ownedAlbums: Set<string>,
@@ -472,69 +469,6 @@ export class FlowTrackSource {
       }
     }
     return null;
-  }
-
-  async _pickTrackFromRangesWithOwnedAlbumsViaInfo(
-    trackList: ArtistTopTrack[],
-    ownedTitles: Set<string>,
-    ownedAlbums: Set<string>,
-    artistName: string,
-    ranges: DeepDiveRange[],
-  ) {
-    let checked = 0;
-    const maxChecks = 12;
-    for (const range of ranges) {
-      const candidates = this._sliceRange(trackList, range.start, range.end).filter((track) => {
-        const name = String(track?.name || "")
-          .trim()
-          .toLowerCase();
-        return name && !ownedTitles.has(name);
-      });
-      for (const candidate of shuffle(candidates)) {
-        if (checked >= maxChecks) return null;
-        checked += 1;
-        const trackName = String(candidate?.name || "").trim();
-        if (!trackName) continue;
-        try {
-          const info = await lastfmRequest("track.getInfo", {
-            artist: artistName,
-            track: trackName,
-            autocorrect: 1,
-          });
-          const albumTitle = String(info?.track?.album?.title || "").trim();
-          if (albumTitle && !ownedAlbums.has(albumTitle.toLowerCase())) {
-            return { pick: candidate, albumName: albumTitle };
-          }
-        } catch {
-          continue;
-        }
-      }
-    }
-    return null;
-  }
-
-  async _pickTrackFromRangesWithOwnedAlbums(
-    trackList: ArtistTopTrack[],
-    ownedTitles: Set<string>,
-    ownedAlbums: Set<string>,
-    artistName: string,
-    ranges: DeepDiveRange[],
-  ) {
-    return (
-      this._pickTrackFromRangesWithOwnedAlbumsUsingListMetadata(
-        trackList,
-        ownedTitles,
-        ownedAlbums,
-        ranges,
-      ) ??
-      this._pickTrackFromRangesWithOwnedAlbumsViaInfo(
-        trackList,
-        ownedTitles,
-        ownedAlbums,
-        artistName,
-        ranges,
-      )
-    );
   }
 
   async _getArtistTopTagLists(artists: ArtistMatchFields[]) {
@@ -671,11 +605,10 @@ export class FlowTrackSource {
     const trackList = await this._getArtistTopTrackList(name);
     const ranges = this._deepDiveRanges(deepDive);
     if (owned) {
-      const picked = await this._pickTrackFromRangesWithOwnedAlbums(
+      const picked = this._pickTrackFromRangesWithOwnedAlbums(
         trackList,
         owned.ownedTitles,
         owned.ownedAlbums,
-        name,
         ranges,
       );
       return picked
@@ -883,7 +816,8 @@ export class FlowTrackSource {
   }
 
   async _getTrendingChart(limit: number) {
-    return musicData.getTrendingTracks({ limit });
+    const { getChartTracks } = await import("../discovery/trendingCharts.ts");
+    return getChartTracks(limit);
   }
 
   async getTrendingTracks(limit: number, context: Partial<SourceContext> = {}) {
@@ -898,7 +832,6 @@ export class FlowTrackSource {
     return this._harvestArtists(
       [...chartTracks.values()].map((track) => ({
         name: track.artistName,
-        artistMbid: track.artistMbid,
         reason: "Trending this week",
       })),
       limit,
@@ -910,7 +843,7 @@ export class FlowTrackSource {
           const track = chartTracks.get(name);
           if (!track) return null;
           if (!this._hasYears(filters)) {
-            return { trackName: track.name, albumName: track.albumName };
+            return { trackName: track.trackName, albumName: track.albumName };
           }
           const release = track.albumName
             ? (await this._releasesInYears(name, filters, null)).find(
@@ -918,7 +851,11 @@ export class FlowTrackSource {
               )
             : null;
           return release
-            ? { trackName: track.name, albumName: release.title, releaseYear: String(release.year) }
+            ? {
+                trackName: track.trackName,
+                albumName: release.title,
+                releaseYear: String(release.year),
+              }
             : null;
         },
       },
@@ -1037,14 +974,12 @@ export class FlowTrackSource {
     });
   }
 
-  _pickTopAlbumTrackInfo(trackList: AlbumTrackRow | AlbumTrackRow[] | null | undefined) {
-    const entries = Array.isArray(trackList) ? trackList : [trackList];
-    return [...entries]
+  _pickTopAlbumTrackInfo(trackList: AlbumTrackRow[]) {
+    return trackList
       .map((entry) => {
         const trackName = String(entry?.name || entry?.title || entry?.trackName || "").trim();
         if (!trackName) return null;
-        const rank = Number(entry?.["@attr"]?.rank ?? entry?.attr?.rank ?? NaN);
-        const fallbackRank = Number(
+        const rank = Number(
           entry?.trackNumber ??
             entry?.trackPosition ??
             entry?.position ??
@@ -1064,11 +999,7 @@ export class FlowTrackSource {
           releaseMbid: entry?.releaseMbid || null,
           trackNumber: entry?.trackPosition ?? null,
           discNumber: entry?.mediumNumber ?? null,
-          rank: Number.isFinite(rank)
-            ? rank
-            : Number.isFinite(fallbackRank)
-              ? fallbackRank
-              : Number.MAX_SAFE_INTEGER,
+          rank: Number.isFinite(rank) ? rank : Number.MAX_SAFE_INTEGER,
         };
       })
       .filter((entry) => entry !== null)
@@ -1079,13 +1010,6 @@ export class FlowTrackSource {
     const safeAlbumMbid = String(albumMbid || "").trim();
     if (!safeAlbumMbid) return [];
     return getAlbumTracksByAlbumMbid(safeAlbumMbid);
-  }
-
-  async _getLastfmAlbumInfo(artistName: string, albumTitle: string) {
-    return lastfmRequest("album.getInfo", {
-      artist: artistName,
-      album: albumTitle,
-    });
   }
 
   async _pickTrackFromRelease({
@@ -1108,13 +1032,6 @@ export class FlowTrackSource {
       try {
         pick =
           this._pickTopAlbumTrackInfo(await this._getMetadataAlbumTrackList(albumMbid))[0] || null;
-      } catch {}
-    }
-
-    if (!pick) {
-      try {
-        const data = await this._getLastfmAlbumInfo(normalizedArtist, normalizedAlbum);
-        pick = this._pickTopAlbumTrackInfo(data?.album?.tracks?.track)[0] || null;
       } catch {}
     }
 
