@@ -337,6 +337,30 @@ const restoreStoredTrackArtistCredits: Migration = (db) => {
   if (changed) db.prepare("DELETE FROM settings WHERE key = 'librarySearchIndexVersion'").run();
 };
 
+const syncRestoredFileArtistTags: Migration = (db) => {
+  const rows = db
+    .prepare<
+      [],
+      Pick<LibraryTracksRow, "id" | "artist_name" | "metadata_json">
+    >(`SELECT id, artist_name, metadata_json FROM library_tracks AS track
+       WHERE json_valid(metadata_json)
+         AND json_type(metadata_json, '$.tags.artists') IN ('array', 'text')
+         AND EXISTS (SELECT 1 FROM library_media_files
+           WHERE track_id = track.id AND artist_tag <> track.artist_name)`)
+    .all();
+  const update = db.prepare<[string, number, string]>(
+    "UPDATE library_media_files SET artist_tag = ? WHERE track_id = ? AND artist_tag = ?",
+  );
+  for (const row of rows) {
+    const metadata: unknown = JSON.parse(row.metadata_json ?? "null");
+    if (!isRecord(metadata) || !isRecord(metadata.tags)) continue;
+    const credit = trackArtistCreditFromTags(metadata.tags.artist, metadata.tags.artists);
+    const tagged = String(metadata.tags.artist ?? "").trim();
+    if (!tagged || credit === tagged || credit !== row.artist_name) continue;
+    update.run(credit, row.id, tagged);
+  }
+};
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -360,6 +384,7 @@ export const migrations: Migration[] = [
   storeFriendBlendTracks,
   renewSessionsOnUse,
   restoreStoredTrackArtistCredits,
+  syncRestoredFileArtistTags,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {
