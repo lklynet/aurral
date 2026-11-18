@@ -175,6 +175,7 @@ test("stale album metadata is served while one refresh runs in the background", 
 test("an incomplete BrainzMash album uses one cached MusicBrainz release browse", async () => {
   const previousSettings = dbOps.getSettings();
   const albumMbid = "3281d649-f172-4c96-8c44-7c71eb050f1d";
+  const omittedReleasesAlbumMbid = "11111111-1111-4111-8111-111111111111";
   const completeAlbumMbid = "082c6aff-a7cc-36e0-a960-35a578ecd937";
   let brainzmashRequests = 0;
   let musicbrainzRequests = 0;
@@ -189,11 +190,16 @@ test("an incomplete BrainzMash album uses one cached MusicBrainz release browse"
               title: "Complete Album",
               releases: [{ id: "complete-release", tracks: [] }],
             }
-          : {
-              id: albumMbid,
-              title: "How to Count to Five",
-              releases: [],
-            },
+          : request.url === `/album/${omittedReleasesAlbumMbid}`
+            ? {
+                id: omittedReleasesAlbumMbid,
+                title: "Album Without Releases",
+              }
+            : {
+                id: albumMbid,
+                title: "How to Count to Five",
+                releases: [],
+              },
       ),
     );
   });
@@ -202,7 +208,11 @@ test("an incomplete BrainzMash album uses one cached MusicBrainz release browse"
     if (!url.startsWith("https://musicbrainz.org/")) return providerGet(url, options);
     musicbrainzRequests += 1;
     assert.equal(new URL(url).pathname, "/ws/2/release");
-    assert.equal(options?.query?.["release-group"], albumMbid);
+    assert.ok(
+      [albumMbid, omittedReleasesAlbumMbid].includes(
+        String(options?.query?.["release-group"] || ""),
+      ),
+    );
     return {
       status: 200,
       statusText: "OK",
@@ -254,14 +264,18 @@ test("an incomplete BrainzMash album uses one cached MusicBrainz release browse"
     const metadataOnly = await getAlbumByMbid(albumMbid);
     const first = await getAlbumByMbid(albumMbid, { withFallbackReleases: true });
     const second = await getAlbumByMbid(albumMbid, { withFallbackReleases: true });
+    const omitted = await getAlbumByMbid(omittedReleasesAlbumMbid, {
+      withFallbackReleases: true,
+    });
     const complete = await getAlbumByMbid(completeAlbumMbid);
 
     assert.deepEqual(metadataOnly.releases, []);
     assert.equal(first.releases[0]?.tracks[0]?.recordingId, "recording-1");
     assert.equal(second.releases[0]?.tracks[0]?.title, "One");
+    assert.equal(omitted.releases[0]?.tracks[0]?.recordingId, "recording-1");
     assert.equal(complete.releases[0]?.id, "complete-release");
-    assert.equal(brainzmashRequests, 2);
-    assert.equal(musicbrainzRequests, 1);
+    assert.equal(brainzmashRequests, 3);
+    assert.equal(musicbrainzRequests, 2);
     const stored = db
       .prepare<[string], { fresh_until: number }>(
         "SELECT fresh_until FROM metadata_response_cache WHERE cache_key = ?",
@@ -1140,92 +1154,6 @@ test("album search shows no results when its MusicBrainz fallback is down", asyn
 
     assert.deepEqual((await searchAlbums("Missing Album")).items, []);
   } finally {
-    clearMetadataProviderCaches();
-    dbOps.updateSettings(previousSettings);
-    await server.close();
-  }
-});
-
-test("album search supplements unrelated BrainzMash results with a MusicBrainz match", async () => {
-  const previousSettings = dbOps.getSettings();
-  let musicbrainzRequests = 0;
-  const server = await createMockHttpServer((_request, response) => {
-    response.setHeader("content-type", "application/json");
-    response.end(
-      JSON.stringify([
-        {
-          id: "11111111-1111-4111-8111-111111111111",
-          title: "Counting Songs",
-          artistid: "22222222-2222-4222-8222-222222222222",
-          artists: [
-            {
-              id: "22222222-2222-4222-8222-222222222222",
-              artistname: "Someone Else",
-            },
-          ],
-        },
-      ]),
-    );
-  });
-  const providerGet = http.get.bind(http);
-  const get = vi.spyOn(http, "get").mockImplementation(async (url, options) => {
-    if (!url.startsWith("https://musicbrainz.org/")) return providerGet(url, options);
-    musicbrainzRequests += 1;
-    return {
-      status: 200,
-      statusText: "OK",
-      headers: {},
-      data: {
-        "release-groups": [
-          {
-            id: "3281d649-f172-4c96-8c44-7c71eb050f1d",
-            title: "How to Count to Five",
-            "primary-type": "Album",
-            "artist-credit": [
-              {
-                name: "Holidays in United States",
-                artist: {
-                  id: "6712b63e-5562-4039-a2ed-ba4b08dea8b9",
-                  name: "Holidays in United States",
-                },
-              },
-            ],
-            score: 100,
-          },
-        ],
-      },
-    };
-  });
-
-  try {
-    dbOps.updateSettings({
-      ...previousSettings,
-      integrations: {
-        ...(previousSettings.integrations || {}),
-        metadata: {
-          ...(previousSettings.integrations?.metadata || {}),
-          baseUrl: server.url,
-        },
-      },
-    });
-    clearMetadataProviderCaches();
-
-    const first = await searchAlbums("How to Count to Five", {
-      artistName: "Holidays in United States",
-      sort: "match",
-      fallbackOnWeakMatch: true,
-    });
-    const second = await searchAlbums("How to Count to Five", {
-      artistName: "Holidays in United States",
-      sort: "match",
-      fallbackOnWeakMatch: true,
-    });
-
-    assert.equal(first.items[0]?.id, "3281d649-f172-4c96-8c44-7c71eb050f1d");
-    assert.equal(second.items[0]?.id, "3281d649-f172-4c96-8c44-7c71eb050f1d");
-    assert.equal(musicbrainzRequests, 1);
-  } finally {
-    get.mockRestore();
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
     await server.close();

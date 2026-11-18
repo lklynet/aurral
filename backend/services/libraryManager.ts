@@ -1814,7 +1814,9 @@ export class LibraryManager {
     }
     let group;
     try {
-      group = await metadataLookups.add(() => getMetadataAlbumByMbid(album.releaseGroupMbid!));
+      group = await metadataLookups.add(() =>
+        getMetadataAlbumByMbid(album.releaseGroupMbid!, { withFallbackReleases: true }),
+      );
     } catch {
       return {
         error: "Album metadata is unavailable; try again",
@@ -1999,7 +2001,9 @@ export class LibraryManager {
 
     let metadata;
     try {
-      metadata = await metadataLookups.add(() => getMetadataAlbumByMbid(normalizedAlbumMbid));
+      metadata = await metadataLookups.add(() =>
+        getMetadataAlbumByMbid(normalizedAlbumMbid, { withFallbackReleases: true }),
+      );
     } catch (error) {
       const failure = asAppError(error);
       logger.warn("library", "Aurral album metadata lookup failed", {

@@ -116,7 +116,6 @@ export async function searchAlbums(
     offset: offsetInt,
     releaseTypes: selectedReleaseTypes,
     sort: normalizedSort,
-    fallbackOnWeakMatch: true,
   });
   return {
     scope: "album",
