@@ -44,6 +44,15 @@ test("discovery leaves Last.fm while it rejects the key and returns once it answ
     status: 200,
     statusText: "OK",
     headers: {},
+    data: { error: 6, message: "The artist you supplied could not be found" },
+  });
+  await ask("missing");
+  assert.equal(getMusicDataSourceName(), "listenbrainz");
+
+  get.mockResolvedValueOnce({
+    status: 200,
+    statusText: "OK",
+    headers: {},
     data: { similarartists: { artist: [] } },
   });
   assert.deepEqual(await ask("accepted"), { similarartists: { artist: [] } });

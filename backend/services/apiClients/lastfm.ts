@@ -255,7 +255,8 @@ export async function lastfmRequest(
             service: "Last.fm",
             endpoint: method,
           });
-          recordKeyAnswer(apiKey, isRejectedKeyAnswer(response.status, data.error));
+          const rejected = isRejectedKeyAnswer(response.status, data.error);
+          if (rejected || data.error === undefined) recordKeyAnswer(apiKey, rejected);
           lastfmCache.set(cacheKey, data);
           return data;
         } catch (error) {
