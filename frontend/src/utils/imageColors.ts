@@ -144,7 +144,9 @@ function tintCard(card: HTMLElement) {
     card.style.removeProperty("--card-tint-text");
     return;
   }
-  void extractArtworkWash(card.querySelector("img")?.currentSrc).then((wash) => {
+  const image = card.querySelector("img");
+  if (!image?.naturalWidth) return;
+  void extractArtworkWash(image.currentSrc).then((wash) => {
     if (!wash || !getThemeDocument().matchArtwork) return;
     card.style.setProperty(
       "--card-tint-surface",

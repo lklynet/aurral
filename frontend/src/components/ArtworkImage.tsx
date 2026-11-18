@@ -1,5 +1,5 @@
 import { useState, type ComponentProps } from "react";
-import { imageSizes, type ImageSize } from "../../../lib/imageSizes.ts";
+import { imageSizes, originalImage, type ImageSize } from "../../../lib/imageSizes.ts";
 
 type ImageProps = ComponentProps<"img">;
 
@@ -21,11 +21,12 @@ type ThumbnailImageProps = ImageProps & {
 function ThumbnailImage({ src, variants, sizes, loading, onError, ...props }: ThumbnailImageProps) {
   const [previewFailed, setPreviewFailed] = useState(false);
   const preview = variants[0]?.url ?? src;
+  const original = originalImage(src);
 
   return (
     <img
       {...props}
-      src={previewFailed ? src : preview}
+      src={previewFailed ? original : preview}
       srcSet={
         previewFailed
           ? undefined
@@ -34,7 +35,7 @@ function ThumbnailImage({ src, variants, sizes, loading, onError, ...props }: Th
       sizes={previewFailed ? undefined : loading === "lazy" ? `auto, ${sizes}` : sizes}
       loading={loading}
       onError={(event) => {
-        if (!previewFailed && event.currentTarget.currentSrc !== src) {
+        if (!previewFailed && event.currentTarget.currentSrc !== original) {
           setPreviewFailed(true);
           return;
         }

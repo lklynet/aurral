@@ -19,6 +19,8 @@ const AURRAL_COVER =
   /\/api\/(?:playlists\/(?:artwork\/[^/?#]+|flow-templates\/[^/?#]+\/cover)|discover\/playlists\/[^/?#]+\/[^/?#]+\/cover)(?:\?|$)/;
 const AURRAL_COVER_WIDTH = 1000;
 
+export const originalImage = (url: string) => url.replace(LIDARR_COVER, "$1$2");
+
 export function imageSizes(url: string): ImageSize[] {
   if (FANART.test(url)) {
     return [
