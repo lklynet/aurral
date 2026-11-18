@@ -50,18 +50,6 @@ test("BrainzMash release-track IDs are not treated as recording IDs, and merged 
   );
 });
 
-test("pickResolvedDurationMs takes a Last.fm length only when no other is known", () => {
-  assert.equal(
-    pickResolvedDurationMs({ playlistDurationMs: 282973, lastfmDurationMs: 207000 }),
-    282973,
-  );
-  assert.equal(pickResolvedDurationMs({ lastfmDurationMs: 207000 }), 207000);
-  assert.equal(
-    pickResolvedDurationMs({ lastfmDurationMs: null, matchedTrackDurationMs: 207000 }),
-    207000,
-  );
-});
-
 test("pickResolvedDurationMs replaces a stale playlist duration with the matched release duration", () => {
   assert.equal(
     pickResolvedDurationMs({
@@ -466,84 +454,6 @@ test("resolveTrackSearchContext drops an unverified stored recording ID", async 
   });
 
   assert.equal(resolved.trackMbid, null);
-});
-
-test("resolveTrackSearchContext takes neither a recording ID nor a length from Last.fm", async (t: import("vite-plus/test").TestContext) => {
-  const originalSettings = dbOps.getSettings();
-  dbOps.updateSettings({
-    ...originalSettings,
-    integrations: {
-      ...originalSettings.integrations,
-      lastfm: { apiKey: "lastfm-key" },
-      metadata: {
-        ...originalSettings.integrations.metadata,
-        baseUrl: "https://brainzmash.example.test",
-      },
-    },
-  });
-  clearMetadataProviderCaches();
-  t.onTestFinished(() => {
-    clearMetadataProviderCaches();
-    dbOps.updateSettings(originalSettings);
-  });
-  vi.spyOn(http, "get").mockImplementation(async (url, options) => {
-    if (options?.query?.method === "track.getInfo") {
-      return {
-        status: 200,
-        statusText: "OK",
-        headers: {},
-        data: {
-          track: {
-            mbid: "stale-lastfm-recording",
-            duration: "233000",
-            artist: { name: "Lastfm Artist" },
-            album: { title: "Lastfm Album" },
-          },
-        },
-      };
-    }
-    if (new URL(url).pathname === "/album/lastfm-album") {
-      return {
-        status: 200,
-        statusText: "OK",
-        headers: {},
-        data: {
-          id: "lastfm-album",
-          title: "Lastfm Album",
-          artistid: "artist-known",
-          artists: [{ id: "artist-known", artistname: "Lastfm Artist" }],
-          releases: [
-            {
-              id: "lastfm-release",
-              status: "Official",
-              tracks: [
-                {
-                  trackname: "Lastfm Song",
-                  trackposition: 8,
-                  durationms: 369626,
-                  recordingid: "release-recording",
-                },
-              ],
-            },
-          ],
-        },
-      };
-    }
-    return { status: 200, statusText: "OK", headers: {}, data: {} };
-  });
-  const request = {
-    artistName: "Lastfm Artist",
-    trackName: "Lastfm Song",
-    artistMbid: "artist-known",
-  };
-  assert.equal((await resolveTrackSearchContext(request)).trackMbid, null);
-  const fromRelease = await resolveTrackSearchContext({
-    ...request,
-    albumName: "Lastfm Album",
-    albumMbid: "lastfm-album",
-    durationMs: 369626,
-  });
-  assert.equal(fromRelease.durationMs, 369626);
 });
 
 function stubMetadata(

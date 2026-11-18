@@ -1,19 +1,15 @@
-import { getLastfmApiKey } from "../apiClients/index.ts";
+import {
+  deezerGetArtistTopTrackList,
+  getLastfmApiKey,
+  isLastfmKeyRejected,
+} from "../apiClients/index.ts";
+import { getCachedArtistByMbid } from "../providers/brainzmashProvider.ts";
+import { getLinkedDeezerArtistId } from "../providers/brainzmashMappers.ts";
+import { normalizeMbid, text } from "./common.ts";
 import { lastfmSource } from "./lastfm.ts";
 import { listenbrainzSource } from "./listenbrainz.ts";
 
 export type MusicArtistRef = { name?: string | null; mbid?: string | number | null };
-
-export type MusicTrendingArtist = {
-  id: string | null;
-  name: string;
-  image: string | null;
-  type: string;
-  popularityLabel: string;
-  listeners: number;
-  playcount: number;
-  popularityRank: number | null;
-};
 
 type LastfmSource = typeof lastfmSource;
 type SourceMethod = Exclude<keyof LastfmSource, "name">;
@@ -23,7 +19,8 @@ type SourceArg<M extends SourceMethod, I extends number> = LastfmSource[M] exten
   ? A[I]
   : never;
 
-const activeSource = () => (getLastfmApiKey() ? lastfmSource : listenbrainzSource);
+const activeSource = () =>
+  getLastfmApiKey() && !isLastfmKeyRejected() ? lastfmSource : listenbrainzSource;
 
 export const getMusicDataSourceName = () => activeSource().name;
 
@@ -37,18 +34,17 @@ export const getArtistTagLists = (
   options?: SourceArg<"getArtistTagLists", 1>,
 ) => activeSource().getArtistTagLists(artists, options);
 
-export const getArtistTopTracks = (
-  artist: MusicArtistRef,
-  options: SourceArg<"getArtistTopTracks", 1>,
-) => activeSource().getArtistTopTracks(artist, options);
-
 export const getTagArtists = (tag: string, options: SourceArg<"getTagArtists", 1>) =>
   activeSource().getTagArtists(tag, options);
 
-export const getTrendingArtists = (options: SourceArg<"getTrendingArtists", 0>) =>
-  activeSource().getTrendingArtists(options);
-
-export const getTrendingTracks = (options: SourceArg<"getTrendingTracks", 0>) =>
-  activeSource().getTrendingTracks(options);
-
-export const getPopularTags = () => activeSource().getPopularTags();
+export const getArtistTopTracks = async (
+  artist: MusicArtistRef,
+  { limit = 25 }: { limit?: number } = {},
+) => {
+  const name = text(artist?.name);
+  if (!name) return [];
+  const mbid = normalizeMbid(artist?.mbid);
+  const known = mbid ? await getCachedArtistByMbid(mbid).catch(() => null) : null;
+  const deezerArtistId = getLinkedDeezerArtistId(known?.links);
+  return deezerGetArtistTopTrackList(name, { limit, deezerArtistId }).catch(() => []);
+};

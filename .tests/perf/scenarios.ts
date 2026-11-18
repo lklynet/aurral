@@ -245,4 +245,9 @@ export const scenarios: Scenario[] = [
     name: "artist match",
     requests: ({ artistId }) => [`/api/library/artists/${artistId}/matches`],
   },
+  {
+    name: "subsonic getSimilarSongs",
+    random: true,
+    requests: ({ trackId }) => [`/rest/getSimilarSongs?id=song:${trackId}&count=50`],
+  },
 ];

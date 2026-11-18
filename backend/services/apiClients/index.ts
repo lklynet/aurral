@@ -18,7 +18,7 @@ export {
   musicbrainzSearchArtistsByTag,
 } from "./musicbrainz.ts";
 
-export { lastfmRequest, lastfmGetSession, lastfmScrobble } from "./lastfm.ts";
+export { isLastfmKeyRejected, lastfmRequest, lastfmGetSession, lastfmScrobble } from "./lastfm.ts";
 
 export {
   listenbrainzRequest,

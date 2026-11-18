@@ -1,25 +1,19 @@
 import * as v from "valibot";
 import { LISTENBRAINZ_LABS_API } from "../../config/constants.ts";
 import {
-  deezerGetArtistTopTrackList,
   deezerGetRelatedArtists,
   getDeezerArtist,
   listenbrainzRequest,
   musicbrainzSearchArtistsByTag,
 } from "../apiClients/index.ts";
-import {
-  listenbrainzTopArtistsSchema,
-  listenbrainzTopRecordingsSchema,
-} from "../apiClients/listenbrainz.ts";
 import { lenient, lenientCount, lenientText } from "../integrationData.ts";
 import { dbOps } from "../../db/helpers/index.ts";
-import { guessArtistMbid } from "../artistMatch.ts";
+import { cachedArtistGuess, guessArtistMbid } from "../artistMatch.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import { getArtistByMbid, getCachedArtistByMbid } from "../providers/brainzmashProvider.ts";
 import { getLinkedDeezerArtistId } from "../providers/brainzmashMappers.ts";
-import { listMusicbrainzGenres } from "../musicGenres.ts";
 import type { SourceHealth } from "../discovery/tasteProfile.ts";
-import type { MusicArtistRef, MusicTrendingArtist } from "./index.ts";
+import type { MusicArtistRef } from "./index.ts";
 import { normalizeMbid, recordHealth, text } from "./common.ts";
 
 const LISTENBRAINZ_EXPLORER_SIMILARITY_ALGORITHM =
@@ -27,9 +21,6 @@ const LISTENBRAINZ_EXPLORER_SIMILARITY_ALGORITHM =
 const ARTIST_METADATA_BATCH_SIZE = 50;
 const TAG_SEARCH_PAGE_SIZE = 100;
 const RESOLVE_CONCURRENCY = 4;
-const TRENDING_ARTIST_COUNT = 100;
-const TRENDING_RECORDING_COUNT = 500;
-const SITEWIDE_STATS_TIMEOUT_MS = 20000;
 const SIMILAR_ARTISTS_FRESH_MS = 24 * 60 * 60 * 1000;
 const SIMILAR_ARTISTS_STALE_MS = 7 * 24 * 60 * 60 * 1000;
 const ARTIST_TAGS_FRESH_MS = 7 * 24 * 60 * 60 * 1000;
@@ -120,9 +111,6 @@ const fetchArtistTags = async (mbids: string[], health?: SourceHealth) => {
 
 type TagSearchArtist = Awaited<ReturnType<typeof musicbrainzSearchArtistsByTag>>["artists"][number];
 
-const firstMbid = (values: unknown) =>
-  (Array.isArray(values) ? values.map(normalizeMbid).find(Boolean) : null) || null;
-
 const resolveArtistMbid = async (artist: MusicArtistRef) => {
   const mbid = normalizeMbid(artist?.mbid);
   if (mbid) return mbid;
@@ -165,22 +153,48 @@ const searchTagArtists = async (
 const getTagArtists = (tag: string, options?: Parameters<typeof searchTagArtists>[1]) =>
   searchTagArtists(tag, options).catch(() => ({ artists: [], hasMore: false }));
 
-const getDeezerSimilarArtists = async (
-  artist: MusicArtistRef,
-  mbid: string | null,
-  limit: number,
-) => {
-  const metadata = mbid ? await getArtistByMbid(mbid).catch(() => null) : null;
+const getDeezerSimilarArtists = async (artist: MusicArtistRef, limit: number) => {
+  const mbid = normalizeMbid(artist?.mbid);
+  const name = text(artist?.name);
+  const known = mbid
+    ? await (name ? getCachedArtistByMbid(mbid) : getArtistByMbid(mbid)).catch(() => null)
+    : null;
   const deezerId =
-    getLinkedDeezerArtistId(metadata?.links) ||
-    (await getDeezerArtist(text(artist?.name) || text(metadata?.name)))?.id;
+    getLinkedDeezerArtistId(known?.links) || (await getDeezerArtist(name || text(known?.name)))?.id;
   const related = await deezerGetRelatedArtists(deezerId ?? null, { limit }).catch(() => []);
-  return mapWithConcurrency(related, RESOLVE_CONCURRENCY, async (entry, index) => ({
-    mbid: await guessArtistMbid(entry.name),
+  return related.map((entry, index) => ({
+    mbid: cachedArtistGuess(entry.name),
     name: entry.name,
     match: 1 - index / related.length,
     image: entry.image,
   }));
+};
+
+const getListenbrainzSimilarArtists = async (
+  artist: MusicArtistRef,
+  limit: number,
+  health: SourceHealth | undefined,
+) => {
+  const mbid = await resolveArtistMbid(artist);
+  if (!mbid) return [];
+  try {
+    const rows = await getSimilarArtistRows(mbid);
+    recordHealth(health, true);
+    const similar = (Array.isArray(rows) ? rows : []).filter((row) => {
+      const similarMbid = normalizeMbid(row?.artist_mbid);
+      return similarMbid && similarMbid !== mbid && text(row?.name);
+    });
+    const topScore = Math.max(0, ...similar.map((row) => Number(row.score) || 0));
+    return similar.slice(0, limit).map((row) => ({
+      mbid: normalizeMbid(row.artist_mbid),
+      name: text(row.name),
+      match: topScore > 0 ? (Number(row.score) || 0) / topScore : 0,
+      image: null,
+    }));
+  } catch {
+    recordHealth(health, false);
+    return [];
+  }
 };
 
 export const listenbrainzSource = {
@@ -190,29 +204,12 @@ export const listenbrainzSource = {
     artist: MusicArtistRef,
     { limit = 50, health }: { limit?: number; health?: SourceHealth } = {},
   ) {
-    const mbid = await resolveArtistMbid(artist);
-    if (mbid) {
-      try {
-        const rows = await getSimilarArtistRows(mbid);
-        recordHealth(health, true);
-        const similar = (Array.isArray(rows) ? rows : []).filter((row) => {
-          const similarMbid = normalizeMbid(row?.artist_mbid);
-          return similarMbid && similarMbid !== mbid && text(row?.name);
-        });
-        const topScore = Math.max(0, ...similar.map((row) => Number(row.score) || 0));
-        if (similar.length) {
-          return similar.slice(0, limit).map((row) => ({
-            mbid: normalizeMbid(row.artist_mbid),
-            name: text(row.name),
-            match: topScore > 0 ? (Number(row.score) || 0) / topScore : 0,
-            image: null,
-          }));
-        }
-      } catch {
-        recordHealth(health, false);
-      }
+    const related = await getDeezerSimilarArtists(artist, limit);
+    if (related.length) {
+      recordHealth(health, true);
+      return related;
     }
-    return getDeezerSimilarArtists(artist, mbid, limit);
+    return getListenbrainzSimilarArtists(artist, limit, health);
   },
 
   async getArtistTagLists(artists: MusicArtistRef[], { health }: { health?: SourceHealth } = {}) {
@@ -229,66 +226,5 @@ export const listenbrainzSource = {
     return mbids.map((mbid) => (mbid && (fetched.get(mbid) ?? stored.get(mbid)?.tags)) || []);
   },
 
-  async getArtistTopTracks(artist: MusicArtistRef, { limit = 25 }: { limit?: number } = {}) {
-    const name = text(artist?.name);
-    if (!name) return [];
-    const mbid = normalizeMbid(artist?.mbid);
-    const known = mbid ? await getCachedArtistByMbid(mbid).catch(() => null) : null;
-    const deezerArtistId = getLinkedDeezerArtistId(known?.links);
-    return deezerGetArtistTopTrackList(name, { limit, deezerArtistId }).catch(() => []);
-  },
-
   getTagArtists,
-
-  async getTrendingArtists({ limit = 100 } = {}) {
-    const data = v.parse(
-      listenbrainzTopArtistsSchema,
-      await listenbrainzRequest(
-        "/1/stats/sitewide/artists",
-        { count: TRENDING_ARTIST_COUNT, range: "week" },
-        { timeoutMs: SITEWIDE_STATS_TIMEOUT_MS },
-      ),
-    );
-    return (Array.isArray(data?.payload?.artists) ? data.payload.artists : [])
-      .slice(0, limit)
-      .map((artist, index): MusicTrendingArtist | null => {
-        const name = text(artist?.artist_name);
-        if (!name) return null;
-        const mbid = normalizeMbid(artist?.artist_mbid) || firstMbid(artist?.artist_mbids);
-        return {
-          id: mbid,
-          name,
-          image: null,
-          type: "Artist",
-          popularityLabel: "Trending on ListenBrainz",
-          listeners: 0,
-          playcount: Number.parseInt(String(artist?.listen_count || 0), 10) || 0,
-          popularityRank: index + 1,
-        };
-      })
-      .filter((artist): artist is MusicTrendingArtist => artist !== null);
-  },
-
-  async getTrendingTracks() {
-    const data = v.parse(
-      listenbrainzTopRecordingsSchema,
-      await listenbrainzRequest(
-        "/1/stats/sitewide/recordings",
-        { count: TRENDING_RECORDING_COUNT, range: "week" },
-        { timeoutMs: SITEWIDE_STATS_TIMEOUT_MS },
-      ).catch(() => null),
-    );
-    return (Array.isArray(data?.payload?.recordings) ? data.payload.recordings : [])
-      .map((recording) => ({
-        artistName: text(recording?.artist_name),
-        artistMbid: firstMbid(recording?.artist_mbids),
-        name: text(recording?.track_name),
-        albumName: text(recording?.release_name) || null,
-      }))
-      .filter((track) => track.artistName && track.name);
-  },
-
-  async getPopularTags() {
-    return listMusicbrainzGenres();
-  },
 };

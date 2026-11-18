@@ -338,29 +338,6 @@ export const listenbrainzTopArtistsSchema = v.fallback(
   {},
 );
 
-export const listenbrainzTopRecordingsSchema = v.fallback(
-  v.looseObject({
-    payload: lenient(
-      v.looseObject({
-        recordings: lenient(
-          v.array(
-            v.fallback(
-              v.looseObject({
-                artist_name: lenientText,
-                artist_mbids: listenbrainzMbids,
-                track_name: lenientText,
-                release_name: lenient(v.nullable(v.string())),
-              }),
-              {},
-            ),
-          ),
-        ),
-      }),
-    ),
-  }),
-  {},
-);
-
 const popularityRowsSchema = v.array(
   v.fallback(
     v.looseObject({

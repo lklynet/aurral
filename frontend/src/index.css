@@ -1136,7 +1136,7 @@ textarea:disabled {
   background: var(--aurral-surface);
   overflow-y: auto;
   overflow-x: hidden;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
   scroll-padding-top: 0;
   scrollbar-width: none;
   scrollbar-color: transparent transparent;
