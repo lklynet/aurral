@@ -447,7 +447,7 @@
   },
   "track match": {
     "queries": {
-      "cold": 16,
+      "cold": 18,
       "warm": 4
     },
     "bytes": 40,

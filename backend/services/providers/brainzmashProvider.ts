@@ -47,12 +47,14 @@ import { readMany, readOne } from "../integrationData.ts";
 import { albumSearchTexts, parseSearchQuery, rankByMatch } from "../searchText.ts";
 import { runSharedInflight, type InflightRequests } from "../sharedInflight.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
+import { describeCurrentWork } from "../eventLoopWatch.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   acquireMetadataRequest,
   clearMetadataRequestStates,
   completeMetadataRequest,
   deferMetadataRequest,
+  recordMetadataCall,
   failMetadataRequest,
   getMetadataProviderBudget,
   getMetadataRequestState,
@@ -334,6 +336,17 @@ function openMetadataCircuit(baseUrl: string, status: number, error: unknown) {
   setMetadataProviderCooldown(baseUrl, status, Date.now() + cooldownMs);
 }
 
+function countMetadataCall(baseUrl: string, path: string, status: unknown) {
+  try {
+    recordMetadataCall({
+      server: new URL(baseUrl).host,
+      endpoint: path.slice(1, isEntityMetadataPath(path) ? path.lastIndexOf("/") : undefined),
+      work: describeCurrentWork() ?? "other",
+      status: String(status),
+    });
+  } catch {}
+}
+
 const RETRYABLE_STATUSES: (number | undefined)[] = [408, 425, 429, 500, 502, 503, 504];
 
 function isRetryable(error: unknown) {
@@ -587,15 +600,31 @@ function refreshMetadata<Schema extends v.GenericSchema>(
               const circuitAfterWait = getMetadataCircuitError(baseUrl);
               if (circuitAfterWait) throw circuitAfterWait;
               providerRequestStarted = true;
-              return http.get(`${baseUrl}${path}`, {
-                query: params,
-                timeoutMs: METADATA_REQUEST_TIMEOUT_MS,
-                bodyTimeoutMs: METADATA_RESPONSE_BODY_TIMEOUT_MS,
-                headers: {
-                  "User-Agent": getUserAgent(),
-                },
-                signal: requestSignal,
-              });
+              return http
+                .get(`${baseUrl}${path}`, {
+                  query: params,
+                  timeoutMs: METADATA_REQUEST_TIMEOUT_MS,
+                  bodyTimeoutMs: METADATA_RESPONSE_BODY_TIMEOUT_MS,
+                  headers: {
+                    "User-Agent": getUserAgent(),
+                  },
+                  signal: requestSignal,
+                })
+                .then(
+                  (response) => {
+                    countMetadataCall(baseUrl, path, response.status);
+                    return response;
+                  },
+                  (error: unknown) => {
+                    const failure = asAppError(error);
+                    countMetadataCall(
+                      baseUrl,
+                      path,
+                      failure?.response?.status ?? failure?.code ?? "error",
+                    );
+                    throw error;
+                  },
+                );
             },
             {
               signal: requestSignal,

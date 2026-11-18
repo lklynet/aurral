@@ -445,6 +445,15 @@ export interface ListenbrainzReleaseGroupsRow {
   popularity_checked_at: number | null;
 }
 
+export interface MetadataCallsRow {
+  hour: number;
+  server: string;
+  endpoint: string;
+  work: string;
+  status: string;
+  count: number;
+}
+
 export interface MetadataProviderBudgetRow {
   base_url: string | null;
   next_request_at: number;

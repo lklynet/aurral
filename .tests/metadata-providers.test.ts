@@ -25,11 +25,13 @@ const [
     clearMetadataRequestStates,
     failMetadataRequest,
     getMetadataProviderBudget,
+    listMetadataCalls,
     reserveMetadataProviderRequest,
   },
   { db },
   { http },
   { readAppSettings, saveAppSettings },
+  { trackWork },
 ] = await setupIsolatedBackend(
   "metadata-providers",
   () => import("../backend/db/helpers/index.ts"),
@@ -38,6 +40,7 @@ const [
   () => import("../backend/config/db-sqlite.ts"),
   () => import("../lib/http.ts"),
   () => import("../backend/services/appSettings.ts"),
+  () => import("../backend/services/eventLoopWatch.ts"),
 );
 
 const {
@@ -604,6 +607,61 @@ test("an artist's album list refreshes a cached album only while it is not out y
       Object.values(releaseDates),
     );
     assert.deepEqual(fetched, ["soon"]);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("each BrainzMash request sent is counted under the work that sent it", async () => {
+  const previousSettings = dbOps.getSettings();
+  const server = await createMockHttpServer((request, response) => {
+    if (request.url?.startsWith("/album/")) {
+      response.statusCode = 404;
+      response.end("not found");
+      return;
+    }
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ id: "counted-artist", artistname: "Counted" }));
+  });
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: { ...(previousSettings.integrations?.metadata || {}), baseUrl: server.url },
+      },
+    });
+    clearMetadataProviderCaches();
+    db.prepare("DELETE FROM metadata_calls").run();
+    const started = Date.now();
+
+    await trackWork(
+      () => "GET /api/artists/:mbid",
+      async () => {
+        await getArtistByMbid("counted-artist");
+        await getArtistByMbid("counted-artist");
+      },
+    );
+    await trackWork(
+      () => "system:7 release-refresh",
+      () => getAlbumByMbid("missing-album").catch(() => null),
+      () => "system release-refresh",
+    );
+    await getArtistByMbid("untracked-artist");
+
+    const host = new URL(server.url).host;
+    const counted = listMetadataCalls(started)
+      .calls.filter((call) => call.server === host)
+      .map(({ endpoint, work, status, count }) => `${endpoint} ${status} ${count} ${work}`)
+      .toSorted();
+    assert.deepEqual(counted, [
+      "album 404 1 system release-refresh",
+      "artist 200 1 GET /api/artists/:mbid",
+      "artist 200 1 other",
+    ]);
   } finally {
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
