@@ -209,7 +209,7 @@ test("a successful flow disable reports the accepted cleanup operation", async (
 test("flow settings updates wait for in-progress playlist mutations", async () => {
   dbOps.updateSettings({
     ...dbOps.getSettings(),
-    integrations: { lastfm: { apiKey: "test" } },
+    integrations: {},
   });
   const flow = createFlow({ name: "Serialized flow settings" });
   flowPlaylistConfig.updateFlow(flow.id, { scheduleDays: [1] });

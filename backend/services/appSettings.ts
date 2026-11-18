@@ -18,9 +18,7 @@ import { scheduleLibraryScan } from "./libraryScanWorker.ts";
 import { logger } from "./logger.ts";
 import { getNewsSettings, normalizeNewsFeeds, normalizeNewsGroups } from "./apiClients/config.ts";
 import { normalizeQualityProfile } from "./qualityProfileModel.ts";
-import { getMusicDataSourceName } from "./musicDataSource/index.ts";
 import { asAppError } from "../../lib/errors.ts";
-import { enqueueDiscoveryRefresh } from "./discovery/refreshScheduler.ts";
 import { downloadClientRegistry } from "./download/downloadClientSettings.ts";
 import { enqueueSystemTask } from "./jobs/systemTasks.ts";
 
@@ -46,7 +44,6 @@ const INTEGRATION_KEYS = [
   "qbittorrent",
   "ytdlp",
   "deemix",
-  "lastfm",
   "ticketmaster",
   "news",
   "metadata",
@@ -448,11 +445,7 @@ export async function saveAppSettings(input: v.InferOutput<typeof appSettingsPat
     delete updatedSettings.integrations.musicbrainz;
   }
 
-  const previousMusicDataSource = getMusicDataSourceName();
   dbOps.updateSettings(updatedSettings);
-  if (getMusicDataSourceName() !== previousMusicDataSource) {
-    enqueueDiscoveryRefresh({ reason: "music_data_source_changed", force: true });
-  }
   downloadClientRegistry.updateConfig(updatedSettings.integrations);
   if (path.resolve(resolveDownloadRoot()) !== libraryFolder) scheduleLibraryScan();
   try {

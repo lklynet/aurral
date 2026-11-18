@@ -616,7 +616,7 @@ test("flow templates keep their recipe and need history for Listening History", 
   assert.equal(flowPlaylistConfig.getFlow(created.id)!.mix.newReleases, 100);
 
   synchronizeDiscoveryCacheFromWorker({
-    basedOn: [{ name: "Slowdive", source: "lastfm" }],
+    basedOn: [{ name: "Slowdive", source: "listenbrainz" }],
   });
   const history = buildFlowFromTemplate(OWNER, "focus-listening-history");
   assert.equal(history.recentListening, true);
@@ -634,9 +634,9 @@ test("Listening History flows follow recent listening each time they run", async
   const flow = { ownerUserId: OWNER.id, recentListening: true, relatedArtists: ["Pinned"] };
   const context = { ownerUserId: OWNER.id };
 
-  synchronizeDiscoveryCacheFromWorker({ basedOn: [{ name: "Slowdive", source: "lastfm" }] });
+  synchronizeDiscoveryCacheFromWorker({ basedOn: [{ name: "Slowdive", source: "listenbrainz" }] });
   await source.getFocusTracks(4, flow, context);
-  synchronizeDiscoveryCacheFromWorker({ basedOn: [{ name: "Ride", source: "lastfm" }] });
+  synchronizeDiscoveryCacheFromWorker({ basedOn: [{ name: "Ride", source: "listenbrainz" }] });
   await source.getFocusTracks(4, flow, context);
   synchronizeDiscoveryCacheFromWorker({ basedOn: [] });
 

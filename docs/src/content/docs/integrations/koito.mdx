@@ -5,7 +5,7 @@ description: Use self-hosted Koito listening history for recommendations and scr
 
 [Koito](https://koito.io/) is optional. It is a self-hosted scrobbler that is compatible with ListenBrainz.
 
-Aurral can use your Koito history for personal recommendations. You do not need Last.fm or the public ListenBrainz service.
+Aurral can use your Koito history for personal recommendations. You do not need the public ListenBrainz service.
 
 ## Set up Koito for your user
 
@@ -27,12 +27,4 @@ Aurral sends finished plays and now playing to Koito through its ListenBrainz-co
 - Enough history for useful top-artist charts
 - MusicBrainz IDs on the Koito artists, so that Aurral can match them to your Library
 
-## Compared with Last.fm and ListenBrainz
-
-| Provider     | Admin setup                         | User setup                                                         |
-| ------------ | ----------------------------------- | ------------------------------------------------------------------ |
-| Last.fm      | API key in **Settings > Discovery** | Username in **Settings > Listening > Last.fm**                     |
-| ListenBrainz | None                                | Username and user token in **Settings > Listening > ListenBrainz** |
-| Koito        | None                                | Koito URL and API key in **Settings > Listening > Koito**          |
-
-Koito supplies listening history only. With a Last.fm API key, Last.fm still supplies similar artists and tags.
+Koito supplies listening history only. Similar artists and tags come from Deezer and ListenBrainz either way.

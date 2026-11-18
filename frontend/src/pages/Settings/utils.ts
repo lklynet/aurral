@@ -13,8 +13,6 @@ export type SavedSettings =
   | Partial<InferResponseType<typeof settingsClient.$post, 200>>;
 
 export const normalizeSettings = (savedSettings: SavedSettings) => {
-  const lastfm: NonNullable<StoredIntegrations["lastfm"]> =
-    savedSettings.integrations?.lastfm || {};
   const metadata: NonNullable<StoredIntegrations["metadata"]> =
     savedSettings.integrations?.metadata || {};
   const news = savedSettings.integrations?.news;
@@ -39,10 +37,6 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
       },
     },
     integrations: {
-      lastfm: {
-        apiKey: "",
-        ...lastfm,
-      },
       news: {
         enabled: news?.enabled !== false,
         feeds: news?.feeds ?? [],

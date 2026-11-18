@@ -27,10 +27,6 @@ export const webhookSchema = v.looseObject({
 
 export const integrationSettingsSchema = v.looseObject({
   webhooks: lenient(listOf(webhookSchema)),
-  lastfm: service({
-    apiKey: text,
-    apiSecret: text,
-  }),
   slskd: service({
     enabled: flag,
     url: text,

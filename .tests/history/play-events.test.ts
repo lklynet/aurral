@@ -71,7 +71,7 @@ test("pins each scrobble delivery to the connection active when the play was rec
       "SELECT id FROM users WHERE username = ?",
     )
     .get("listener")!.id;
-  const connection = scrobbleStore.scrobbleConnectionStore.saveConnection(userId, "lastfm", {
+  const connection = scrobbleStore.scrobbleConnectionStore.saveConnection(userId, "listenbrainz", {
     token: "session-token",
     displayName: "listener",
   });
@@ -94,7 +94,10 @@ test("pins each scrobble delivery to the connection active when the play was rec
 
 test("one unreadable user entry keeps every other user's scrobble connections", () => {
   const { scrobbleConnectionStore } = scrobbleStore;
-  scrobbleConnectionStore.saveConnection(1, "lastfm", { token: "first-token" });
+  scrobbleConnectionStore.saveConnection(1, "koito", {
+    token: "first-token",
+    baseUrl: "https://koito.example",
+  });
   const stored = db
     .prepare<[], { value: string }>("SELECT value FROM settings WHERE key = 'scrobbleConnections'")
     .get();
@@ -102,16 +105,14 @@ test("one unreadable user entry keeps every other user's scrobble connections", 
     JSON.stringify({ ...JSON.parse(stored!.value), 2: null }),
   );
 
-  assert.equal(scrobbleConnectionStore.getConnection(1, "lastfm")?.token, "first-token");
+  assert.equal(scrobbleConnectionStore.getConnection(1, "koito")?.token, "first-token");
   scrobbleConnectionStore.saveConnection(3, "listenbrainz", { token: "third-token" });
-  assert.equal(scrobbleConnectionStore.getConnection(1, "lastfm")?.token, "first-token");
+  assert.equal(scrobbleConnectionStore.getConnection(1, "koito")?.token, "first-token");
   assert.equal(scrobbleConnectionStore.getConnection(3, "listenbrainz")?.token, "third-token");
 });
 
-test("now playing reaches each linked scrobbler without recording a play", async (t: import("vite-plus/test").TestContext) => {
+test("now playing reaches a linked scrobbler without recording a play", async (t: import("vite-plus/test").TestContext) => {
   const originalFetch = globalThis.fetch;
-  vi.stubEnv("LASTFM_API_KEY", "test-key");
-  vi.stubEnv("LASTFM_API_SECRET", "test-secret");
   const bodies = new Map<string, string>();
   globalThis.fetch = async (url, options) => {
     bodies.set(new URL(String(url)).host, String(options?.body));
@@ -119,17 +120,12 @@ test("now playing reaches each linked scrobbler without recording a play", async
   };
   t.onTestFinished(() => {
     globalThis.fetch = originalFetch;
-    vi.unstubAllEnvs();
   });
   const { scrobbleConnectionStore } = scrobbleStore;
-  scrobbleConnectionStore.saveConnection(1, "lastfm", { token: "session-token" });
   scrobbleConnectionStore.saveConnection(1, "listenbrainz", { token: "listenbrainz-token" });
 
   await playEvents.sendNowPlaying(1, { trackId: "song:one", title: "One", artist: "Artist A" });
 
-  const lastfm = new URLSearchParams(requireFixture(bodies.get("ws.audioscrobbler.com")));
-  assert.equal(lastfm.get("method"), "track.updateNowPlaying");
-  assert.equal(lastfm.get("timestamp"), null);
   const listenbrainz = v.parse(
     v.object({ listen_type: v.string(), payload: v.array(v.looseObject({})) }),
     JSON.parse(requireFixture(bodies.get("api.listenbrainz.org"))),

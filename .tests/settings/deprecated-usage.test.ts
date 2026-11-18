@@ -46,12 +46,7 @@ test("reports configuration Aurral no longer reads or will stop reading", () => 
       CONTACT_EMAIL: "admin@example.com",
     },
     () =>
-      assert.deepEqual(kinds(), [
-        "auth-env",
-        "download-folder-env",
-        "integration-env",
-        "tuning-env",
-      ]),
+      assert.deepEqual(kinds(), ["auth-env", "download-folder-env", "lastfm-env", "tuning-env"]),
   );
   withEnv(
     {

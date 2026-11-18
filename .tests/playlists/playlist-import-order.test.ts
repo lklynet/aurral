@@ -574,7 +574,6 @@ test("flow refresh clears playback before downloads finish", async () => {
     dbOps.updateSettings({
       ...dbOps.getSettings(),
       integrations: {
-        lastfm: { apiKey: "test" },
         slskd: { enabled: true, url: "http://slskd", apiKey: "test" },
       },
     });
@@ -620,7 +619,6 @@ test("a failed flow plan leaves the current playlist and jobs untouched", async 
     dbOps.updateSettings({
       ...dbOps.getSettings(),
       integrations: {
-        lastfm: { apiKey: "test" },
         slskd: { enabled: true, url: "http://slskd", apiKey: "test" },
       },
     });
@@ -660,7 +658,6 @@ test("a stale flow plan does not cancel jobs when settings change during plannin
     dbOps.updateSettings({
       ...dbOps.getSettings(),
       integrations: {
-        lastfm: { apiKey: "test" },
         slskd: { enabled: true, url: "http://slskd", apiKey: "test" },
       },
     });
@@ -706,7 +703,6 @@ test("renaming a flow while it plans still applies the plan", async () => {
     dbOps.updateSettings({
       ...dbOps.getSettings(),
       integrations: {
-        lastfm: { apiKey: "test" },
         slskd: { enabled: true, url: "http://slskd", apiKey: "test" },
       },
     });
@@ -751,7 +747,6 @@ test("a playlist edit queued while a flow plans runs without waiting for the pla
     dbOps.updateSettings({
       ...dbOps.getSettings(),
       integrations: {
-        lastfm: { apiKey: "test" },
         slskd: { enabled: true, url: "http://slskd", apiKey: "test" },
       },
     });
@@ -811,7 +806,6 @@ test("a queued flow stops before mutation when its owner becomes suspended", asy
     dbOps.updateSettings({
       ...dbOps.getSettings(),
       integrations: {
-        lastfm: { apiKey: "test" },
         slskd: { enabled: true, url: "http://slskd", apiKey: "test" },
       },
     });
@@ -1477,9 +1471,9 @@ test("Last.fm station sync refreshes the saved station and username", async () =
         syncIntervalHours: 24,
       },
     });
-    const requests: { userId: number | undefined; station: unknown; username: unknown }[] = [];
-    lastfmStationClient.getStationTracks = async (userId, station, username) => {
-      requests.push({ userId, station, username });
+    const requests: { station: unknown; username: unknown }[] = [];
+    lastfmStationClient.getStationTracks = async (station, username) => {
+      requests.push({ station, username });
       return {
         tracks: [playlistTrack({ artistName: "New Artist", trackName: "New Song" })],
         stats: { incomplete: 0, duplicate: 0 },
@@ -1493,7 +1487,7 @@ test("Last.fm station sync refreshes the saved station and username", async () =
       force: true,
     });
 
-    assert.deepEqual(requests, [{ userId: 7, station: "mix", username: "station-user" }]);
+    assert.deepEqual(requests, [{ station: "mix", username: "station-user" }]);
     assert.deepEqual(
       requireFixture(flowPlaylistConfig.getStaticPlaylist(playlist.id)).tracks.map(
         ({ artistName, trackName }) => ({

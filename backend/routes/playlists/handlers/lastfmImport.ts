@@ -16,7 +16,7 @@ export default new Hono<AppEnv>().get(
     try {
       const { username } = c.req.valid("query");
       const requestedUsername = Array.isArray(username) ? username[0] : username;
-      return c.json(await lastfmStationClient.listPlaylists(c.var.user.id, requestedUsername), 200);
+      return c.json(await lastfmStationClient.listPlaylists(requestedUsername), 200);
     } catch (error) {
       logger.warn("playlist-import", "Last.fm station listing failed", {
         reason: safeLogDiagnostic(error),

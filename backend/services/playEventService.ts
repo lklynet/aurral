@@ -218,7 +218,7 @@ export const recordPlayEvent = (userId: number, input: PlayEventInput = {}) => {
 export const playEventDeliverySchema = v.looseObject({
   eventId: v.number(),
   userId: v.number(),
-  provider: v.picklist(["lastfm", "listenbrainz", "koito"]),
+  provider: v.picklist(["listenbrainz", "koito"]),
   connectionRevision: v.string(),
 });
 
@@ -234,13 +234,6 @@ type Listen = {
 } & ({ listenType: "single"; playedAt: number } | { listenType: "playing_now" });
 
 const sendListen = async (connection: ScrobbleConnection, listen: Listen) => {
-  if (connection.provider === "lastfm") {
-    const { lastfmScrobble, lastfmUpdateNowPlaying } = await import("./apiClients/lastfm.ts");
-    await (listen.listenType === "single"
-      ? lastfmScrobble(listen, connection.token)
-      : lastfmUpdateNowPlaying(listen, connection.token));
-    return;
-  }
   const { listenbrainzSubmit } = await import("./apiClients/listenbrainz.ts");
   await listenbrainzSubmit({
     token: connection.token,

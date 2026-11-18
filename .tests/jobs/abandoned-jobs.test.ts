@@ -214,12 +214,6 @@ test("scan completion schedules a full rescan requested while the scan was activ
 test("an exited personal discovery process stops reporting that user's refresh as running", async (t: import("vite-plus/test").TestContext) => {
   const persistence = await import("../../backend/services/discovery/persistence.ts");
   const { getDiscoveryStatus } = await import("../../backend/services/discovery/userDiscovery.ts");
-  const originalLastfmApiKey = process.env.LASTFM_API_KEY;
-  process.env.LASTFM_API_KEY = "test-key";
-  t.onTestFinished(() => {
-    if (originalLastfmApiKey === undefined) delete process.env.LASTFM_API_KEY;
-    else process.env.LASTFM_API_KEY = originalLastfmApiKey;
-  });
   const jobId = discoveryUserRefreshQueue.enqueue({ userId: 41, requestedAt: Date.now() });
   t.onTestFinished(() => {
     discoveryUserRefreshQueue.cancel(jobId);

@@ -108,9 +108,8 @@ const nativeImportLists = {
     }),
   },
   "lastfm-station": {
-    fetch: async ({ userId, externalId, externalUsername }) => {
+    fetch: async ({ externalId, externalUsername }) => {
       const { user, ...station } = await lastfmStationClient.getStationTracks(
-        userId,
         externalId,
         externalUsername,
       );

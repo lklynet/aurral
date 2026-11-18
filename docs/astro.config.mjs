@@ -3,6 +3,7 @@ import starlight from "@astrojs/starlight";
 
 export default defineConfig({
   site: "https://docs.aurral.org",
+  redirects: { "/integrations/lastfm/": "/integrations/listenbrainz/" },
   integrations: [
     starlight({
       title: "Aurral",
@@ -66,7 +67,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { slug: "integrations/lidarr" },
-            { slug: "integrations/lastfm" },
+            { slug: "integrations/listenbrainz" },
             { slug: "integrations/koito" },
             { slug: "integrations/slskd" },
             { slug: "integrations/ytdlp" },

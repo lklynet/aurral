@@ -1,5 +1,4 @@
 import { asAppError } from "../../../lib/errors.ts";
-import { getListenHistory } from "../listeningHistory.ts";
 import { parseLastfmStation } from "./lastfmTracks.ts";
 
 const LASTFM_STATIONS = [
@@ -13,16 +12,12 @@ const LASTFM_TIMEOUT_MS = 15000;
 
 type CodedError = Error & { statusCode?: number };
 
-const invalidUsernameError = () => {
-  const error: CodedError = new Error("A valid Last.fm username is required");
-  error.statusCode = 400;
-  return error;
-};
-
 export function normalizeLastfmUsername(value: unknown) {
   const username = String(value || "").trim();
   if (!username || username.length > 100 || /[/?#\u0000-\u001f\u007f]/.test(username)) {
-    throw invalidUsernameError();
+    const error: CodedError = new Error("A valid Last.fm username is required");
+    error.statusCode = 400;
+    throw error;
   }
   return username;
 }
@@ -35,14 +30,6 @@ export function normalizeLastfmStation(value: unknown) {
     throw error;
   }
   return station;
-}
-
-function resolveUsername(userId: number | undefined, requestedUsername: unknown) {
-  const requested = String(requestedUsername || "").trim();
-  if (requested) return normalizeLastfmUsername(requested);
-  const username = userId == null ? null : getListenHistory(userId).lastfm;
-  if (username) return normalizeLastfmUsername(username);
-  throw invalidUsernameError();
 }
 
 async function requestStation(username: string, stationId: string) {
@@ -75,8 +62,8 @@ async function requestStation(username: string, stationId: string) {
 }
 
 export const lastfmStationClient = {
-  async listPlaylists(userId: number | undefined, requestedUsername: unknown) {
-    const username = resolveUsername(userId, requestedUsername);
+  async listPlaylists(requestedUsername: unknown) {
+    const username = normalizeLastfmUsername(requestedUsername);
     const playlists = await Promise.all(
       LASTFM_STATIONS.map(async (station) => {
         const { tracks } = await requestStation(username, station.id);
@@ -91,12 +78,8 @@ export const lastfmStationClient = {
     return { user: username, playlists };
   },
 
-  async getStationTracks(
-    userId: number | undefined,
-    stationId: unknown,
-    requestedUsername: unknown,
-  ) {
-    const username = resolveUsername(userId, requestedUsername);
+  async getStationTracks(stationId: unknown, requestedUsername: unknown) {
+    const username = normalizeLastfmUsername(requestedUsername);
     return {
       ...(await requestStation(username, normalizeLastfmStation(stationId))),
       user: username,

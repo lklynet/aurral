@@ -19,11 +19,6 @@ import "./Settings/settings.css";
 
 const SettingsModal = lazy(() => import("./Settings/SettingsModal"));
 
-const HISTORY_SOURCES = [
-  { provider: "lastfm", name: "Last.fm" },
-  { provider: "listenbrainz", name: "ListenBrainz" },
-] as const;
-
 function HistoryServerRows() {
   const { data } = useHistoryServers();
   return HISTORY_SERVERS.map((id) => (
@@ -73,14 +68,11 @@ export default function Welcome() {
             <section className="onboarding-section" aria-label="Listening history">
               <h3 className="onboarding-section__title">Listening history</h3>
               <div className="settings-card">
-                {HISTORY_SOURCES.map(({ provider, name }) => (
-                  <SettingsServiceRow
-                    key={provider}
-                    to={`listening/${provider}`}
-                    name={name}
-                    status={history ? configuredStatus(Boolean(history[provider])) : null}
-                  />
-                ))}
+                <SettingsServiceRow
+                  to="listening/listenbrainz"
+                  name="ListenBrainz"
+                  status={history ? configuredStatus(Boolean(history.listenbrainz)) : null}
+                />
                 <SettingsServiceRow
                   to="listening/spotify"
                   name="Spotify"

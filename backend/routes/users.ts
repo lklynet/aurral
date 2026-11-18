@@ -69,9 +69,7 @@ const updateUserBody = v.object({
   role: v.optional(v.string()),
   status: v.optional(v.string()),
 });
-const listenHistoryBody = v.partial(
-  v.object({ lastfm: nullableText, listenbrainz: nullableText, koito: nullableText }),
-);
+const listenHistoryBody = v.partial(v.object({ listenbrainz: nullableText, koito: nullableText }));
 const themeBody = v.object({ theme: v.optional(v.unknown()) });
 const discoverLayoutBody = v.object({ layout: v.optional(v.unknown()) });
 const blendBody = v.object({ enabled: v.boolean() });

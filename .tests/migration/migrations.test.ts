@@ -239,7 +239,6 @@ test("upgrading drops settings that became fixed and keeps each user's discovery
         "null",
     );
   assert.deepEqual(read("integrations"), {
-    lastfm: { apiKey: "key" },
     nzbget: { url: "http://nzbget.test" },
     prowlarr: { url: "http://prowlarr.test" },
   });
@@ -277,7 +276,6 @@ test("upgrading drops settings nothing reads and keeps a turned-off Inbox off", 
     assert.equal(setting(key), undefined);
   }
   assert.deepEqual(JSON.parse(setting("integrations") ?? ""), {
-    lastfm: { apiKey: "key" },
     ticketmaster: { apiKey: "key" },
     metadata: { baseUrl: "https://meta.example" },
   });
@@ -332,7 +330,7 @@ test("upgrading turns a Gotify setup into a webhook that still reads its token",
 test("upgrading gives ownerless playlists and flows to the first admin and turns Blends on", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  migrate(db, migrations.slice(0, -8));
+  migrate(db, migrations.slice(0, -9));
   db.exec(`
     INSERT INTO users (id, username, password_hash, role) VALUES
       (1, 'listener', 'hash', 'user'), (2, 'lee', 'hash', 'admin'), (3, 'ada', 'hash', 'admin');
@@ -358,7 +356,7 @@ test("upgrading gives ownerless playlists and flows to the first admin and turns
 test("upgrading restores track credits from stored ARTISTS tags", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  migrate(db, migrations.slice(0, -2));
+  migrate(db, migrations.slice(0, -3));
   db.prepare("INSERT INTO settings (key, value) VALUES ('librarySearchIndexVersion', '3')").run();
   const insert = db.prepare<[string, string, string, string]>(
     `INSERT INTO library_tracks
@@ -450,6 +448,60 @@ test("upgrading restores track credits from stored ARTISTS tags", () => {
   );
   assert.equal(
     db.prepare("SELECT value FROM settings WHERE key = 'librarySearchIndexVersion'").get(),
+    undefined,
+  );
+});
+
+test("upgrading drops what only Last.fm read and keeps the rest", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, -1));
+  db.exec(`
+    ALTER TABLE users ADD COLUMN lastfm_username TEXT;
+    CREATE TABLE lastfm_link_states (token_hash TEXT PRIMARY KEY);
+    INSERT INTO users (id, username, password_hash) VALUES (1, 'lee', 'hash'), (2, 'ada', 'hash');
+    INSERT INTO listen_history_sources (user_id, provider, account) VALUES
+      (1, 'lastfm', 'lee'), (1, 'listenbrainz', 'lee');
+  `);
+  const store = db.prepare<[string, string]>("INSERT INTO settings (key, value) VALUES (?, ?)");
+  const slskd = { url: "http://slskd.test" };
+  const listenbrainz = { token: "sealed", displayName: "lee" };
+  store.run("integrations", JSON.stringify({ lastfm: { apiKey: "key" }, slskd }));
+  store.run(
+    "scrobbleConnections",
+    JSON.stringify({ 1: { lastfm: { token: "sealed" }, listenbrainz }, 2: { lastfm: {} } }),
+  );
+  store.run("lastfmRejectedKey", JSON.stringify("fingerprint"));
+  const job = db.prepare<[string, string, string, string]>(
+    "INSERT INTO jobs (queue, kind, payload, state, run_at, max_attempts, created_at) VALUES (?, ?, ?, ?, 0, 1, 0)",
+  );
+  job.run("play-events", "play-events", JSON.stringify({ provider: "lastfm" }), "pending");
+  job.run("play-events", "play-events", JSON.stringify({ provider: "lastfm" }), "running");
+  job.run("play-events", "play-events", JSON.stringify({ provider: "listenbrainz" }), "pending");
+  job.run("maintenance", "lastfm-key-check", "{}", "pending");
+  job.run("maintenance", "lastfm-key-check", "{}", "done");
+
+  migrate(db);
+
+  const read = (key: string): unknown =>
+    JSON.parse(
+      db.prepare<[string], string>("SELECT value FROM settings WHERE key = ?").pluck().get(key) ??
+        "null",
+    );
+  assert.deepEqual(read("integrations"), { slskd });
+  assert.deepEqual(read("scrobbleConnections"), { 1: { listenbrainz } });
+  assert.equal(read("lastfmRejectedKey"), null);
+  assert.deepEqual(db.prepare("SELECT provider FROM listen_history_sources").pluck().all(), [
+    "listenbrainz",
+  ]);
+  assert.deepEqual(db.prepare("SELECT kind, state, payload FROM jobs ORDER BY id").all(), [
+    { kind: "play-events", state: "pending", payload: '{"provider":"listenbrainz"}' },
+    { kind: "lastfm-key-check", state: "done", payload: "{}" },
+  ]);
+  const columns = db.prepare("SELECT name FROM pragma_table_info('users')").pluck().all();
+  assert.ok(!columns.includes("lastfm_username"));
+  assert.equal(
+    db.prepare("SELECT 1 FROM sqlite_master WHERE name LIKE 'lastfm%'").get(),
     undefined,
   );
 });

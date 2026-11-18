@@ -22,10 +22,7 @@ import { formatTrackTotal } from "../playlistPageUtils.ts";
 import { getAppBasePath, normalizeBasePathWithTrailingSlash } from "../../../utils/basePath";
 import { useAuth } from "../../../contexts/AuthContext";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
-import {
-  listeningHistoryQueryOptions,
-  pluginImportListsQueryOptions,
-} from "../../../queryOptions.ts";
+import { pluginImportListsQueryOptions } from "../../../queryOptions.ts";
 import { apiFetchWithin, type ApiError } from "../../../utils/api/core.ts";
 import { getApiErrorBody, getApiErrorMessage } from "../../../utils/api/errors.ts";
 import { isRecord } from "../../../../../lib/isRecord.ts";
@@ -305,8 +302,8 @@ export function PlaylistImportModal({
   const [view, setView] = useState<"nav" | "pane">(initialShareUrl ? "pane" : "nav");
   const [shareSync, setShareSync] = useState(true);
   const [shareFiles, setShareFiles] = useState(false);
-  const [lastfmUsernameDraft, setLastfmUsernameDraft] = useState<string | null>(null);
-  const [lastfmRequestedUsername, setLastfmRequestedUsername] = useState<string | null>(null);
+  const [lastfmUsernameDraft, setLastfmUsernameDraft] = useState("");
+  const [lastfmRequestedUsername, setLastfmRequestedUsername] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [filePlaylist, setFilePlaylist] = useState<FilePlaylist | null>(null);
   const [fileError, setFileError] = useState("");
@@ -346,8 +343,8 @@ export function PlaylistImportModal({
 
   const resetState = useCallback(() => {
     setSource("spotify");
-    setLastfmUsernameDraft(null);
-    setLastfmRequestedUsername(null);
+    setLastfmUsernameDraft("");
+    setLastfmRequestedUsername("");
     setYoutubeUrl("");
     setFilePlaylist(null);
     setFileError("");
@@ -406,25 +403,17 @@ export function PlaylistImportModal({
     displayName: listenBrainzPlaylistsQuery.data?.user || listenBrainzAccount?.displayName || null,
   };
 
-  const lastfmProfileQuery = useQuery({
-    ...listeningHistoryQueryOptions(user?.id),
-    enabled: user?.id != null && source === "lastfm" && lastfmRequestedUsername === null,
-  });
-  const profileLastfmUsername = lastfmProfileQuery.data?.lastfm ?? "";
-  const lastfmUsernameRequest = lastfmRequestedUsername ?? profileLastfmUsername;
-  const lastfmUsernameInput = lastfmUsernameDraft ?? profileLastfmUsername;
   const lastfmPlaylistsQuery = useQuery({
-    queryKey: queryKeys.playlistImportList("lastfm", lastfmUsernameRequest),
+    queryKey: queryKeys.playlistImportList("lastfm", lastfmRequestedUsername),
     queryFn: () =>
       parseResponse(
         importApi.lastfm.playlists.$get({
-          query: lastfmUsernameRequest ? { username: lastfmUsernameRequest } : {},
+          query: { username: lastfmRequestedUsername },
         }),
       ),
-    enabled: source === "lastfm" && Boolean(lastfmUsernameRequest),
+    enabled: source === "lastfm" && Boolean(lastfmRequestedUsername),
   });
-  const lastfmUsername = lastfmPlaylistsQuery.isSuccess ? lastfmUsernameRequest : "";
-  const lastfmProfileLoading = lastfmRequestedUsername === null && lastfmProfileQuery.isLoading;
+  const lastfmUsername = lastfmPlaylistsQuery.isSuccess ? lastfmRequestedUsername : "";
   const lastfmLoading = lastfmPlaylistsQuery.isFetching;
 
   const previewQuery = useQuery({
@@ -603,7 +592,7 @@ export function PlaylistImportModal({
     if (!username) return;
     setLastfmUsernameDraft(username);
     setLastfmRequestedUsername(username);
-    if (username === lastfmUsernameRequest && lastfmPlaylistsQuery.isError) {
+    if (username === lastfmRequestedUsername && lastfmPlaylistsQuery.isError) {
       void lastfmPlaylistsQuery.refetch();
     }
   };
@@ -1127,25 +1116,21 @@ export function PlaylistImportModal({
                 id="playlist-import-lastfm-username"
                 type="text"
                 className="input"
-                value={lastfmUsernameInput}
+                value={lastfmUsernameDraft}
                 onChange={(event) => setLastfmUsernameDraft(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") loadLastfmPlaylists(lastfmUsernameInput);
+                  if (event.key === "Enter") loadLastfmPlaylists(lastfmUsernameDraft);
                 }}
                 autoComplete="off"
-                disabled={lastfmProfileLoading || lastfmLoading || importing}
+                disabled={lastfmLoading || importing}
               />
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => loadLastfmPlaylists(lastfmUsernameInput)}
-                disabled={
-                  lastfmProfileLoading || lastfmLoading || !lastfmUsernameInput.trim() || importing
-                }
+                onClick={() => loadLastfmPlaylists(lastfmUsernameDraft)}
+                disabled={lastfmLoading || !lastfmUsernameDraft.trim() || importing}
               >
-                {lastfmProfileLoading || lastfmLoading ? (
-                  <DotLoader size="sm" label={null} />
-                ) : null}
+                {lastfmLoading ? <DotLoader size="sm" label={null} /> : null}
                 Load
               </button>
             </div>

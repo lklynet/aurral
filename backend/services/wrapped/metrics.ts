@@ -1,7 +1,6 @@
 import type { WrappedBeats } from "./beats.ts";
 export const WRAPPED_SOURCES = [
   "aurral",
-  "lastfm",
   "listenbrainz",
   "koito",
   "navidrome",

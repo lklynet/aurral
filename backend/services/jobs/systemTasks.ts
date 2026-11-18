@@ -168,16 +168,6 @@ const SYSTEM_TASKS = {
       }
     },
   },
-  "lastfm-key-check": {
-    queue: "maintenance",
-    label: "Last.fm key check",
-    description: "Asks Last.fm again whether it accepts a rejected API key.",
-    schedule: { everyMs: 6 * HOUR },
-    async run() {
-      const { isLastfmKeyRejected, lastfmRequest } = await import("../apiClients/lastfm.ts");
-      if (isLastfmKeyRejected()) await lastfmRequest("tag.getInfo", { tag: "rock" });
-    },
-  },
   "flow-refresh": {
     queue: "maintenance",
     label: "Playlist schedule check",

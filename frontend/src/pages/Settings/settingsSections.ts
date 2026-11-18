@@ -86,7 +86,6 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
     Services: "scrobbling listening history recommendations",
     "Discovery tastes": "mode safer balanced deeper reset more like this less like this",
     Blocklist: { item: "blocklist", keywords: "block unblock blocked artists genres hide" },
-    "Last.fm": { item: "lastfm", keywords: "scrobbling listening history" },
     ListenBrainz: { item: "listenbrainz", keywords: "scrobbling user token listening history" },
     Koito: { item: "koito", keywords: "scrobbling API key URL listening history" },
     Spotify: { item: "spotify", keywords: "streaming history data export import zip" },
@@ -151,8 +150,7 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
     },
   },
   discovery: {
-    Status: "source artwork cache clear",
-    "Last.fm": { item: "lastfm", keywords: "recommendations API key shared secret" },
+    Status: "artwork cache clear",
     Ticketmaster: {
       item: "ticketmaster",
       keywords: "local shows concerts events consumer key radius",

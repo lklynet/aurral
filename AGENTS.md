@@ -51,7 +51,7 @@ We need to be on the same page with terminology. When communicating, use this la
 - **data dir** means the directory holding an environment's `aurral.db`. A worktree's is its gitignored `backend/data`. A Docker install's is the folder mounted at `/config`.
 - **live install** means a data dir a real Aurral is using, such as the developer's own.
 - **native** means what Aurral does by itself, with nothing connected.
-- **integration** means an optional external service Aurral talks to, such as Lidarr, Navidrome, Plex, slskd, or Last.fm. It is an add-on, never a dependency.
+- **integration** means an optional external service Aurral talks to, such as Lidarr, Navidrome, Plex, slskd, or ListenBrainz. It is an add-on, never a dependency.
 - **plugin** means a folder in `<data dir>/plugins/<id>` that an admin installs. Aurral calls it through typed capabilities, and it changes Aurral only through the public API.
 - **eden** means the test lab in `eden/`. Each checkout runs its own with `pnpm eden dev`. See [Eden test lab](docs/src/content/docs/development/eden.mdx).
 

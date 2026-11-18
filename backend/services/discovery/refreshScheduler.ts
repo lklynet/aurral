@@ -1,5 +1,5 @@
 import { dbOps } from "../../db/helpers/index.ts";
-import { getMusicDataSourceName } from "../musicDataSource/index.ts";
+import { MUSIC_DATA_SOURCE } from "../musicDataSource/index.ts";
 import { isLockHeld } from "../jobs/queue.ts";
 import { discoveryRefreshQueue } from "../jobs/queues.ts";
 import { websocketService } from "../websocketService.ts";
@@ -27,7 +27,7 @@ function hasQueuedDiscoveryRefresh(now = Date.now()) {
 export function discoveryNeedsRefresh(
   cache: Partial<ReturnType<typeof dbOps.getDiscoveryCache>> = dbOps.getDiscoveryCache(),
 ) {
-  if (cache?.provider && cache.provider !== getMusicDataSourceName()) return true;
+  if (cache?.provider && cache.provider !== MUSIC_DATA_SOURCE) return true;
   const staleCutoff = Date.now() - DISCOVERY_REFRESH_MS;
   const lastUpdatedAt = new Date(cache?.lastUpdated || "").getTime();
   if (!Number.isFinite(lastUpdatedAt) || lastUpdatedAt < staleCutoff) {

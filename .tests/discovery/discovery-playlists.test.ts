@@ -111,7 +111,7 @@ beforeEach(() => {
     .get()!.id;
   const insertPlay = db.prepare<[number, string, string, number]>(`
     INSERT INTO play_events (user_id, track_id, title, artist, played_at, source, created_at)
-    VALUES (?, 'lastfm:1', ?, ?, ?, 'test', 0)
+    VALUES (?, 'history:1', ?, ?, ?, 'test', 0)
   `);
   for (const artist of ARTISTS) insertPlay.run(userId, "Song", artist, NOW);
 });

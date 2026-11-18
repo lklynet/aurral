@@ -247,15 +247,6 @@ export interface JobsRow {
   last_error: string | null;
 }
 
-export interface LastfmLinkStatesRow {
-  token_hash: string | null;
-  user_id: number;
-  browser_nonce_hash: string;
-  expires_at: number;
-  consumed_at: number | null;
-  created_at: number;
-}
-
 export interface LibraryAlbumCreditsRow {
   album_id: number;
   artist_mbid: string;
@@ -678,7 +669,6 @@ export interface UsersRow {
   role: string;
   permissions: string | null;
   discover_layout: string | null;
-  lastfm_username: string | null;
   listen_history_provider: string | null;
   listen_history_username: string | null;
   listen_history_url: string | null;

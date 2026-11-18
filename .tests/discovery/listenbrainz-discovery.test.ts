@@ -65,7 +65,6 @@ const similarBySeed = new Map([
 ]);
 
 const originalFetch = globalThis.fetch;
-const originalLastfmApiKey = process.env.LASTFM_API_KEY;
 let requests: URL[] = [];
 let alice: NonNullable<ReturnType<typeof userOps.createUser>>;
 
@@ -160,7 +159,6 @@ const respond = (url: URL) => {
 
 beforeAll(() => {
   resetDatabase(db);
-  delete process.env.LASTFM_API_KEY;
   dbOps.invalidateSettingsCache();
   globalThis.fetch = async (input) => {
     const url = new URL(String(input));
@@ -189,11 +187,10 @@ beforeEach(() => {
 
 afterAll(async () => {
   globalThis.fetch = originalFetch;
-  if (originalLastfmApiKey !== undefined) process.env.LASTFM_API_KEY = originalLastfmApiKey;
   await cleanupIsolatedState(isolatedState);
 });
 
-test("without a Last.fm key each user gets personal recommendations from ListenBrainz", async () => {
+test("each user gets personal recommendations from ListenBrainz", async () => {
   assert.deepEqual(await discovery.updateUserDiscoveryCache(alice.id), {
     refreshed: true,
     recommendationCount: 2,
@@ -234,7 +231,7 @@ const requestSearch = async (query: string) => {
   return { status: response.status, body: await response.json() };
 };
 
-test("without a Last.fm key tag search lists MusicBrainz's artists for the tag", async () => {
+test("tag search lists MusicBrainz's artists for the tag", async () => {
   const { status, body } = await requestSearch("?scope=tag&q=%23shoegaze");
 
   assert.equal(status, 200);
@@ -248,7 +245,7 @@ test("without a Last.fm key tag search lists MusicBrainz's artists for the tag",
   assert.equal(search.searchParams.get("query"), 'tag:"shoegaze"');
 });
 
-test("without a Last.fm key artist pages fall back to ListenBrainz similar artists and keep them across restarts", async () => {
+test("artist pages fall back to ListenBrainz similar artists and keep them across restarts", async () => {
   const loadSimilar = async () => {
     const response = await similar.request(
       `/artists/${NEIGHBOR.mbid}/similar?${new URLSearchParams({ artistName: NEIGHBOR.name })}`,
@@ -274,7 +271,7 @@ test("without a Last.fm key artist pages fall back to ListenBrainz similar artis
   );
 });
 
-test("without a Last.fm key artist tags are kept across restarts and refreshed in the background after a week", async () => {
+test("artist tags are kept across restarts and refreshed in the background after a week", async () => {
   const loadTags = async () =>
     (await getArtistTagLists([TAGGED]))[0]?.map((tag: { name: string }) => tag.name);
   const lookups = () =>
@@ -297,7 +294,7 @@ test("without a Last.fm key artist tags are kept across restarts and refreshed i
   assert.equal(lookups(), 2);
 });
 
-test("without a Last.fm key artist pages list Deezer's related artists that MusicBrainz knows", async () => {
+test("artist pages list Deezer's related artists that MusicBrainz knows", async () => {
   const response = await similar.request(
     `/artists/${QUIET.mbid}/similar?${new URLSearchParams({ artistName: QUIET.name })}`,
   );
@@ -333,7 +330,7 @@ test("flows take Deezer's related artists by name without looking each one up", 
   );
 });
 
-test("without a Last.fm key a Mix flow picks the library artist's own Deezer top track", async () => {
+test("a Mix flow picks the library artist's own Deezer top track", async () => {
   const plan = await new FlowTrackSource().buildFlowRunPlan({
     size: 1,
     mix: { mix: 100 },

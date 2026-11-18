@@ -25,4 +25,4 @@ Copying the defaults into each artist when it is monitored is simpler, but chang
 
 ## Risks
 
-Top tracks come from Last.fm or Deezer, matched by artist name, so an artist that shares a name can bring the wrong songs. The expanded edition depends on MusicBrainz listing the deluxe release under the album.
+Top tracks come from Deezer, matched by artist name, so an artist that shares a name can bring the wrong songs. The expanded edition depends on MusicBrainz listing the deluxe release under the album.

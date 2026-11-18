@@ -4,11 +4,7 @@ import type { AppSettings } from "../db/helpers/settings.ts";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import {
-  getLastfmApiKey,
-  getNewsSettings,
-  getTicketmasterApiKey,
-} from "../services/apiClients/index.ts";
+import { getNewsSettings, getTicketmasterApiKey } from "../services/apiClients/index.ts";
 import { getMetadataProviderHealthSnapshot } from "../services/providers/brainzmashProvider.ts";
 import { API_CONTRACT } from "../config/apiContract.ts";
 import { APP_VERSION } from "../config/constants.ts";
@@ -43,8 +39,6 @@ import { getImageProxyCacheSizeBytes } from "../services/imageProxyService.ts";
 import { prowlarrClient } from "../services/prowlarrClient.ts";
 import { getDownloadClient } from "../services/download/downloadClientSettings.ts";
 import { getMatcherStatus } from "../services/trackMatching/index.ts";
-import { getMusicDataSourceName } from "../services/musicDataSource/index.ts";
-import { isLastfmKeyRejected } from "../services/apiClients/lastfm.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { isRunningInDocker } from "../services/runtimeInfo.ts";
 
@@ -224,8 +218,6 @@ async function buildSystemPayload(settings: AppSettings) {
 type HealthResponse = BootstrapPayload & {
   library?: { artistCount: number; lastScan: null };
   discovery?: ReturnType<typeof getDiscoveryStatus> & {
-    provider: string;
-    lastfmKeyRejected: boolean;
     recommendationsCount: number;
     globalTopCount: number;
     artworkLinkCount: number;
@@ -264,7 +256,6 @@ type BootstrapPayload = {
   authUser?: string;
   proxyLogoutUrl?: string | null;
   rootFolderConfigured?: boolean;
-  lastfmConfigured?: boolean;
   ticketmasterConfigured?: boolean;
   inboxEnabled?: boolean;
   wrapped?: { year: number; preview: boolean };
@@ -343,7 +334,6 @@ function buildBootstrapPayload(req: CredentialRequest) {
     const lidarrConversion = currentUser.role === "admin" ? pendingLidarrConversion() : null;
     if (lidarrConversion) payload.lidarrConversion = lidarrConversion;
     payload.rootFolderConfigured = Boolean(resolveDownloadRoot());
-    payload.lastfmConfigured = !!getLastfmApiKey();
     payload.ticketmasterConfigured = !!getTicketmasterApiKey();
     payload.inboxEnabled = Object.values(settings.inbox).some(Boolean);
     const newsSettings = getNewsSettings();
@@ -404,8 +394,6 @@ export default new Hono<AppEnv>()
         const artworkLinkCount = dbOps.countImages();
         const nativeImageCacheSizeBytes = await getImageProxyCacheSizeBytes();
         payload.discovery = {
-          provider: getMusicDataSourceName(),
-          lastfmKeyRejected: isLastfmKeyRejected(),
           ...getDiscoveryStatus(currentUser.id),
           recommendationsCount: discoveryCache?.recommendations?.length || 0,
           globalTopCount: discoveryCache?.globalTop?.length || 0,

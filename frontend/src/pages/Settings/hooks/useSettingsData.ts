@@ -50,10 +50,6 @@ const defaultSettings = {
     intervalDays: 2,
   },
   integrations: {
-    lastfm: {
-      apiKey: "",
-      apiSecret: "",
-    },
     slskd: {
       enabled: true,
       url: "",

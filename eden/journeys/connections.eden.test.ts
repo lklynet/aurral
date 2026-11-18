@@ -33,26 +33,19 @@ async function play(user: { username: string; password: string }) {
 
 const outsideRequests = v.array(v.object({ host: v.string(), path: v.string(), body: v.string() }));
 
-test("a linked listener's play reaches Last.fm and ListenBrainz", async () => {
+test("a linked listener's play reaches ListenBrainz", async () => {
   const listener = new AurralApi(ports);
   await listener.login(LISTENER);
   const status = v.parse(
-    v.looseObject({
-      lastfm: v.looseObject({ connected: v.boolean() }),
-      listenbrainz: v.looseObject({ connected: v.boolean() }),
-    }),
+    v.looseObject({ listenbrainz: v.looseObject({ connected: v.boolean() }) }),
     await listener.get("/scrobbling/status"),
   );
-  assert.equal(status.lastfm.connected, true);
   assert.equal(status.listenbrainz.connected, true);
 
   await play(LISTENER);
-  await until("the play to reach both services", async () => {
+  await until("the play to reach ListenBrainz", async () => {
     const sent = v.parse(outsideRequests, await getJson(`${local(ports.outside)}/requests`));
-    return (
-      sent.some((request) => request.body.includes("track.scrobble")) &&
-      sent.some((request) => request.path.startsWith("/1/submit-listens"))
-    );
+    return sent.some((request) => request.path.startsWith("/1/submit-listens"));
   });
 });
 
