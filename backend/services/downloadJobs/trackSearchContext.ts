@@ -502,7 +502,7 @@ async function applyReleaseManifest(
   return request;
 }
 
-// A complete release identity can skip Last.fm and release discovery. Its
+// A complete release identity can skip release discovery. Its
 // recording ID is still checked against the cached BrainzMash tracklist so
 // jobs created before that rule can be repaired safely.
 function hasReleaseIdentity(track: ResolvedTrack) {

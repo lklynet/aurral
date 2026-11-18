@@ -45,9 +45,7 @@ const SENSITIVE_PATHS = [
   ["nzbget", "password"],
   ["tidarr", "apiKey"],
   ["qbittorrent", "password"],
-  ["lastfm", "apiKey"],
   ["google", "clientSecret"],
-  ["lastfm", "apiSecret"],
 ];
 
 type JsonObject = Record<string, unknown>;

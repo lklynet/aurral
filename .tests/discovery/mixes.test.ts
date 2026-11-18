@@ -104,7 +104,7 @@ test("listening mixes rank Library tracks by when and how often they were played
     play(index === 0 ? "999999" : String(track.id), track.title, "Caribou", 3, 120),
   );
   daft.tracks.forEach((track) => play(String(track.id), track.title, "Daft", 4, 400));
-  play("lastfm:gone", "Not In Library", "Boards", 20, 2);
+  play("history:gone", "Not In Library", "Boards", 20, 2);
 
   const mixes = await getUserMixes(userId, NOW);
   const byId = new Map(mixes.map((mix) => [mix.id, mix]));
@@ -184,7 +184,7 @@ test("Daily Mixes group the most played artists by shared genre", async () => {
   const built = await getUserMixes(userId, NOW);
   const later = NOW + 31 * 60_000;
   assert.equal(await getUserMixes(userId, later), built);
-  insertPlay.run(userId, "lastfm:old", "Old Song", "Avalon", NOW - 90 * DAY);
+  insertPlay.run(userId, "history:old", "Old Song", "Avalon", NOW - 90 * DAY);
   assert.notEqual(await getUserMixes(userId, later + 31 * 60_000), built);
 });
 
@@ -206,7 +206,7 @@ test("Blends mix two people's plays with their 3 closest listeners until either 
     for (const name of names) {
       for (const track of addArtist(name, 3).tracks) {
         for (const listener of listeners) {
-          insertPlay.run(listener, `lastfm:${track.title}`, track.title, name, NOW - DAY);
+          insertPlay.run(listener, `history:${track.title}`, track.title, name, NOW - DAY);
         }
       }
     }
@@ -219,12 +219,12 @@ test("Blends mix two people's plays with their 3 closest listeners until either 
   plays([sam], ["Sam"]);
   plays([kit], ["Kit", "Kit B"]);
   for (const track of addArtist("Mia Old", 3).tracks) {
-    insertPlay.run(mia, `lastfm:${track.title}`, track.title, "Mia Old", NOW - 40 * DAY);
+    insertPlay.run(mia, `history:${track.title}`, track.title, "Mia Old", NOW - 40 * DAY);
   }
-  insertPlay.run(zed, "lastfm:Kit 0", "Kit 0", "Kit", NOW - DAY);
+  insertPlay.run(zed, "history:Kit 0", "Kit 0", "Kit", NOW - DAY);
   for (let index = 0; index < 250; index += 1) {
     for (let time = 0; time < 3; time += 1) {
-      insertPlay.run(mia, `lastfm:ghost-${index}`, `Ghost ${index}`, "Ghost", NOW - DAY - time);
+      insertPlay.run(mia, `history:ghost-${index}`, `Ghost ${index}`, "Ghost", NOW - DAY - time);
     }
   }
   addDiscoveryFeedback(lee, { action: "block_artist", artistName: "Blocked" });
@@ -297,7 +297,7 @@ test("a friend Blend mixes your plays with a friend's ranked tracks found in you
     addArtist(name, count).tracks.map((track): [string, string] => [name, track.title]);
   const shared = tracksOf("Shared", 3);
   for (const [artist, title] of [...shared, ...tracksOf("Mine A", 3), ...tracksOf("Mine B", 3)]) {
-    play(`lastfm:${title}`, title, artist, 2, 1);
+    play(`history:${title}`, title, artist, 2, 1);
   }
   friendTracks("nova_k", [
     ...shared,
@@ -317,7 +317,7 @@ test("a friend Blend mixes your plays with a friend's ranked tracks found in you
   ).run(mia);
   const mias = [...shared, ...tracksOf("Mia", 3)];
   for (const [artist, title] of mias)
-    insertPlay.run(mia, `lastfm:${title}`, title, artist, NOW - DAY);
+    insertPlay.run(mia, `history:${title}`, title, artist, NOW - DAY);
   friendTracks("mia_k", mias);
 
   const blend = await getUserMix(userId, "friend-blend-nova_k", NOW);

@@ -8,7 +8,6 @@ type Coverage = { by: ServiceName | "core" } | { missing: string };
 // service that covers it, or the reason Eden can't.
 export const integrationCoverage = {
   webhooks: { by: "webhooks" },
-  lastfm: { by: "core" },
   slskd: { by: "slskd" },
   prowlarr: { by: "prowlarr" },
   nzbget: { by: "nzbget" },

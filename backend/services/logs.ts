@@ -5,7 +5,7 @@ import { onRequestFailure } from "../../lib/http.ts";
 import { APP_VERSION } from "../config/constants.ts";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
 import { dbOps } from "../db/helpers/index.ts";
-import { getLastfmApiKey, getTicketmasterApiKey } from "./apiClients/config.ts";
+import { getTicketmasterApiKey } from "./apiClients/config.ts";
 import {
   createLogWriter,
   readLogEntries,
@@ -95,7 +95,6 @@ function enabledIntegrations() {
       })
       .map(([name]) => name),
   );
-  if (getLastfmApiKey()) names.add("lastfm");
   if (getTicketmasterApiKey()) names.add("ticketmaster");
   return [...names].sort();
 }

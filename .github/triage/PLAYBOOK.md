@@ -29,14 +29,14 @@ If that tag does not exist, it is a nightly or dev build: clone `main`, check ou
 
 ## 4. Decide whose problem it is
 
-Aurral works on its own, and every integration (Lidarr, Navidrome, Plex, slskd, Last.fm, and others) is an optional add-on. Most problems fall into one of two groups:
+Aurral works on its own, and every integration (Lidarr, Navidrome, Plex, slskd, ListenBrainz, and others) is an optional add-on. Most problems fall into one of two groups:
 
 - **The user's setup.** An integration that is unreachable, misconfigured, or rejecting credentials; folder permissions or a wrong path; a reverse proxy, DNS, or network issue; a disk that is full. Help them fix it with exact steps, and explain what each one does before they run it.
 - **Aurral.** A crash, a stack trace inside Aurral's code, a wrong result from native behavior, an error that a correct setup still produces, or Aurral handling an integration failure badly (hanging, hiding the error, breaking unrelated features). This is worth an issue.
 
 When it is unclear, say so and name what would tell the two apart.
 
-Failures that hit many unrelated hosts in the same few minutes, such as `ENOTFOUND`, `EAI_AGAIN`, `ENETUNREACH`, or timeouts across news feeds, Last.fm, and BrainzMash at once, point to the network or DNS where Aurral runs, not to Aurral or any one service. On a host without IPv6, an `ENETUNREACH` to an IPv6 address is a side effect: the IPv4 attempt failed or got no address, so check DNS first.
+Failures that hit many unrelated hosts in the same few minutes, such as `ENOTFOUND`, `EAI_AGAIN`, `ENETUNREACH`, or timeouts across news feeds, Deezer, and BrainzMash at once, point to the network or DNS where Aurral runs, not to Aurral or any one service. On a host without IPv6, an `ENETUNREACH` to an IPv6 address is a side effect: the IPv4 attempt failed or got no address, so check DNS first.
 
 For freezes, slowness, or high CPU, read the `performance` lines. Fetch the export with `level=info`, since only freezes of 5 seconds or more are warnings. A `Stopped responding` line names the process and lists the requests and jobs running at the time. When its `cpuMs` is close to or above `ms`, Aurral was busy computing, which is worth an issue naming what was running. When `cpuMs` is far lower, Aurral was waiting on a slow disk or an overloaded host. `Job used a lot of CPU` names heavy jobs; its CPU count covers the whole process, so other work running at the same time adds to it.
 

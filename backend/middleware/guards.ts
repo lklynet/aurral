@@ -93,9 +93,7 @@ const isOpen = (method: string, path: string) =>
   openPaths.has(path) ||
   ((method === "GET" || method === "HEAD") &&
     (path.startsWith("/api/image-proxy/") || path.startsWith("/api/deezer/preview/"))) ||
-  (method === "GET" &&
-    (path === "/api/scrobbling/lastfm/link/callback" ||
-      /^\/api\/feeds\/lidarr\/flows\/[^/]+\.json$/i.test(path)));
+  (method === "GET" && /^\/api\/feeds\/lidarr\/flows\/[^/]+\.json$/i.test(path));
 
 const tokenPaths = [
   /^\/api\/library\/stream\/[^/]+\/[^/]+$/i,

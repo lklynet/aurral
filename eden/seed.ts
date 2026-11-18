@@ -123,36 +123,14 @@ async function seedHistory(
 // Eden's proxy answers for these services, so any key and any account are accepted.
 const OUTSIDE_KEY = "eden";
 
-const lastfmLink = v.object({ authorizeUrl: v.string() });
-
 // The listener links every outside account. The admin stays on Aurral's own history.
 async function linkAccounts(api: AurralApi, ports: Ports) {
   await api.post("/settings", {
-    integrations: {
-      lastfm: { apiKey: OUTSIDE_KEY, apiSecret: OUTSIDE_KEY },
-      ticketmaster: { apiKey: OUTSIDE_KEY },
-    },
+    integrations: { ticketmaster: { apiKey: OUTSIDE_KEY } },
   });
   const listener = new AurralApi(ports);
   await listener.login(LISTENER);
   await listener.put("/scrobbling/listenbrainz/link", { token: OUTSIDE_KEY });
-
-  // Last.fm sends the browser back to Aurral with a token once the user approves.
-  const started = await fetch(`${listener.base}/api/scrobbling/lastfm/link`, {
-    headers: { authorization: `Bearer ${listener.token}` },
-  });
-  const { authorizeUrl } = v.parse(lastfmLink, await started.json());
-  const callback = new URL(new URL(authorizeUrl).searchParams.get("cb") ?? "");
-  callback.searchParams.set("token", OUTSIDE_KEY);
-  const linked = await fetch(callback, {
-    headers: {
-      cookie: started.headers
-        .getSetCookie()
-        .map((cookie) => cookie.split(";")[0])
-        .join("; "),
-    },
-  });
-  if (!linked.ok) throw new Error(`Last.fm did not link: ${await linked.text()}`);
 }
 
 export async function seedAurral(api: AurralApi, ports: Ports) {

@@ -4,7 +4,7 @@ import { isOwnKey } from "../../lib/ownKey.ts";
 import { validateExternalUrl } from "./urlValidator.ts";
 import { normalizeKoitoBaseUrl } from "./koitoClient.ts";
 
-export const LISTEN_HISTORY_PROVIDERS = ["lastfm", "listenbrainz", "koito"] as const;
+export const LISTEN_HISTORY_PROVIDERS = ["listenbrainz", "koito"] as const;
 export type ListenHistoryProvider = (typeof LISTEN_HISTORY_PROVIDERS)[number];
 export type ListenHistory = Record<ListenHistoryProvider, string | null>;
 
@@ -21,7 +21,7 @@ const deleteStmt = db.prepare<[number, string]>(
 );
 
 export function getListenHistory(userId: number) {
-  const history: ListenHistory = { lastfm: null, listenbrainz: null, koito: null };
+  const history: ListenHistory = { listenbrainz: null, koito: null };
   for (const { provider, account } of selectStmt.all(userId)) {
     if (isOwnKey(history, provider)) history[provider] = account;
   }

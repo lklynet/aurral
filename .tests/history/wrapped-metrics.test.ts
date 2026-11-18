@@ -24,15 +24,15 @@ test("a play mirrored to a scrobbler counts once, and repeat listens still count
   const plays = [
     play({ playedAt: at("2026-03-01T12:00:00Z"), durationMs: 200_000 }),
     play({ playedAt: at("2026-03-01T12:03:20Z"), durationMs: 200_000 }),
-    play({ source: "lastfm", account: "me", playedAt: at("2026-03-01T12:00:00Z") }),
-    play({ source: "lastfm", account: "me", playedAt: at("2026-03-01T12:03:20Z") }),
+    play({ source: "listenbrainz", account: "me", playedAt: at("2026-03-01T12:00:00Z") }),
+    play({ source: "listenbrainz", account: "me", playedAt: at("2026-03-01T12:03:20Z") }),
   ];
   assert.equal(mergeWrappedPlays(plays).length, 2);
 });
 
 test("a server that stamps plays at the end still matches the scrobble stamped at the start", () => {
   const merged = mergeWrappedPlays([
-    play({ source: "lastfm", account: "me", playedAt: at("2026-03-01T12:00:00Z") }),
+    play({ source: "listenbrainz", account: "me", playedAt: at("2026-03-01T12:00:00Z") }),
     play({
       source: "navidrome",
       account: "me",
@@ -51,7 +51,7 @@ test("the same song across sources groups together even when their MBIDs disagre
     [
       play({ trackMbid: "aaa", playedAt: at("2026-03-01T12:00:00Z") }),
       play({
-        source: "lastfm",
+        source: "listenbrainz",
         account: "me",
         trackMbid: "bbb",
         title: "song",
@@ -87,13 +87,13 @@ test("plays without a duration are estimated from the average known track length
     [
       play({ durationMs: 240_000 }),
       play({ playedAt: at("2026-05-01T12:00:00Z"), durationMs: 120_000, title: "Short" }),
-      play({ source: "lastfm", account: "me", playedAt: at("2026-06-01T12:00:00Z") }),
+      play({ source: "listenbrainz", account: "me", playedAt: at("2026-06-01T12:00:00Z") }),
     ],
     period,
   );
   assert.equal(summary.minutes, 9);
   assert.equal(summary.minutesMeasured, false);
-  assert.equal(calculateWrapped([play({ source: "lastfm" })], period).minutes, null);
+  assert.equal(calculateWrapped([play({ source: "listenbrainz" })], period).minutes, null);
 });
 
 test("an empty year produces an empty recap", () => {

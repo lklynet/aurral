@@ -6,7 +6,7 @@ import { decryptWithKey, encryptWithKey } from "../config/encryption.ts";
 import { normalizeKoitoBaseUrl } from "./koitoClient.ts";
 
 const SETTINGS_KEY = "scrobbleConnections";
-type ScrobbleProvider = "lastfm" | "listenbrainz" | "koito";
+type ScrobbleProvider = "listenbrainz" | "koito";
 const storeSchema = v.record(v.string(), v.unknown());
 const providersSchema = v.record(v.string(), v.unknown());
 const storedConnectionSchema = v.looseObject({ token: v.string() });
@@ -18,10 +18,9 @@ type PublicConnectionStatus = {
   connected: boolean;
   displayName: string | null;
   connectedAt: number | null;
-  configured?: boolean;
 };
 
-const PROVIDERS = new Set<ScrobbleProvider>(["lastfm", "listenbrainz", "koito"]);
+const PROVIDERS = new Set<ScrobbleProvider>(["listenbrainz", "koito"]);
 const getSettingStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
   "SELECT value FROM settings WHERE key = ?",
 );
@@ -54,8 +53,6 @@ const writeStore = (store: v.InferOutput<typeof storeSchema>) =>
 const userKey = (userId: number | undefined) => String(Math.trunc(Number(userId)));
 const encryptToken = (token: string) => encryptWithKey(String(token || ""), getEncryptionKey());
 const decryptToken = (token: string) => decryptWithKey(token, getEncryptionKey());
-
-export const getScrobbleEncryptionKey = getEncryptionKey;
 
 const isWebUrl = (value: string) =>
   URL.canParse(value) && ["http:", "https:"].includes(new URL(value).protocol);
@@ -106,7 +103,6 @@ export const scrobbleConnectionStore = {
         : { connected: false, displayName: null, connectedAt: null };
     };
     return {
-      lastfm: status("lastfm"),
       listenbrainz: status("listenbrainz"),
       koito: status("koito"),
     };

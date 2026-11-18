@@ -1,4 +1,3 @@
-import { lastfmCache } from "./lastfm.ts";
 import { clearListenbrainzStats, listenbrainzCache } from "./listenbrainz.ts";
 import { clearDeezerCaches } from "./deezer.ts";
 import {
@@ -16,7 +15,6 @@ import { resumePausedServices } from "./outagePause.ts";
 export function clearApiCaches() {
   clearMetadataProviderCaches();
   clearReleaseManifests();
-  lastfmCache.flushAll();
   listenbrainzCache.flushAll();
   clearListenbrainzStats();
   clearDeezerCaches();

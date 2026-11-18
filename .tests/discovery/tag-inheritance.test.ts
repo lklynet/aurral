@@ -40,7 +40,7 @@ test("tag inheritance: ranking scores are equivalent between inherited and direc
     scorePopularityPenalty: 4,
     seedCount: 1,
     discoveryDepth: 1,
-    sourceType: "lastfm",
+    sourceType: "listenbrainz",
     supportingSeeds: [{ artistName: "Seed", weight: 1 }],
   };
 

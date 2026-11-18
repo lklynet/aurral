@@ -61,28 +61,31 @@ const similarMbids = new Map(
   ]),
 );
 const originalFetch = globalThis.fetch;
-const originalLastfmApiKey = process.env.LASTFM_API_KEY;
 
 beforeAll(() => {
   resetDatabase(db);
   dbOps.invalidateSettingsCache();
-  process.env.LASTFM_API_KEY = "test-key";
-  globalThis.fetch = async (url) => {
-    const params = new URL(String(url)).searchParams;
+  const seedNames = [...similarMbids.keys()];
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    const related = /^\/artist\/(\d+)\/related$/.exec(url.pathname);
+    const seed = seedNames[Number(related?.[1]) - 1];
+    const query = url.searchParams.get("query") ?? "";
     const body =
-      params.get("method") === "artist.getSimilar"
+      url.hostname === "api.deezer.com" && url.pathname === "/search/artist"
         ? {
-            similarartists: {
-              artist: [
-                {
-                  name: `Like ${params.get("artist")}`,
-                  mbid: similarMbids.get(params.get("artist") ?? ""),
-                  match: "0.9",
-                },
-              ],
-            },
+            data: [
+              {
+                id: seedNames.indexOf(url.searchParams.get("q") ?? "") + 1,
+                name: url.searchParams.get("q"),
+              },
+            ],
           }
-        : {};
+        : url.hostname === "api.deezer.com" && seed
+          ? { data: [{ id: 100, name: `Like ${seed}` }] }
+          : url.hostname === "lidarrapi.brainzmash.cc" && query.startsWith("Like ")
+            ? [{ id: similarMbids.get(query.slice(5)), artistname: query }]
+            : {};
     return new Response(JSON.stringify(body), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -118,8 +121,6 @@ beforeAll(() => {
 
 afterAll(async () => {
   globalThis.fetch = originalFetch;
-  if (originalLastfmApiKey === undefined) delete process.env.LASTFM_API_KEY;
-  else process.env.LASTFM_API_KEY = originalLastfmApiKey;
   await cleanupIsolatedState(isolatedState);
 });
 

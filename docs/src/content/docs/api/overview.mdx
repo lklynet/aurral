@@ -41,7 +41,7 @@ Use the header when you can. Browsers keep URLs in their history, and reverse pr
 
 With an API key, you do not need to sign in first. Neither key has a read-only mode.
 
-Actions on user data need your API key or a sign-in session. These actions include linking Last.fm, ListenBrainz, or Koito, recording plays, and changing favorites. When the admin API key calls one of them, Aurral returns `403`. A disabled user's API key stops working.
+Actions on user data need your API key or a sign-in session. These actions include linking ListenBrainz or Koito, recording plays, and changing favorites. When the admin API key calls one of them, Aurral returns `403`. A disabled user's API key stops working.
 
 Keep keys in a secret store. If an integration only needs to read, send only `GET` requests. To replace a key, rotate it where you copied it. The old key stops working at once. If you set the admin API key with the `AURRAL_API_KEY` [environment variable](/admin/environment/#authentication), change the variable and restart Aurral instead.
 

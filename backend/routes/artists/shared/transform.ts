@@ -49,19 +49,17 @@ export async function getSimilarArtistCards(
   {
     artistName = "",
     limit = 10,
-    signal,
     resolveArtistName,
   }: {
     artistName?: string;
     limit?: number;
-    signal?: AbortSignal;
     resolveArtistName?: () => Promise<string | null>;
   } = {},
 ) {
-  let artists = await getSimilarArtists({ mbid, name: artistName }, { limit, signal });
+  let artists = await getSimilarArtists({ mbid, name: artistName }, { limit });
   if (artists.length === 0 && !artistName && resolveArtistName) {
     const name = await resolveArtistName().catch(() => null);
-    if (name) artists = await getSimilarArtists({ name }, { limit, signal });
+    if (name) artists = await getSimilarArtists({ name }, { limit });
   }
   const cards = await mapWithConcurrency(artists.slice(0, limit), 4, async (artist) => ({
     id: artist.mbid || (await guessArtistMbid(artist.name)),

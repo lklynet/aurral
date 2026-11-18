@@ -3,7 +3,6 @@ import { useDiscoveryStatus } from "../../../hooks/useDiscoveryStatus";
 import { formatDateTime } from "../../../utils/dateTime.ts";
 import { SettingsInput } from "../components/SettingsField";
 import { useServerSettings } from "../SettingsProviders";
-import { SettingsLink } from "../../../navigation/settingsRoute";
 import type { SettingsState } from "../utils";
 import { formatBytes } from "../utils/formatBytes";
 import { configuredStatus, providerStatus } from "../utils/serviceStatus";
@@ -25,7 +24,7 @@ const clamp = (raw: string, min: number, max: number, fallback: number) => {
   return Number.isFinite(value) ? Math.max(min, Math.min(max, Math.floor(value))) : fallback;
 };
 
-function useIntegration<K extends "lastfm" | "ticketmaster">(key: K) {
+function useIntegration<K extends "ticketmaster">(key: K) {
   const { settings, updateSettings } = useServerSettings();
   const config = settings.integrations[key];
   const update = (patch: Partial<Integrations[K]>) =>
@@ -34,50 +33,6 @@ function useIntegration<K extends "lastfm" | "ticketmaster">(key: K) {
       integrations: { ...settings.integrations, [key]: { ...config, ...patch } },
     });
   return [config, update] as const;
-}
-
-function LastfmDetail() {
-  const [lastfm, update] = useIntegration("lastfm");
-  return (
-    <SettingsPage title="Last.fm" back="Discovery">
-      <SettingsGroup
-        title="API"
-        note={
-          <>
-            Recommendations use Deezer and ListenBrainz until you add an API key. Scrobbling also
-            needs the secret.{" "}
-            <a
-              href="https://www.last.fm/api/account/create"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="settings-link"
-            >
-              Create an API account
-            </a>
-          </>
-        }
-      >
-        <SettingsRow label="API key" htmlFor="lastfm-api-key">
-          <SettingsInput
-            id="lastfm-api-key"
-            type="password"
-            autoComplete="off"
-            value={lastfm.apiKey || ""}
-            onChange={(event) => update({ apiKey: event.target.value })}
-          />
-        </SettingsRow>
-        <SettingsRow label="Shared secret" htmlFor="lastfm-api-secret">
-          <SettingsInput
-            id="lastfm-api-secret"
-            type="password"
-            autoComplete="off"
-            value={lastfm.apiSecret || ""}
-            onChange={(event) => update({ apiSecret: event.target.value })}
-          />
-        </SettingsRow>
-      </SettingsGroup>
-    </SettingsPage>
-  );
 }
 
 function TicketmasterDetail() {
@@ -136,7 +91,6 @@ function CacheGroup() {
     handleClearCache,
   } = useServerSettings();
   const { status } = useDiscoveryStatus();
-  const provider = health?.discovery?.provider;
   const updating = Boolean(status?.isUpdating);
   const progress = status?.updateProgress;
   const cacheSize = health?.discovery
@@ -145,31 +99,6 @@ function CacheGroup() {
 
   return (
     <SettingsGroup title="Status">
-      <SettingsRow
-        label="Source"
-        help={
-          health?.discovery?.lastfmKeyRejected ? (
-            <>
-              Last.fm rejected the{" "}
-              <SettingsLink to="discovery/lastfm" className="settings-link">
-                API key
-              </SettingsLink>
-              . Aurral asks again every 6 hours.
-            </>
-          ) : provider === "listenbrainz" ? (
-            <>
-              <SettingsLink to="discovery/lastfm" className="settings-link">
-                Add a Last.fm API key
-              </SettingsLink>{" "}
-              for closer matches.
-            </>
-          ) : null
-        }
-      >
-        <span className="settings-row__value">
-          {provider === "lastfm" ? "Last.fm" : provider === "listenbrainz" ? "Deezer" : "None"}
-        </span>
-      </SettingsRow>
       <SettingsRow label="Last updated">
         <span className="settings-row__value">
           {updating
@@ -216,7 +145,6 @@ export function DiscoverySection() {
   const { settings, health } = useServerSettings();
   const item = useSettingsItem();
 
-  if (item === "lastfm") return <LastfmDetail />;
   if (item === "ticketmaster") return <TicketmasterDetail />;
   if (item === "news") return <NewsDetail />;
 
@@ -224,11 +152,6 @@ export function DiscoverySection() {
     <SettingsPage title="Discovery">
       <CacheGroup />
       <SettingsGroup title="Sources">
-        <SettingsServiceRow
-          to="discovery/lastfm"
-          name="Last.fm"
-          status={configuredStatus(Boolean(health?.lastfmConfigured))}
-        />
         <SettingsServiceRow
           to="discovery/ticketmaster"
           name="Ticketmaster"

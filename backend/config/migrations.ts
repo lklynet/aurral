@@ -361,6 +361,31 @@ const syncRestoredFileArtistTags: Migration = (db) => {
   }
 };
 
+// Aurral no longer talks to Last.fm, so its keys, scrobble sessions, link
+// state, history usernames, and queued Last.fm work have no reader.
+const dropLastfm: Migration = (db) => {
+  if (db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'lastfm_username'").get()) {
+    db.exec("ALTER TABLE users DROP COLUMN lastfm_username");
+  }
+  db.exec(`
+    DROP TABLE IF EXISTS lastfm_link_states;
+    DELETE FROM listen_history_sources WHERE provider = 'lastfm';
+    DELETE FROM settings WHERE key = 'lastfmRejectedKey';
+    UPDATE settings SET value = json_remove(value, '$.lastfm')
+      WHERE key = 'integrations' AND json_valid(value);
+    UPDATE settings SET value = (
+        SELECT json_group_object(entry.key, json_remove(entry.value, '$.lastfm'))
+        FROM json_each(settings.value) AS entry
+        WHERE entry.type = 'object' AND json_remove(entry.value, '$.lastfm') <> '{}'
+      )
+      WHERE key = 'scrobbleConnections' AND json_valid(value);
+    DELETE FROM jobs WHERE state IN ('pending', 'running') AND (
+      kind = 'lastfm-key-check'
+      OR (queue = 'play-events' AND json_valid(payload) AND payload ->> '$.provider' = 'lastfm')
+    );
+  `);
+};
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -385,6 +410,7 @@ export const migrations: Migration[] = [
   renewSessionsOnUse,
   restoreStoredTrackArtistCredits,
   syncRestoredFileArtistTags,
+  dropLastfm,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

@@ -92,12 +92,6 @@ The Docker image uses low defaults for artwork processing. Use these variables t
 | `AURRAL_WORKER_MAX_HEAP_MB`  | The largest JavaScript heap of each background process, in MB. Default `2048`, or Node's own lower limit on small machines. A `--max-old-space-size` in `NODE_OPTIONS` also applies when this variable is not set. Raise it if a library scan of a very large library stops with an out-of-memory error. |
 | `MALLOC_CONF`                | jemalloc memory settings. The Docker image sets `background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000`, so memory from image processing returns to the operating system sooner, also while Aurral is idle.                                                                                     |
 
-## Last.fm
-
-| Variable                   | Purpose                                                                                                                                      |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AURRAL_LASTFM_TIMEOUT_MS` | Last.fm API timeout in milliseconds. Default `15000`. Increase it if Focus playlists have no tracks and the logs show `Last.fm API timeout`. |
-
 ## Spotify playlist import
 
 These variables change the shared Spotify OAuth proxy that Lidarr also uses. The defaults work for most installations.

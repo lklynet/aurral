@@ -1,6 +1,6 @@
 import fs from "fs";
 
-const BROAD_LASTFM_GENRES = ["alternative", "indie", "rap", "rnb"];
+const BROAD_TAG_GENRES = ["alternative", "indie", "rap", "rnb"];
 
 export const genreKey = (value: unknown) =>
   String(value || "")
@@ -14,7 +14,7 @@ const musicbrainzGenres = fs
   .filter(Boolean);
 
 const knownGenreKeys = new Set(
-  [...musicbrainzGenres, ...BROAD_LASTFM_GENRES].map(genreKey).filter(Boolean),
+  [...musicbrainzGenres, ...BROAD_TAG_GENRES].map(genreKey).filter(Boolean),
 );
 
 export const isKnownGenre = (value: string | null | undefined) =>

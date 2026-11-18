@@ -29,7 +29,7 @@ Pairing works for any server that already has an HTTPS address. Connect, a paid 
 - **Every build on the origin can read every saved token.** Retained builds are pruned, and raising the minimum supported version deletes every build below it.
 - An HTTPS page can't call a plain HTTP address, so the hosted app can't reach a server by its LAN address. Native apps can.
 - A forward-auth proxy's redirect or 401 carries no CORS headers, so the client can only say it couldn't reach the server.
-- Flows that return to the server's own address (Last.fm, OIDC and Google linking, Spotify import, setting a password on an SSO account) hand off to the same page on the server instead of running in the hosted app.
+- Flows that return to the server's own address (OIDC and Google linking, Spotify import, setting a password on an SSO account) hand off to the same page on the server instead of running in the hosted app.
 - Supporting older servers is permanent work. Every field the hosted app reads is part of the [app API contract](../src/content/docs/api/app-contract.mdx).
 
 ## Alternatives

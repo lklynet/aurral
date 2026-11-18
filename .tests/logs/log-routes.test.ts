@@ -94,10 +94,10 @@ test("an API key reads entries, problems, and the export", async () => {
 
 test("the export lists integrations set up with only an API key", async () => {
   dbOps.updateSettings({
-    integrations: { ...dbOps.getSettings().integrations, lastfm: { apiKey: "lastfm-key" } },
+    integrations: { ...dbOps.getSettings().integrations, ticketmaster: { apiKey: "key" } },
   });
   const text = await (await withKey("/logs/export")).text();
-  assert.match(text, /^Integrations: .*\blastfm\b/m);
+  assert.match(text, /^Integrations: .*\bticketmaster\b/m);
 });
 
 test("only admins read logs or change debug logging", async () => {

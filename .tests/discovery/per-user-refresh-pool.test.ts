@@ -80,7 +80,7 @@ test("per-user refresh: feedback boost affects reranking for per-user pool", asy
       scorePopularityPenalty: 4,
       scoreTotal: 114,
       seedCount: 1,
-      sourceType: "lastfm",
+      sourceType: "listenbrainz",
     },
     {
       id: "22222222-2222-2222-2222-222222222222",
@@ -94,7 +94,7 @@ test("per-user refresh: feedback boost affects reranking for per-user pool", asy
       scorePopularityPenalty: 4,
       scoreTotal: 114,
       seedCount: 1,
-      sourceType: "lastfm",
+      sourceType: "listenbrainz",
     },
   ];
 

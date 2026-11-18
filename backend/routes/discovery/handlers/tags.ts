@@ -3,7 +3,7 @@ import * as v from "valibot";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
-import { getMusicDataSourceName, getTagArtists } from "../../../services/musicDataSource/index.ts";
+import { MUSIC_DATA_SOURCE, getTagArtists } from "../../../services/musicDataSource/index.ts";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
 import { getUserDiscoveryNamespace } from "../../../services/discovery/index.ts";
 import type { DiscoveryRecommendation } from "../../../services/discovery/recommendationPipeline.ts";
@@ -94,7 +94,7 @@ export default new Hono<AppEnv>()
             tag,
             total: offsetInt + artists.length + (hasMore ? 1 : 0),
             offset: offsetInt,
-            provider: getMusicDataSourceName(),
+            provider: MUSIC_DATA_SOURCE,
           },
           200,
         );

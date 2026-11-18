@@ -424,7 +424,7 @@ Spotify, ListenBrainz, and Last.fm list the playlists of an account:
 | `POST`   | `/api/users`                      | Create a user                                                                                      |
 | `PATCH`  | `/api/users/:id`                  | Update a user                                                                                      |
 | `DELETE` | `/api/users/:id`                  | Delete a user                                                                                      |
-| `GET`    | `/api/users/me/listening-history` | Get the current user's Last.fm, ListenBrainz, and Koito history sources                            |
+| `GET`    | `/api/users/me/listening-history` | Get the current user's ListenBrainz and Koito history sources                                      |
 | `PATCH`  | `/api/users/me/listening-history` | Set or clear any of the current user's history sources                                             |
 | `GET`    | `/api/users/me/identities`        | List the sign-in identities linked to the current user                                             |
 | `DELETE` | `/api/users/me/identities/:id`    | Remove a linked identity. Returns `400` with `last_auth_method` when it is the last way to sign in |
@@ -477,29 +477,26 @@ Every route in this section requires an administrator, except `POST /api/logs/cl
 The instance API key has no user identity. Account linking and local play-event
 recording require a user's login session.
 
-| Method   | Path                                   | Purpose                                                |
-| -------- | -------------------------------------- | ------------------------------------------------------ |
-| `GET`    | `/api/scrobbling/status`               | Read scrobbling provider status                        |
-| `GET`    | `/api/scrobbling/lastfm/link`          | Start or read Last.fm linking. Requires a user session |
-| `GET`    | `/api/scrobbling/lastfm/link/callback` | Complete Last.fm linking                               |
-| `DELETE` | `/api/scrobbling/lastfm/link`          | Unlink Last.fm                                         |
-| `GET`    | `/api/scrobbling/listenbrainz/link`    | Read ListenBrainz linking                              |
-| `PUT`    | `/api/scrobbling/listenbrainz/link`    | Link ListenBrainz. Requires a user session             |
-| `DELETE` | `/api/scrobbling/listenbrainz/link`    | Unlink ListenBrainz                                    |
-| `PUT`    | `/api/scrobbling/koito/link`           | Configure Koito. Requires a user session               |
-| `DELETE` | `/api/scrobbling/koito/link`           | Unlink Koito                                           |
-| `GET`    | `/api/play-events`                     | Read local play history                                |
-| `POST`   | `/api/play-events`                     | Record a local play event. Requires a user session     |
-| `POST`   | `/api/play-events/now-playing`         | Share now playing. Not recorded. Takes `streamPath`    |
-| `GET`    | `/api/history-servers`                 | List the current user's media server history imports   |
-| `PUT`    | `/api/history-servers/:provider`       | Connect Navidrome or Jellyfin. Admins only             |
-| `POST`   | `/api/history-servers/:provider/sync`  | Import new plays now                                   |
-| `DELETE` | `/api/history-servers/:provider`       | Disconnect and remove the imported plays               |
-| `GET`    | `/api/plex`                            | Whether the Plex server is connected                   |
-| `POST`   | `/api/plex/sign-in`                    | Start a Plex sign-in                                   |
-| `POST`   | `/api/plex/sign-in/:id`                | Finish a Plex sign-in. With `serverUrl`, admins only   |
-| `PATCH`  | `/api/plex`                            | Turn sending playlists to Plex on or off. Admins only  |
-| `DELETE` | `/api/plex`                            | Disconnect the Plex server. Admins only                |
+| Method   | Path                                  | Purpose                                               |
+| -------- | ------------------------------------- | ----------------------------------------------------- |
+| `GET`    | `/api/scrobbling/status`              | Read scrobbling provider status                       |
+| `GET`    | `/api/scrobbling/listenbrainz/link`   | Read ListenBrainz linking                             |
+| `PUT`    | `/api/scrobbling/listenbrainz/link`   | Link ListenBrainz. Requires a user session            |
+| `DELETE` | `/api/scrobbling/listenbrainz/link`   | Unlink ListenBrainz                                   |
+| `PUT`    | `/api/scrobbling/koito/link`          | Configure Koito. Requires a user session              |
+| `DELETE` | `/api/scrobbling/koito/link`          | Unlink Koito                                          |
+| `GET`    | `/api/play-events`                    | Read local play history                               |
+| `POST`   | `/api/play-events`                    | Record a local play event. Requires a user session    |
+| `POST`   | `/api/play-events/now-playing`        | Share now playing. Not recorded. Takes `streamPath`   |
+| `GET`    | `/api/history-servers`                | List the current user's media server history imports  |
+| `PUT`    | `/api/history-servers/:provider`      | Connect Navidrome or Jellyfin. Admins only            |
+| `POST`   | `/api/history-servers/:provider/sync` | Import new plays now                                  |
+| `DELETE` | `/api/history-servers/:provider`      | Disconnect and remove the imported plays              |
+| `GET`    | `/api/plex`                           | Whether the Plex server is connected                  |
+| `POST`   | `/api/plex/sign-in`                   | Start a Plex sign-in                                  |
+| `POST`   | `/api/plex/sign-in/:id`               | Finish a Plex sign-in. With `serverUrl`, admins only  |
+| `PATCH`  | `/api/plex`                           | Turn sending playlists to Plex on or off. Admins only |
+| `DELETE` | `/api/plex`                           | Disconnect the Plex server. Admins only               |
 
 `GET /api/play-events` lists plays recorded in Aurral. Plays imported from a media server are not included.
 

@@ -9,14 +9,11 @@ import {
 } from "../helpers/backendTestHarness.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
 
-const [isolatedState, { db }, { userOps }, { lastfmStationClient }, { updateListenHistory }] =
-  await setupIsolatedBackend(
-    "lastfm-stations",
-    () => import("../../backend/config/db-sqlite.ts"),
-    () => import("../../backend/db/helpers/index.ts"),
-    () => import("../../backend/services/importLists/lastfmStations.ts"),
-    () => import("../../backend/services/listeningHistory.ts"),
-  );
+const [isolatedState, { db }, { lastfmStationClient }] = await setupIsolatedBackend(
+  "lastfm-stations",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/importLists/lastfmStations.ts"),
+);
 
 beforeEach(() => resetDatabase(db));
 afterAll(() => cleanupIsolatedState(isolatedState));
@@ -63,7 +60,7 @@ test("lastfmStationClient lists the three stations in a stable order", async () 
     });
   });
 
-  const result = await lastfmStationClient.listPlaylists(7, "user+name");
+  const result = await lastfmStationClient.listPlaylists("user+name");
 
   assert.deepEqual(
     result.playlists.map(({ id, name, trackCount }) => ({ id, name, trackCount })),
@@ -86,23 +83,4 @@ test("lastfmStationClient lists the three stations in a stable order", async () 
     new Headers(requireFixture(calls[0]).options?.headers).get("Accept"),
     "application/json",
   );
-});
-
-test("lastfmStationClient reuses a Last.fm username from the profile", async () => {
-  const user = userOps.createUser("profile-user", "hash");
-  assert.ok(user != null);
-  updateListenHistory(user.id, { lastfm: "profile-lastfm" });
-  let requestedUrl = "";
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
-    requestedUrl = String(url);
-    return Response.json({
-      playlist: [{ name: "Song", artists: [{ name: "Artist" }] }],
-    });
-  });
-
-  const result = await lastfmStationClient.getStationTracks(user.id, "library", null);
-
-  assert.equal(result.tracks.length, 1);
-  assert.equal(result.user, "profile-lastfm");
-  assert.equal(new URL(requestedUrl).pathname, "/player/station/user/profile-lastfm/library");
 });

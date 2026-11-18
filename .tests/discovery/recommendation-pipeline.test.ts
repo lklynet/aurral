@@ -30,7 +30,7 @@ test("buildDiscoverySeedList prefers listening-history weight when the same arti
       {
         mbid: "22222222-2222-2222-2222-222222222222",
         artistName: "History Only",
-        source: "lastfm",
+        source: "koito",
         playcount: 12,
       },
     ],
@@ -40,7 +40,7 @@ test("buildDiscoverySeedList prefers listening-history weight when the same arti
   assert.equal(seeds[0]?.mbid, "11111111-1111-1111-1111-111111111111");
   assert.equal(seeds[0]?.source, "listenbrainz");
   assert.ok(seeds[0].weight > 1.3);
-  assert.equal(seeds[1]?.source, "lastfm");
+  assert.equal(seeds[1]?.source, "koito");
 });
 
 test("recommendation candidates aggregate across multiple seeds", () => {
@@ -112,7 +112,7 @@ test("mergeResolvedRecommendations collapses name and mbid variants of the same 
       name: "Slowdive",
       score: 155,
       sourceArtists: ["Seed Two"],
-      sourceTypes: ["lastfm"],
+      sourceTypes: ["listenbrainz"],
       tags: ["dream-pop"],
     },
   ]);
@@ -158,7 +158,7 @@ test("rerankRecommendations softens less-like feedback, hard-blocks exact artist
       scorePopularityPenalty: 12,
       scoreTotal: 156,
       seedCount: 3,
-      sourceType: "lastfm",
+      sourceType: "listenbrainz",
     },
     {
       id: "66666666-6666-6666-6666-666666666666",
@@ -172,7 +172,7 @@ test("rerankRecommendations softens less-like feedback, hard-blocks exact artist
       scorePopularityPenalty: 4,
       scoreTotal: 142,
       seedCount: 1,
-      sourceType: "lastfm",
+      sourceType: "listenbrainz",
     },
   ];
 
@@ -224,7 +224,7 @@ test("unknown discovery modes and seed sources that name object properties use t
       scorePopularityPenalty: 6,
       scoreTotal: 126,
       seedCount: 1,
-      sourceType: "lastfm",
+      sourceType: "listenbrainz",
     },
   ];
   assert.deepEqual(

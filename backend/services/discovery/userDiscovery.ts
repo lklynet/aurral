@@ -1,5 +1,5 @@
 import { dbOps } from "../../db/helpers/index.ts";
-import { getMusicDataSourceName } from "../musicDataSource/index.ts";
+import { MUSIC_DATA_SOURCE } from "../musicDataSource/index.ts";
 import { DISCOVERY_REFRESH_MS, getDiscoveryMode } from "./helpers.ts";
 import {
   getBlockedArtistKeys,
@@ -186,7 +186,7 @@ export function getUserDiscovery(userId: number | null, limit = 50, offset = 0) 
       enrichmentCompletedAt: source.enrichmentCompletedAt || null,
       enrichmentProgressMessage: source.enrichmentProgressMessage || null,
       configured: true,
-      provider: getMusicDataSourceName(),
+      provider: MUSIC_DATA_SOURCE,
       discoveryMode,
     },
   };

@@ -47,46 +47,49 @@ const SHOEGAZE_TOP_ARTISTS = [
 ];
 
 const similarBySeed = new Map([
-  [LIKED.mbid, [FROM_LIKED, BLOCKED, LIBRARY]],
+  [LIKED.name, [FROM_LIKED, BLOCKED, LIBRARY]],
   ["Played Artist", [FROM_PLAYED]],
-  [LIBRARY.mbid, [FROM_LIBRARY]],
+  [LIBRARY.name, [FROM_LIBRARY]],
   ["Disliked Artist", [FROM_DISLIKED]],
 ]);
+const seedNames = [...similarBySeed.keys()];
+const knownArtists = [
+  LIKED,
+  LIBRARY,
+  ...[...similarBySeed.values()].flat(),
+  ...SHOEGAZE_TOP_ARTISTS,
+];
+const TAGS = ["female vocalists", "shoegaze", "seen live", "dream-pop", "indie"];
 
 const originalFetch = globalThis.fetch;
-const originalLastfmApiKey = process.env.LASTFM_API_KEY;
 let alice: NonNullable<ReturnType<typeof userOps.createUser>>;
 let bob: NonNullable<ReturnType<typeof userOps.createUser>>;
 
-const lastfmResponse = (url: string) => {
-  const params = new URL(String(url)).searchParams;
-  const seed = params.get("mbid") || params.get("artist");
-  if (params.get("method") === "artist.getTopTags") {
-    return {
-      toptags: {
-        tag: ["female vocalists", "shoegaze", "seen live", "dream-pop", "indie"].map((name) => ({
-          name,
-          count: 100,
-        })),
-      },
-    };
+const respond = (url: URL) => {
+  const related = /^\/artist\/(\d+)\/related$/.exec(url.pathname);
+  if (url.hostname === "api.deezer.com" && url.pathname === "/search/artist") {
+    const name = url.searchParams.get("q") ?? "";
+    const id = seedNames.indexOf(name) + 1;
+    return { data: id ? [{ id, name }] : [] };
   }
-  if (params.get("method") === "tag.getTopArtists") {
-    return {
-      topartists: {
-        artist: SHOEGAZE_TOP_ARTISTS.map((artist) => ({ ...artist, image: [] })),
-        "@attr": { total: String(SHOEGAZE_TOP_ARTISTS.length) },
-      },
-    };
+  if (url.hostname === "api.deezer.com" && related) {
+    const similar = similarBySeed.get(seedNames[Number(related[1]) - 1] ?? "") ?? [];
+    return { data: similar.map((artist, index) => ({ id: 100 + index, name: artist.name })) };
   }
-  if (params.get("method") === "artist.getSimilar") {
+  if (url.hostname === "lidarrapi.brainzmash.cc" && url.pathname === "/search/artist") {
+    const artist = knownArtists.find(({ name }) => name === url.searchParams.get("query"));
+    return artist ? [{ id: artist.mbid, artistname: artist.name }] : [];
+  }
+  if (url.hostname === "api.listenbrainz.org" && url.pathname === "/1/metadata/artist/") {
+    return (url.searchParams.get("artist_mbids") ?? "").split(",").map((artist_mbid) => ({
+      artist_mbid,
+      tag: { artist: TAGS.map((tag) => ({ tag, count: 100 })) },
+    }));
+  }
+  if (url.hostname === "musicbrainz.org" && url.pathname === "/ws/2/artist") {
     return {
-      similarartists: {
-        artist: (similarBySeed.get(seed ?? "") || []).map((artist) => ({
-          ...artist,
-          match: "0.9",
-        })),
-      },
+      count: SHOEGAZE_TOP_ARTISTS.length,
+      artists: SHOEGAZE_TOP_ARTISTS.map(({ name, mbid }) => ({ id: mbid, name })),
     };
   }
   return {};
@@ -104,9 +107,8 @@ const play = (userId: number, artist: string, index: number) =>
 beforeAll(() => {
   resetDatabase(db);
   dbOps.invalidateSettingsCache();
-  process.env.LASTFM_API_KEY = "test-key";
   globalThis.fetch = async (url) =>
-    new Response(JSON.stringify(lastfmResponse(String(url))), {
+    new Response(JSON.stringify(respond(new URL(String(url)))), {
       status: 200,
       headers: { "content-type": "application/json" },
     });
@@ -145,8 +147,6 @@ beforeEach(() => {
 
 afterAll(async () => {
   globalThis.fetch = originalFetch;
-  if (originalLastfmApiKey === undefined) delete process.env.LASTFM_API_KEY;
-  else process.env.LASTFM_API_KEY = originalLastfmApiKey;
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -267,7 +267,7 @@ test("flows without an owner read the first admin's pool", async () => {
   }
 });
 
-test("tag search lists the tag's artists in Last.fm order without the user's recommendations", async () => {
+test("tag search lists the tag's artists in MusicBrainz order without the user's recommendations", async () => {
   const { status, body } = await requestApi(alice.id, "/search?scope=tag&q=%23shoegaze");
   assert.equal(status, 200);
   assert.deepEqual(

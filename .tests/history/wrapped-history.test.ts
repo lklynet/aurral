@@ -18,14 +18,13 @@ vi.mock("../../backend/services/apiClients/rateLimiter.ts", async (importOrigina
   };
 });
 
-const [state, { db }, { userOps }, history, reports, lastfm, { default: wrapped }] =
+const [state, { db }, { userOps }, history, reports, { default: wrapped }] =
   await setupIsolatedBackend(
     "wrapped-history",
     () => import("../../backend/config/db-sqlite.ts"),
     () => import("../../backend/db/helpers/index.ts"),
     () => import("../../backend/services/wrapped/history.ts"),
     () => import("../../backend/services/wrapped/reports.ts"),
-    () => import("../../backend/services/apiClients/lastfm.ts"),
     () => import("../../backend/routes/wrapped.ts"),
   );
 process.env.AURRAL_BACKGROUND_WORKER_GROUP = "library";
@@ -211,7 +210,7 @@ test("a failed rebuild keeps the recap the listener already has", async () => {
   await reports.processWrappedBuild(one.id, "UTC");
   const build = vi
     .spyOn(history, "buildWrappedSummary")
-    .mockRejectedValueOnce(new Error("Last.fm is down"));
+    .mockRejectedValueOnce(new Error("ListenBrainz is down"));
   await reports.processWrappedBuild(one.id, "UTC");
   build.mockRestore();
   const body = await (
@@ -251,39 +250,19 @@ test("plays imported from a media server keep their source", () => {
 
 test("a source that fails partway keeps the pages it already read", async () => {
   const play: WrappedPlay = {
-    source: "lastfm",
+    source: "listenbrainz",
     account: "one",
     id: "one",
     title: "Song",
     artist: "Artist",
     playedAt: period.start,
   };
-  const result = await history.readWrappedSource("lastfm", async (page) => {
+  const result = await history.readWrappedSource("listenbrainz", async (page) => {
     if (page === 2) throw new Error("unavailable");
     return { plays: [play], more: true };
   });
   assert.equal(result.status.state, "partial");
   assert.equal(result.plays.length, 1);
-});
-
-test("Last.fm history leaves out the track that is playing right now", async () => {
-  vi.spyOn(lastfm, "lastfmRequest").mockResolvedValue({
-    recenttracks: {
-      "@attr": { totalPages: "1" },
-      track: [
-        { name: "Song", artist: { "#text": "Artist" }, date: { uts: String(period.start / 1000) } },
-        { name: "Now playing", artist: { "#text": "Artist" }, "@attr": { nowplaying: "true" } },
-      ],
-    },
-  });
-  const result = await history.readWrappedSource(
-    "lastfm",
-    history.lastfmWrappedReader("one", period),
-  );
-  assert.deepEqual(
-    result.plays.map((play) => play.title),
-    ["Song"],
-  );
 });
 
 test("ListenBrainz paging keeps listens that share the boundary second", async () => {

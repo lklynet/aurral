@@ -17,7 +17,7 @@ export function makeDiscoveryArtist(
     scorePopularityPenalty: 2,
     scoreTotal: score,
     seedCount: 1,
-    sourceType: "lastfm",
+    sourceType: "listenbrainz",
   };
 }
 

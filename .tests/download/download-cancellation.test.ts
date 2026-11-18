@@ -796,7 +796,6 @@ test("clearing a shown flow or deleting any flow rescans the library", async () 
 test("rotating a flow shown in the library rescans the library", async () => {
   dbOps.updateSettings({
     integrations: {
-      lastfm: { apiKey: "test" },
       slskd: { enabled: true, url: "http://127.0.0.1:1", apiKey: "test-key" },
     },
   });

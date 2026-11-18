@@ -228,7 +228,6 @@ test("defaults listening history on and persists a flow opt-out", () => {
 });
 
 test("keeps flow tracks out of the library until a flow opts in", async () => {
-  dbOps.updateSettings({ integrations: { lastfm: { apiKey: "test" } } });
   const flow = flowPlaylistConfig.createFlow({
     name: "Library Opt In",
     size: 20,
@@ -331,7 +330,6 @@ test("saving a flow as a playlist keeps each track's release and disc", async ()
 });
 
 test("an edit that turns on Focus checks the flow's saved seeds", async () => {
-  dbOps.updateSettings({ integrations: { lastfm: { apiKey: "test" } } });
   const flow = flowPlaylistConfig.createFlow({
     name: "Seedless",
     size: 20,

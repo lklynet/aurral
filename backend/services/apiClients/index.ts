@@ -1,6 +1,4 @@
 export {
-  getLastfmApiKey,
-  getLastfmApiSecret,
   getTicketmasterApiKey,
   getNewsSettings,
   normalizeNewsFeeds,
@@ -17,8 +15,6 @@ export {
   musicbrainzGetArtistIdentityByMbid,
   musicbrainzSearchArtistsByTag,
 } from "./musicbrainz.ts";
-
-export { isLastfmKeyRejected, lastfmRequest, lastfmGetSession, lastfmScrobble } from "./lastfm.ts";
 
 export {
   listenbrainzRequest,

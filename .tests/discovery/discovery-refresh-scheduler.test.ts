@@ -27,7 +27,6 @@ const {
 } = refreshScheduler;
 const { db } = await import("../../backend/config/db-sqlite.ts");
 const { dbOps } = await import("../../backend/db/helpers/index.ts");
-const originalLastfmApiKey = process.env.LASTFM_API_KEY;
 
 function seedLibraryArtist() {
   db.prepare(
@@ -83,8 +82,6 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
-  if (originalLastfmApiKey === undefined) delete process.env.LASTFM_API_KEY;
-  else process.env.LASTFM_API_KEY = originalLastfmApiKey;
   releaseHeldGlobalRefreshLock();
   await cleanupIsolatedState(isolatedState);
 });
@@ -127,7 +124,6 @@ test("discoveryNeedsRefresh leaves genres to personal refreshes when the library
 });
 
 test("interval check does not queue a refresh after a seedless run left genres empty", async () => {
-  process.env.LASTFM_API_KEY = "test-key";
   setDiscoveryCache({
     recommendations: [],
     globalTop: [{ id: "trend-1", name: "trend-1" }],
@@ -142,16 +138,13 @@ test("interval check does not queue a refresh after a seedless run left genres e
   assert.equal(countDiscoveryRefreshJobs(), 0);
 });
 
-test("discoveryNeedsRefresh rebuilds a fresh cache that came from the other music data source", () => {
+test("discoveryNeedsRefresh rebuilds a fresh cache that Last.fm built", () => {
   const fresh = {
     globalTop: [{ id: "trend-1", name: "trend-1" }],
     lastUpdated: new Date().toISOString(),
   };
-  delete process.env.LASTFM_API_KEY;
   assert.equal(discoveryNeedsRefresh({ ...fresh, provider: "lastfm" }), true);
   assert.equal(discoveryNeedsRefresh({ ...fresh, provider: "listenbrainz" }), false);
-  process.env.LASTFM_API_KEY = "test-key";
-  assert.equal(discoveryNeedsRefresh({ ...fresh, provider: "listenbrainz" }), true);
 });
 
 test("discoveryNeedsRefresh returns false for fresh populated cache", () => {
@@ -166,8 +159,6 @@ test("discoveryNeedsRefresh returns false for fresh populated cache", () => {
 });
 
 test("first discovery startup queues one refresh", async () => {
-  process.env.LASTFM_API_KEY = "test-key";
-
   await bootstrapDiscoveryRefresh();
 
   const [payload, ...rest] = discoveryRefreshPayloads();
@@ -177,7 +168,6 @@ test("first discovery startup queues one refresh", async () => {
 });
 
 test("stale and incomplete discovery caches retry", async () => {
-  process.env.LASTFM_API_KEY = "test-key";
   setDiscoveryCache({
     recommendations: [{ id: "old", name: "old" }],
     topGenres: ["rock"],
@@ -195,7 +185,6 @@ test("stale and incomplete discovery caches retry", async () => {
 });
 
 test("repeated startup checks do not create duplicate active refresh jobs", async () => {
-  process.env.LASTFM_API_KEY = "test-key";
   setDiscoveryCache({ lastUpdated: null });
 
   await bootstrapDiscoveryRefresh();
@@ -205,7 +194,6 @@ test("repeated startup checks do not create duplicate active refresh jobs", asyn
 });
 
 test("a completed discovery queue job no longer blocks the next refresh", () => {
-  process.env.LASTFM_API_KEY = "test-key";
   const first = enqueueDiscoveryRefresh({ reason: "manual" });
   assert.equal(first.enqueued, true);
   const claimed = discoveryRefreshQueue.claim("aurral-test-worker");
