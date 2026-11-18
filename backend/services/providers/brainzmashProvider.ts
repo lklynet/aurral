@@ -1,6 +1,8 @@
 import pMap from "p-map";
 import * as v from "valibot";
 import { isOwnKey } from "../../../lib/ownKey.ts";
+import { isRecord } from "../../../lib/isRecord.ts";
+import { UUID_REGEX } from "../../../lib/uuid.ts";
 import { http, isTransientNetworkError } from "../../../lib/http.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import createCache from "../apiClients/simpleCache.ts";
@@ -31,7 +33,11 @@ import {
   withoutFeaturedArtists,
 } from "../trackMatching/titleText.ts";
 import createRateLimiter from "../apiClients/rateLimiter.ts";
-import { musicbrainzGet, releaseGroupSchema } from "../apiClients/musicbrainzHttp.ts";
+import {
+  artistCreditSchema,
+  musicbrainzGet,
+  releaseGroupSchema,
+} from "../apiClients/musicbrainzHttp.ts";
 import { readMany, readOne } from "../integrationData.ts";
 import { albumSearchTexts, parseSearchQuery, rankByMatch } from "../searchText.ts";
 import { runSharedInflight, type InflightRequests } from "../sharedInflight.ts";
@@ -66,6 +72,45 @@ const releaseGroupHitSchema = v.looseObject({
   score: v.optional(v.number()),
 });
 
+const musicbrainzTrackSchema = v.looseObject({
+  id: v.optional(v.string()),
+  title: v.optional(v.string()),
+  position: v.optional(v.number()),
+  length: v.nullish(v.number()),
+  "artist-credit": artistCreditSchema,
+  recording: v.optional(
+    v.looseObject({
+      id: v.optional(v.string()),
+      title: v.optional(v.string()),
+      length: v.nullish(v.number()),
+      "artist-credit": artistCreditSchema,
+    }),
+  ),
+});
+
+const musicbrainzReleaseSchema = v.looseObject({
+  id: v.string(),
+  title: v.optional(v.string()),
+  status: v.nullish(v.string()),
+  date: v.optional(v.string()),
+  country: v.nullish(v.string()),
+  media: v.optional(
+    v.array(
+      v.looseObject({
+        position: v.optional(v.number()),
+        title: v.nullish(v.string()),
+        format: v.nullish(v.string()),
+        "track-count": v.optional(v.number()),
+        tracks: v.optional(v.array(musicbrainzTrackSchema)),
+      }),
+    ),
+  ),
+});
+
+const musicbrainzReleaseBrowseSchema = v.looseObject({
+  releases: v.array(v.unknown()),
+});
+
 interface AlbumSearchItem {
   id?: string;
   title: string;
@@ -95,6 +140,7 @@ interface MetadataError extends Error {
 }
 
 const METADATA_ENTITY_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
+const INCOMPLETE_ALBUM_CACHE_TTL_SECONDS = 60 * 60;
 const METADATA_ENTITY_STALE_TTL_SECONDS = 30 * 24 * 60 * 60;
 const METADATA_SEARCH_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const METADATA_NOT_FOUND_CACHE_TTL_SECONDS = 24 * 60 * 60;
@@ -104,6 +150,8 @@ const METADATA_CACHE_MAX_ENTRIES = 20_000;
 const METADATA_HOT_CACHE_TTL_SECONDS = 60;
 const METADATA_HOT_CACHE_MAX_ENTRIES = 50;
 const METADATA_STORE_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+const MUSICBRAINZ_FALLBACK_CACHE_TTL_SECONDS = 24 * 60 * 60;
+const MUSICBRAINZ_FALLBACK_RETRY_SECONDS = 5 * 60;
 const MIN_ALBUM_SEARCH_WINDOW = 25;
 const METADATA_REQUEST_MIN_INTERVAL_MS = 100;
 const METADATA_REQUEST_TIMEOUT_MS = 8000;
@@ -121,6 +169,14 @@ const metadataNotFoundCache = createCache<true>(
   METADATA_NOT_FOUND_CACHE_TTL_SECONDS,
   METADATA_CACHE_MAX_ENTRIES,
 );
+const musicbrainzAlbumReleasesCache = createCache<NormalizedRelease[]>(
+  MUSICBRAINZ_FALLBACK_CACHE_TTL_SECONDS,
+  500,
+);
+const musicbrainzAlbumSearchCache = createCache<AlbumSearchItem[]>(
+  METADATA_SEARCH_CACHE_TTL_SECONDS,
+  1000,
+);
 const providerInflightRequests: InflightRequests = new Map();
 const providerRequestLimiter = createRateLimiter(METADATA_REQUEST_MIN_INTERVAL_MS, {
   maxQueue: METADATA_MAX_QUEUED_REQUESTS,
@@ -132,6 +188,8 @@ export function clearMetadataProviderCaches() {
   metadataHotCache.flushAll();
   dbOps.clearMetadataResponses();
   metadataNotFoundCache.flushAll();
+  musicbrainzAlbumReleasesCache.flushAll();
+  musicbrainzAlbumSearchCache.flushAll();
   providerInflightRequests.clear();
   clearMetadataRequestStates();
 }
@@ -285,10 +343,15 @@ function isRetryable(error: unknown) {
   );
 }
 
-function getMetadataCachePolicy(path: string) {
+function getMetadataCachePolicy(path: string, value?: unknown) {
   if (isEntityMetadataPath(path)) {
     return {
-      freshTtlSeconds: METADATA_ENTITY_CACHE_TTL_SECONDS,
+      freshTtlSeconds:
+        /^\/album\/[^/]+$/.test(path) &&
+        isRecord(value) &&
+        (!Array.isArray(value.releases) || value.releases.length === 0)
+          ? INCOMPLETE_ALBUM_CACHE_TTL_SECONDS
+          : METADATA_ENTITY_CACHE_TTL_SECONDS,
       staleTtlSeconds: METADATA_ENTITY_STALE_TTL_SECONDS,
     };
   }
@@ -423,7 +486,6 @@ function refreshMetadata<Schema extends v.GenericSchema>(
   }: MetadataRequestOptions & { fallbackValue?: v.InferOutput<Schema> } = {},
 ): Promise<v.InferOutput<Schema>> {
   const baseUrl = getMetadataBaseUrl();
-  const cachePolicy = getMetadataCachePolicy(path);
   const circuitError = getMetadataCircuitError(baseUrl);
   if (circuitError) {
     return fallbackValue !== undefined
@@ -527,7 +589,7 @@ function refreshMetadata<Schema extends v.GenericSchema>(
             },
           );
           const value = readOne(schema, response.data, { service: "BrainzMash", endpoint: path });
-          await storeMetadata(cacheKey, value, cachePolicy);
+          await storeMetadata(cacheKey, value, getMetadataCachePolicy(path, value));
           if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
           metadataNotFoundCache.delete(cacheKey);
           healthState.lastSuccessAt = healthState.lastCheckedAt;
@@ -663,12 +725,94 @@ export async function getCachedArtistByMbid(mbid: string) {
   return cached ? toNormalizedArtist(cached.value) : null;
 }
 
+function toNormalizedMusicbrainzRelease(raw: v.InferOutput<typeof musicbrainzReleaseSchema>) {
+  const media = raw.media ?? [];
+  return {
+    id: raw.id,
+    title: String(raw.title || "").trim(),
+    status: String(raw.status || "").trim() || null,
+    country: raw.country ? [raw.country] : [],
+    label: [],
+    media: media.map((medium, index) => ({
+      format: String(medium.format || "").trim(),
+      name: String(medium.title || "").trim(),
+      position: medium.position ?? index + 1,
+    })),
+    trackCount: media.reduce(
+      (count, medium) => count + (medium.tracks?.length ?? medium["track-count"] ?? 0),
+      0,
+    ),
+    tracks: media.flatMap((medium, mediumIndex) =>
+      (medium.tracks ?? []).map((track, trackIndex) => {
+        const credit = track["artist-credit"] ?? track.recording?.["artist-credit"];
+        return {
+          id: String(track.id || "").trim(),
+          recordingId: String(track.recording?.id || "").trim(),
+          oldRecordingIds: [],
+          title: String(track.title || track.recording?.title || "").trim(),
+          trackNumber: track.position ?? trackIndex + 1,
+          trackPosition: track.position ?? trackIndex + 1,
+          mediumNumber: medium.position ?? mediumIndex + 1,
+          durationMs: track.length ?? track.recording?.length ?? null,
+          artistId: credit?.[0]?.artist?.id || null,
+        };
+      }),
+    ),
+    releaseDate: String(raw.date || "").trim() || null,
+    disambiguation: "",
+  } satisfies NormalizedRelease;
+}
+
+async function getMusicbrainzAlbumReleases(
+  albumMbid: string,
+  { signal }: { signal?: AbortSignal } = {},
+) {
+  const cached = musicbrainzAlbumReleasesCache.get(albumMbid);
+  if (cached !== undefined) return cached;
+  try {
+    const releases = await runSharedInflight(
+      providerInflightRequests,
+      `musicbrainz:album-releases:${albumMbid}`,
+      async (sharedSignal: AbortSignal) => {
+        const data = await musicbrainzGet(
+          musicbrainzReleaseBrowseSchema,
+          "/release",
+          {
+            "release-group": albumMbid,
+            inc: "recordings+artist-credits",
+            limit: 100,
+          },
+          { signal: sharedSignal },
+        );
+        return readMany(musicbrainzReleaseSchema, data.releases, {
+          service: "MusicBrainz",
+          endpoint: "/release",
+        }).map(toNormalizedMusicbrainzRelease);
+      },
+      { signal },
+    );
+    musicbrainzAlbumReleasesCache.set(albumMbid, releases);
+    return releases;
+  } catch (error) {
+    signal?.throwIfAborted();
+    logger.info("metadata", "MusicBrainz could not fill an incomplete album", {
+      albumMbid,
+      reason: safeLogDiagnostic(error),
+    });
+    musicbrainzAlbumReleasesCache.set(albumMbid, [], MUSICBRAINZ_FALLBACK_RETRY_SECONDS);
+    return [];
+  }
+}
+
 export async function getAlbumByMbid(
   albumMbid: string,
   { signal, forceRefresh = false }: MetadataRequestOptions = {},
 ) {
   const data = await request(albumSchema, `/album/${albumMbid}`, {}, { signal, forceRefresh });
-  return toNormalizedAlbum(data);
+  const album = toNormalizedAlbum(data);
+  if (album.releases.length || !UUID_REGEX.test(albumMbid)) return album;
+  const releases = await getMusicbrainzAlbumReleases(albumMbid, { signal });
+  return releases.length ? { ...album, releases } : album;
 }
 
 export async function getCachedAlbumByMbid(albumMbid: string) {
@@ -724,6 +868,71 @@ export async function searchArtists(
     offset,
     items: items.slice(offset, offset + limit),
   };
+}
+
+function hasCredibleAlbumMatch(query: string, artistName: string, items: AlbumSearchItem[]) {
+  return items.some((item) => {
+    const titleScore = Math.max(
+      scoreTextMatch(item.title, query),
+      artistName ? 0 : scoreTextMatch(`${item.artistName} ${item.title}`, query),
+    );
+    return titleScore >= 85 && (!artistName || scoreTextMatch(item.artistName, artistName) >= 85);
+  });
+}
+
+const escapeLucenePhrase = (value: string) =>
+  String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"');
+
+async function searchMusicbrainzAlbums(
+  query: string,
+  artistName: string,
+  requestedLimit: number,
+  signal?: AbortSignal,
+) {
+  const mbQuery = artistName
+    ? `artist:"${escapeLucenePhrase(artistName)}" AND releasegroup:"${escapeLucenePhrase(query)}"`
+    : String(query || "").trim();
+  const cacheKey = JSON.stringify([mbQuery, requestedLimit]);
+  const cached = musicbrainzAlbumSearchCache.get(cacheKey);
+  if (cached) return cached;
+  const items = await runSharedInflight(
+    providerInflightRequests,
+    `musicbrainz:album-search:${cacheKey}`,
+    async (sharedSignal: AbortSignal) => {
+      const data = await musicbrainzGet(
+        releaseGroupSearchSchema,
+        "/release-group",
+        { query: mbQuery, limit: requestedLimit },
+        { signal: sharedSignal },
+      );
+      return readMany(releaseGroupHitSchema, data["release-groups"], {
+        service: "MusicBrainz",
+        endpoint: "/release-group",
+      }).map((entry, index) => {
+        const primaryCredit = entry["artist-credit"]?.[0];
+        return {
+          id: entry.id,
+          title: entry.title || "Untitled Release",
+          artistName:
+            primaryCredit?.name || primaryCredit?.artist?.name || artistName || "Unknown Artist",
+          artistId: primaryCredit?.artist?.id || null,
+          type: entry["primary-type"] || "Album",
+          secondaryTypes: entry["secondary-types"] ?? [],
+          releaseDate: entry["first-release-date"] || null,
+          coverUrl: null,
+          images: [],
+          inLibrary: false,
+          score: entry.score || Math.max(0, 100 - index),
+          releaseStatuses: [],
+        } satisfies AlbumSearchItem;
+      });
+    },
+    { signal },
+  );
+  musicbrainzAlbumSearchCache.set(cacheKey, items);
+  return items;
 }
 
 export async function searchAlbums(
@@ -796,49 +1005,21 @@ export async function searchAlbums(
     failure = error;
   }
 
-  if (items.length === 0 && musicbrainzFallback) {
-    failure = null;
-    const escapeLucenePhrase = (value: string) =>
-      String(value || "")
-        .replace(/\\/g, "\\\\")
-        .replace(/"/g, '\\"');
-    const mbQuery = artistName
-      ? `artist:"${escapeLucenePhrase(artistName)}" AND releasegroup:"${escapeLucenePhrase(query)}"`
-      : String(query || "").trim();
-    const data = await musicbrainzGet(
-      releaseGroupSearchSchema,
-      "/release-group",
-      { query: mbQuery, limit: requestedLimit },
-      { signal },
+  const providerReturnedItems = items.length > 0;
+  if (musicbrainzFallback && !hasCredibleAlbumMatch(query, artistName, items)) {
+    if (!providerReturnedItems) failure = null;
+    const fallbackItems = await searchMusicbrainzAlbums(
+      query,
+      artistName,
+      requestedLimit,
+      signal,
     ).catch((error) => {
       signal?.throwIfAborted();
-      failure = error;
-      return null;
+      if (!providerReturnedItems) failure = error;
+      return [];
     });
-    const hits = data
-      ? readMany(releaseGroupHitSchema, data["release-groups"], {
-          service: "MusicBrainz",
-          endpoint: "/release-group",
-        })
-      : [];
-    items = hits.map((entry, index) => {
-      const primaryCredit = entry["artist-credit"]?.[0];
-      return {
-        id: entry.id,
-        title: entry.title || "Untitled Release",
-        artistName:
-          primaryCredit?.name || primaryCredit?.artist?.name || artistName || "Unknown Artist",
-        artistId: primaryCredit?.artist?.id || null,
-        type: entry["primary-type"] || "Album",
-        secondaryTypes: entry["secondary-types"] ?? [],
-        releaseDate: entry["first-release-date"] || null,
-        coverUrl: null,
-        images: [],
-        inLibrary: false,
-        score: entry.score || Math.max(0, 100 - index),
-        releaseStatuses: [],
-      };
-    });
+    const seen = new Set(items.map((item) => item.id).filter(Boolean));
+    items.push(...fallbackItems.filter((item) => !item.id || !seen.has(item.id)));
   }
 
   if (failure && throwOnFailure) throw failure;
