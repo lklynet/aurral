@@ -1,0 +1,32 @@
+---
+title: music.aurral.org
+description: Use your Aurral from any browser at one address.
+---
+
+music.aurral.org is the Aurral app, hosted once, that connects to your own server. Your music, artwork, and account go straight between your browser and your server. aurral.org only serves the app.
+
+## Start
+
+On your server, open **Settings > Profile** and choose **Open** next to music.aurral.org. It opens music.aurral.org, asks you to confirm your server's address, and signs you in.
+
+On another device, open music.aurral.org, enter your server's address, and sign in with your username and password. If you sign in with SSO or a sign-in proxy, choose **Use a code from Settings** and enter a code from **Settings > Profile > Pair a device** on a device where you're already signed in.
+
+Add more servers from the user menu. Switching between them reloads the app.
+
+## Your server needs an HTTPS address
+
+A page on HTTPS can't reach a plain `http://` address, so music.aurral.org needs your server on HTTPS:
+
+- **Tailscale.** Run `tailscale serve --bg 3001` on the server, then use the `https://<machine>.<tailnet>.ts.net` address it prints. Every device you use needs Tailscale.
+- **Your own domain** behind a reverse proxy with a certificate.
+
+Chrome may ask to let music.aurral.org access devices on your local network. Choose **Allow**.
+
+## What doesn't work here
+
+- A server with sign-in turned off. Use it at its own address.
+- A server behind a forward-auth proxy like Authelia or Authentik. The proxy blocks the app before Aurral can answer.
+- A server running a version music.aurral.org doesn't have, including builds from source. Update the server, or use it at its own address.
+- Linking Last.fm, Spotify, or an SSO account. These open the same page at your server's own address.
+
+Signing out on music.aurral.org signs out that device and removes the server from the list. **Settings > Profile** on any device lists where you're signed in and can sign each one out.

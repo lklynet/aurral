@@ -28,7 +28,7 @@ Set most options in the web UI. Use these variables for deployment settings.
 | `TRUST_PROXY`                     | Aurral reads the client address from `X-Forwarded-For` only when the request comes from a loopback or private address, such as a proxy on the same machine, network, or Docker network. Set this to your proxy's address when it connects from a public address. `true` trusts every sender, so use it only when nothing else can reach Aurral. |
 | `AURRAL_PUBLIC_URL`               | The public address of Aurral, used for OAuth callbacks. Example: `https://aurral.example.com`.                                                                                                                                                                                                                                                  |
 | `AURRAL_API_KEY`                  | Sets the [admin API key](/api/overview/#authenticate-with-an-api-key) instead of the key that Aurral generates. It must be at least 32 characters, or Aurral does not start. Generate one with `openssl rand -hex 32`. While it is set, **Settings > General** cannot rotate the key.                                                           |
-| `SESSION_EXPIRY_HOURS`            | Session length in hours for all sign-in methods. Default `720`, which is 30 days.                                                                                                                                                                                                                                                               |
+| `SESSION_EXPIRY_HOURS`            | How long a session lasts after its last use, in hours, for all sign-in methods. Default `720`, which is 30 days.                                                                                                                                                                                                                                |
 | `AUTH_PROXY_ENABLED`              | Turns on reverse-proxy authentication. The default header is `x-forwarded-user`.                                                                                                                                                                                                                                                                |
 | `AUTH_PROXY_HEADER`               | The header that holds the authenticated username.                                                                                                                                                                                                                                                                                               |
 | `AUTH_PROXY_TRUSTED_IPS`          | Comma-separated addresses of your reverse proxy. Aurral accepts the identity header only from these addresses. Set it whenever you turn on proxy authentication. Without it, any client can send the header and act as any user.                                                                                                                |
@@ -57,9 +57,10 @@ Google sign-in uses settings in the web UI, not environment variables. See [Sign
 
 ## Cross-origin clients
 
-| Variable      | Purpose                                                                                                              |
-| ------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `CORS_ORIGIN` | Comma-separated browser origins that can call Aurral's JSON API. Browser Subsonic clients do not need this variable. |
+| Variable            | Purpose                                                                                                              |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `CORS_ORIGIN`       | Comma-separated browser origins that can call Aurral's JSON API. Browser Subsonic clients do not need this variable. |
+| `AURRAL_APP_ORIGIN` | The hosted app's origin, always allowed to call the JSON API. Defaults to `https://music.aurral.org`.                |
 
 ## Metadata
 

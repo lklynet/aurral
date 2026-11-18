@@ -17,26 +17,30 @@ can change Aurral, files, users, or external services.
 
 ## Health and authentication
 
-| Method | Path                          | Purpose                                                                                          |
-| ------ | ----------------------------- | ------------------------------------------------------------------------------------------------ |
-| `GET`  | `/api/health/live`            | Minimal liveness response                                                                        |
-| `GET`  | `/api/health/bootstrap`       | Startup and authentication state                                                                 |
-| `GET`  | `/api/health`                 | Detailed application health                                                                      |
-| `GET`  | `/api/health/ws`              | WebSocket connection statistics                                                                  |
-| `POST` | `/api/health/stream-token`    | Issue a short-lived token for media streams                                                      |
-| `POST` | `/api/auth/login`             | Create a password-login session                                                                  |
-| `POST` | `/api/auth/logout`            | End a login session                                                                              |
-| `GET`  | `/api/auth/me`                | Current authenticated identity                                                                   |
-| `GET`  | `/api/auth/api-key`           | Read or create the instance API key. Administrators only                                         |
-| `POST` | `/api/auth/api-key/rotate`    | Replace the instance API key. Administrators only                                                |
-| `POST` | `/api/auth/reauth`            | Confirm the current password with `{ "currentPassword": "…" }` before a sensitive account change |
-| `GET`  | `/api/auth/oidc/login`        | Start an OpenID Connect login                                                                    |
-| `POST` | `/api/auth/oidc/exchange`     | Exchange an OpenID Connect code for a session                                                    |
-| `POST` | `/api/auth/oidc/link/start`   | Start linking single sign-on to the current user and return the authorization URL                |
-| `GET`  | `/api/auth/google/login`      | Start a Google sign-in                                                                           |
-| `POST` | `/api/auth/google/exchange`   | Exchange a Google sign-in code for a session                                                     |
-| `GET`  | `/api/auth/google/link`       | Start linking a Google account to the current user                                               |
-| `POST` | `/api/auth/google/link/start` | Start linking a Google account and return the authorization URL                                  |
+| Method   | Path                          | Purpose                                                                                          |
+| -------- | ----------------------------- | ------------------------------------------------------------------------------------------------ |
+| `GET`    | `/api/health/live`            | Minimal liveness response                                                                        |
+| `GET`    | `/api/health/bootstrap`       | Startup and authentication state                                                                 |
+| `GET`    | `/api/health`                 | Detailed application health                                                                      |
+| `GET`    | `/api/health/ws`              | WebSocket connection statistics                                                                  |
+| `POST`   | `/api/health/stream-token`    | Issue a short-lived token for media streams                                                      |
+| `POST`   | `/api/auth/login`             | Create a password-login session                                                                  |
+| `POST`   | `/api/auth/logout`            | End a login session                                                                              |
+| `GET`    | `/api/auth/me`                | Current authenticated identity                                                                   |
+| `POST`   | `/api/auth/pairing-codes`     | Issue a one-time code that signs another device in as you. Needs a Bearer session                |
+| `POST`   | `/api/auth/pair`              | Exchange a pairing code for a session                                                            |
+| `GET`    | `/api/auth/sessions`          | Your signed-in sessions, and the hosted app's origin                                             |
+| `DELETE` | `/api/auth/sessions/:id`      | Sign one of your sessions out                                                                    |
+| `GET`    | `/api/auth/api-key`           | Read or create the instance API key. Administrators only                                         |
+| `POST`   | `/api/auth/api-key/rotate`    | Replace the instance API key. Administrators only                                                |
+| `POST`   | `/api/auth/reauth`            | Confirm the current password with `{ "currentPassword": "…" }` before a sensitive account change |
+| `GET`    | `/api/auth/oidc/login`        | Start an OpenID Connect login                                                                    |
+| `POST`   | `/api/auth/oidc/exchange`     | Exchange an OpenID Connect code for a session                                                    |
+| `POST`   | `/api/auth/oidc/link/start`   | Start linking single sign-on to the current user and return the authorization URL                |
+| `GET`    | `/api/auth/google/login`      | Start a Google sign-in                                                                           |
+| `POST`   | `/api/auth/google/exchange`   | Exchange a Google sign-in code for a session                                                     |
+| `GET`    | `/api/auth/google/link`       | Start linking a Google account to the current user                                               |
+| `POST`   | `/api/auth/google/link/start` | Start linking a Google account and return the authorization URL                                  |
 
 The Google sign-in routes return `404` when that sign-in method is off. They sign in only users who already linked the account. The Google link routes, the password change, and the identity changes require a sign-in in the last 15 minutes. Otherwise, call `/api/auth/reauth` first. Google returns to `/sso/google/callback`, and OIDC returns to `/sso/callback`.
 

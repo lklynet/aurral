@@ -219,12 +219,15 @@ const peerAddress = (req: ClientRequest) =>
 const wasForwarded = (req: ClientRequest) =>
   FORWARDING_HEADERS.some((name) => req.headers?.[name] !== undefined);
 
-function isCrossSite(req: ClientRequest) {
+export function isCrossSite(req: ClientRequest) {
   const site = getHeaderValue(req, "sec-fetch-site");
   if (site) return site === "cross-site" || site === "same-site";
   const origin = getHeaderValue(req, "origin");
   if (!origin) return false;
-  return !URL.canParse(origin) || new URL(origin).host !== getHeaderValue(req, "host");
+  if (!URL.canParse(origin)) return true;
+  const { host } = new URL(origin);
+  const forwardedHost = getHeaderValue(req, "x-forwarded-host")?.split(",")[0]?.trim();
+  return host !== getHeaderValue(req, "host") && host !== forwardedHost;
 }
 
 function defaultGateway() {

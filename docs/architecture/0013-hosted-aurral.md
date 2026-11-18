@@ -1,43 +1,39 @@
 # Hosted Aurral
 
-Status: Proposed
+Status: Accepted
 
 ## Problem
 
-People want to reach their server from a browser or a desktop app away from home without opening ports, running a reverse proxy, or installing Tailscale. Some run more than one server, or use a friend's, and want them in one app. Today every server serves its own copy of the app at its own address, and a browser tab knows only that one.
+People want to reach their server from any browser without remembering its address, and some use more than one server. Today every server serves its own copy of the app at its own address, and a browser tab knows only that one.
 
 ## Decision
 
-The Aurral web app also runs at `music.aurral.org` and in desktop apps as a client that calls servers' APIs directly. aurral.org helps a client find a server and never carries its traffic.
+The Aurral web app also runs at `music.aurral.org` as a client that calls servers' APIs directly. aurral.org serves static files and never carries a server's traffic.
 
-- **The hosted app is only a client.** It is the normal frontend build on Cloudflare Pages. It keeps its list of servers in browser storage and sets the API base per server at runtime, never through `VITE_API_URL` at build time. It holds no state on aurral.org.
-- **The server owns sign-in.** A signed-in user creates a pairing link or QR code in Settings: `https://music.aurral.org/pair#<instanceId>.<code>.<address>`. Browsers never send a fragment, so aurral.org never sees the code. The client trades the code with the server for an ordinary session for that user, with that user's permissions. Codes are random, single use, and expire after ten minutes. Settings lists each signed-in device and can sign it out.
-- **Cross-origin calls authenticate with a Bearer token.** The server allows any origin without credentials mode, and a cross-origin request never authenticates by IP address, cookie, or proxy-auth header. HTML5 audio and native WebSockets can't send the header, so media and sockets use short-lived, single-purpose tickets minted with the token.
-- **Server identity.** `GET /api/health/bootstrap` reports the instance ID, which is the share instance ID, registered with aurral.org before it is exposed. A client checks it before sending a token, so an address that now belongs to another machine never receives one. The ID is public, so it guards against picking the wrong server by accident, not against an attacker.
-- **Several servers.** The client keeps a list of servers, each with its instance ID, name, routes, and session, and one is active. Each server gets its own WebSocket, auth storage, query cache, media URLs, and service worker caches. A session belongs to the routes the user paired or added: a new address needs pairing again, and an authenticated request never follows a redirect to another origin. Only the hosted and desktop builds have the switcher. A server's own UI keeps `connect-src 'self'`.
-- **Versions both ways.** A server below the client's minimum version says to update the server. A server with a newer API version than the client knows says to update the app. An endpoint the hosted app uses is removed only after the minimum version has passed it.
-- **Desktop apps.** An Electron shell that loads the bundled client, in two modes. The client adds plain HTTP LAN addresses, media keys, and `aurral://pair` links. The other mode also runs a normal Aurral server on bundled Node, not Electron's.
-- **Bytes never touch aurral.org.** Audio, artwork, and API responses go between the client and the server.
+- **The hosted app is only a client.** `vite build --mode hosted` builds the normal frontend with a small loader as its entry. It keeps its servers in localStorage and sets the API base per page load, never through `VITE_API_URL`.
+- **The server owns sign-in.** A signed-in user opens `https://music.aurral.org/pair#<code>.<address>` from Settings, or types a code from Settings. Browsers never send a fragment, so aurral.org never sees the code. The client shows the address and asks before it calls anything, then trades the code for an ordinary session. Codes are random, single use, bound to the session that issued it, and expire after ten minutes. A paired session never counts as recently authenticated.
+- **Cross-origin calls authenticate with a Bearer token.** CORS allows `AURRAL_APP_ORIGIN` on `/api` and nothing else beyond `CORS_ORIGIN`. A cross-site request never takes a no-auth path: not onboarding, not a server with sign-in off, not the local network bypass, not proxy-auth headers. Media and the websocket carry the session token in the URL, as the server's own UI already does.
+- **Exact builds.** Each release and nightly is published under `/r/<version>/`, with characters outside `[A-Za-z0-9._-]` replaced by `-`, and its hashed assets in a shared `/assets/`. On every load the loader reads the active server's public bootstrap and fetches the build whose version matches exactly. A 404 means "this version isn't supported here". Source builds and forks report a commit hash, which is never published.
+- **The site is rebuilt from a store.** Each publish uploads its build to R2 and redeploys `hosted/` from every stored build: releases first, then nightlies newest first, until the Workers file limit. Nightlies expire after 14 days. The root page runs the newest release.
+- **One server per page load.** Switching servers reloads. localStorage keys that hold a server's data are prefixed with the server's address, so two servers' user 1 never share a queue or a cache.
+- **Bytes never touch aurral.org.** Audio, artwork, and API responses go between the browser and the server.
 
 ## Later: Connect
 
-Pairing works for any server that already has an HTTPS address. Connect, a paid add-on, removes the setup for the rest:
-
-- **Remote access without setup.** Each server gets a stable hostname on a separate domain, so a user's server can't set cookies on aurral.org. The transport is a Cloudflare named tunnel or a relay that routes by hostname without decrypting.
-- **A listener of its own.** Connect traffic arrives on a listener separate from the main app. `cloudflared` and a relay client connect from 127.0.0.1, so on this listener no request counts as local: loopback trust, the local network bypass, and proxy auth headers are off, and only pairing-issued tokens are accepted.
-- **Push.** iOS notifications come from the project, which holds Apple's push key.
-- **Signing in to a server with an Aurral account.** Doing this safely needs the one-time challenge and local link check that the tunnel gives, so pairing covers it until then.
+Pairing works for any server that already has an HTTPS address. Connect, a paid add-on, would give every server a stable hostname through a managed tunnel, on a listener where no request counts as local and only pairing-issued tokens are accepted.
 
 ## Traps
 
-- An HTTPS page can't call a plain HTTP address, so the hosted app can't reach a server by its LAN address. The desktop and iOS apps can.
-- Allowing any origin is safe only because these calls authenticate with a header. If a cross-origin request could authenticate with a cookie, an address, or a proxy header, any site could act as the user.
-- Media needs CORS too. `Cross-Origin-Resource-Policy: same-origin` blocks streams and artwork from other origins, and streams skip the middleware through `sendViaNode`, so they set their own headers. Canvas and Web Audio reads of artwork and streams need real CORS headers, not just a permissive policy.
-- A forward-auth proxy has to let cross-origin `/api` and media requests through, as it already does for `/rest`.
+- **The loader and the server list are a contract across builds.** The root page runs the latest build, and every retained build reads `aurral.servers`. Change its shape, or the `/r/` path rule, only in a way every retained build still reads.
+- **Missing builds must 404.** The site's fallback serves the root page only to navigations. A fetch for a missing `/r/` path that returned the root page would load the wrong build.
+- **Every build on the origin can read every saved token.** Retained builds are pruned, and raising the minimum supported version deletes every build below it.
+- An HTTPS page can't call a plain HTTP address, so the hosted app can't reach a server by its LAN address. Native apps can.
+- A forward-auth proxy's redirect or 401 carries no CORS headers, so the client can only say it couldn't reach the server.
+- Flows that return to the server's own address (Last.fm, OIDC and Google linking, Spotify import, setting a password on an SSO account) hand off to the same page on the server instead of running in the hosted app.
 - Supporting older servers is permanent work. Every field the hosted app reads is part of the [app API contract](../src/content/docs/api/app-contract.mdx).
 
 ## Alternatives
 
 - **Proxy through aurral.org.** The project would carry users' music and pay for every request.
-- **The server's own UI at a tunnel address.** Avoids supporting older servers, but a quick tunnel address changes on every restart, which signs browsers out, and one tab still sees one server.
-- **Quick tunnels for remote access.** No cost to the project, but no uptime guarantee, a cap on requests in flight, and Cloudflare calls them a testing tool.
+- **One hosted build for every server version.** Every client change would need to work against every supported server. Exact builds keep the client and server in step.
+- **Short-lived media tickets.** Keeps tokens out of URLs, but adds a mint call before every stream and artwork batch, and the server's own UI already puts tokens in media URLs.

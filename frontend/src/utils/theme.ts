@@ -13,6 +13,7 @@ import {
 import { THEME_PRESETS } from "./themePresets.ts";
 import { isRecord } from "../../../lib/isRecord.ts";
 import { unknownList } from "../../../lib/unknownList.ts";
+import { serverScoped } from "./server.ts";
 
 export const THEME_STORAGE_KEY = "aurralTheme:v2";
 export const THEME_PAINT_STORAGE_KEY = "aurralThemePaint:v1";
@@ -532,15 +533,16 @@ export function restoreCustomTheme({
 }
 
 function syncThemeWithAccount(userId: number, accountDocument: StoredThemeDocument | null) {
-  const owner = Number(readStorage(THEME_OWNER_STORAGE_KEY)) || null;
-  writeStorage(THEME_OWNER_STORAGE_KEY, String(userId));
+  const owner = readStorage(THEME_OWNER_STORAGE_KEY);
+  const account = serverScoped(String(userId));
+  writeStorage(THEME_OWNER_STORAGE_KEY, account);
   if (accountDocument) {
     const next = normalizeThemeDocument(accountDocument);
     if (JSON.stringify(next) !== JSON.stringify(getThemeDocument()))
       commit(next, { fromAccount: true });
     return null;
   }
-  if (owner !== null && owner !== userId) {
+  if (owner && owner !== account) {
     commit(createDefaultThemeDocument(), { fromAccount: true });
     return null;
   }

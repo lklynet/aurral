@@ -111,6 +111,7 @@ export default defineConfig({
           "frontend/src/components/Layout.tsx",
           "frontend/src/pages/Login.tsx",
           "frontend/src/pages/SsoComplete.tsx",
+          "frontend/src/hosted/screens.tsx",
         ],
         rules: { "aurral/single-main": "off" },
       },

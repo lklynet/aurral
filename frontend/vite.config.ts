@@ -7,6 +7,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { brotliCompress, constants, gzip } from "node:zlib";
 import { resolveAppVersion } from "../lib/app-version.ts";
+import { hostedBuildPath } from "../lib/hostedBuild.ts";
 import { normalizeBasePathWithTrailingSlash } from "./src/utils/basePath.ts";
 
 const appVersion = resolveAppVersion({
@@ -51,9 +52,40 @@ const precompress = (): Plugin => {
   };
 };
 
+const HOSTED_SITE_DIR = "dist-hosted";
+
+const hostedSite = (): Plugin => {
+  let root = "";
+  let outDir = "";
+  return {
+    name: "aurral-hosted-site",
+    configResolved: (config) => {
+      root = config.root;
+      outDir = path.resolve(config.root, config.build.outDir);
+    },
+    transformIndexHtml: {
+      order: "pre",
+      handler: (html) => html.replace("/src/main.tsx", "/src/hosted/entry.ts"),
+    },
+    closeBundle: {
+      order: "post",
+      sequential: true,
+      handler: async () => {
+        const site = path.resolve(root, HOSTED_SITE_DIR);
+        await fs.cp(path.join(outDir, "assets"), path.join(site, "assets"), { recursive: true });
+        await fs.rm(path.join(outDir, "assets"), { recursive: true });
+        await fs.copyFile(path.join(outDir, "index.html"), path.join(site, "index.html"));
+      },
+    },
+  };
+};
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, cwd(), "");
-  const basePath = normalizeBasePathWithTrailingSlash(env.VITE_BASE_PATH || "/");
+  const hosted = mode === "hosted";
+  const basePath = hosted
+    ? hostedBuildPath(appVersion)
+    : normalizeBasePathWithTrailingSlash(env.VITE_BASE_PATH || "/");
   const isDev = mode === "development";
   const apiTarget = env.AURRAL_API_PROXY_TARGET || "http://localhost:3001";
 
@@ -62,10 +94,14 @@ export default defineConfig(({ mode }) => {
     define: {
       "import.meta.env.VITE_APP_VERSION": JSON.stringify(appVersion),
       "import.meta.env.VITE_RELEASE_CHANNEL": JSON.stringify(releaseChannel),
+      "import.meta.env.VITE_HOSTED": JSON.stringify(hosted),
+      ...(hosted && { "import.meta.env.VITE_BASE_PATH": JSON.stringify("/") }),
     },
     plugins: [
       react(),
+      hosted && hostedSite(),
       VitePWA({
+        disable: hosted,
         registerType: "autoUpdate",
         includeAssets: ["arralogo*.svg", "icons/*.png", "spotify-oauth-callback.js"],
         workbox: {
@@ -106,10 +142,14 @@ export default defineConfig(({ mode }) => {
           enabled: false,
         },
       }),
-      precompress(),
+      !hosted && precompress(),
     ],
+    experimental: {
+      renderBuiltUrl: (filename, { type }) =>
+        hosted && type === "asset" ? `/${filename}` : undefined,
+    },
     build: {
-      outDir: "dist",
+      outDir: hosted ? `${HOSTED_SITE_DIR}${hostedBuildPath(appVersion)}` : "dist",
       emptyOutDir: true,
       modulePreload: { polyfill: false },
       rolldownOptions: {

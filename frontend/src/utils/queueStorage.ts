@@ -2,8 +2,9 @@ import { apiPathOf } from "./api/core.ts";
 import type { QueueAction, QueueSource, RepeatMode } from "./audioQueue.ts";
 import { isRecord } from "../../../lib/isRecord.ts";
 import { unknownList } from "../../../lib/unknownList.ts";
+import { serverScoped } from "./server.ts";
 
-export const QUEUE_STORAGE_KEY = "aurral.player.queue.v1";
+export const QUEUE_STORAGE_KEY = serverScoped("aurral.player.queue.v1");
 
 const VERSION = 1;
 const MAX_STORED_TRACKS = 200;

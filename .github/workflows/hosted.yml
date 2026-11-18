@@ -1,0 +1,50 @@
+name: Hosted
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      channel:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Publish to music.aurral.org
+    if: github.repository == 'lklynet/aurral'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: hosted
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER_SEND_METRICS: "false"
+      HOSTED_VERSION: ${{ inputs.version }}
+      HOSTED_CHANNEL: ${{ inputs.channel }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: voidzero-dev/setup-vp@cab1ab9eaff52d4857875f4f2c016e36af8f2c76 # v1.22.0
+        with:
+          node-version-file: .nvmrc
+          cache: true
+          run-install: |
+            - args: ["--frozen-lockfile"]
+
+      - name: Build
+        env:
+          VITE_APP_VERSION: ${{ inputs.version }}
+          VITE_RELEASE_CHANNEL: ${{ inputs.channel }}
+        run: pnpm --filter aurral-frontend run build:hosted
+
+      - name: Publish and deploy
+        run: node scripts/deploy-hosted.ts

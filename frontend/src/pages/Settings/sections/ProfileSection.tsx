@@ -15,6 +15,7 @@ import { useHubLink } from "../../../components/PlayerFriends";
 import { friendPath, personPath } from "../../../../../lib/profilePaths.ts";
 import { ApiKeyRow } from "../components/ApiKeyRow";
 import { ConnectedAccountsSection, useMyIdentities } from "../components/ConnectedAccountsSection";
+import { DevicesGroup } from "../components/DevicesGroup";
 import { HubLinkGroup } from "../components/HubLinkGroup";
 import { SettingsInput } from "../components/SettingsField";
 import {
@@ -25,6 +26,7 @@ import {
   SettingsRow,
 } from "../SettingsLayout";
 import { readApiError } from "../../../utils/api/errors.ts";
+import { continueOnServer, HOSTED } from "../../../utils/server.ts";
 
 const CONNECTED_LABELS: Partial<Record<string, string>> = {
   google: "Google",
@@ -101,7 +103,10 @@ function PasswordGroup() {
       setNewPassword("");
       setConfirmPassword("");
       showSuccess(hasLocalPassword ? "Password changed" : "Password set");
-      await queryClient.invalidateQueries({ queryKey: queryKeys.myIdentities(user?.id) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.myIdentities(user?.id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.mySessions(user?.id) }),
+      ]);
     } catch (err) {
       const failure = readApiError(err);
       showError(failure.error || failure.message || failure.text || "Couldn't save your password");
@@ -168,10 +173,21 @@ function PasswordGroup() {
         </SettingsRow>
         {needsSignIn ? (
           <SettingsNote tone="warning">
-            Sign in again to set a password.{" "}
-            <button type="button" className="settings-link" onClick={() => logout()}>
-              Sign in again
-            </button>
+            {HOSTED ? (
+              <>
+                Set a password on your server&apos;s own page.{" "}
+                <button type="button" className="settings-link" onClick={continueOnServer}>
+                  Open it
+                </button>
+              </>
+            ) : (
+              <>
+                Sign in again to set a password.{" "}
+                <button type="button" className="settings-link" onClick={() => logout()}>
+                  Sign in again
+                </button>
+              </>
+            )}
           </SettingsNote>
         ) : null}
         <SettingsActions>
@@ -279,6 +295,7 @@ export function ProfileSection() {
           <PasswordGroup />
           <ConnectedAccountsSection />
           <HubLinkGroup />
+          <DevicesGroup userId={user.id} />
           <ApiAccessGroup userId={user.id} />
         </>
       ) : null}

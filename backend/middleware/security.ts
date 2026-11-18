@@ -11,21 +11,36 @@ const isPublic = (c: Context<AppEnv>) => {
   );
 };
 
-const allowedOrigins = (process.env.CORS_ORIGIN || "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+export const appOrigin = (process.env.AURRAL_APP_ORIGIN || "https://music.aurral.org").replace(
+  /\/+$/,
+  "",
+);
+
+const allowedOrigins = new Set(
+  (process.env.CORS_ORIGIN || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+);
+
+const isAllowed = (origin: string, path: string) =>
+  allowedOrigins.has(origin) || (origin === appOrigin && path.startsWith("/api/"));
 
 export const corsHeaders = createMiddleware<AppEnv>(async (c, next) => {
   const publicRoute = isPublic(c);
-  if (!publicRoute && allowedOrigins.length === 0) return next();
-  const origin = c.req.header("origin") ?? "";
-  const allowOrigin = publicRoute ? "*" : allowedOrigins.includes(origin) ? origin : null;
-  if (allowOrigin) c.res.headers.set("Access-Control-Allow-Origin", allowOrigin);
   if (!publicRoute) c.res.headers.append("Vary", "Origin");
+  const origin = c.req.header("origin") ?? "";
+  const allowOrigin = publicRoute ? "*" : isAllowed(origin, c.req.path) ? origin : null;
+  if (!allowOrigin) return next();
+  c.res.headers.set("Access-Control-Allow-Origin", allowOrigin);
+  c.res.headers.set(
+    "Access-Control-Expose-Headers",
+    "Content-Range, Content-Disposition, X-Aurral-Loudness",
+  );
   if (c.req.method !== "OPTIONS") return next();
   c.res.headers.set("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE");
-  c.res.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  c.res.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, Range");
+  c.res.headers.set("Access-Control-Max-Age", "600");
   return c.body(null, 204);
 });
 

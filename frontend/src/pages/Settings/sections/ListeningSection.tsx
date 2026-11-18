@@ -36,6 +36,7 @@ import {
   type ServiceStatus,
 } from "../SettingsLayout";
 import { readApiError } from "../../../utils/api/errors.ts";
+import { continueOnServer, HOSTED } from "../../../utils/server.ts";
 
 type ScrobbleStatus = InferResponseType<typeof scrobblingClient.status.$get, 200>;
 type ConnectionStatus = ScrobbleStatus[keyof ScrobbleStatus] | undefined;
@@ -141,6 +142,7 @@ function LastfmDetail({ status }: { status: ConnectionStatus }) {
   );
 
   const connect = async () => {
+    if (HOSTED) return continueOnServer();
     try {
       if (pollRef.current) window.clearInterval(pollRef.current);
       const result = await parseResponse(scrobblingClient.lastfm.link.$get());

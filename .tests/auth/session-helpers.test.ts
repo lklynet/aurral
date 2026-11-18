@@ -92,3 +92,29 @@ test("can delete one session or all sessions for a user", () => {
   assert.equal(deleteSessionsByUserId(user.id), 1);
   assert.equal(getSessionByToken(second.token), null);
 });
+
+test("a used session renews at most once per touch interval, for the configured length", (t: import("vite-plus/test").TestContext) => {
+  const start = new Date("2026-11-17T12:00:00Z").getTime();
+  const clock = vi.spyOn(Date, "now").mockReturnValue(start);
+  t.onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const user = userOps.createUser("dana", bcrypt.hashSync("secret", 4), "user");
+  assert.ok(user != null);
+  const hour = 60 * 60 * 1000;
+  const lookup = (at: number, token: string) => {
+    clock.mockReturnValue(at);
+    return getSessionByToken(token)?.expiresAt;
+  };
+
+  const month = createSession(user.id);
+  assert.equal(lookup(start + 23 * hour, month.token), start + 720 * hour);
+  assert.equal(lookup(start + 25 * hour, month.token), start + 745 * hour);
+  assert.equal(lookup(start + 26 * hour, month.token), start + 745 * hour);
+
+  vi.stubEnv("SESSION_EXPIRY_HOURS", "2");
+  clock.mockReturnValue(start);
+  const short = createSession(user.id);
+  assert.equal(lookup(start + 0.1 * hour, short.token), start + 2 * hour);
+  assert.equal(lookup(start + 0.25 * hour, short.token), start + 2.25 * hour);
+});

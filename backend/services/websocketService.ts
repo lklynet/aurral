@@ -7,6 +7,7 @@ import { asAppError } from "../../lib/errors.ts";
 import { APP_VERSION } from "../config/constants.ts";
 import { logger } from "./logger.ts";
 import {
+  isCrossSite,
   isProxyAuthEnabled,
   resolveLocalNetworkBypassUser,
   resolveSessionUserFromToken,
@@ -58,6 +59,7 @@ type WebSocketClient = {
   ws: WebSocket;
   user: ClientUser | null;
   authSource: "session" | "local-network-bypass" | null;
+  sessionToken?: string;
   subscriptions: Set<string>;
   connectedAt: number;
   _lastPlaylistStatusHashByChannel?: Map<string, string>;
@@ -101,11 +103,14 @@ class WebSocketService extends EventEmitter {
   handleConnection(ws: WebSocket, req: IncomingMessage) {
     let sessionUser: WebSocketClient["user"] = null;
     let authSource: WebSocketClient["authSource"] = null;
-    if (isAuthRequired()) {
+    let sessionToken: string | undefined;
+    if (isAuthRequired() || isCrossSite(req)) {
       const requestUrl = new URL(req.url || "", "http://localhost");
-      const token = requestUrl.searchParams.get("token");
+      const token = requestUrl.searchParams.get("token")?.trim();
       sessionUser = resolveSessionUserFromToken(token);
-      if (!sessionUser) {
+      if (sessionUser && token) {
+        sessionToken = token;
+      } else {
         sessionUser = resolveProxyUser(req);
       }
       if (sessionUser) {
@@ -134,6 +139,7 @@ class WebSocketService extends EventEmitter {
       ws,
       user: sessionUser,
       authSource,
+      sessionToken,
       subscriptions: new Set(["status"]),
       connectedAt: Date.now(),
     };
@@ -298,15 +304,27 @@ class WebSocketService extends EventEmitter {
   disconnectUser(userId: number) {
     const targetUserId = Number(userId);
     if (!Number.isFinite(targetUserId)) return 0;
+    return this.disconnect(
+      (client) => Number(client.user?.id) === targetUserId,
+      4403,
+      "Account inactive",
+    );
+  }
+
+  disconnectSession(token: string) {
+    return this.disconnect((client) => client.sessionToken === token, 4401, "Signed out");
+  }
+
+  disconnect(matches: (client: WebSocketClient) => boolean, code: number, reason: string) {
     let disconnected = 0;
     for (const client of [...this.clients]) {
-      if (Number(client.user?.id) !== targetUserId) continue;
+      if (!matches(client)) continue;
       this.clients.delete(client);
       client.subscriptions.clear();
       delete client._lastPlaylistStatusHashByChannel;
       client.user = null;
       try {
-        client.ws.close(4403, "Account inactive");
+        client.ws.close(code, reason);
       } catch {}
       disconnected++;
     }
