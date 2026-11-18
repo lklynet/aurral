@@ -14,13 +14,7 @@ import {
   historyServerStatus,
   useHistoryServers,
 } from "./Settings/sections/listening/HistoryServers";
-import { healthQueryOptions } from "../utils/appHealth.ts";
-import {
-  OnboardingHint,
-  OnboardingStep,
-  OnboardingStepHeader,
-  ONBOARDING_STEP_COUNT,
-} from "./onboardingUtils.tsx";
+import { OnboardingStep, OnboardingStepHeader, ONBOARDING_STEP_COUNT } from "./onboardingUtils.tsx";
 import "./Settings/settings.css";
 
 const SettingsModal = lazy(() => import("./Settings/SettingsModal"));
@@ -52,8 +46,6 @@ export default function Welcome() {
   const { user, hasPermission } = useAuth();
   const { data: history } = useQuery(listeningHistoryQueryOptions(user?.id));
   const { data: spotify } = useQuery(spotifyHistoryQueryOptions(user?.id));
-  const canManageServer = hasPermission("accessSettings");
-  const { data: health } = useQuery({ ...healthQueryOptions, enabled: canManageServer });
 
   return (
     <div className="onboarding-page">
@@ -78,21 +70,6 @@ export default function Welcome() {
           </div>
           <OnboardingStep>
             <OnboardingStepHeader title="Connect" />
-            {canManageServer ? (
-              <section className="onboarding-section" aria-label="Recommendations">
-                <h3 className="onboarding-section__title">Recommendations</h3>
-                <div className="settings-card">
-                  <SettingsServiceRow
-                    to="discovery/lastfm"
-                    name="Last.fm API key"
-                    status={health ? configuredStatus(Boolean(health.lastfmConfigured)) : null}
-                  />
-                </div>
-                <OnboardingHint>
-                  Gives closer recommendations than the default. Free, and takes about a minute.
-                </OnboardingHint>
-              </section>
-            ) : null}
             <section className="onboarding-section" aria-label="Listening history">
               <h3 className="onboarding-section__title">Listening history</h3>
               <div className="settings-card">
@@ -109,7 +86,7 @@ export default function Welcome() {
                   name="Spotify"
                   status={spotify === undefined ? null : configuredStatus(Boolean(spotify))}
                 />
-                {canManageServer ? <HistoryServerRows /> : null}
+                {hasPermission("accessSettings") ? <HistoryServerRows /> : null}
               </div>
             </section>
           </OnboardingStep>
