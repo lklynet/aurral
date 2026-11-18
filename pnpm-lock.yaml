@@ -383,6 +383,12 @@ importers:
         specifier: 1.7.0
         version: 1.7.0(@astrojs/compiler-rs@0.5.1)(@types/node@26.6.5)(@vitest/ui@5.1.0)(esbuild@0.28.2)(playwright@1.64.1)(terser@5.48.0)(typescript@7.0.2)(yaml@2.9.1)
 
+  hosted:
+    devDependencies:
+      wrangler:
+        specifier: 4.156.1
+        version: 4.156.1(@cloudflare/workers-types@5.20261101.1)(@types/node@26.6.5)
+
   hub:
     dependencies:
       better-auth:

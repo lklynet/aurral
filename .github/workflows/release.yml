@@ -186,6 +186,14 @@ jobs:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: node scripts/announce-release.ts
 
+  hosted:
+    needs: [prepare, publish]
+    uses: ./.github/workflows/hosted.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      channel: stable
+    secrets: inherit
+
   status:
     needs: [prepare, publish]
     runs-on: ubuntu-latest

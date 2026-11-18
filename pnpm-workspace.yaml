@@ -3,6 +3,7 @@ packages:
   - frontend
   - docs
   - hub
+  - hosted
 
 engineStrict: true
 
