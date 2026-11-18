@@ -1036,6 +1036,7 @@ test.each([
       const kept = await getAlbumByMbid("kept-album", { forceRefresh: true });
       assert.equal(kept.title, "Kept Album");
       assert.equal((await getCachedAlbumByMbid("kept-album"))?.title, "Kept Album");
+      assert.equal((await getAlbumByMbid("kept-album")).title, "Kept Album");
       assert.deepEqual(requests.relay, ["/album/kept-album", "/album/new-album"]);
     },
   );
