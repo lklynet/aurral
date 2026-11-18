@@ -953,6 +953,22 @@
         <path d="M12 15V3" />
       </symbol>
       <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 3v18l14-9z" /></symbol>
+      <symbol id="i-heart" viewBox="0 0 24 24">
+        <path
+          d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"
+        />
+      </symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+        <path d="M2 12h20" />
+      </symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24">
+        <path d="M12 22v-5" />
+        <path d="M9 8V2" />
+        <path d="M15 8V2" />
+        <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" />
+      </symbol>
       <symbol id="i-search" viewBox="0 0 24 24">
         <circle cx="11" cy="11" r="8" />
         <path d="m21 21-4.3-4.3" />
@@ -1110,7 +1126,7 @@
             </div>
             <div>
               <dt>Integrations</dt>
-              <dd data-integration-count>17</dd>
+              <dd data-integration-count>19</dd>
             </div>
           </dl>
         </div>
@@ -1175,18 +1191,20 @@
             </li>
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-calendar" /></svg>
-              <h3>Release Radar</h3>
-              <p>Adopt discover playlists and keep them fresh every week.</p>
+              <h3>Made for you</h3>
+              <p>
+                Daily mixes and Blends from what you play. Nothing downloads until you save one.
+              </p>
             </li>
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-import" /></svg>
               <h3>Bring your playlists</h3>
-              <p>Import from Spotify, YouTube Music, Last.fm, or ListenBrainz.</p>
+              <p>Import from Spotify, YouTube Music, Last.fm, ListenBrainz, or an M3U file.</p>
             </li>
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-play" /></svg>
               <h3>Play them anywhere</h3>
-              <p>In the browser, or synced to Navidrome, Plex, and Jellyfin.</p>
+              <p>In the browser, any Subsonic app, or Navidrome, Plex, and Jellyfin.</p>
             </li>
           </ul>
           <figure class="shot cropped">
@@ -1295,10 +1313,31 @@
           <h2 id="rest-title">Everything else.</h2>
           <ul>
             <li>
+              <a href="https://docs.aurral.org/using/player/">
+                <svg class="icon" aria-hidden="true"><use href="#i-play" /></svg>
+                <h3>Player</h3>
+                <p>Lyrics, radio from any track, and a queue that follows you between devices.</p>
+              </a>
+            </li>
+            <li>
+              <a href="https://docs.aurral.org/using/friends/">
+                <svg class="icon" aria-hidden="true"><use href="#i-heart" /></svg>
+                <h3>Friends</h3>
+                <p>See what friends are playing, their top plays, and your Blend with them.</p>
+              </a>
+            </li>
+            <li>
+              <a href="https://docs.aurral.org/using/music-aurral-org/">
+                <svg class="icon" aria-hidden="true"><use href="#i-globe" /></svg>
+                <h3>music.aurral.org</h3>
+                <p>Your server at one address, from any browser.</p>
+              </a>
+            </li>
+            <li>
               <a href="https://docs.aurral.org/using/overview/">
                 <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
                 <h3>Search</h3>
-                <p>Find any artist or album, preview it, and add it with your defaults.</p>
+                <p>Find any artist, album, or song, preview it, and add it with your defaults.</p>
               </a>
             </li>
             <li>
@@ -1340,7 +1379,7 @@
               <a href="https://docs.aurral.org/using/sharing/">
                 <svg class="icon" aria-hidden="true"><use href="#i-share" /></svg>
                 <h3>Sharing</h3>
-                <p>Send a link. Let friends play or download from your Library.</p>
+                <p>Send a link, publish a playlist, and let friends play from your Library.</p>
               </a>
             </li>
             <li>
@@ -1348,6 +1387,13 @@
                 <svg class="icon" aria-hidden="true"><use href="#i-users" /></svg>
                 <h3>Multi-user</h3>
                 <p>Profiles, permissions, SSO, and native OIDC.</p>
+              </a>
+            </li>
+            <li>
+              <a href="https://docs.aurral.org/admin/plugins/">
+                <svg class="icon" aria-hidden="true"><use href="#i-plug" /></svg>
+                <h3>Plugins</h3>
+                <p>Add download sources, imports, and actions, only if you want them.</p>
               </a>
             </li>
           </ul>
@@ -1391,6 +1437,12 @@
                 </li>
                 <li data-integration>
                   <a href="https://docs.aurral.org/integrations/usenet/">NZBGet</a>
+                </li>
+                <li data-integration>
+                  <a href="https://docs.aurral.org/integrations/qbittorrent/">qBittorrent</a>
+                </li>
+                <li data-integration>
+                  <a href="https://docs.aurral.org/integrations/tidarr/">Tidarr</a>
                 </li>
               </ul>
             </div>

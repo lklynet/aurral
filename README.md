@@ -27,13 +27,15 @@
 </p>
 
 - **Discover** artists you'll love, with the reason for every pick. Start from your Spotify history.
-- **Flows** turn your taste into scheduled playlists that download themselves.
-- **Import** playlists from Spotify, YouTube Music, Last.fm, and ListenBrainz.
+- **Flows** turn your taste into scheduled playlists that download themselves. Daily mixes build from what you play.
+- **Import** playlists from Spotify, YouTube Music, Last.fm, ListenBrainz, and M3U files.
 - **Library** that Aurral manages for you. Lidarr is optional.
-- **Listen** in the browser, any Subsonic client, or Navidrome, Plex, and Jellyfin through the Library folder.
-- **Share** anything as a link, and let friends play it from your Library.
+- **Listen** with lyrics and radio in the browser, from anywhere at [music.aurral.org](https://music.aurral.org), or in any Subsonic app. Navidrome, Plex, and Jellyfin pick up your playlists.
+- **Friends** see what you're playing, and Blends mix your taste with theirs.
+- **Share** anything as a link, publish public playlists, and let friends play from your Library.
+- **Plugins** add download sources, imports, and actions when you want more.
 
-Downloads through yt-dlp, slskd, Usenet, Tidarr, and deemix. Everything is optional. [Read the docs](https://docs.aurral.org/) for the full tour.
+Downloads through yt-dlp, slskd, Usenet, qBittorrent, Tidarr, and deemix. Everything is optional. [Read the docs](https://docs.aurral.org/) for the full tour.
 
 ## Quick start
 
