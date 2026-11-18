@@ -332,7 +332,7 @@ test("upgrading turns a Gotify setup into a webhook that still reads its token",
 test("upgrading gives ownerless playlists and flows to the first admin and turns Blends on", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  migrate(db, migrations.slice(0, -7));
+  migrate(db, migrations.slice(0, -8));
   db.exec(`
     INSERT INTO users (id, username, password_hash, role) VALUES
       (1, 'listener', 'hash', 'user'), (2, 'lee', 'hash', 'admin'), (3, 'ada', 'hash', 'admin');
@@ -358,7 +358,7 @@ test("upgrading gives ownerless playlists and flows to the first admin and turns
 test("upgrading restores track credits from stored ARTISTS tags", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  migrate(db, migrations.slice(0, -1));
+  migrate(db, migrations.slice(0, -2));
   db.prepare("INSERT INTO settings (key, value) VALUES ('librarySearchIndexVersion', '3')").run();
   const insert = db.prepare<[string, string, string, string]>(
     `INSERT INTO library_tracks
@@ -401,6 +401,26 @@ test("upgrading restores track credits from stored ARTISTS tags", () => {
       },
     }),
   );
+  insert.run(
+    "already-restored",
+    "Already Restored",
+    "PinkPantheress, Anitta",
+    JSON.stringify({
+      tags: {
+        artist: "PinkPantheress",
+        albumartist: "PinkPantheress",
+        artists: ["PinkPantheress", "Anitta"],
+      },
+    }),
+  );
+  const insertFile = db.prepare<[number, string, string]>(
+    `INSERT INTO library_media_files (track_id, source, path, artist_tag, created_at, updated_at)
+     VALUES (?, 'library', ?, ?, 10, 20)`,
+  );
+  insertFile.run(1, "/music/missing-guest.flac", "PinkPantheress");
+  insertFile.run(1, "/music/missing-guest.mp3", "PinkPantheress feat. Anitta");
+  insertFile.run(3, "/music/corrected.flac", "PinkPantheress");
+  insertFile.run(4, "/music/already-restored.flac", "PinkPantheress");
 
   migrate(db);
 
@@ -416,6 +436,16 @@ test("upgrading restores track credits from stored ARTISTS tags", () => {
         updated_at: 20,
       },
       { identity_key: "corrected", artist_name: "Manual credit", updated_at: 20 },
+      { identity_key: "already-restored", artist_name: "PinkPantheress, Anitta", updated_at: 20 },
+    ],
+  );
+  assert.deepEqual(
+    db.prepare("SELECT path, artist_tag FROM library_media_files ORDER BY id").all(),
+    [
+      { path: "/music/missing-guest.flac", artist_tag: "PinkPantheress, Anitta" },
+      { path: "/music/missing-guest.mp3", artist_tag: "PinkPantheress feat. Anitta" },
+      { path: "/music/corrected.flac", artist_tag: "PinkPantheress" },
+      { path: "/music/already-restored.flac", artist_tag: "PinkPantheress, Anitta" },
     ],
   );
   assert.equal(
