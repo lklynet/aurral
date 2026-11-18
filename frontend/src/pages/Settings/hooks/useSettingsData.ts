@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { useToast } from "../../../contexts/ToastContext";
-import { fetchHealth, refetchHealth } from "../../../utils/appHealth.ts";
+import { healthQueryOptions, refetchHealth } from "../../../utils/appHealth.ts";
 import { parseResponse } from "hono/client";
 import { settingsClient } from "../../../utils/api/clients/settings.ts";
 import { downloadClientSettingsClient } from "../../../utils/api/clients/downloadClientSettings.ts";
@@ -191,11 +191,7 @@ export function useSettingsData(showSuccess: Toast, showError: Toast) {
     enabled: false,
     staleTime: 30_000,
   });
-  const healthQuery = useQuery({
-    queryKey: queryKeys.appHealth,
-    queryFn: ({ signal }) => fetchHealth(signal),
-    staleTime: 30_000,
-  });
+  const healthQuery = useQuery(healthQueryOptions);
   const health = healthQuery.data ?? null;
   const settingsSaveMutation = useMutation({
     mutationKey: SETTINGS_SAVE_KEY,

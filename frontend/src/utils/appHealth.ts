@@ -1,4 +1,5 @@
 import { parseResponse, type InferResponseType } from "hono/client";
+import { queryOptions } from "@tanstack/react-query";
 import { healthClient } from "./api/clients/health.ts";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import { activeServer, HOSTED, updateActiveServer } from "./server.ts";
@@ -6,15 +7,13 @@ import { activeServer, HOSTED, updateActiveServer } from "./server.ts";
 export type BootstrapPayload = InferResponseType<typeof healthClient.bootstrap.$get, 200>;
 export type HealthResponse = InferResponseType<typeof healthClient.$get, 200>;
 
-export const fetchHealth = (signal?: AbortSignal) =>
-  parseResponse(healthClient.$get({}, { init: { signal } }));
+export const healthQueryOptions = queryOptions({
+  queryKey: queryKeys.appHealth,
+  queryFn: ({ signal }) => parseResponse(healthClient.$get({}, { init: { signal } })),
+  staleTime: 30_000,
+});
 
-export const refetchHealth = () =>
-  queryClient.fetchQuery({
-    queryKey: queryKeys.appHealth,
-    queryFn: ({ signal }) => fetchHealth(signal),
-    staleTime: 0,
-  });
+export const refetchHealth = () => queryClient.fetchQuery({ ...healthQueryOptions, staleTime: 0 });
 
 export const invalidateBootstrapCache = () => {
   queryClient.removeQueries({ queryKey: queryKeys.authBootstrap });
