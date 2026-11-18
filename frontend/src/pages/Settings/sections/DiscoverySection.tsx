@@ -44,8 +44,8 @@ function LastfmDetail() {
         title="API"
         note={
           <>
-            Recommendations use ListenBrainz until you add an API key. Last.fm gives closer matches.
-            Scrobbling also needs the secret.{" "}
+            Recommendations use Deezer and ListenBrainz until you add an API key. Scrobbling also
+            needs the secret.{" "}
             <a
               href="https://www.last.fm/api/account/create"
               target="_blank"
@@ -159,11 +159,7 @@ function CacheGroup() {
         }
       >
         <span className="settings-row__value">
-          {provider === "lastfm"
-            ? "Last.fm"
-            : provider === "listenbrainz"
-              ? "ListenBrainz"
-              : "None"}
+          {provider === "lastfm" ? "Last.fm" : provider === "listenbrainz" ? "Deezer" : "None"}
         </span>
       </SettingsRow>
       <SettingsRow label="Last updated">
