@@ -8,9 +8,9 @@ import {
 } from "../apiClients/index.ts";
 import { lenient, lenientCount, lenientText } from "../integrationData.ts";
 import { dbOps } from "../../db/helpers/index.ts";
-import { guessArtistMbid } from "../artistMatch.ts";
+import { cachedArtistGuess, guessArtistMbid } from "../artistMatch.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
-import { getArtistByMbid } from "../providers/brainzmashProvider.ts";
+import { getArtistByMbid, getCachedArtistByMbid } from "../providers/brainzmashProvider.ts";
 import { getLinkedDeezerArtistId } from "../providers/brainzmashMappers.ts";
 import type { SourceHealth } from "../discovery/tasteProfile.ts";
 import type { MusicArtistRef } from "./index.ts";
@@ -153,22 +153,48 @@ const searchTagArtists = async (
 const getTagArtists = (tag: string, options?: Parameters<typeof searchTagArtists>[1]) =>
   searchTagArtists(tag, options).catch(() => ({ artists: [], hasMore: false }));
 
-const getDeezerSimilarArtists = async (
-  artist: MusicArtistRef,
-  mbid: string | null,
-  limit: number,
-) => {
-  const metadata = mbid ? await getArtistByMbid(mbid).catch(() => null) : null;
+const getDeezerSimilarArtists = async (artist: MusicArtistRef, limit: number) => {
+  const mbid = normalizeMbid(artist?.mbid);
+  const name = text(artist?.name);
+  const known = mbid
+    ? await (name ? getCachedArtistByMbid(mbid) : getArtistByMbid(mbid)).catch(() => null)
+    : null;
   const deezerId =
-    getLinkedDeezerArtistId(metadata?.links) ||
-    (await getDeezerArtist(text(artist?.name) || text(metadata?.name)))?.id;
+    getLinkedDeezerArtistId(known?.links) || (await getDeezerArtist(name || text(known?.name)))?.id;
   const related = await deezerGetRelatedArtists(deezerId ?? null, { limit }).catch(() => []);
-  return mapWithConcurrency(related, RESOLVE_CONCURRENCY, async (entry, index) => ({
-    mbid: await guessArtistMbid(entry.name),
+  return related.map((entry, index) => ({
+    mbid: cachedArtistGuess(entry.name),
     name: entry.name,
     match: 1 - index / related.length,
     image: entry.image,
   }));
+};
+
+const getListenbrainzSimilarArtists = async (
+  artist: MusicArtistRef,
+  limit: number,
+  health: SourceHealth | undefined,
+) => {
+  const mbid = await resolveArtistMbid(artist);
+  if (!mbid) return [];
+  try {
+    const rows = await getSimilarArtistRows(mbid);
+    recordHealth(health, true);
+    const similar = (Array.isArray(rows) ? rows : []).filter((row) => {
+      const similarMbid = normalizeMbid(row?.artist_mbid);
+      return similarMbid && similarMbid !== mbid && text(row?.name);
+    });
+    const topScore = Math.max(0, ...similar.map((row) => Number(row.score) || 0));
+    return similar.slice(0, limit).map((row) => ({
+      mbid: normalizeMbid(row.artist_mbid),
+      name: text(row.name),
+      match: topScore > 0 ? (Number(row.score) || 0) / topScore : 0,
+      image: null,
+    }));
+  } catch {
+    recordHealth(health, false);
+    return [];
+  }
 };
 
 export const listenbrainzSource = {
@@ -178,29 +204,12 @@ export const listenbrainzSource = {
     artist: MusicArtistRef,
     { limit = 50, health }: { limit?: number; health?: SourceHealth } = {},
   ) {
-    const mbid = await resolveArtistMbid(artist);
-    if (mbid) {
-      try {
-        const rows = await getSimilarArtistRows(mbid);
-        recordHealth(health, true);
-        const similar = (Array.isArray(rows) ? rows : []).filter((row) => {
-          const similarMbid = normalizeMbid(row?.artist_mbid);
-          return similarMbid && similarMbid !== mbid && text(row?.name);
-        });
-        const topScore = Math.max(0, ...similar.map((row) => Number(row.score) || 0));
-        if (similar.length) {
-          return similar.slice(0, limit).map((row) => ({
-            mbid: normalizeMbid(row.artist_mbid),
-            name: text(row.name),
-            match: topScore > 0 ? (Number(row.score) || 0) / topScore : 0,
-            image: null,
-          }));
-        }
-      } catch {
-        recordHealth(health, false);
-      }
+    const related = await getDeezerSimilarArtists(artist, limit);
+    if (related.length) {
+      recordHealth(health, true);
+      return related;
     }
-    return getDeezerSimilarArtists(artist, mbid, limit);
+    return getListenbrainzSimilarArtists(artist, limit, health);
   },
 
   async getArtistTagLists(artists: MusicArtistRef[], { health }: { health?: SourceHealth } = {}) {
