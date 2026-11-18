@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { playlistStatusQueryOptions } from "../queryOptions.ts";
 import { useToast } from "../contexts/ToastContext";
+import { useAuth } from "../contexts/AuthContext";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import type { PlaylistStatus, StaticPlaylist } from "../utils/playlistStats.ts";
 import { asApiError, type ApiError } from "../utils/api/core.ts";
@@ -9,7 +10,11 @@ import { asApiError, type ApiError } from "../utils/api/core.ts";
 export function useStaticPlaylists() {
   const { showError } = useToast();
   const [playlistsError, setPlaylistsError] = useState("");
-  const query: UseQueryResult<PlaylistStatus, ApiError> = useQuery(playlistStatusQueryOptions());
+  const { hasPermission } = useAuth();
+  const query: UseQueryResult<PlaylistStatus, ApiError> = useQuery({
+    ...playlistStatusQueryOptions(),
+    enabled: hasPermission("accessPlaylists"),
+  });
   const staticPlaylists: StaticPlaylist[] = Array.isArray(query.data?.staticPlaylists)
     ? query.data.staticPlaylists
     : [];
