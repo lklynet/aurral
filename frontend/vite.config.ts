@@ -7,8 +7,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { brotliCompress, constants, gzip } from "node:zlib";
 import { resolveAppVersion } from "../lib/app-version.ts";
-import { isRecord } from "../lib/isRecord.ts";
-import { unknownList } from "../lib/unknownList.ts";
+import { hostedBuildPath } from "../lib/hostedBuild.ts";
 import { normalizeBasePathWithTrailingSlash } from "./src/utils/basePath.ts";
 
 const appVersion = resolveAppVersion({
@@ -73,18 +72,9 @@ const hostedSite = (): Plugin => {
       sequential: true,
       handler: async () => {
         const site = path.resolve(root, HOSTED_SITE_DIR);
-        const manifestPath = path.join(site, "r", "manifest.json");
-        const previous: unknown = await fs
-          .readFile(manifestPath, "utf8")
-          .then(JSON.parse, () => null);
-        const versions = unknownList(isRecord(previous) ? previous.versions : null).filter(
-          (version) => typeof version === "string",
-        );
+        await fs.cp(path.join(outDir, "assets"), path.join(site, "assets"), { recursive: true });
+        await fs.rm(path.join(outDir, "assets"), { recursive: true });
         await fs.copyFile(path.join(outDir, "index.html"), path.join(site, "index.html"));
-        await fs.writeFile(
-          manifestPath,
-          JSON.stringify({ versions: [...new Set([...versions, appVersion])] }),
-        );
       },
     },
   };
@@ -94,7 +84,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, cwd(), "");
   const hosted = mode === "hosted";
   const basePath = hosted
-    ? `/r/${appVersion}/`
+    ? hostedBuildPath(appVersion)
     : normalizeBasePathWithTrailingSlash(env.VITE_BASE_PATH || "/");
   const isDev = mode === "development";
   const apiTarget = env.AURRAL_API_PROXY_TARGET || "http://localhost:3001";
@@ -152,10 +142,14 @@ export default defineConfig(({ mode }) => {
           enabled: false,
         },
       }),
-      precompress(),
+      !hosted && precompress(),
     ],
+    experimental: {
+      renderBuiltUrl: (filename, { type }) =>
+        hosted && type === "asset" ? `/${filename}` : undefined,
+    },
     build: {
-      outDir: hosted ? `${HOSTED_SITE_DIR}/r/${appVersion}` : "dist",
+      outDir: hosted ? `${HOSTED_SITE_DIR}${hostedBuildPath(appVersion)}` : "dist",
       emptyOutDir: true,
       modulePreload: { polyfill: false },
       rolldownOptions: {

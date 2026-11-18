@@ -1,5 +1,4 @@
-import { isRecord } from "../../../lib/isRecord.ts";
-import { unknownList } from "../../../lib/unknownList.ts";
+import { hostedBuildPath } from "../../../lib/hostedBuild.ts";
 import { activeServer, normalizeAddress, reloadWhenServerChanges } from "../utils/server.ts";
 import { checkServer } from "./checkServer.ts";
 import type { HostedScreen } from "./screens.tsx";
@@ -16,11 +15,7 @@ const pairScreen = (): HostedScreen => {
 };
 
 const loadBuild = async (version: string) => {
-  const manifest: unknown = await fetch("/r/manifest.json", { cache: "no-store" })
-    .then((response) => response.json())
-    .catch(() => null);
-  if (!isRecord(manifest) || !unknownList(manifest.versions).includes(version)) return false;
-  const response = await fetch(`/r/${encodeURIComponent(version)}/index.html`);
+  const response = await fetch(hostedBuildPath(version));
   if (!response.ok) return false;
   const page = new DOMParser().parseFromString(await response.text(), "text/html");
   document.documentElement.dataset.aurralBuild = version;
