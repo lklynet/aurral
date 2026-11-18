@@ -7,7 +7,12 @@ import { http, isTransientNetworkError } from "../../../lib/http.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import createCache from "../apiClients/simpleCache.ts";
 import { dbOps } from "../../db/helpers/index.ts";
-import { APP_NAME, APP_VERSION, DEFAULT_METADATA_BASE_URL } from "../../config/constants.ts";
+import {
+  APP_NAME,
+  APP_VERSION,
+  DEFAULT_METADATA_BASE_URL,
+  FALLBACK_METADATA_BASE_URL,
+} from "../../config/constants.ts";
 import {
   getNormalizedText,
   rankAlbumCandidates,
@@ -147,6 +152,7 @@ const METADATA_SEARCH_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const METADATA_NOT_FOUND_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS = 5_000;
 const METADATA_FORBIDDEN_COOLDOWN_MS = 5 * 60_000;
+const METADATA_FALLBACK_MIN_WAIT_MS = 60 * 60_000;
 const METADATA_CACHE_MAX_ENTRIES = 20_000;
 const METADATA_HOT_CACHE_TTL_SECONDS = 60;
 const METADATA_HOT_CACHE_MAX_ENTRIES = 50;
@@ -445,17 +451,16 @@ async function storeMetadata(
 }
 
 async function waitForMetadataRequestOwner<Schema extends v.GenericSchema>(
+  requestKey: string,
   cacheKey: string,
   schema: Schema,
   signal: AbortSignal,
 ) {
   while (true) {
     signal.throwIfAborted();
-    const state = getMetadataRequestState(cacheKey);
+    const state = getMetadataRequestState(requestKey);
     const now = Date.now();
-    if (state?.retryAfter && state.retryAfter > now) {
-      throw createMetadataCooldownError(state.retryAfter - now);
-    }
+    if (state?.retryAfter && state.retryAfter > now) return { retryAt: state.retryAfter };
     if (!state?.leased || state.leaseUntil <= now) {
       const cached = await readCachedMetadata(cacheKey, schema, { persistent: true });
       return cached ? ({ found: true, value: cached.value } as const) : ({ found: false } as const);
@@ -479,9 +484,30 @@ function refreshMetadata<Schema extends v.GenericSchema>(
   {
     signal,
     fallbackValue,
-  }: MetadataRequestOptions & { fallbackValue?: v.InferOutput<Schema> } = {},
+    baseUrl = getMetadataBaseUrl(),
+  }: MetadataRequestOptions & { fallbackValue?: v.InferOutput<Schema>; baseUrl?: string } = {},
 ): Promise<v.InferOutput<Schema>> {
-  const baseUrl = getMetadataBaseUrl();
+  const requestKey = `${baseUrl}${path}:${JSON.stringify(params)}`;
+  // BrainzMash can make one album or artist wait more than a day, so the
+  // maintainers' own server answers it until then.
+  const fallbackUrl =
+    baseUrl === DEFAULT_METADATA_BASE_URL && isEntityMetadataPath(path)
+      ? FALLBACK_METADATA_BASE_URL
+      : null;
+  const coolingDown = async (retryAt: number, sharedSignal: AbortSignal) => {
+    if (fallbackUrl && retryAt - Date.now() > METADATA_FALLBACK_MIN_WAIT_MS) {
+      const answer = await refreshMetadata(schema, cacheKey, path, params, {
+        signal: sharedSignal,
+        baseUrl: fallbackUrl,
+      }).then(
+        (value) => ({ value }),
+        () => null,
+      );
+      if (answer) return answer.value;
+    }
+    if (fallbackValue !== undefined) return fallbackValue;
+    throw createMetadataCooldownError(retryAt - Date.now());
+  };
   const circuitError = getMetadataCircuitError(baseUrl);
   if (circuitError) {
     return fallbackValue !== undefined
@@ -493,32 +519,25 @@ function refreshMetadata<Schema extends v.GenericSchema>(
 
   return runSharedInflight(
     providerInflightRequests,
-    cacheKey,
+    requestKey,
     async (sharedSignal: AbortSignal) => {
       const ownsPersistentRequest = isEntityMetadataPath(path);
       let leaseToken: string | null = null;
       if (ownsPersistentRequest) {
         while (!leaseToken) {
-          const claim = acquireMetadataRequest(cacheKey, METADATA_REQUEST_LEASE_MS);
+          const claim = acquireMetadataRequest(requestKey, METADATA_REQUEST_LEASE_MS);
           if (claim.acquired) {
             leaseToken = claim.token;
             break;
           }
-          if (claim.retryAfter > Date.now()) {
-            if (fallbackValue !== undefined) return fallbackValue;
-            throw createMetadataCooldownError(claim.retryAfter - Date.now());
-          }
-          const shared = await waitForMetadataRequestOwner(cacheKey, schema, sharedSignal).catch(
-            (error) => {
-              if (
-                fallbackValue !== undefined &&
-                asAppError(error)?.code === "ERR_METADATA_COOLDOWN"
-              ) {
-                return { found: true as const, value: fallbackValue };
-              }
-              throw error;
-            },
+          if (claim.retryAfter > Date.now()) return coolingDown(claim.retryAfter, sharedSignal);
+          const shared = await waitForMetadataRequestOwner(
+            requestKey,
+            cacheKey,
+            schema,
+            sharedSignal,
           );
+          if (shared.retryAt) return coolingDown(shared.retryAt, sharedSignal);
           if (shared.found) return shared.value;
         }
       }
@@ -526,7 +545,7 @@ function refreshMetadata<Schema extends v.GenericSchema>(
       for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
         let providerRequestStarted = false;
         if (sharedSignal.aborted) {
-          if (leaseToken) releaseMetadataRequest(cacheKey, leaseToken);
+          if (leaseToken) releaseMetadataRequest(requestKey, leaseToken);
           throw sharedSignal.reason || new Error("The operation was aborted");
         }
         // A request BrainzMash has received is finished and cached even when every caller has left.
@@ -586,14 +605,14 @@ function refreshMetadata<Schema extends v.GenericSchema>(
           );
           const value = readOne(schema, response.data, { service: "BrainzMash", endpoint: path });
           await storeMetadata(cacheKey, value, getMetadataCachePolicy(path, value));
-          if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
+          if (leaseToken) completeMetadataRequest(requestKey, leaseToken);
           metadataNotFoundCache.delete(cacheKey);
           healthState.lastSuccessAt = healthState.lastCheckedAt;
           healthState.lastFailureReason = "";
           return value;
         } catch (error) {
           if (requestSignal.aborted) {
-            if (leaseToken) releaseMetadataRequest(cacheKey, leaseToken);
+            if (leaseToken) releaseMetadataRequest(requestKey, leaseToken);
             throw requestSignal.reason || error;
           }
           const failure = asAppError(error);
@@ -608,33 +627,32 @@ function refreshMetadata<Schema extends v.GenericSchema>(
           if (status === 429 && leaseToken && !isMetadataCircuitError(error)) {
             const retryAfterMs = getRetryAfterMs(error);
             const retryAt = Date.now() + retryAfterMs;
-            deferMetadataRequest(cacheKey, leaseToken, retryAt);
+            deferMetadataRequest(requestKey, leaseToken, retryAt);
             logger.info("metadata", "BrainzMash rate limited a request", {
               path,
               retryAfterSeconds: Math.round(retryAfterMs / 1000),
             });
-            if (fallbackValue !== undefined) return fallbackValue;
-            throw createMetadataCooldownError(retryAt - Date.now());
+            return coolingDown(retryAt, sharedSignal);
           }
           if (status === 403 || status === 429) {
             if (!isMetadataCircuitError(error)) {
               openMetadataCircuit(baseUrl, status, error);
             }
-            if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
+            if (leaseToken) completeMetadataRequest(requestKey, leaseToken);
             if (fallbackValue !== undefined) return fallbackValue;
             throw error;
           }
-          if (status === 404 && isEntityMetadataPath(path)) {
+          if (status === 404 && isEntityMetadataPath(path) && requestKey === cacheKey) {
             forgetMetadata(cacheKey);
             metadataNotFoundCache.set(cacheKey, true);
-            if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
+            if (leaseToken) completeMetadataRequest(requestKey, leaseToken);
           }
           if (attempt === maxRetries || !isRetryable(error)) {
             if (leaseToken && isRetryable(error) && providerRequestStarted) {
-              failMetadataRequest(cacheKey, leaseToken);
+              failMetadataRequest(requestKey, leaseToken);
             } else if (leaseToken && providerRequestStarted) {
-              completeMetadataRequest(cacheKey, leaseToken);
-            } else if (leaseToken) releaseMetadataRequest(cacheKey, leaseToken);
+              completeMetadataRequest(requestKey, leaseToken);
+            } else if (leaseToken) releaseMetadataRequest(requestKey, leaseToken);
             if (fallbackValue !== undefined && isRetryable(error)) return fallbackValue;
             throw error;
           }
