@@ -63,8 +63,20 @@ export async function refreshReleaseMetadata({
     }
   }
   lease.signal.throwIfAborted();
+  if (!hasReleaseCalendarArtists()) return { releases: 0, gone: 0 };
+  const { signal: leaseSignal } = lease;
   const fetchedAt = releaseFeedFetchedAt();
-  const feed = fetchedAt && Date.now() - fetchedAt < FEED_TTL_MS ? null : await fetchFeed();
+  const feed =
+    fetchedAt && Date.now() - fetchedAt < FEED_TTL_MS
+      ? null
+      : await Promise.race([
+          fetchFeed(),
+          new Promise<never>((_resolve, reject) =>
+            leaseSignal.addEventListener("abort", () => reject(leaseSignal.reason), {
+              once: true,
+            }),
+          ),
+        ]);
   const now = Date.now();
   let result = { releases: 0, gone: 0 };
   lease.write(() => {

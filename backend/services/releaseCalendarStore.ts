@@ -115,7 +115,7 @@ const projectFeed = db.prepare<[number, number, number]>(`
   SELECT feed.release_group_mbid, artist.id, feed.title, feed.release_date, feed.release_type,
     '[]', '[]', 1, ?, ?, ?
   FROM release_feed AS feed
-  JOIN library_artists AS artist ON artist.mbid = feed.artist_mbid
+  JOIN library_artists AS artist ON LOWER(artist.mbid) = feed.artist_mbid
   WHERE true
   ON CONFLICT(release_group_mbid, artist_id) DO UPDATE SET
     title = excluded.title,
@@ -134,7 +134,7 @@ const markGone = db.prepare<[number, string, string]>(`
     AND release_date BETWEEN ? AND ?
     AND NOT EXISTS (
       SELECT 1 FROM release_feed AS feed
-      JOIN library_artists AS artist ON artist.mbid = feed.artist_mbid
+      JOIN library_artists AS artist ON LOWER(artist.mbid) = feed.artist_mbid
       WHERE feed.release_group_mbid = entry.release_group_mbid AND artist.id = entry.artist_id
     )
 `);
