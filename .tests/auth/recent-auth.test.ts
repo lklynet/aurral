@@ -64,6 +64,8 @@ test("recent authentication requires a valid bearer session", () => {
 
   assert.equal(auth.isRecentlyAuthenticated(undefined), false);
   assert.equal(auth.isRecentlyAuthenticated(`Bearer ${session.token}`), true);
+  const paired = createSession(user.id, null, null, { reauthenticated: false });
+  assert.equal(auth.isRecentlyAuthenticated(`Bearer ${paired.token}`), false);
 });
 
 test("stream requests need sign-in once an account exists, even without a stored single password", () => {

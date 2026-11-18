@@ -4,10 +4,18 @@ import { userOps } from "../db/helpers/index.ts";
 import {
   createSession,
   deleteSession,
+  deleteUserSession,
   getSessionByToken,
+  isSessionLive,
+  listUserSessions,
   touchReauth,
 } from "../config/session-helpers.ts";
-import { requireAdmin, requireAuth, requireRecentAuth } from "../middleware/guards.ts";
+import {
+  requireAdmin,
+  requireAuth,
+  requireRecentAuth,
+  requireUserAccount,
+} from "../middleware/guards.ts";
 import {
   getApiKey,
   isApiKeyManagedByEnv,
@@ -28,6 +36,8 @@ import {
   startGoogleAuth,
 } from "../services/googleAuth.ts";
 import { logger } from "../services/logger.ts";
+import { consumePairingCode, createPairingCode } from "../services/pairingCodes.ts";
+import { websocketService } from "../services/websocketService.ts";
 import { isErrorStatus } from "./shared/errorStatus.ts";
 import { asAppError, type AppError } from "../../lib/errors.ts";
 
@@ -53,6 +63,33 @@ const loginBody = v.object({
 });
 const reauthBody = v.object({ currentPassword: v.optional(v.string()) });
 const exchangeBody = v.object({ code: v.optional(v.string()) });
+const pairBody = v.object({ code: v.string() });
+const sessionParam = v.object({ id: v.pipe(v.string(), v.toNumber(), v.integer()) });
+
+type SignedInUser = NonNullable<ReturnType<typeof userOps.getUserById>>;
+
+const signedIn = <E extends AppEnv>(
+  c: Context<E>,
+  user: SignedInUser,
+  reauthenticated: boolean,
+) => {
+  const session = createSession(
+    user.id,
+    c.var.clientIp || null,
+    c.req.header("user-agent") || null,
+    { reauthenticated },
+  );
+  return {
+    token: session.token,
+    expiresAt: session.expiresAt,
+    user: {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      permissions: buildPermissions(user.role, user.permissions),
+    },
+  };
+};
 
 export default new Hono<AppEnv>()
   .basePath("/auth")
@@ -79,33 +116,55 @@ export default new Hono<AppEnv>()
         updates.hasLocalPassword = true;
       }
       userOps.updateUser(user.id, updates);
-      const session = createSession(
-        user.id,
-        c.var.clientIp || null,
-        c.req.header("user-agent") || null,
-      );
-      return c.json(
-        {
-          token: session.token,
-          expiresAt: session.expiresAt,
-          user: {
-            id: user.id,
-            username: user.username,
-            role: user.role,
-            permissions: buildPermissions(user.role, user.permissions),
-          },
-        },
-        200,
-      );
+      return c.json(signedIn(c, user, true), 200);
     } catch {
       return c.json({ error: "Login failed" }, 500);
     }
   })
+  .post("/pair", validate("json", pairBody), (c) => {
+    const issued = consumePairingCode(c.req.valid("json").code);
+    const user =
+      issued && isSessionLive(issued.sessionId) ? userOps.getUserById(issued.userId) : null;
+    if (!user || user.status !== "active") {
+      return c.json({ error: "That code is wrong or has expired" }, 401);
+    }
+    return c.json(signedIn(c, user, false), 200);
+  })
+  .post("/pairing-codes", requireAuth, (c) => {
+    const session = getSessionByToken(bearerToken(c));
+    if (!session) {
+      return c.json(
+        { error: "session_required", message: "Sign in with your password to pair a device" },
+        403,
+      );
+    }
+    return c.json(createPairingCode(session.userId, session.id), 201);
+  })
+  .get("/sessions", requireAuth, requireUserAccount, (c) => {
+    const current = getSessionByToken(bearerToken(c))?.id ?? null;
+    const sessions = listUserSessions(c.var.user.id).map((row) => ({
+      id: row.id,
+      userAgent: row.user_agent,
+      lastUsedAt: row.last_used_at ?? row.created_at,
+      current: row.id === current,
+    }));
+    return c.json({ sessions }, 200);
+  })
+  .delete(
+    "/sessions/:id",
+    requireAuth,
+    requireUserAccount,
+    validate("param", sessionParam),
+    (c) => {
+      const token = deleteUserSession(c.var.user.id, c.req.valid("param").id);
+      if (!token) return c.json({ error: "Not found" }, 404);
+      websocketService.disconnectSession(token);
+      return c.json({ success: true }, 200);
+    },
+  )
   .post("/logout", requireAuth, (c) => {
     const token = bearerToken(c);
-    if (token) {
-      deleteSession(token);
-    }
+    if (token && deleteSession(token)) websocketService.disconnectSession(token);
     return c.json({ success: true }, 200);
   })
   .get("/me", requireAuth, (c) => {

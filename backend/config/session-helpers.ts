@@ -4,6 +4,7 @@ import { userOps } from "../db/helpers/index.ts";
 import type { SessionsRow } from "../db/rows.ts";
 
 const DEFAULT_EXPIRY_HOURS = 24 * 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const insertSessionStmt = db.prepare(
   "INSERT INTO sessions (user_id, token, created_at, expires_at, ip_address, user_agent, reauthenticated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -15,6 +16,18 @@ const deleteSessionByTokenStmt = db.prepare("DELETE FROM sessions WHERE token = 
 const deleteSessionsByUserIdStmt = db.prepare("DELETE FROM sessions WHERE user_id = ?");
 const deleteExpiredSessionsStmt = db.prepare("DELETE FROM sessions WHERE expires_at <= ?");
 const touchReauthStmt = db.prepare("UPDATE sessions SET reauthenticated_at = ? WHERE token = ?");
+const renewSessionStmt = db.prepare<[number, number, number]>(
+  "UPDATE sessions SET last_used_at = ?, expires_at = ? WHERE id = ?",
+);
+const listUserSessionsStmt = db.prepare<[number, number], SessionsRow>(
+  "SELECT * FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY coalesce(last_used_at, created_at) DESC",
+);
+const liveSessionStmt = db.prepare<[number, number], number>(
+  "SELECT 1 FROM sessions WHERE id = ? AND expires_at > ?",
+);
+const deleteUserSessionStmt = db.prepare<[number, number], { token: string }>(
+  "DELETE FROM sessions WHERE id = ? AND user_id = ? RETURNING token",
+);
 
 const getSessionExpiryMs = () => {
   const hours = Number(process.env.SESSION_EXPIRY_HOURS);
@@ -36,6 +49,7 @@ export const createSession = (
   userId: number,
   ipAddress: string | null = null,
   userAgent: string | null = null,
+  { reauthenticated = true } = {},
 ) => {
   const now = Date.now();
   const expiresAt = now + getSessionExpiryMs();
@@ -47,7 +61,7 @@ export const createSession = (
     expiresAt,
     ipAddress ? String(ipAddress).slice(0, 255) : null,
     userAgent ? String(userAgent).slice(0, 1024) : null,
-    now,
+    reauthenticated ? now : 0,
   );
   return {
     token,
@@ -76,6 +90,13 @@ export const getSessionByToken = (token: unknown) => {
     deleteSessionByTokenStmt.run(rawToken);
     return null;
   }
+  const now = Date.now();
+  const expiryMs = getSessionExpiryMs();
+  if (now - (row.last_used_at ?? row.created_at) >= Math.min(DAY_MS, expiryMs / 10)) {
+    row.last_used_at = now;
+    row.expires_at = now + expiryMs;
+    renewSessionStmt.run(row.last_used_at, row.expires_at, row.id);
+  }
   return {
     id: row.id,
     token: row.token,
@@ -84,7 +105,7 @@ export const getSessionByToken = (token: unknown) => {
     expiresAt: row.expires_at,
     ipAddress: row.ip_address,
     userAgent: row.user_agent,
-    reauthenticatedAt: row.reauthenticated_at || row.created_at,
+    reauthenticatedAt: row.reauthenticated_at ?? row.created_at,
     user: toUserPayload(user),
   };
 };
@@ -103,3 +124,11 @@ export const cleanExpiredSessions = () => {
   const result = deleteExpiredSessionsStmt.run(Date.now());
   return result.changes;
 };
+
+export const listUserSessions = (userId: number) => listUserSessionsStmt.all(userId, Date.now());
+
+export const deleteUserSession = (userId: number, sessionId: number) =>
+  deleteUserSessionStmt.get(sessionId, userId)?.token ?? null;
+
+export const isSessionLive = (sessionId: number) =>
+  liveSessionStmt.get(sessionId, Date.now()) !== undefined;

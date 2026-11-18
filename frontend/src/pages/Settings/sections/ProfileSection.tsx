@@ -15,6 +15,7 @@ import { useHubLink } from "../../../components/PlayerFriends";
 import { friendPath, personPath } from "../../../../../lib/profilePaths.ts";
 import { ApiKeyRow } from "../components/ApiKeyRow";
 import { ConnectedAccountsSection, useMyIdentities } from "../components/ConnectedAccountsSection";
+import { DevicesGroup } from "../components/DevicesGroup";
 import { HubLinkGroup } from "../components/HubLinkGroup";
 import { SettingsInput } from "../components/SettingsField";
 import {
@@ -101,7 +102,10 @@ function PasswordGroup() {
       setNewPassword("");
       setConfirmPassword("");
       showSuccess(hasLocalPassword ? "Password changed" : "Password set");
-      await queryClient.invalidateQueries({ queryKey: queryKeys.myIdentities(user?.id) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.myIdentities(user?.id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.mySessions(user?.id) }),
+      ]);
     } catch (err) {
       const failure = readApiError(err);
       showError(failure.error || failure.message || failure.text || "Couldn't save your password");
@@ -279,6 +283,7 @@ export function ProfileSection() {
           <PasswordGroup />
           <ConnectedAccountsSection />
           <HubLinkGroup />
+          <DevicesGroup userId={user.id} />
           <ApiAccessGroup userId={user.id} />
         </>
       ) : null}

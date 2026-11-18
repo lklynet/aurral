@@ -545,6 +545,7 @@ export interface SessionsRow {
   ip_address: string | null;
   user_agent: string | null;
   reauthenticated_at: number | null;
+  last_used_at: number | null;
 }
 
 export interface SettingsRow {
