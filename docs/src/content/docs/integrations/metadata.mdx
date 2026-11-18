@@ -5,6 +5,8 @@ description: Where Aurral gets artist and album data, and how to point it at ano
 
 Aurral gets artist pages, album details, release dates, genres, and catalog search from BrainzMash, a hosted service built on MusicBrainz data. Most installations need no setup.
 
+When BrainzMash asks Aurral to wait more than an hour before loading an artist or album, Aurral loads it from `brainzmash.kell.ly`, a copy run by the Aurral maintainers. This backup is never used when you set your own server.
+
 When BrainzMash has no data for an item, Aurral asks other services. For example, it uses Deezer for artist images and previews, and Last.fm or ListenBrainz for tags. It uses the Deezer ID from the BrainzMash links when one exists, so it does not have to search Deezer by name.
 
 On artist pages, Aurral ranks popular releases by how many people played each one on ListenBrainz. It also takes a release date from ListenBrainz when BrainzMash has none.
