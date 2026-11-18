@@ -32,21 +32,48 @@ test("track performer stays distinct from the album owner without changing audio
   const root = await mkdtemp(path.join(tmpdir(), "aurral-performer-"));
   t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "Owner", "Album", "01.mp3");
+  const listedFile = path.join(root, "Owner", "Album", "02.mp3");
   await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, "original audio");
-  const common = { albumartist: "Owner", artist: "Guest & Owner", album: "Album", title: "Song" };
+  await Promise.all([writeFile(file, "original audio"), writeFile(listedFile, "listed audio")]);
+  const common = {
+    albumartist: "Owner",
+    artist: "Guest & Owner",
+    artists: ["Guest", "Owner"],
+    album: "Album",
+    title: "Song",
+  };
 
-  await scanMusicRoot({ rootPath: root, metadataReader: async () => ({ common }) });
+  await scanMusicRoot({
+    rootPath: root,
+    metadataReader: async (filePath) => ({
+      common:
+        filePath === listedFile
+          ? {
+              albumartist: "Owner",
+              artist: "Owner",
+              artists: ["Owner", "Featured Guest"],
+              album: "Album",
+              title: "Another Song",
+            }
+          : common,
+    }),
+  });
 
   const library = getLibrary({ availableOnly: true });
   const track = library.tracks.find((entry) => entry.files.some((entry) => entry.path === file));
+  const listedTrack = library.tracks.find((entry) =>
+    entry.files.some((entry) => entry.path === listedFile),
+  );
   assert.ok(track != null);
+  assert.ok(listedTrack != null);
   assert.equal(track.artistName, "Guest & Owner");
+  assert.equal(listedTrack.artistName, "Owner, Featured Guest");
   assert.equal(
     library.albums.find((album) => album.trackIds.includes(track.id))?.albumArtist,
     "Owner",
   );
   assert.equal(await readFile(file, "utf8"), "original audio");
+  assert.equal(await readFile(listedFile, "utf8"), "listed audio");
 });
 
 test("scanned featured tracks are owned by both their performer and album owner", async (t: import("vite-plus/test").TestContext) => {
