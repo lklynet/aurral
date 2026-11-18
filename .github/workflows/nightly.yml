@@ -73,6 +73,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  hosted:
+    needs: publish
+    uses: ./.github/workflows/hosted.yml
+    with:
+      version: ${{ needs.publish.outputs.version }}
+      channel: nightly
+    secrets: inherit
+
   status:
     needs: publish
     runs-on: ubuntu-latest

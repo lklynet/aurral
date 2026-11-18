@@ -1,0 +1,9 @@
+{
+  "name": "aurral-hosted",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "wrangler": "4.156.1"
+  }
+}
