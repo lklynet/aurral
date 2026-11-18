@@ -59,7 +59,7 @@ const [
   { dbOps },
   { db },
   { clearMetadataProviderCaches },
-  { listenbrainzSource },
+  { getArtistTopTracks },
 ] = await setupIsolatedBackend(
   "artist-provider-errors",
   () => import("../lib/http.ts"),
@@ -68,7 +68,7 @@ const [
   () => import("../backend/db/helpers/index.ts"),
   () => import("../backend/config/db-sqlite.ts"),
   () => import("../backend/services/providers/brainzmashProvider.ts"),
-  () => import("../backend/services/musicDataSource/listenbrainz.ts"),
+  () => import("../backend/services/musicDataSource/index.ts"),
 );
 
 beforeEach(() => {
@@ -308,7 +308,7 @@ test("an artist's Popular list keeps the first six playable tracks in provider o
 });
 
 const artistTopTracks = async () =>
-  (await listenbrainzSource.getArtistTopTracks({ name: "Provider Artist" })).map(
+  (await getArtistTopTracks({ name: "Provider Artist" })).map(
     (track: { name: string }) => track.name,
   );
 

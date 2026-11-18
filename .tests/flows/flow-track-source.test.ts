@@ -179,8 +179,7 @@ test("tags filter trending artists and match spelling variants", async () => {
   const source = new FlowTrackSource();
   const chartTrack = (artistName: string) => ({
     artistName,
-    artistMbid: null,
-    name: `${artistName} Song`,
+    trackName: `${artistName} Song`,
     albumName: null,
   });
   source._getTrendingChart = async () => [chartTrack("Pop Star"), chartTrack("Rapper")];
@@ -382,22 +381,19 @@ test("new releases try an artist's older release when the newest has no usable t
   );
 });
 
-test("mix album pick prefers top track list metadata before track.getInfo", () => {
+test("mix album pick skips tracks and albums the Library already owns", () => {
   const source = new FlowTrackSource();
   const ownedTitles = new Set(["owned track"]);
   const ownedAlbums = new Set(["owned album"]);
   const trackList = [topTrack("Owned Track", "Owned Album"), topTrack("Fresh Track", "New Album")];
-  const picked = source._pickTrackFromRangesWithOwnedAlbumsUsingListMetadata(
-    trackList,
-    ownedTitles,
-    ownedAlbums,
-    [{ start: 0, end: 5 }],
-  );
+  const picked = source._pickTrackFromRangesWithOwnedAlbums(trackList, ownedTitles, ownedAlbums, [
+    { start: 0, end: 5 },
+  ]);
   assert.equal(picked?.pick?.name, "Fresh Track");
   assert.equal(picked?.albumName, "New Album");
 });
 
-test("new releases pick a release track from metadata before Last.fm fallbacks", async () => {
+test("new releases pick a release track from metadata", async () => {
   const source = new FlowTrackSource();
   source._getMetadataAlbumTrackList = async () => [
     {
@@ -414,9 +410,6 @@ test("new releases pick a release track from metadata before Last.fm fallbacks",
       discTitle: null,
     },
   ];
-  source._getLastfmAlbumInfo = async () => {
-    throw new Error("Last.fm should not be needed");
-  };
 
   const track = await source._pickTrackFromRelease({
     artistName: "Library Artist",
@@ -434,7 +427,6 @@ test("new releases pick a release track from metadata before Last.fm fallbacks",
 test("new releases do not substitute an unrelated artist top track", async () => {
   const source = new FlowTrackSource();
   source._getMetadataAlbumTrackList = async () => [];
-  source._getLastfmAlbumInfo = async () => null;
   source._getArtistTopTrackList = async () => [
     topTrack("Sober to Death", "Twin Fantasy (Face to Face)"),
   ];
@@ -452,7 +444,6 @@ test("new releases do not substitute an unrelated artist top track", async () =>
 test("new releases accept an artist top track only when the album matches", async () => {
   const source = new FlowTrackSource();
   source._getMetadataAlbumTrackList = async () => [];
-  source._getLastfmAlbumInfo = async () => null;
   source._getArtistTopTrackList = async () => [
     topTrack("Sober to Death", "Twin Fantasy (Face to Face)"),
     topTrack("Joe Gets Kicked", "Teen of Denial (Joe's Story)"),

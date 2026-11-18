@@ -19,7 +19,14 @@ const [
   isolatedState,
   { db },
   { dbOps },
-  { getTrendingCharts, getTrendingGenreChart, refreshTrendingCharts, setTrendingRegion },
+  {
+    getChartArtists,
+    getChartTracks,
+    getTrendingCharts,
+    getTrendingGenreChart,
+    refreshTrendingCharts,
+    setTrendingRegion,
+  },
 ] = await setupIsolatedBackend(
   "trending-charts",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -57,6 +64,7 @@ type Source = {
   appleStorefronts: Record<string, ReturnType<typeof appleAlbum>[]>;
   appleFailures: ("timeout" | number)[];
   genreTracks: Record<string, number[]>;
+  chartArtists: string[];
   artistsFail?: boolean;
 };
 
@@ -94,7 +102,13 @@ const respond = (url: URL) => {
   }
   if (url.pathname === "/chart/0/artists") {
     if (source.artistsFail) return json({}, 500);
-    return json({ data: [{ id: 77, name: "Chart Star", picture_xl: "https://img/star.jpg" }] });
+    return json({
+      data: source.chartArtists.map((name, index) => ({
+        id: 77 + index,
+        name,
+        picture_xl: `https://img/${77 + index}.jpg`,
+      })),
+    });
   }
   if (url.pathname === "/artist/77") return json({ id: 77, nb_fan: 4200 });
   const genreTracks = source.genreTracks[url.pathname.match(/^\/chart\/(\d+)\/tracks$/)?.[1] ?? ""];
@@ -118,6 +132,7 @@ beforeEach(() => {
     appleStorefronts: { gb: [appleAlbum(1, "Pop"), appleAlbum(2, "Pop"), appleAlbum(3, "Rock")] },
     appleFailures: [],
     genreTracks: { 132: [501, 502] },
+    chartArtists: ["Chart Star"],
   };
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = new URL(String(input));
@@ -176,6 +191,27 @@ test("a refresh stores every chart for the server's region", async () => {
     ["Song 501", "Song 502"],
   );
   assert.equal(getTrendingGenreChart(152), null);
+});
+
+test("trending follows the main charts, then each genre chart in turn", async () => {
+  source.genreTracks = { 132: [2, 501], 152: [601] };
+  source.chartArtists = ["Chart Star", "Artist 501"];
+  await refreshAt(DAY_ONE);
+
+  assert.deepEqual(
+    getChartArtists(10).map((artist) => [artist.artistName, artist.mbid, artist.imageUrl]),
+    [
+      ["Chart Star", ARTIST_MBID, "https://img/77.jpg"],
+      ["Artist 501", null, "https://img/78.jpg"],
+      ["Artist 2", null, null],
+      ["Artist 601", null, null],
+    ],
+  );
+  assert.deepEqual(
+    getChartTracks(10).map((item) => item.trackName),
+    ["Song 1", "Song 2", "Song 3", "Song 601", "Song 501"],
+  );
+  assert.equal(getChartTracks(4).length, 4);
 });
 
 test("a region without its own charts falls back to worldwide songs and US albums", async () => {

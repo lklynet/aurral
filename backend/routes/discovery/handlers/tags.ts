@@ -3,11 +3,7 @@ import * as v from "valibot";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
-import {
-  getMusicDataSourceName,
-  getPopularTags,
-  getTagArtists,
-} from "../../../services/musicDataSource/index.ts";
+import { getMusicDataSourceName, getTagArtists } from "../../../services/musicDataSource/index.ts";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
 import { getUserDiscoveryNamespace } from "../../../services/discovery/index.ts";
 import type { DiscoveryRecommendation } from "../../../services/discovery/recommendationPipeline.ts";
@@ -54,8 +50,7 @@ export default new Hono<AppEnv>()
         userId != null
           ? dbOps.getDiscoveryCache(getUserDiscoveryNamespace(userId)).topGenres || []
           : [];
-      const pool = genres ? listMusicbrainzGenres() : await getPopularTags();
-      const suggestions = rankTagSuggestions([...userGenres, ...pool], prefix);
+      const suggestions = rankTagSuggestions([...userGenres, ...listMusicbrainzGenres()], prefix);
       if (!genres && prefix.length >= 2 && suggestions[0]?.toLowerCase() !== prefix) {
         suggestions.unshift(rawPrefix);
       }

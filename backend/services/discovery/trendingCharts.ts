@@ -515,20 +515,16 @@ export function getTrendingCharts(userId: number) {
   };
 }
 
-export function getChartStarterArtists(limit: number) {
-  const artists = readChart(selectChartStmt.get("artists"), artistsChartSchema)?.items ?? [];
-  const genreArtists = EDITORIAL_GENRES.map(({ id }) => [
-    ...new Set(
-      (readChart(selectChartStmt.get(`genre:${id}`), genreChartSchema)?.items ?? []).map(
-        (item) => item.artistName,
-      ),
-    ),
-  ]);
+const readGenreCharts = () =>
+  EDITORIAL_GENRES.map(
+    ({ id }) => readChart(selectChartStmt.get(`genre:${id}`), genreChartSchema)?.items ?? [],
+  );
+
+type ChartArtist = { artistName: string; mbid: string | null; imageUrl: string | null };
+
+const uniqueArtists = (artists: ChartArtist[], limit: number) => {
   const seen = new Set<string>();
-  return interleaveLists<{ artistName: string; mbid: string | null }>(
-    artists.map((artist) => ({ artistName: artist.name, mbid: artist.mbid })),
-    ...genreArtists.map((names) => names.map((artistName) => ({ artistName, mbid: null }))),
-  )
+  return artists
     .filter(({ artistName }) => {
       const key = artistName.toLowerCase();
       if (seen.has(key)) return false;
@@ -536,6 +532,35 @@ export function getChartStarterArtists(limit: number) {
       return true;
     })
     .slice(0, limit);
+};
+
+const readChartArtists = (): ChartArtist[] =>
+  (readChart(selectChartStmt.get("artists"), artistsChartSchema)?.items ?? []).map((artist) => ({
+    artistName: artist.name,
+    mbid: artist.mbid,
+    imageUrl: artist.imageUrl,
+  }));
+
+const readGenreArtists = () =>
+  readGenreCharts().map((items) =>
+    [...new Set(items.map((item) => item.artistName))].map((artistName): ChartArtist => ({
+      artistName,
+      mbid: null,
+      imageUrl: null,
+    })),
+  );
+
+export const getChartStarterArtists = (limit: number) =>
+  uniqueArtists(interleaveLists(readChartArtists(), ...readGenreArtists()), limit);
+
+export const getChartArtists = (limit: number) =>
+  uniqueArtists([...readChartArtists(), ...interleaveLists(...readGenreArtists())], limit);
+
+export function getChartTracks(limit: number) {
+  const songs = readChart(selectChartStmt.get("songs"), songsChartSchema)?.items ?? [];
+  return uniqueByKey([...songs, ...interleaveLists(...readGenreCharts())])
+    .slice(0, limit)
+    .map(({ artistName, trackName, albumName }) => ({ artistName, trackName, albumName }));
 }
 
 export function getTrendingGenreChart(genreId: number) {

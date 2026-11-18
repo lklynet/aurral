@@ -84,8 +84,7 @@ test("flows drop trending and focus artists carrying a blocked genre", async () 
   const source = new FlowTrackSource();
   const chartTrack = (artistName: string) => ({
     artistName,
-    artistMbid: null,
-    name: `${artistName} Song`,
+    trackName: `${artistName} Song`,
     albumName: null,
   });
   const searchedTags: string[] = [];
