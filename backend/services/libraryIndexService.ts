@@ -232,7 +232,8 @@ async function matchUntaggedLibraryAlbums(retry: boolean) {
         artistMbid: album.artistMbid,
         albumTitle: album.title,
         releaseYear: album.releaseDate,
-        holds: async (id) => holdsMostSongs(album, await getAlbumByMbid(id)),
+        holds: async (id) =>
+          holdsMostSongs(album, await getAlbumByMbid(id, { withFallbackReleases: true })),
       });
     } catch (error) {
       if (asAppError(error)?.code === "ERR_METADATA_COOLDOWN") continue;
@@ -261,7 +262,7 @@ async function completeLibraryTrackLists() {
     let metadata = null;
     try {
       metadata = album.filesChanged
-        ? await getAlbumByMbid(album.releaseGroupMbid)
+        ? await getAlbumByMbid(album.releaseGroupMbid, { withFallbackReleases: true })
         : await getCachedAlbumByMbid(album.releaseGroupMbid);
       if (!metadata && !album.filesChanged) return;
     } catch (error) {

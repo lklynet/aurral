@@ -98,7 +98,7 @@ async function startFakeMetadata() {
         : kind === "artist" && id
           ? { id, artistname: "Perf Metadata Artist", Albums: [] }
           : kind === "album" && id
-            ? { id, title: "Perf Metadata Album", releases: [] }
+            ? { id, title: "Perf Metadata Album" }
             : null;
     response.statusCode = body ? 200 : 404;
     response.setHeader("content-type", "application/json");

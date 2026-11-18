@@ -129,6 +129,7 @@ interface AlbumSearchItem {
 interface MetadataRequestOptions {
   signal?: AbortSignal;
   forceRefresh?: boolean;
+  withFallbackReleases?: boolean;
 }
 
 type MetadataParams = Record<string, string | number>;
@@ -349,7 +350,8 @@ function getMetadataCachePolicy(path: string, value?: unknown) {
       freshTtlSeconds:
         /^\/album\/[^/]+$/.test(path) &&
         isRecord(value) &&
-        (!Array.isArray(value.releases) || value.releases.length === 0)
+        Array.isArray(value.releases) &&
+        value.releases.length === 0
           ? INCOMPLETE_ALBUM_CACHE_TTL_SECONDS
           : METADATA_ENTITY_CACHE_TTL_SECONDS,
       staleTtlSeconds: METADATA_ENTITY_STALE_TTL_SECONDS,
@@ -806,11 +808,12 @@ async function getMusicbrainzAlbumReleases(
 
 export async function getAlbumByMbid(
   albumMbid: string,
-  { signal, forceRefresh = false }: MetadataRequestOptions = {},
+  { signal, forceRefresh = false, withFallbackReleases = false }: MetadataRequestOptions = {},
 ) {
   const data = await request(albumSchema, `/album/${albumMbid}`, {}, { signal, forceRefresh });
   const album = toNormalizedAlbum(data);
-  if (album.releases.length || !UUID_REGEX.test(albumMbid)) return album;
+  const explicitlyIncomplete = Array.isArray(data.releases) && data.releases.length === 0;
+  if (!withFallbackReleases || !explicitlyIncomplete || !UUID_REGEX.test(albumMbid)) return album;
   const releases = await getMusicbrainzAlbumReleases(albumMbid, { signal });
   return releases.length ? { ...album, releases } : album;
 }
@@ -829,7 +832,7 @@ export async function getAlbumTracksByAlbumMbid(
     chooseRelease = selectAlbumRelease,
   }: { chooseRelease?: (album: NormalizedAlbum) => NormalizedRelease | null | undefined } = {},
 ) {
-  const album = await getAlbumByMbid(albumMbid);
+  const album = await getAlbumByMbid(albumMbid, { withFallbackReleases: true });
   const release = chooseRelease(album);
   if (!Array.isArray(release?.tracks)) return [];
   const discNames = new Map(release.media.map((medium) => [medium.position, medium.name]));
@@ -946,6 +949,7 @@ export async function searchAlbums(
     signal,
     throwOnFailure = false,
     musicbrainzFallback = true,
+    fallbackOnWeakMatch = false,
   }: {
     artistName?: string;
     limit?: number;
@@ -955,6 +959,7 @@ export async function searchAlbums(
     signal?: AbortSignal;
     throwOnFailure?: boolean;
     musicbrainzFallback?: boolean;
+    fallbackOnWeakMatch?: boolean;
   } = {},
 ) {
   // Relevance ranking reorders what the provider returns, so a short list
@@ -1006,7 +1011,11 @@ export async function searchAlbums(
   }
 
   const providerReturnedItems = items.length > 0;
-  if (musicbrainzFallback && !hasCredibleAlbumMatch(query, artistName, items)) {
+  if (
+    musicbrainzFallback &&
+    (items.length === 0 ||
+      (fallbackOnWeakMatch && !hasCredibleAlbumMatch(query, artistName, items)))
+  ) {
     if (!providerReturnedItems) failure = null;
     const fallbackItems = await searchMusicbrainzAlbums(
       query,

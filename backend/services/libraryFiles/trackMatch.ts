@@ -50,7 +50,9 @@ async function loadTrackAlbum(trackId: number) {
   }
   if (!first.release_group_mbid) return refuse(409, "Match the album first.");
   try {
-    const group = await getAlbumByMbid(first.release_group_mbid);
+    const group = await getAlbumByMbid(first.release_group_mbid, {
+      withFallbackReleases: true,
+    });
     return {
       group,
       chosen: albumEdition(group, readLibraryMetadata(first.album_metadata) ?? {}),

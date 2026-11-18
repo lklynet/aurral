@@ -1034,7 +1034,9 @@ export class LibraryManager {
   }
 
   async _releaseTracks(releaseGroupMbid: string, edition: string | null | undefined) {
-    const album = await metadataLookups.add(() => getMetadataAlbumByMbid(releaseGroupMbid));
+    const album = await metadataLookups.add(() =>
+      getMetadataAlbumByMbid(releaseGroupMbid, { withFallbackReleases: true }),
+    );
     const release = selectAlbumRelease(album, { edition });
     return (Array.isArray(release?.tracks) ? release.tracks : [])
       .map((track) => ({

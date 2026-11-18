@@ -251,10 +251,12 @@ test("an incomplete BrainzMash album uses one cached MusicBrainz release browse"
     clearMetadataProviderCaches();
     const startedAt = Date.now();
 
-    const first = await getAlbumByMbid(albumMbid);
-    const second = await getAlbumByMbid(albumMbid);
+    const metadataOnly = await getAlbumByMbid(albumMbid);
+    const first = await getAlbumByMbid(albumMbid, { withFallbackReleases: true });
+    const second = await getAlbumByMbid(albumMbid, { withFallbackReleases: true });
     const complete = await getAlbumByMbid(completeAlbumMbid);
 
+    assert.deepEqual(metadataOnly.releases, []);
     assert.equal(first.releases[0]?.tracks[0]?.recordingId, "recording-1");
     assert.equal(second.releases[0]?.tracks[0]?.title, "One");
     assert.equal(complete.releases[0]?.id, "complete-release");
@@ -1211,10 +1213,12 @@ test("album search supplements unrelated BrainzMash results with a MusicBrainz m
     const first = await searchAlbums("How to Count to Five", {
       artistName: "Holidays in United States",
       sort: "match",
+      fallbackOnWeakMatch: true,
     });
     const second = await searchAlbums("How to Count to Five", {
       artistName: "Holidays in United States",
       sort: "match",
+      fallbackOnWeakMatch: true,
     });
 
     assert.equal(first.items[0]?.id, "3281d649-f172-4c96-8c44-7c71eb050f1d");
