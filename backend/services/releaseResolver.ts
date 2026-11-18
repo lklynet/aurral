@@ -72,7 +72,7 @@ export function clearReleaseManifests() {
 async function readGroup(groupMbid: string) {
   if (unreachableGroups.get(groupMbid)) return UNREACHABLE;
   try {
-    const group = await getAlbumByMbid(groupMbid);
+    const group = await getAlbumByMbid(groupMbid, { withFallbackReleases: true });
     return group?.releases?.length && (!group.id || id(group.id) === groupMbid) ? group : null;
   } catch (error) {
     if (isMetadataNotFoundError(error)) return null;

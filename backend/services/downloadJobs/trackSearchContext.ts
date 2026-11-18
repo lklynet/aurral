@@ -439,7 +439,7 @@ async function fetchReleaseContext(
   if (cachedContext !== undefined) return cachedContext;
   const promise = (async () => {
     try {
-      const album = await getAlbumByMbid(key);
+      const album = await getAlbumByMbid(key, { withFallbackReleases: true });
       const artists = (Array.isArray(album?.artists) ? album.artists : []).toSorted(
         (left, right) => Number(right.id === album.artistId) - Number(left.id === album.artistId),
       );

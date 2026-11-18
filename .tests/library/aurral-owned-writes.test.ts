@@ -1,5 +1,5 @@
 import { requireFixture } from "../playlists/fixtures.ts";
-import { test, beforeAll, afterAll } from "vite-plus/test";
+import { test, beforeAll, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -21,6 +21,7 @@ const [
   trackerModule,
   workerModule,
   { scanMusicRoot },
+  { http },
 ] = await setupIsolatedBackend(
   "aurral-owned-writes",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -31,6 +32,7 @@ const [
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
+  () => import("../../lib/http.ts"),
 );
 
 const { downloadTracker } = trackerModule;
@@ -39,6 +41,9 @@ const { downloadWorker } = workerModule;
 const artistMbid = "11111111-1111-4111-8111-111111111111";
 const albumMbid = "22222222-2222-4222-8222-222222222222";
 const ambiguousAlbumMbid = "88888888-8888-4888-8888-888888888888";
+const incompleteAlbumMbid = "99999999-9999-4999-8999-999999999999";
+const incompleteReleaseMbid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const incompleteTrackMbid = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const trackMbids = ["33333333-3333-4333-8333-333333333331", "33333333-3333-4333-8333-333333333332"];
 
 function metadataAlbum(mbid: string, tracks: string[], title: string = "Aurral Album") {
@@ -92,6 +97,19 @@ test("Aurral writes library album state, queues missing tracks, and refuses an a
       response.end(JSON.stringify(metadataAlbum(albumMbid, trackMbids, "Ambiguous Album")));
       return;
     }
+    if (pathname === `/album/${incompleteAlbumMbid}`) {
+      response.end(
+        JSON.stringify({
+          id: incompleteAlbumMbid,
+          title: "Incomplete Album",
+          artistid: artistMbid,
+          artists: [{ id: artistMbid, artistname: "Aurral Artist" }],
+          releasedate: "2026-02-03",
+          releases: [],
+        }),
+      );
+      return;
+    }
     response.writeHead(404);
     response.end(JSON.stringify({ error: "not found" }));
   });
@@ -112,6 +130,45 @@ test("Aurral writes library album state, queues missing tracks, and refuses an a
     await import("../../backend/services/providers/brainzmashProvider.ts");
   clearMetadataProviderCaches();
   downloadWorker.start = async () => {};
+  const providerGet = http.get.bind(http);
+  let musicbrainzRequests = 0;
+  const get = vi.spyOn(http, "get").mockImplementation(async (url, options) => {
+    if (!url.startsWith("https://musicbrainz.org/")) return providerGet(url, options);
+    musicbrainzRequests += 1;
+    assert.equal(new URL(url).pathname, "/ws/2/release");
+    assert.equal(options?.query?.["release-group"], incompleteAlbumMbid);
+    return {
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      data: {
+        releases: [
+          {
+            id: incompleteReleaseMbid,
+            title: "Incomplete Album",
+            status: "Official",
+            date: "2026-02-03",
+            media: [
+              {
+                position: 1,
+                format: "Digital Media",
+                "track-count": 1,
+                tracks: [
+                  {
+                    id: "incomplete-release-track",
+                    title: "Recovered Track",
+                    position: 1,
+                    length: 180000,
+                    recording: { id: incompleteTrackMbid, title: "Recovered Track" },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+  });
 
   try {
     const artist = await libraryManager.addArtist(artistMbid, "Aurral Artist");
@@ -192,6 +249,17 @@ test("Aurral writes library album state, queues missing tracks, and refuses an a
       true,
     );
     assert.equal((await libraryManager.getTracks(requireFixture(scannedAlbum.id))).length, 2);
+
+    const recovered = await libraryManager.addAlbum(
+      requireFixture(artist.id),
+      incompleteAlbumMbid,
+      "Incomplete Album",
+      {},
+    );
+    assert.equal(recovered.status, "queued");
+    assert.equal(requireFixture(recovered.jobIds).length, 1);
+    assert.equal(getJob(requireFixture(recovered.jobIds)[0]).trackMbid, incompleteTrackMbid);
+    assert.equal(musicbrainzRequests, 1);
 
     downloadTracker.clearAll();
     const partialMbid = "44444444-4444-4444-8444-444444444444";
@@ -297,6 +365,7 @@ test("Aurral writes library album state, queues missing tracks, and refuses an a
       undefined,
     );
   } finally {
+    get.mockRestore();
     downloadWorker.start = originalWorkerStart;
     dbOps.updateSettings(originalSettings);
     clearMetadataProviderCaches();

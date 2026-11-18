@@ -203,7 +203,13 @@
     "bytes": 17,
     "scans": [
       "library_albums"
-    ]
+    ],
+    "calls": {
+      "musicbrainz.org": {
+        "cold": 1,
+        "warm": 0
+      }
+    }
   },
   "discover album editions": {
     "queries": {
@@ -448,6 +454,10 @@
     "scans": [],
     "calls": {
       "brainzmash": {
+        "cold": 1,
+        "warm": 0
+      },
+      "musicbrainz.org": {
         "cold": 1,
         "warm": 0
       }

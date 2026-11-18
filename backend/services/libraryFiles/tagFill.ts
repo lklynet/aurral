@@ -54,7 +54,7 @@ const isEmpty = (value: unknown) => (Array.isArray(value) ? value.length === 0 :
 // Only an album the provider does not have is no match. Any other failure
 // reaches planTagFill, which says the provider could not be reached.
 const albumOrNone = (mbid: string) =>
-  getAlbumByMbid(mbid).catch((error) => {
+  getAlbumByMbid(mbid, { withFallbackReleases: true }).catch((error) => {
     if (isMetadataNotFoundError(error)) return null;
     throw error;
   });

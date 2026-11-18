@@ -207,7 +207,7 @@ export default new Hono<AppEnv>()
     const mbid = c.req.param("mbid");
     if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
     try {
-      const group = await getAlbumByMbid(mbid);
+      const group = await getAlbumByMbid(mbid, { withFallbackReleases: true });
       const editions = albumEditions(group);
       return c.json(
         {

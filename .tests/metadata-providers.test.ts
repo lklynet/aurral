@@ -172,6 +172,126 @@ test("stale album metadata is served while one refresh runs in the background", 
   }
 });
 
+test("an incomplete BrainzMash album uses one cached MusicBrainz release browse", async () => {
+  const previousSettings = dbOps.getSettings();
+  const albumMbid = "3281d649-f172-4c96-8c44-7c71eb050f1d";
+  const omittedReleasesAlbumMbid = "11111111-1111-4111-8111-111111111111";
+  const completeAlbumMbid = "082c6aff-a7cc-36e0-a960-35a578ecd937";
+  let brainzmashRequests = 0;
+  let musicbrainzRequests = 0;
+  const server = await createMockHttpServer((request, response) => {
+    brainzmashRequests += 1;
+    response.setHeader("content-type", "application/json");
+    response.end(
+      JSON.stringify(
+        request.url === `/album/${completeAlbumMbid}`
+          ? {
+              id: completeAlbumMbid,
+              title: "Complete Album",
+              releases: [{ id: "complete-release", tracks: [] }],
+            }
+          : request.url === `/album/${omittedReleasesAlbumMbid}`
+            ? {
+                id: omittedReleasesAlbumMbid,
+                title: "Album Without Releases",
+              }
+            : {
+                id: albumMbid,
+                title: "How to Count to Five",
+                releases: [],
+              },
+      ),
+    );
+  });
+  const providerGet = http.get.bind(http);
+  const get = vi.spyOn(http, "get").mockImplementation(async (url, options) => {
+    if (!url.startsWith("https://musicbrainz.org/")) return providerGet(url, options);
+    musicbrainzRequests += 1;
+    assert.equal(new URL(url).pathname, "/ws/2/release");
+    assert.ok(
+      [albumMbid, omittedReleasesAlbumMbid].includes(
+        String(options?.query?.["release-group"] || ""),
+      ),
+    );
+    return {
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      data: {
+        releases: [
+          {
+            id: "3de8a297-70aa-422e-a7d7-4251a3939e22",
+            title: "How to Count to Five",
+            status: "Official",
+            date: "2024-03-01",
+            country: "XW",
+            media: [
+              {
+                position: 1,
+                format: "Digital Media",
+                "track-count": 1,
+                tracks: [
+                  {
+                    id: "release-track-1",
+                    title: "One",
+                    position: 1,
+                    length: 123000,
+                    recording: { id: "recording-1", title: "One" },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+  });
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          baseUrl: server.url,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+    const startedAt = Date.now();
+
+    const metadataOnly = await getAlbumByMbid(albumMbid);
+    const first = await getAlbumByMbid(albumMbid, { withFallbackReleases: true });
+    const second = await getAlbumByMbid(albumMbid, { withFallbackReleases: true });
+    const omitted = await getAlbumByMbid(omittedReleasesAlbumMbid, {
+      withFallbackReleases: true,
+    });
+    const complete = await getAlbumByMbid(completeAlbumMbid);
+
+    assert.deepEqual(metadataOnly.releases, []);
+    assert.equal(first.releases[0]?.tracks[0]?.recordingId, "recording-1");
+    assert.equal(second.releases[0]?.tracks[0]?.title, "One");
+    assert.equal(omitted.releases[0]?.tracks[0]?.recordingId, "recording-1");
+    assert.equal(complete.releases[0]?.id, "complete-release");
+    assert.equal(brainzmashRequests, 3);
+    assert.equal(musicbrainzRequests, 2);
+    const stored = db
+      .prepare<[string], { fresh_until: number }>(
+        "SELECT fresh_until FROM metadata_response_cache WHERE cache_key = ?",
+      )
+      .get(`${server.url}/album/${albumMbid}:{}`);
+    assert.ok(stored);
+    assert.ok(stored.fresh_until >= startedAt + 60 * 60 * 1000);
+    assert.ok(stored.fresh_until < startedAt + 61 * 60 * 1000);
+  } finally {
+    get.mockRestore();
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
 test("BrainzMash data Aurral can't read is never served, from the provider or the cache", async () => {
   const previousSettings = dbOps.getSettings();
   let requests = 0;

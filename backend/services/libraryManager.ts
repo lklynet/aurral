@@ -1034,7 +1034,9 @@ export class LibraryManager {
   }
 
   async _releaseTracks(releaseGroupMbid: string, edition: string | null | undefined) {
-    const album = await metadataLookups.add(() => getMetadataAlbumByMbid(releaseGroupMbid));
+    const album = await metadataLookups.add(() =>
+      getMetadataAlbumByMbid(releaseGroupMbid, { withFallbackReleases: true }),
+    );
     const release = selectAlbumRelease(album, { edition });
     return (Array.isArray(release?.tracks) ? release.tracks : [])
       .map((track) => ({
@@ -1812,7 +1814,9 @@ export class LibraryManager {
     }
     let group;
     try {
-      group = await metadataLookups.add(() => getMetadataAlbumByMbid(album.releaseGroupMbid!));
+      group = await metadataLookups.add(() =>
+        getMetadataAlbumByMbid(album.releaseGroupMbid!, { withFallbackReleases: true }),
+      );
     } catch {
       return {
         error: "Album metadata is unavailable; try again",
@@ -1997,7 +2001,9 @@ export class LibraryManager {
 
     let metadata;
     try {
-      metadata = await metadataLookups.add(() => getMetadataAlbumByMbid(normalizedAlbumMbid));
+      metadata = await metadataLookups.add(() =>
+        getMetadataAlbumByMbid(normalizedAlbumMbid, { withFallbackReleases: true }),
+      );
     } catch (error) {
       const failure = asAppError(error);
       logger.warn("library", "Aurral album metadata lookup failed", {
