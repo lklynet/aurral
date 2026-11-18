@@ -1,4 +1,5 @@
 import { createPlayTracker } from "./playTracker.ts";
+import { API_BASE_URL } from "./api/core.ts";
 
 type AudioSnapshot = {
   isLoading: boolean;
@@ -57,7 +58,10 @@ export function levelingGain(lufs: number) {
 
 function isOwnStream(src: string) {
   try {
-    return new URL(src, window.location.href).origin === window.location.origin;
+    return (
+      new URL(src, window.location.href).origin ===
+      new URL(API_BASE_URL, window.location.href).origin
+    );
   } catch {
     return false;
   }

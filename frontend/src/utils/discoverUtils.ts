@@ -10,6 +10,7 @@ import {
 import { isRecord } from "../../../lib/isRecord.ts";
 import { shuffle } from "../../../lib/shuffle.ts";
 import { unknownList } from "../../../lib/unknownList.ts";
+import { serverScoped } from "./server.ts";
 
 export type DiscoverResponse = InferResponseType<typeof discoveryClient.$get, 200>;
 export type DiscoverArtist = DiscoverResponse["recommendations"][number];
@@ -98,16 +99,16 @@ export const artistMatchesGenre = (
 };
 
 const getDiscoverLayoutStorageKey = (userId: DiscoverUserId) =>
-  userId ? `${DISCOVER_LAYOUT_KEY}:${userId}` : DISCOVER_LAYOUT_KEY;
+  serverScoped(userId ? `${DISCOVER_LAYOUT_KEY}:${userId}` : DISCOVER_LAYOUT_KEY);
 
 const getDiscoveryCacheStorageKey = (userId: DiscoverUserId) =>
-  userId ? `${DISCOVERY_CACHE_KEY}:${userId}` : DISCOVERY_CACHE_KEY;
+  serverScoped(userId ? `${DISCOVERY_CACHE_KEY}:${userId}` : DISCOVERY_CACHE_KEY);
 
 const getDiscoverRecentlyAddedStorageKey = (userId: DiscoverUserId) =>
-  userId ? `${DISCOVER_RECENTLY_ADDED_KEY}:${userId}` : DISCOVER_RECENTLY_ADDED_KEY;
+  serverScoped(userId ? `${DISCOVER_RECENTLY_ADDED_KEY}:${userId}` : DISCOVER_RECENTLY_ADDED_KEY);
 
 const getDiscoverRecentReleasesStorageKey = (userId: DiscoverUserId) =>
-  userId ? `${DISCOVER_RECENT_RELEASES_KEY}:${userId}` : DISCOVER_RECENT_RELEASES_KEY;
+  serverScoped(userId ? `${DISCOVER_RECENT_RELEASES_KEY}:${userId}` : DISCOVER_RECENT_RELEASES_KEY);
 
 const markStoredAt = (key: string) => {
   try {

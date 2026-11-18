@@ -9,6 +9,7 @@ import { useToast } from "../../../contexts/ToastContext";
 import { queryKeys } from "../../../queryClient.ts";
 import { SettingsGroup, SettingsNote, SettingsRow } from "../SettingsLayout";
 import { readApiError } from "../../../utils/api/errors.ts";
+import { continueOnServer, HOSTED } from "../../../utils/server.ts";
 
 type Identity = InferResponseType<typeof usersClient.me.identities.$get, 200>["identities"][number];
 type StartLink = () => Promise<{ authUrl: string }>;
@@ -66,6 +67,7 @@ export function ConnectedAccountsSection() {
   };
 
   const connectProvider = async (startLink: StartLink, label: string) => {
+    if (HOSTED) return continueOnServer();
     if (!(await promptReauth())) return;
     try {
       const result = await startLink();

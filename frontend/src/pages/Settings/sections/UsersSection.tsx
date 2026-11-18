@@ -1,7 +1,6 @@
 import PillToggle from "../../../components/PillToggle";
 import { DotLoader } from "../../../components/DotLoader";
 import { useAuth } from "../../../contexts/AuthContext";
-import { getAppBasePath } from "../../../utils/basePath.ts";
 import { SettingsInput } from "../components/SettingsField";
 import { useSettingsUsers } from "../hooks/useSettingsUsers";
 import { useServerSettings } from "../SettingsProviders";
@@ -18,6 +17,7 @@ import {
 } from "../SettingsLayout";
 import { GRANULAR_PERMISSIONS } from "../constants";
 import { EditUserPage, NewUserPage, PermissionsGroup, describeUser } from "./users/UserPages";
+import { serverUrl } from "../../../utils/server.ts";
 
 type GoogleSettings = NonNullable<SettingsState["integrations"]["google"]>;
 type AutoLoginStatus = NonNullable<
@@ -65,10 +65,7 @@ function useSaveSecurity() {
   };
 }
 
-function googleCallbackUrl() {
-  const basePath = getAppBasePath();
-  return `${window.location.origin}${basePath === "/" ? "" : basePath.replace(/\/$/, "")}/sso/google/callback`;
-}
+const googleCallbackUrl = () => serverUrl("/sso/google/callback");
 
 function GooglePage() {
   const { settings, updateSettings } = useServerSettings();

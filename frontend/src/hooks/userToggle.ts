@@ -1,11 +1,12 @@
 import { useSyncExternalStore } from "react";
 import { useOptionalAuth } from "../contexts/AuthContext";
+import { serverScoped } from "../utils/server.ts";
 
 type UserId = number | null | undefined;
 
 export function userToggle(name: string, fallback: boolean) {
   const event = `aurral:${name}`;
-  const storageKey = (userId: UserId) => `${name}:${userId ?? "anonymous"}`;
+  const storageKey = (userId: UserId) => serverScoped(`${name}:${userId ?? "anonymous"}`);
 
   const read = (userId: UserId) => {
     try {

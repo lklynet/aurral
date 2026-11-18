@@ -30,6 +30,7 @@ import { apiFetchWithin, type ApiError } from "../../../utils/api/core.ts";
 import { getApiErrorBody, getApiErrorMessage } from "../../../utils/api/errors.ts";
 import { isRecord } from "../../../../../lib/isRecord.ts";
 import { reserveUniqueName, normalizeNameKey } from "../../../utils/staticPlaylists.ts";
+import { continueOnServer, HOSTED } from "../../../utils/server.ts";
 
 declare global {
   interface Window {
@@ -1084,7 +1085,7 @@ export function PlaylistImportModal({
             <button
               type="button"
               className="btn btn-primary btn-sm"
-              onClick={() => connectSpotify.mutate()}
+              onClick={() => (HOSTED ? continueOnServer() : connectSpotify.mutate())}
               disabled={spotifyLoading || importing}
             >
               {spotifyLoading ? <DotLoader size="sm" label={null} /> : null}

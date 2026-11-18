@@ -38,6 +38,7 @@ import {
 import { logger } from "../services/logger.ts";
 import { consumePairingCode, createPairingCode } from "../services/pairingCodes.ts";
 import { websocketService } from "../services/websocketService.ts";
+import { appOrigin } from "../middleware/security.ts";
 import { isErrorStatus } from "./shared/errorStatus.ts";
 import { asAppError, type AppError } from "../../lib/errors.ts";
 
@@ -148,7 +149,7 @@ export default new Hono<AppEnv>()
       lastUsedAt: row.last_used_at ?? row.created_at,
       current: row.id === current,
     }));
-    return c.json({ sessions }, 200);
+    return c.json({ sessions, appOrigin }, 200);
   })
   .delete(
     "/sessions/:id",

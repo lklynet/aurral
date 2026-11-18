@@ -2806,6 +2806,29 @@ textarea:disabled {
   margin-left: auto;
 }
 
+.app-profile-menu__separator {
+  height: 1px;
+  margin: 0.25rem 0.5rem;
+  background: var(--aurral-border);
+}
+
+.server-menu-item {
+  display: grid;
+  min-width: 0;
+}
+
+.server-menu-item__host {
+  overflow: hidden;
+  color: var(--aurral-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-menu-item__user {
+  color: var(--aurral-text-muted);
+  font-size: var(--aurral-font-xs);
+}
+
 .app-profile-menu__item-external {
   width: 0.875rem;
   height: 0.875rem;
@@ -12090,6 +12113,12 @@ button.playlist-detail__cover {
   height: 1rem;
 }
 
+.app-mobile-menu__item-icon {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
 .app-mobile-nav__item svg {
   width: 1.375rem;
   height: 1.375rem;
@@ -15154,6 +15183,57 @@ button.section-show-all {
   min-height: 2.75rem;
 }
 
+.hosted-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--aurral-text-muted);
+  font-size: var(--aurral-font-sm);
+  line-height: 1.45;
+  list-style: disc;
+}
+
+.hosted-list--steps {
+  color: var(--aurral-text);
+  font-size: var(--aurral-font-base);
+  list-style: decimal;
+}
+
+.login-error .hosted-list {
+  margin-top: 0.5rem;
+  color: inherit;
+}
+
+.hosted-address {
+  margin: 0;
+  color: var(--aurral-text);
+  font-family: var(--font-mono);
+  font-size: var(--aurral-font-base);
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.hosted-actions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.login-hosted {
+  margin-top: 1.5rem;
+}
+
+.devices-code {
+  color: var(--aurral-text);
+  font-family: var(--font-mono);
+}
+
+.hosted-link {
+  color: var(--aurral-text);
+  text-decoration: underline;
+  text-underline-offset: 0.125rem;
+}
+
 .sso-complete-page {
   align-items: center;
   padding-block: 2rem;
@@ -15297,7 +15377,8 @@ button.section-show-all {
     margin: 0 0 1.25rem;
   }
 
-  .login-title {
+  .login-title,
+  .hosted-address {
     text-align: left;
   }
 

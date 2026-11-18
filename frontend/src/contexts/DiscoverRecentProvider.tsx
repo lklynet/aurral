@@ -9,8 +9,9 @@ import {
 } from "../utils/discoverRecentNavigation";
 import { isRecord } from "../../../lib/isRecord.ts";
 import { unknownList } from "../../../lib/unknownList.ts";
+import { serverScoped } from "../utils/server.ts";
 
-const DISCOVER_RECENT_PAGES_KEY = "aurral.discover.recentPages";
+const DISCOVER_RECENT_PAGES_KEY = serverScoped("aurral.discover.recentPages");
 const DISCOVER_FLOW_ACTIVE_KEY = "aurral.discover.flowActive";
 const ALBUM_FROM_DISCOVER_KEY = "aurral.discover.albumFromDiscover";
 const DISCOVER_RECENT_PAGES_LIMIT = 5;

@@ -39,6 +39,8 @@ import { useMediaQuery } from "../hooks/useMediaQuery.ts";
 import { useSectionNav } from "../navigation/useSectionNav.ts";
 import { isLibrarySectionPath, useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
 import { isRecord } from "../../../lib/isRecord.ts";
+import { serverMenuItems } from "./serverMenuItems";
+import { HOSTED } from "../utils/server.ts";
 
 const SIDEBAR_THRESHOLD = 100;
 const SIDEBAR_MIN = 56;
@@ -641,6 +643,7 @@ function Layout({ children, headerActions }: LayoutProps) {
             >
               <span className="app-mobile-menu__handle" aria-hidden="true" />
               <nav className="app-mobile-menu__nav">
+                {HOSTED && serverMenuItems("app-mobile-menu__item", "app-mobile-menu__item-icon")}
                 {mobileOverflowItems.map((item, index) => {
                   const Icon = item.icon;
                   const active = isActive(item.path);

@@ -3,25 +3,13 @@ import type {
   WebSocketServerMessage,
 } from "../../../backend/services/websocketService.ts";
 import { isRecord } from "../../../lib/isRecord.ts";
-import { getRequestToken } from "./api/core.ts";
+import { API_BASE_URL, getRequestToken } from "./api/core.ts";
 
 function getWsUrl() {
+  const url = new URL("/ws", new URL(API_BASE_URL, window.location.href));
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   const token = getRequestToken();
-  const apiUrl = import.meta.env.VITE_API_URL;
-  if (apiUrl && (apiUrl.startsWith("http://") || apiUrl.startsWith("https://"))) {
-    const url = new URL(apiUrl);
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-    url.pathname = "/ws";
-    if (token) {
-      url.searchParams.set("token", token);
-    }
-    return url.toString();
-  }
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const url = new URL(`${protocol}//${window.location.host}/ws`);
-  if (token) {
-    url.searchParams.set("token", token);
-  }
+  if (token) url.searchParams.set("token", token);
   return url.toString();
 }
 

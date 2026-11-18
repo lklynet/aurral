@@ -38,6 +38,7 @@ import { routeModules } from "./navigation/routeModules.ts";
 import { LegacyAlbumRedirect } from "./navigation/albumRoute.tsx";
 import { getBootstrapPollIntervalMs } from "./utils/requestScheduling.ts";
 import { useLanternPreview, useWrappedSeason } from "./hooks/useWrapped.ts";
+import { HOSTED } from "./utils/server.ts";
 
 function ActivityRootRedirect() {
   return <Navigate to={buildActivityPath(DEFAULT_ACTIVITY_VIEW)} replace />;
@@ -400,7 +401,7 @@ function App() {
             <ShareProvider>
               <RouterProvider router={appRouter} />
               <ThemeSync />
-              <ReloadPrompt />
+              {!HOSTED && <ReloadPrompt />}
             </ShareProvider>
           </AudioQueueProvider>
         </AuthProvider>

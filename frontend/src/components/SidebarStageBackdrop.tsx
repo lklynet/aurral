@@ -1,10 +1,11 @@
 import { useId } from "react";
+import { serverScoped } from "../utils/server.ts";
 
 const STAGE_BACKDROP_VIEW_BOX = "0 0 8192 96";
 const SIDEBAR_STAGE_BACKDROP_EVENT = "aurral:sidebar-stage-backdrop";
 
 const getSidebarStageBackdropStorageKey = (userId: number | null | undefined) =>
-  `sidebar-stage-backdrop:${userId ?? "anonymous"}`;
+  serverScoped(`sidebar-stage-backdrop:${userId ?? "anonymous"}`);
 
 export function getSidebarStageBackdropEnabled(userId: number | null | undefined) {
   if (typeof window === "undefined") return true;

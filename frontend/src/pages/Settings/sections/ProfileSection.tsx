@@ -26,6 +26,7 @@ import {
   SettingsRow,
 } from "../SettingsLayout";
 import { readApiError } from "../../../utils/api/errors.ts";
+import { continueOnServer, HOSTED } from "../../../utils/server.ts";
 
 const CONNECTED_LABELS: Partial<Record<string, string>> = {
   google: "Google",
@@ -172,10 +173,21 @@ function PasswordGroup() {
         </SettingsRow>
         {needsSignIn ? (
           <SettingsNote tone="warning">
-            Sign in again to set a password.{" "}
-            <button type="button" className="settings-link" onClick={() => logout()}>
-              Sign in again
-            </button>
+            {HOSTED ? (
+              <>
+                Set a password on your server&apos;s own page.{" "}
+                <button type="button" className="settings-link" onClick={continueOnServer}>
+                  Open it
+                </button>
+              </>
+            ) : (
+              <>
+                Sign in again to set a password.{" "}
+                <button type="button" className="settings-link" onClick={() => logout()}>
+                  Sign in again
+                </button>
+              </>
+            )}
           </SettingsNote>
         ) : null}
         <SettingsActions>

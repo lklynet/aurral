@@ -6,6 +6,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { useWrappedSeason } from "../hooks/useWrapped.ts";
 import { useStorageHealth } from "../hooks/useStorageHealth";
 import TooltipButton from "./TooltipButton";
+import { serverMenuItems } from "./serverMenuItems";
+import { HOSTED } from "../utils/server.ts";
 
 function UserProfileMenu() {
   const location = useLocation();
@@ -63,6 +65,18 @@ function UserProfileMenu() {
       {menuOpen && (
         <div className="app-profile-menu__dropdown" role="menu">
           <ul className="app-profile-menu__list">
+            {HOSTED && (
+              <>
+                {serverMenuItems("app-profile-menu__item", "app-profile-menu__item-icon").map(
+                  (item) => (
+                    <li role="none" key={item.key} onClick={closeMenu}>
+                      {item}
+                    </li>
+                  ),
+                )}
+                <li role="separator" className="app-profile-menu__separator" />
+              </>
+            )}
             {wrappedSeason && (
               <li role="none">
                 <Link

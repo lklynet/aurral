@@ -1,6 +1,7 @@
 # Generated dependencies and builds
 node_modules/
 dist/
+dist-hosted/
 .astro/
 
 # Local runtime state and secrets
