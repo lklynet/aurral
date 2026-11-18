@@ -181,19 +181,22 @@ export async function listenbrainzRequest(
     timeoutMs = LISTENBRAINZ_TIMEOUT_MS,
     data,
     priority = 0,
+    cache = true,
   }: {
     token?: string | null;
     baseUrl?: string;
     timeoutMs?: number;
     data?: unknown;
     priority?: number;
+    cache?: boolean;
   } = {},
 ): Promise<unknown> {
   const root = normalizeListenbrainzBaseUrl(baseUrl);
   const isAuthenticated = Boolean(String(token || "").trim());
-  const cacheKey = isAuthenticated
-    ? null
-    : `lb:${root}:${path}:${JSON.stringify(params)}${data ? `:${JSON.stringify(data)}` : ""}`;
+  const cacheKey =
+    isAuthenticated || !cache
+      ? null
+      : `lb:${root}:${path}:${JSON.stringify(params)}${data ? `:${JSON.stringify(data)}` : ""}`;
   if (cacheKey) {
     const cached = listenbrainzCache.get(cacheKey);
     if (cached !== undefined) return cached;
