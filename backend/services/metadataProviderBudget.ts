@@ -237,6 +237,7 @@ export function recordMetadataCall(
 export function listMetadataCalls(since: number) {
   const hour = since - (since % HOUR_MS);
   return {
+    since: new Date(hour).toISOString(),
     calls: sumCalls.all(hour),
     hours: sumCallsByHour.all(hour).map((row) => ({
       hour: new Date(row.hour).toISOString(),

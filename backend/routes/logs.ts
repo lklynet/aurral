@@ -111,8 +111,7 @@ export default new Hono<AppEnv>()
     );
   })
   .get("/metadata-calls", noCache, validate("query", v.object({ hours })), (c) => {
-    const start = since(c.req.valid("query").hours);
-    return c.json({ since: new Date(start).toISOString(), ...listMetadataCalls(start) }, 200);
+    return c.json(listMetadataCalls(since(c.req.valid("query").hours)), 200);
   })
   .get(
     "/export",
