@@ -7,6 +7,7 @@ import { useToast } from "../contexts/ToastContext";
 import { wrappedClient } from "../utils/api/clients/wrapped.ts";
 import { wrappedCovers, wrappedImageUrl } from "../utils/wrappedShare.ts";
 import { useWrapped, wrappedTimeZone } from "../hooks/useWrapped.ts";
+import { serverScoped } from "../utils/server.ts";
 
 const readSessionFlag = (key: string) => {
   try {
@@ -31,7 +32,7 @@ export default function WrappedAnnouncement() {
   const query = useWrapped();
   const year = query.data?.year;
   const summary = query.data?.summary;
-  const sessionKey = `aurral-wrapped-hidden:${user?.id}:${year}`;
+  const sessionKey = serverScoped(`aurral-wrapped-hidden:${user?.id}:${year}`);
   const onWrapped = location.pathname === "/wrapped";
   const from = useRef("");
   useEffect(() => {

@@ -15191,6 +15191,7 @@ button.section-show-all {
   color: var(--aurral-text-muted);
   font-size: var(--aurral-font-sm);
   line-height: 1.45;
+  list-style: disc;
 }
 
 .hosted-list--steps {
@@ -15202,7 +15203,6 @@ button.section-show-all {
 .login-error .hosted-list {
   margin-top: 0.5rem;
   color: inherit;
-  list-style: disc;
 }
 
 .hosted-address {
@@ -15377,7 +15377,8 @@ button.section-show-all {
     margin: 0 0 1.25rem;
   }
 
-  .login-title {
+  .login-title,
+  .hosted-address {
     text-align: left;
   }
 

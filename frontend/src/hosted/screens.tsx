@@ -143,6 +143,7 @@ function Pair({ code, address }: { code: string; address: string }) {
       credentials: "omit",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code }),
+      signal: AbortSignal.timeout(15_000),
     }).catch(() => null);
     const body: unknown = response?.ok ? await response.json().catch(() => null) : null;
     const user = isRecord(body) && isRecord(body.user) ? body.user : null;
