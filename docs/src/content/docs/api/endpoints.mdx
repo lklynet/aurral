@@ -463,13 +463,14 @@ Every route in this section requires an administrator.
 
 Every route in this section requires an administrator, except `POST /api/logs/client`.
 
-| Method | Path                 | Purpose                                                                                                                                                                         |
-| ------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`  | `/api/logs`          | Log entries, newest first. Optional `level` (the lowest level), `cat`, `q` text, `fp`, `req`, `job`, `hours`, `limit` up to 1000, and `before` or `after` an entry `id` to page |
-| `GET`  | `/api/logs/problems` | Warnings and errors from the last `hours` (default 24), grouped by fingerprint with a count and the latest entry                                                                |
-| `GET`  | `/api/logs/export`   | A text file of the last `hours` (default 24) at `level` and above (default `info`), with a header that names the version and enabled integrations                               |
-| `PUT`  | `/api/logs/debug`    | Turn debug logging on or off with `{ "enabled": true }`                                                                                                                         |
-| `POST` | `/api/logs/client`   | Report a browser error. Any signed-in user                                                                                                                                      |
+| Method | Path                       | Purpose                                                                                                                                                                                                                                                                            |
+| ------ | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/logs`                | Log entries, newest first. Optional `level` (the lowest level), `cat`, `q` text, `fp`, `req`, `job`, `hours`, `limit` up to 1000, and `before` or `after` an entry `id` to page                                                                                                    |
+| `GET`  | `/api/logs/problems`       | Warnings and errors from the last `hours` (default 24), grouped by fingerprint with a count and the latest entry                                                                                                                                                                   |
+| `GET`  | `/api/logs/export`         | A text file of the last `hours` (default 24) at `level` and above (default `info`), with a header that names the version and enabled integrations                                                                                                                                  |
+| `GET`  | `/api/logs/metadata-calls` | BrainzMash requests Aurral sent, counted per clock hour for the hours that overlap the last `hours` (default 24), by server, endpoint, the page or background job that sent them, and status (an error code such as `ECONNREFUSED` when no response came back), with hourly totals |
+| `PUT`  | `/api/logs/debug`          | Turn debug logging on or off with `{ "enabled": true }`                                                                                                                                                                                                                            |
+| `POST` | `/api/logs/client`         | Report a browser error. Any signed-in user                                                                                                                                                                                                                                         |
 
 ## Scrobbling and play events
 

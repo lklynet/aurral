@@ -325,10 +325,13 @@ export function createJobWorker<Payload extends object>(
         }
         await reloadChangedCaches();
         const claimed = job.withPayload(parsed.output);
-        const label = [`${name}:${job.id}`, jobKind(claimed.payload)].filter(Boolean).join(" ");
+        const kind = jobKind(claimed.payload);
+        const label = [`${name}:${job.id}`, kind].filter(Boolean).join(" ");
+        const work = kind && kind !== name ? `${name} ${kind}` : name;
         await trackWork(
           () => label,
           () => runJob(claimed),
+          () => work,
         );
       }
     } catch (error) {

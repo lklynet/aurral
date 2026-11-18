@@ -1,5 +1,5 @@
 import { db } from "../config/db-sqlite.ts";
-import type { MetadataProviderBudgetRow } from "../db/rows.ts";
+import type { MetadataCallsRow, MetadataProviderBudgetRow } from "../db/rows.ts";
 import { randomUUID } from "node:crypto";
 
 db.exec(`
@@ -9,6 +9,16 @@ db.exec(`
     forbidden_until INTEGER NOT NULL DEFAULT 0,
     rate_limited_until INTEGER NOT NULL DEFAULT 0
   );
+
+  CREATE TABLE IF NOT EXISTS metadata_calls (
+    hour INTEGER NOT NULL,
+    server TEXT NOT NULL,
+    endpoint TEXT NOT NULL,
+    work TEXT NOT NULL,
+    status TEXT NOT NULL,
+    count INTEGER NOT NULL,
+    PRIMARY KEY (hour, server, endpoint, work, status)
+  ) WITHOUT ROWID;
 
   CREATE TABLE IF NOT EXISTS metadata_request_state (
     cache_key TEXT PRIMARY KEY,
@@ -190,4 +200,48 @@ export function setMetadataProviderCooldown(baseUrl: string, status: number, unt
     INSERT INTO metadata_provider_budget(base_url, ${column}) VALUES (?, ?)
     ON CONFLICT(base_url) DO UPDATE SET ${column} = MAX(${column}, excluded.${column})
   `).run(baseUrl, until);
+}
+
+const HOUR_MS = 60 * 60 * 1000;
+const CALL_RETENTION_MS = 30 * 24 * HOUR_MS;
+let nextCallCleanupAt = 0;
+
+const countCall = db.prepare<[number, string, string, string, string]>(`
+  INSERT INTO metadata_calls(hour, server, endpoint, work, status, count)
+  VALUES (?, ?, ?, ?, ?, 1)
+  ON CONFLICT(hour, server, endpoint, work, status) DO UPDATE SET count = count + 1
+`);
+const cleanOldCalls = db.prepare<[number]>("DELETE FROM metadata_calls WHERE hour < ?");
+const sumCalls = db.prepare<
+  [number],
+  Pick<MetadataCallsRow, "server" | "endpoint" | "work" | "status" | "count">
+>(`
+  SELECT server, endpoint, work, status, SUM(count) AS count FROM metadata_calls
+  WHERE hour >= ? GROUP BY server, endpoint, work, status ORDER BY count DESC
+`);
+const sumCallsByHour = db.prepare<[number], Pick<MetadataCallsRow, "hour" | "count">>(`
+  SELECT hour, SUM(count) AS count FROM metadata_calls WHERE hour >= ? GROUP BY hour ORDER BY hour
+`);
+
+export function recordMetadataCall(
+  call: Pick<MetadataCallsRow, "server" | "endpoint" | "work" | "status">,
+  now = Date.now(),
+) {
+  if (now >= nextCallCleanupAt) {
+    nextCallCleanupAt = now + REQUEST_STATE_CLEANUP_INTERVAL_MS;
+    cleanOldCalls.run(now - CALL_RETENTION_MS);
+  }
+  countCall.run(now - (now % HOUR_MS), call.server, call.endpoint, call.work, call.status);
+}
+
+export function listMetadataCalls(since: number) {
+  const hour = since - (since % HOUR_MS);
+  return {
+    since: new Date(hour).toISOString(),
+    calls: sumCalls.all(hour),
+    hours: sumCallsByHour.all(hour).map((row) => ({
+      hour: new Date(row.hour).toISOString(),
+      count: row.count,
+    })),
+  };
 }

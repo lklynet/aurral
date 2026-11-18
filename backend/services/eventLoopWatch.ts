@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { logger } from "./logger.ts";
 
 const CHECK_MS = 500;
@@ -9,12 +10,19 @@ type Work = { describe: () => string };
 const running = new Set<Work>();
 const finishedDuringStall: Work[] = [];
 let lastCheck: number | null = null;
+const currentWork = new AsyncLocalStorage<() => string>();
 
-export async function trackWork<T>(describe: () => string, run: () => Promise<T>) {
+export const describeCurrentWork = () => currentWork.getStore()?.() ?? null;
+
+export async function trackWork<T>(
+  describe: () => string,
+  run: () => Promise<T>,
+  kind: () => string = describe,
+) {
   const entry = { describe };
   running.add(entry);
   try {
-    return await run();
+    return await currentWork.run(kind, run);
   } finally {
     running.delete(entry);
     if (lastCheck !== null && performance.now() - lastCheck >= CHECK_MS + STALL_MS) {

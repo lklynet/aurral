@@ -44,6 +44,7 @@ import { getDownloadClient } from "../download/downloadClientSettings.ts";
 import { recordTrackJobFailed } from "../aurralHistoryService.ts";
 import { recordRequestGroupDownloaded } from "../aurralHistoryRequests.ts";
 import { finalizeQualityUpgradeFailure } from "../qualityUpgradeOutcome.ts";
+import { trackWork } from "../eventLoopWatch.ts";
 
 const DEFAULT_CONCURRENCY = 3;
 const SEARCH_SLOT_RECHECK_MS = 2000;
@@ -518,7 +519,11 @@ export class DownloadWorker {
           startedAt: Date.now(),
         };
         const jobRunGeneration = this.runGeneration;
-        const jobPromise = this.processJob(job, jobRunGeneration)
+        const jobPromise = trackWork(
+          () => `download:${job.id}`,
+          () => this.processJob(job, jobRunGeneration),
+          () => "download",
+        )
           .catch(async (error) => {
             if (
               jobRunGeneration !== this.runGeneration ||

@@ -7,6 +7,7 @@ import { rateLimit } from "../middleware/rateLimit.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { validate } from "../middleware/validate.ts";
 import { LOG_LEVELS, recordLog } from "../services/logger.ts";
+import { listMetadataCalls } from "../services/metadataProviderBudget.ts";
 import {
   exportLogs,
   getFreshSince,
@@ -108,6 +109,9 @@ export default new Hono<AppEnv>()
       },
       200,
     );
+  })
+  .get("/metadata-calls", noCache, validate("query", v.object({ hours })), (c) => {
+    return c.json(listMetadataCalls(since(c.req.valid("query").hours)), 200);
   })
   .get(
     "/export",
