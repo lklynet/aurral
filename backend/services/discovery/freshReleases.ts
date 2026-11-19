@@ -30,7 +30,11 @@ const slim = (release: ListenbrainzFreshRelease) => {
   const type = release.release_group_primary_type || "";
   const secondaryType = release.release_group_secondary_type?.trim();
   const artistMbids = (release.artist_mbids || []).filter(Boolean);
-  return releaseGroupMbid && title && release.release_date && FRESH_RELEASE_TYPES.has(type)
+  return releaseGroupMbid &&
+    title &&
+    release.release_date &&
+    artistMbids.length > 0 &&
+    FRESH_RELEASE_TYPES.has(type)
     ? [
         {
           releaseGroupMbid,
@@ -52,7 +56,7 @@ export async function fetchFreshReleases(days: number, { timeoutMs = 30_000 } = 
   const data = await listenbrainzRequest(
     "/1/explore/fresh-releases/",
     { days, past: "true", future: "true" },
-    { timeoutMs },
+    { timeoutMs, cache: false },
   );
   return (v.parse(freshReleasesSchema, data).payload?.releases ?? []).flatMap(slim);
 }

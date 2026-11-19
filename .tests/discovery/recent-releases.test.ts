@@ -449,8 +449,11 @@ test("a release that leaves the ListenBrainz feed leaves the calendar, and a fai
     };
     await assert.rejects(refreshReleaseMetadata());
     later(7);
-    answer = () => feedOf([]);
+    answer = () => feedOf([freshRelease([], "Nobody's Album", "2030-04-28")]);
     await assert.rejects(refreshReleaseMetadata(), /no fresh releases/);
+    assert.deepEqual(await listed(), ["Kept"]);
+    answer = () => feedOf([kept]);
+    await refreshReleaseMetadata();
     assert.deepEqual(await listed(), ["Kept"]);
     assert.equal(
       db

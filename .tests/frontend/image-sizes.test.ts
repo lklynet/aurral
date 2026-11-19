@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
-import { imageSizes, resizedImageWidth } from "../../lib/imageSizes.ts";
+import { imageSizes, originalImage, resizedImageWidth } from "../../lib/imageSizes.ts";
 
 const urlsByWidth = (url: string) =>
   Object.fromEntries(imageSizes(url).map((size) => [size.width, size.url]));
@@ -52,6 +52,14 @@ test("artwork from fanart, Deezer, the Lidarr image cache, BrainzMash artist pho
     [],
   );
   assert.deepEqual(imageSizes("https://imagecache.lidarr.audio/v1/caa/r/1.jpg"), []);
+  assert.equal(
+    originalImage("https://imagecache.lidarr.audio/v1/caa/r/1-500.jpg"),
+    "https://imagecache.lidarr.audio/v1/caa/r/1.jpg",
+  );
+  assert.equal(
+    originalImage("https://assets.fanart.tv/fanart/plaid-4fe86e55a9e8e.jpg"),
+    "https://assets.fanart.tv/fanart/plaid-4fe86e55a9e8e.jpg",
+  );
   assert.deepEqual(
     imageSizes("https://tadb.brainzmash.cc/deezer/images/artist/0bd2c0/500x500-000000-80-0-0.jpg"),
     [],
