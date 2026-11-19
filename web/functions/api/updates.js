@@ -10,6 +10,7 @@ const REPOSITORY = "lklynet/aurral";
 const FEED_TTL_S = 60 * 60;
 const FEED_RETRY_S = 10 * 60;
 const NIGHTLY_COMMITS = 50;
+const MAX_CHECK_HOURS = 7 * 24;
 const EMPTY_FEED = JSON.stringify({ stable: null, nightly: null });
 
 const schemaReady = new WeakMap();
@@ -110,18 +111,19 @@ async function currentFeed(db, now, token) {
   return row?.payload ?? null;
 }
 
-function countCheck(db, now, version) {
+function countCheck(db, now, version, hours) {
   const channel = releaseChannel(version);
   if (!channel) return null;
   return db
     .prepare(
-      `INSERT INTO update_checks (hour, channel, version, checks) VALUES (?, ?, ?, 1)
-       ON CONFLICT(hour, channel, version) DO UPDATE SET checks = checks + 1`,
+      `INSERT INTO update_checks (hour, channel, version, checks) VALUES (?, ?, ?, ?)
+       ON CONFLICT(hour, channel, version) DO UPDATE SET checks = checks + excluded.checks`,
     )
     .bind(
       now - (now % 3600),
       channel,
       channel === "stable" ? normalizeReleaseVersion(version) : version,
+      hours,
     )
     .run();
 }
@@ -136,10 +138,15 @@ export async function onRequestGet({ env, request }) {
   }
   await ensureSchema(db);
   const now = Math.floor(Date.now() / 1000);
-  const version = new URL(request.url).searchParams.get("version") || "";
+  const params = new URL(request.url).searchParams;
+  const version = params.get("version") || "";
+  const hours = Math.min(
+    MAX_CHECK_HOURS,
+    Math.max(1, Math.trunc(Number(params.get("every"))) || 1),
+  );
   const [payload] = await Promise.all([
     currentFeed(db, now, env.GITHUB_TOKEN),
-    countCheck(db, now, version),
+    countCheck(db, now, version, hours),
   ]);
   return new Response(payload ?? EMPTY_FEED, {
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },

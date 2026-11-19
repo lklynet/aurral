@@ -61,11 +61,13 @@ function fakeUpstream({ nightlyRun = 512 } = {}) {
   };
 }
 
-const check = async (db: ReturnType<typeof fakeD1>, version: string) =>
+const check = async (db: ReturnType<typeof fakeD1>, version: string, every = "") =>
   (
     await onRequestGet({
       env: { SHARE_DB: db },
-      request: new Request(`https://aurral.org/api/updates?version=${encodeURIComponent(version)}`),
+      request: new Request(
+        `https://aurral.org/api/updates?version=${encodeURIComponent(version)}&every=${every}`,
+      ),
     })
   ).json();
 
@@ -81,23 +83,23 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-test("each check counts once per hour, channel and version, and other builds are not counted", async (t) => {
+test("each check counts the hours until the next one, per hour, channel and version, and other builds are not counted", async (t) => {
   const db = fakeD1();
   const upstream = fakeUpstream();
   t.onTestFinished(upstream.restore);
   const hour = Date.UTC(2026, 9, 30, 14) / 1000;
 
   await check(db, "2.10.0");
-  await check(db, "2.10.0");
-  await check(db, "nightly.511+aaaaaaa");
+  await check(db, "2.10.0", "24");
+  await check(db, "nightly.511+aaaaaaa", "9999");
   await check(db, "pr.12+aaaaaaa");
   await check(db, "a1b2c3d");
   vi.setSystemTime(Date.UTC(2026, 9, 30, 15, 1));
   await check(db, "2.10.0");
 
   assert.deepEqual(counts(db), [
-    { hour, channel: "stable", version: "2.10.0", checks: 2 },
-    { hour, channel: "nightly", version: "nightly.511+aaaaaaa", checks: 1 },
+    { hour, channel: "stable", version: "2.10.0", checks: 25 },
+    { hour, channel: "nightly", version: "nightly.511+aaaaaaa", checks: 168 },
     { hour: hour + 3600, channel: "stable", version: "2.10.0", checks: 1 },
   ]);
 });

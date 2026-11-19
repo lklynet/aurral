@@ -62,13 +62,13 @@ export function getAvailableUpdate() {
   return selectAvailableUpdate(APP_VERSION, dbOps.getJSONSetting(FEED_SETTING, feedSchema));
 }
 
-export async function checkForUpdates() {
+export async function checkForUpdates(everyHours: number) {
   if (!releaseChannel(APP_VERSION) || (process.env.GITHUB_REPO || REPOSITORY) !== REPOSITORY) {
     return;
   }
   try {
     const response = await fetch(
-      `${SHARE_ORIGIN}/api/updates?version=${encodeURIComponent(APP_VERSION)}`,
+      `${SHARE_ORIGIN}/api/updates?version=${encodeURIComponent(APP_VERSION)}&every=${everyHours}`,
       { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15000) },
     );
     if (!response.ok) throw new Error(`aurral.org answered ${response.status}`);
