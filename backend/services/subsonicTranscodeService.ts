@@ -49,8 +49,10 @@ async function planAudio(filePath: string, { format, maxBitRate, timeOffset }: S
   if (format === "raw" || (!format && !maxBitRate)) return "raw";
   if (!format) {
     try {
-      const metadata = await parseFile(filePath, { skipCovers: true });
-      if (metadata.format.bitrate && maxBitRate * 1000 >= metadata.format.bitrate) return "raw";
+      const sourceBitrate =
+        (await parseFile(filePath, { skipCovers: true })).format.bitrate ||
+        (await parseFile(filePath, { skipCovers: true, duration: true })).format.bitrate;
+      if (sourceBitrate && maxBitRate * 1000 >= sourceBitrate) return "raw";
     } catch (error) {
       if (isMissing(error)) return "missing";
     }
