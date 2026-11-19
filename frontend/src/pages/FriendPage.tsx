@@ -427,7 +427,7 @@ export default function FriendPage() {
               !!friend &&
                 !!linked?.sharing &&
                 !blend &&
-                `Your Blend with ${name} fills in once you both play a few more tracks.`,
+                `Your Blend with ${name} shows up once your Library has a few more of the artists they play.`,
               !!friend && !hasTopPlays(top) && `No top plays from ${name} yet.`,
             ]}
           />

@@ -281,7 +281,7 @@ test("Blends mix two people's plays with their 3 closest listeners until either 
   assert.equal(await blendOf(lee, mia), undefined);
 });
 
-test("a friend Blend mixes your plays with a friend's ranked tracks found in your Library", async () => {
+test("a friend Blend mixes your plays with a friend's tracks, or their artists' when the track is missing", async () => {
   const { addDiscoveryFeedback } = await import("../../backend/services/discovery/feedback.ts");
   vi.spyOn(Date, "now").mockReturnValue(NOW);
   db.prepare(
@@ -301,8 +301,8 @@ test("a friend Blend mixes your plays with a friend's ranked tracks found in you
   }
   friendTracks("nova_k", [
     ...shared,
-    ...tracksOf("Nova A", 3),
-    ...tracksOf("Nova B", 3),
+    ...tracksOf("Élan", 3).slice(2),
+    ["Élan", "Not in this Library"],
     ...tracksOf("Blocked", 3),
     ["Elsewhere", "Not in this Library"],
   ]);
@@ -328,7 +328,14 @@ test("a friend Blend mixes your plays with a friend's ranked tracks found in you
         blend?.trackIds.map((id) => `${artistOf(id).split(" ")[0]}: ${blend.reasons?.get(id)}`),
       ),
     ].sort(),
-    ["Mine: From you", "Nova: From @nova_k", "Shared: You both play this"],
+    ["Mine: From you", "Shared: You both play this", "Élan: From @nova_k"],
+  );
+  assert.deepEqual(blend?.trackIds.map(artistOf).filter((name) => name === "Élan").length, 2);
+  assert.ok(
+    blend?.trackIds.includes(
+      db.prepare<[], { id: number }>("SELECT id FROM library_tracks WHERE title = 'Élan 2'").get()!
+        .id,
+    ),
   );
   assert.deepEqual(
     (await getUserMixes(userId, NOW))
