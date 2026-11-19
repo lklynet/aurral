@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import { listenbrainzRequest } from "../apiClients/index.ts";
 import { lenient } from "../integrationData.ts";
+import { VARIOUS_ARTISTS_MBID } from "../trackMatching/titleText.ts";
 
 const FRESH_RELEASES_TTL_MS = 6 * 60 * 60 * 1000;
 const FRESH_RELEASES_RETRY_MS = 15 * 60 * 1000;
@@ -31,7 +32,9 @@ const slim = (release: ListenbrainzFreshRelease) => {
   const title = release.release_name?.trim();
   const type = release.release_group_primary_type || "";
   const secondaryType = release.release_group_secondary_type?.trim();
-  const artistMbids = (release.artist_mbids || []).filter(Boolean);
+  const artistMbids = (release.artist_mbids || []).filter(
+    (mbid) => mbid && mbid !== VARIOUS_ARTISTS_MBID,
+  );
   return releaseGroupMbid &&
     title &&
     release.release_date &&

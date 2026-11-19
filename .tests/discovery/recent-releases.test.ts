@@ -7,6 +7,7 @@ import { getRecentMissingReleases } from "../../backend/services/discovery/recen
 import { refreshReleaseMetadata } from "../../backend/services/releaseMetadataSync.ts";
 import { upsertReleaseCalendarEntry } from "../../backend/services/releaseCalendarStore.ts";
 import { db } from "../../backend/config/db-sqlite.ts";
+import { VARIOUS_ARTISTS_MBID } from "../../backend/services/trackMatching/titleText.ts";
 import {
   getLibraryAlbumsByReleaseDate,
   getLibraryArtistProjection,
@@ -382,6 +383,7 @@ test("the calendar lists library artists' albums and EPs from one ListenBrainz r
   vi.setSystemTime(Date.parse("2030-04-10T12:00:00Z"));
   const first = createCalendarArtist("First Fresh Artist");
   const second = createCalendarArtist("Second Fresh Artist");
+  const various = createCalendarArtist("Various Artists", VARIOUS_ARTISTS_MBID);
   const laterMbid = randomUUID();
   const coverRelease = randomUUID();
   const requests = stubFreshReleases(() =>
@@ -393,9 +395,11 @@ test("the calendar lists library artists' albums and EPs from one ListenBrainz r
       freshRelease([first.mbid], "Greatest Hits", "2030-04-07", { secondaryType: "Compilation" }),
       freshRelease([randomUUID()], "Someone Else", "2030-04-08"),
       freshRelease([laterMbid], "Later Album", "2030-04-09"),
+      freshRelease([VARIOUS_ARTISTS_MBID], "Summer Hits", "2030-04-08"),
+      freshRelease([VARIOUS_ARTISTS_MBID], "Winter Hits", "2030-05-02"),
     ]),
   );
-  const artists = [first, second].map(({ id }) => ({ id: String(id) }));
+  const artists = [first, second, various].map(({ id }) => ({ id: String(id) }));
   let added: { id: number } | null = null;
 
   try {
@@ -427,6 +431,7 @@ test("the calendar lists library artists' albums and EPs from one ListenBrainz r
   } finally {
     removeCalendarArtist(first.id);
     removeCalendarArtist(second.id);
+    removeCalendarArtist(various.id);
     if (added) removeCalendarArtist(added.id);
   }
 });
