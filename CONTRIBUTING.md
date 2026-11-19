@@ -33,7 +33,7 @@ Aurral keeps human triage labels small:
 - `needs-triage` marks an issue that still needs maintainer review.
 - `waiting-on-user` marks an issue waiting on its author. When the author replies, automation swaps it back to `needs-triage`.
 
-Pull requests receive one automatic `size:*` label based on changed lines. Release and nightly labels are maintained by automation.
+Pull requests receive one automatic `size:*` label based on changed lines.
 
 ## Changes we can review
 

@@ -80,27 +80,3 @@ jobs:
       version: ${{ needs.publish.outputs.version }}
       channel: nightly
     secrets: inherit
-
-  status:
-    needs: publish
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          filter: tree:0
-          persist-credentials: false
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-
-      - name: Label and comment on linked issues
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NIGHTLY_VERSION: ${{ needs.publish.outputs.version }}
-        run: node scripts/release-status.ts nightly

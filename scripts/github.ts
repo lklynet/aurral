@@ -33,14 +33,3 @@ export async function github(path: string, init: RequestInit = {}) {
     return response;
   }
 }
-
-export async function graphql<T>(query: string, variables: Record<string, unknown> = {}) {
-  const response = await github("/graphql", {
-    method: "POST",
-    body: JSON.stringify({ query, variables }),
-  });
-  const result: { data: T; errors?: { message: string }[] } = await response.json();
-  if (result.errors?.length)
-    throw new Error(result.errors.map((error) => error.message).join("\n"));
-  return result.data;
-}
