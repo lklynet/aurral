@@ -537,6 +537,7 @@ export interface ReleaseFeedRow {
   release_date: string;
   release_type: string;
   fetched_at: number;
+  cover_url: string | null;
 }
 
 export interface SessionsRow {

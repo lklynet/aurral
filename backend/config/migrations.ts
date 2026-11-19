@@ -400,6 +400,18 @@ const storeReleaseFeed: Migration = (db) =>
     ) WITHOUT ROWID;
   `);
 
+const storeReleaseFeedCovers: Migration = (db) => {
+  if (
+    db.prepare("SELECT 1 FROM pragma_table_info('release_feed') WHERE name = 'cover_url'").get()
+  ) {
+    return;
+  }
+  db.exec(`
+    DELETE FROM release_feed;
+    ALTER TABLE release_feed ADD COLUMN cover_url TEXT;
+  `);
+};
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -426,6 +438,7 @@ export const migrations: Migration[] = [
   syncRestoredFileArtistTags,
   dropLastfm,
   storeReleaseFeed,
+  storeReleaseFeedCovers,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

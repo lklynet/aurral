@@ -16,6 +16,8 @@ const freshReleaseSchema = v.fallback(
     release_group_primary_type: nullableText,
     release_group_secondary_type: nullableText,
     release_name: nullableText,
+    caa_id: lenient(v.nullable(v.number())),
+    caa_release_mbid: nullableText,
   }),
   {},
 );
@@ -44,6 +46,10 @@ const slim = (release: ListenbrainzFreshRelease) => {
           artistMbids,
           artistName: release.artist_credit_name?.trim() || "Unknown Artist",
           releaseDate: release.release_date,
+          coverUrl:
+            release.caa_id && release.caa_release_mbid
+              ? `https://imagecache.lidarr.audio/v1/caa/${release.caa_release_mbid}/${release.caa_id}-500.jpg`
+              : null,
         },
       ]
     : [];
@@ -100,6 +106,7 @@ export function getFreshReleasesByArtists(artistMbids: Iterable<string | null | 
             albumName: release.title,
             title: release.title,
             releaseDate: release.releaseDate,
+            coverUrl: release.coverUrl,
             albumType: release.type,
             secondaryTypes: [],
             releaseStatuses: [],

@@ -57,7 +57,8 @@ function freshRelease(
     id = randomUUID(),
     type = "Album",
     secondaryType,
-  }: { id?: string; type?: string; secondaryType?: string } = {},
+    cover,
+  }: { id?: string; type?: string; secondaryType?: string; cover?: [string, number] } = {},
 ) {
   return {
     release_group_mbid: id,
@@ -66,6 +67,7 @@ function freshRelease(
     artist_mbids: artistMbids,
     release_group_primary_type: type,
     ...(secondaryType && { release_group_secondary_type: secondaryType }),
+    ...(cover && { caa_release_mbid: cover[0], caa_id: cover[1] }),
     release_date: releaseDate,
   };
 }
@@ -381,9 +383,10 @@ test("the calendar lists library artists' albums and EPs from one ListenBrainz r
   const first = createCalendarArtist("First Fresh Artist");
   const second = createCalendarArtist("Second Fresh Artist");
   const laterMbid = randomUUID();
+  const coverRelease = randomUUID();
   const requests = stubFreshReleases(() =>
     feedOf([
-      freshRelease([first.mbid], "Out Now", "2030-04-02"),
+      freshRelease([first.mbid], "Out Now", "2030-04-02", { cover: [coverRelease, 42] }),
       freshRelease([second.mbid], "Coming Soon", "2030-05-01", { type: "EP" }),
       freshRelease([first.mbid, second.mbid], "Together", "2030-04-05"),
       freshRelease([first.mbid], "Just A Single", "2030-04-06", { type: "Single" }),
@@ -397,10 +400,16 @@ test("the calendar lists library artists' albums and EPs from one ListenBrainz r
 
   try {
     assert.deepEqual(await refreshReleaseMetadata(), { releases: 4, gone: 0 });
-    assert.deepEqual(titles(await getRecentMissingReleases(10, { artists })), [
-      "Together",
-      "Out Now",
-    ]);
+    assert.deepEqual(
+      (await getRecentMissingReleases(10, { artists })).map(({ title, coverUrl }) => [
+        title,
+        coverUrl,
+      ]),
+      [
+        ["Together", null],
+        ["Out Now", `https://imagecache.lidarr.audio/v1/caa/${coverRelease}/42-500.jpg`],
+      ],
+    );
     assert.deepEqual(titles(await getRecentMissingReleases(10, { artists, when: "upcoming" })), [
       "Coming Soon",
     ]);
