@@ -6,6 +6,7 @@ import type { LibraryReleaseCalendarRow, ReleaseFeedRow } from "../db/rows.ts";
 
 type CalendarEntryRow = LibraryReleaseCalendarRow & {
   artist_mbid: string | null;
+  cover_url: ReleaseFeedRow["cover_url"];
   artist_name: string;
   album_id: number | null;
   track_count: number;
@@ -102,10 +103,12 @@ const selectFeedFetchedAt = db.prepare<[], { fetched_at: ReleaseFeedRow["fetched
   "SELECT MAX(fetched_at) AS fetched_at FROM release_feed",
 );
 const clearFeed = db.prepare("DELETE FROM release_feed");
-const insertFeedRelease = db.prepare<[string, string, string, string, string, number]>(`
+const insertFeedRelease = db.prepare<
+  [string, string, string, string, string, string | null, number]
+>(`
   INSERT OR REPLACE INTO release_feed (
-    artist_mbid, release_group_mbid, title, release_date, release_type, fetched_at
-  ) VALUES (?, ?, ?, ?, ?, ?)
+    artist_mbid, release_group_mbid, title, release_date, release_type, cover_url, fetched_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?)
 `);
 const projectFeed = db.prepare<[number, number, number]>(`
   INSERT INTO library_release_calendar (
@@ -150,6 +153,7 @@ export function replaceReleaseFeed(
     title: string;
     releaseDate: string;
     type: string;
+    coverUrl: string | null;
   }[],
   at: number,
 ) {
@@ -162,6 +166,7 @@ export function replaceReleaseFeed(
         release.title,
         release.releaseDate,
         release.type,
+        release.coverUrl,
         at,
       );
     }
@@ -255,6 +260,11 @@ export function getReleaseCalendarEntries({
       calendar.*,
       artist.mbid AS artist_mbid,
       artist.name AS artist_name,
+      (
+        SELECT feed.cover_url FROM release_feed AS feed
+        WHERE feed.artist_mbid = LOWER(artist.mbid)
+          AND feed.release_group_mbid = calendar.release_group_mbid
+      ) AS cover_url,
       matched.album_id,
       COUNT(DISTINCT relation.track_id) AS track_count,
       COUNT(DISTINCT CASE WHEN media.available = 1 THEN relation.track_id END) AS available_track_count,
@@ -295,6 +305,7 @@ export function getReleaseCalendarEntries({
       albumName: row.title,
       title: row.title,
       releaseDate: row.release_date,
+      coverUrl: row.cover_url,
       albumType: row.release_type || null,
       secondaryTypes: parseStringList(row.secondary_types_json),
       releaseStatuses: parseStringList(row.release_statuses_json),

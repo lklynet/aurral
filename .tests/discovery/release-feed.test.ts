@@ -54,6 +54,7 @@ test("the release feed merges Library and recommended releases into dated pages,
           artist_mbids: [RECOMMENDED],
           release_group_primary_type: "Album",
           release_date: releaseDate,
+          ...(index === 20 && { caa_id: 77, caa_release_mbid: mbid(30) }),
         })),
       },
     },
@@ -85,4 +86,11 @@ test("the release feed merges Library and recommended releases into dated pages,
   const [first] = (await getReleaseFeed({ userId: null, when: "released", limit: 1, now }))
     .releases;
   assert.equal(first?.coverUrl, `/api/artists/release-group/${mbid(11)}/cover/image`);
+  const [, recommendedRecent] = (
+    await getReleaseFeed({ userId: null, when: "released", limit: 2, now })
+  ).releases;
+  assert.equal(
+    recommendedRecent?.coverUrl,
+    `https://imagecache.lidarr.audio/v1/caa/${mbid(30)}/77-500.jpg`,
+  );
 });
