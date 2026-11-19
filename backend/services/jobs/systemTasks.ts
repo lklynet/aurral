@@ -285,7 +285,7 @@ const SYSTEM_TASKS = {
     queue: "maintenance",
     label: "Update check",
     description: "Checks aurral.org for a newer Aurral build in this channel.",
-    schedule: { everyMs: HOUR },
+    schedule: { everyMs: 24 * HOUR },
     async run() {
       const { checkForUpdates } = await import("../updates.ts");
       await checkForUpdates();
