@@ -140,7 +140,10 @@ export async function onRequestGet({ env, request }) {
   const now = Math.floor(Date.now() / 1000);
   const params = new URL(request.url).searchParams;
   const version = params.get("version") || "";
-  const hours = Math.min(MAX_CHECK_HOURS, Math.max(1, Math.trunc(Number(params.get("every"))) || 1));
+  const hours = Math.min(
+    MAX_CHECK_HOURS,
+    Math.max(1, Math.trunc(Number(params.get("every"))) || 1),
+  );
   const [payload] = await Promise.all([
     currentFeed(db, now, env.GITHUB_TOKEN),
     countCheck(db, now, version, hours),
