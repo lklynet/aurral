@@ -46,21 +46,6 @@ type ScannedMetadata = {
   format?: Partial<IFormat>;
 };
 
-type MetadataReader = (filePath: string, options: IOptions) => Promise<ScannedMetadata>;
-
-// music-metadata stops reading an Ogg stream after its first pages unless it is asked for the
-// duration, so Ogg Vorbis and Opus files longer than a few seconds come back without one.
-// Read the whole file only when the quick pass found no duration, as readRecording does.
-export async function readScannedMetadata(reader: MetadataReader, filePath: string) {
-  const metadata = await reader(filePath, { skipCovers: true });
-  if (Number(metadata?.format?.duration) > 0) return metadata;
-  try {
-    return await reader(filePath, { skipCovers: true, duration: true });
-  } catch {
-    return metadata;
-  }
-}
-
 type MetadataEnrichment = DownloadTrackFields | null | undefined;
 
 type MetadataEnricher = (
@@ -74,7 +59,7 @@ type ScanOptions = {
   filePaths?: string[] | null;
   changedPaths?: string[] | null;
   force?: boolean;
-  metadataReader?: MetadataReader;
+  metadataReader?: (filePath: string, options: IOptions) => Promise<ScannedMetadata>;
   metadataEnricher?: MetadataEnricher | null;
   syncSearch?: boolean;
   isExcluded?: (filePath: string) => boolean;
@@ -477,7 +462,11 @@ export async function scanMusicRoot({
             result.filesIndexed += 1;
             continue;
           }
-          const metadata = await readScannedMetadata(metadataReader, filePath);
+          let metadata = await metadataReader(filePath, { skipCovers: true });
+          if (!(Number(metadata.format?.duration) > 0))
+            metadata = await metadataReader(filePath, { skipCovers: true, duration: true }).catch(
+              () => metadata,
+            );
           const enrichment =
             typeof metadataEnricher === "function"
               ? await metadataEnricher(metadata, filePath)

@@ -3,8 +3,10 @@ import type * as Rows from "../../backend/db/rows.ts";
 import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import { db } from "../../backend/config/db-sqlite.ts";
 import {
@@ -490,6 +492,30 @@ test("scanMusicRoot indexes tagged media, dated by the original release, and ign
     );
   } finally {
     if (filePath) deleteIndexedFile(source, filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("scanMusicRoot stores the duration of an Ogg file longer than music-metadata reads by default", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-ogg-"));
+  const source = `test-ogg-${process.pid}`;
+  const filePath = path.join(root, "Aurral Fixture/Playback Roadmap/01 First Step.opus");
+  try {
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await promisify(execFile)("ffmpeg", [
+      ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
+      ...["-f", "lavfi", "-i", "sine=frequency=440:duration=2"],
+      ...["-c:a", "libopus", "-page_duration", "20000", filePath],
+    ]);
+
+    await scanMusicRoot({ rootPath: root, source });
+
+    assert.equal(
+      getLibrarySnapshot().files.find((file) => file.path === filePath)?.duration_ms,
+      2000,
+    );
+  } finally {
+    deleteIndexedFile(source, filePath);
     await rm(root, { recursive: true, force: true });
   }
 });
