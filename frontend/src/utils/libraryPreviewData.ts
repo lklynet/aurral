@@ -73,7 +73,7 @@ const tracksForAlbum = (
         size: 4_200_000 + trackIndex * 310_000,
         mtimeMs: null,
         durationMs: 174000 + trackIndex * 11000,
-        quality: { bitrate: 320 },
+        quality: { bitrate: 320_000 },
         available: true,
         createdAt: yearTimestamp(seed.year),
         previewUrl: PREVIEW_AUDIO_URL,
