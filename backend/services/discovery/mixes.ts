@@ -72,6 +72,11 @@ const CANDIDATES = `
 
 const placeholders = (values: readonly unknown[]) => values.map(() => "?").join(",");
 
+const lowerForms = (text: string) => [
+  text.toLowerCase(),
+  text.replace(/[A-Z]/g, (letter) => letter.toLowerCase()),
+];
+
 const playKey = (artist: string, title: string) =>
   `${artist.trim().toLowerCase()}\0${title.trim().toLowerCase()}`;
 
@@ -181,7 +186,7 @@ function resolvePlays(plays: TrackPlays[]) {
       .filter((play) => !resolved.has(play))
       .map((play) => [playKey(play.artist, play.title), play]),
   );
-  const titles = [...new Set([...byName.values()].map((play) => play.title.toLowerCase()))];
+  const titles = [...new Set([...byName.values()].flatMap((play) => lowerForms(play.title)))];
   if (titles.length) {
     const rows = db
       .prepare<string[], Candidate>(
@@ -557,10 +562,30 @@ function blendFavorites(userId: number, now: number, blocked: Set<string>): Favo
     .slice(0, BLEND_WINDOW);
 }
 
+function spareTracksBy(names: string[], taken: Set<number>) {
+  const spares = new Map<string, number[]>();
+  const artists = [...new Set(names.flatMap(lowerForms))];
+  if (!artists.length) return spares;
+  const rows = db
+    .prepare<string[], Candidate>(
+      `${CANDIDATES} AND lower(coalesce(track.artist_name, artist.name)) IN (${placeholders(artists)})
+       GROUP BY track.id`,
+    )
+    .all(...artists);
+  for (const row of rows) {
+    if (taken.has(row.trackId)) continue;
+    const key = row.artist.trim().toLowerCase();
+    const tracks = spares.get(key);
+    if (tracks) tracks.push(row.trackId);
+    else spares.set(key, [row.trackId]);
+  }
+  return spares;
+}
+
 function friendFavorites(friend: FriendTracks, blocked: Set<string>): Favorite[] {
-  const kept = friend.tracks.filter(({ artist }) => !matchesArtistKeys({ name: artist }, blocked));
-  return kept.map(({ title, artist }, rank) => ({
-    play: {
+  const plays = friend.tracks
+    .filter(({ artist }) => !matchesArtistKeys({ name: artist }, blocked))
+    .map(({ title, artist }): TrackPlays => ({
       trackId: "",
       artist,
       title,
@@ -569,9 +594,17 @@ function friendFavorites(friend: FriendTracks, blocked: Set<string>): Favorite[]
       rewind: 0,
       season: 0,
       lastPlayedAt: 0,
-    },
-    weight: Math.log1p(kept.length - rank),
-  }));
+    }));
+  const resolved = resolvePlays(plays);
+  const artistOf = (play: TrackPlays) => play.artist.trim().toLowerCase();
+  const missing = plays.filter((play) => !resolved.has(play)).map((play) => play.artist.trim());
+  const spares = spareTracksBy(missing, new Set(resolved.values()));
+  return plays.flatMap((play, rank) => {
+    const id = resolved.get(play) ?? spares.get(artistOf(play))?.shift();
+    return id === undefined
+      ? []
+      : [{ play: { ...play, trackId: String(id) }, weight: Math.log1p(plays.length - rank) }];
+  });
 }
 
 async function buildBlend(seed: string, favorites: () => Favorite[][]) {
