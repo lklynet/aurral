@@ -100,7 +100,7 @@ const durationMs = (
 const formatQuality = (quality: LibraryQuality | string | null | undefined) => {
   if (!quality || typeof quality !== "object") return text(quality);
   return [
-    quality.bitrate ? quality.bitrate + " kbps" : "",
+    quality.bitrate ? Math.round(quality.bitrate / 1000) + " kbps" : "",
     quality.bitsPerSample ? quality.bitsPerSample + " bit" : "",
   ]
     .filter(Boolean)
