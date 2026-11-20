@@ -412,6 +412,19 @@ const storeReleaseFeedCovers: Migration = (db) => {
   `);
 };
 
+// Aurral moved from the BrainzMash relay to the maintainers' server, which
+// serves the same data, so cached answers carry over and relay waits do not.
+const moveMetadataToMaintainersServer: Migration = (db) =>
+  db.exec(`
+    UPDATE OR IGNORE metadata_response_cache
+    SET cache_key = 'https://brainzmash.kell.ly' || substr(cache_key, 32)
+    WHERE substr(cache_key, 1, 31) = 'https://lidarrapi.brainzmash.cc';
+    DELETE FROM metadata_response_cache
+    WHERE substr(cache_key, 1, 31) = 'https://lidarrapi.brainzmash.cc';
+    DELETE FROM metadata_request_state
+    WHERE substr(cache_key, 1, 31) = 'https://lidarrapi.brainzmash.cc';
+  `);
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -439,6 +452,7 @@ export const migrations: Migration[] = [
   dropLastfm,
   storeReleaseFeed,
   storeReleaseFeedCovers,
+  moveMetadataToMaintainersServer,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {
