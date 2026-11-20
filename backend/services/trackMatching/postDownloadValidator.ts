@@ -360,12 +360,15 @@ export async function validateDownloadedTrackFile({
       [trackRequest.artistName, ...(trackRequest.artistAliases || [])].filter(Boolean),
     ).title ||
     [listedTitle, claimedTitle(listedTitle)]
-      .filter(Boolean)
-      .reduce((kept, option) =>
-        titleSimilarity(trackRequest.trackName, option) >
-        titleSimilarity(trackRequest.trackName, kept)
-          ? option
-          : kept,
+      .filter((option): option is string => Boolean(option))
+      .reduce<string | null>(
+        (kept, option) =>
+          kept === null ||
+          titleSimilarity(trackRequest.trackName, option) >
+            titleSimilarity(trackRequest.trackName, kept)
+            ? option
+            : kept,
+        null,
       );
   const hasYtdlpIdFilename =
     source === "ytdlp" && getFileBaseName(actual.filename) === readTagText(actual.provider.id);

@@ -240,6 +240,26 @@ test("release selection keeps distinct non-Latin siblings separate", async () =>
   assert.equal(outcome.validation?.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
 });
 
+test("a file named only by its track number verifies from its tags", async () => {
+  const outcome = await validateDownloadedTrackFile({
+    request: GET_LUCKY,
+    filePath: "/staging/Daft Punk - Random Access Memories/08.flac",
+    source: "qbittorrent",
+    options: {
+      parseFile: stubParseFile(
+        stubParsed({
+          title: "Get Lucky",
+          artist: "Daft Punk",
+          album: "Random Access Memories",
+          track: 8,
+        }),
+      ),
+    },
+  });
+  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+  assert.equal(outcome.valid, true);
+});
+
 test("strong original tags and matching duration verify", async () => {
   const outcome = await validateDownloadedTrackFile({
     request: GET_LUCKY,
