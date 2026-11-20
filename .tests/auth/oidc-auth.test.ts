@@ -2,7 +2,8 @@ import { requireFixture } from "../playlists/fixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { createSign, generateKeyPairSync } from "node:crypto";
+import { createHash, createSign, generateKeyPairSync } from "node:crypto";
+import * as v from "valibot";
 
 import {
   createMockHttpServer,
@@ -11,16 +12,25 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, dbHelpers, authModule, sessionModule, oidcModule, { api }] =
-  await setupIsolatedBackend(
-    "oidc-auth",
-    () => import("../../backend/config/db-sqlite.ts"),
-    () => import("../../backend/db/helpers/index.ts"),
-    () => import("../../backend/services/auth.ts"),
-    () => import("../../backend/config/session-helpers.ts"),
-    () => import("../../backend/services/oidcAuth.ts"),
-    () => import("../../backend/routes/api.ts"),
-  );
+const [
+  isolatedState,
+  { db },
+  dbHelpers,
+  authModule,
+  sessionModule,
+  oidcModule,
+  { api },
+  { default: sso },
+] = await setupIsolatedBackend(
+  "oidc-auth",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/auth.ts"),
+  () => import("../../backend/config/session-helpers.ts"),
+  () => import("../../backend/services/oidcAuth.ts"),
+  () => import("../../backend/routes/api.ts"),
+  () => import("../../backend/routes/sso.ts"),
+);
 
 const { dbOps, userOps, userIdentityOps } = dbHelpers;
 const { ensureExternalUser, isAuthRequiredByConfig, isOidcAuthEnabled } = authModule;
@@ -118,6 +128,7 @@ async function createPendingOidcLogin(
     userInfo?: Record<string, unknown>;
     userInfoError?: boolean;
     envOverrides?: NodeJS.ProcessEnv;
+    start?: () => Promise<{ redirect: URL; cookie: string }>;
   } = {},
 ) {
   let issuer: string;
@@ -173,7 +184,7 @@ async function createPendingOidcLogin(
     ...(options.envOverrides || {}),
   });
 
-  const { redirect, cookie } = await startLogin();
+  const { redirect, cookie } = await (options.start ?? startLogin)();
   const state = redirect.searchParams.get("state");
   assert.ok(state);
   nonce = redirect.searchParams.get("nonce");
@@ -305,6 +316,10 @@ test("OIDC callback issues a cookie-bound one-time session exchange", async () =
         ),
       { status: 400, message: "OIDC login session expired" },
     );
+    assert.throws(() => exchangeOidcCallback(callback.code, exchangeRequest({}), "a".repeat(43)), {
+      status: 400,
+      message: "OIDC login session expired",
+    });
     assert.equal(
       db.prepare<[], { count: number }>("SELECT COUNT(*) AS count FROM sessions").get()?.count,
       0,
@@ -365,6 +380,65 @@ test("OIDC routes keep the transaction cookie Secure over HTTPS and clear it aft
       exchange.headers.get("set-cookie"),
       "aurral_oidc_transaction=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0",
     );
+  } finally {
+    await pending.close();
+  }
+});
+
+test("an app's OIDC login returns to the app and trades its code with the PKCE verifier, not the cookie", async () => {
+  const verifier = "app-verifier-".padEnd(43, "x");
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  const app = signedInAs(undefined).route("/", api).route("/", sso);
+  const startApp = async () => {
+    const start = await app.request(
+      `/auth/oidc/login?app_redirect=aurralpocket://sso&code_challenge=${challenge}`,
+    );
+    assert.equal(start.status, 302);
+    return {
+      redirect: new URL(String(start.headers.get("location"))),
+      cookie: requireFixture(String(start.headers.get("set-cookie")).split(";", 1)[0]),
+    };
+  };
+  const pending = await createPendingOidcLogin({ start: startApp });
+  const exchange = (body: Record<string, string>, cookie?: string) =>
+    app.request("/auth/oidc/exchange", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(cookie && { cookie }) },
+      body: JSON.stringify(body),
+    });
+
+  try {
+    for (const query of [
+      `app_redirect=https://evil.example/sso&code_challenge=${challenge}`,
+      `app_redirect=aurralpocket://sso/&code_challenge=${challenge}`,
+      "app_redirect=aurralpocket://sso",
+      "app_redirect=aurralpocket://sso&code_challenge=short",
+      `code_challenge=${challenge}`,
+    ]) {
+      assert.equal((await app.request(`/auth/oidc/login?${query}`)).status, 400, query);
+    }
+
+    const callback = await app.request(
+      `/sso/callback?state=${pending.state}&code=authorization-code`,
+      { headers: { cookie: pending.cookie } },
+    );
+    const location = String(callback.headers.get("location"));
+    assert.match(location, /^aurralpocket:\/\/sso#code=/);
+    const code = requireFixture(new URLSearchParams(location.split("#")[1]).get("code"));
+
+    assert.equal((await exchange({ code }, pending.cookie)).status, 400);
+    assert.equal((await exchange({ code, code_verifier: "x".repeat(43) })).status, 400);
+    const signedIn = await exchange({ code, code_verifier: verifier });
+    assert.equal(signedIn.status, 200);
+    const { token } = v.parse(v.object({ token: v.string() }), await signedIn.json());
+    assert.equal(getSessionByToken(token)?.user?.username, "callback-user");
+
+    const denied = await startApp();
+    const failed = await app.request(
+      `/sso/callback?state=${denied.redirect.searchParams.get("state")}&error=access_denied`,
+      { headers: { cookie: denied.cookie } },
+    );
+    assert.match(String(failed.headers.get("location")), /^aurralpocket:\/\/sso#error=/);
   } finally {
     await pending.close();
   }

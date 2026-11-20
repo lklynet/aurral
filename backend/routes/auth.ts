@@ -26,6 +26,7 @@ import { hashPassword, verifyPassword, needsRehash } from "../services/passwordH
 import { validate } from "../middleware/validate.ts";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import {
+  OIDC_APP_REDIRECTS,
   clearedOidcTransactionCookie,
   exchangeOidcCallback,
   startOidcLogin,
@@ -64,6 +65,20 @@ const loginBody = v.object({
 });
 const reauthBody = v.object({ currentPassword: v.optional(v.string()) });
 const exchangeBody = v.object({ code: v.optional(v.string()) });
+const oidcExchangeBody = v.object({
+  code: v.optional(v.string()),
+  code_verifier: v.optional(v.string()),
+});
+const oidcLoginQuery = v.pipe(
+  v.object({
+    app_redirect: v.optional(v.picklist(OIDC_APP_REDIRECTS)),
+    code_challenge: v.optional(v.pipe(v.string(), v.regex(/^[\w-]{43}$/))),
+  }),
+  v.check(
+    (query) => !query.app_redirect === !query.code_challenge,
+    "app_redirect and code_challenge go together",
+  ),
+);
 const pairBody = v.object({ code: v.string() });
 const sessionParam = v.object({ id: v.pipe(v.string(), v.toNumber(), v.integer()) });
 
@@ -210,9 +225,13 @@ export default new Hono<AppEnv>()
     }
     return c.json({ apiKey: rotateApiKey() }, 200);
   })
-  .get("/oidc/login", async (c) => {
+  .get("/oidc/login", validate("query", oidcLoginQuery), async (c) => {
     try {
-      const login = await startOidcLogin({ secure: isSecure(c) });
+      const { app_redirect: redirect, code_challenge: codeChallenge } = c.req.valid("query");
+      const login = await startOidcLogin({
+        secure: isSecure(c),
+        app: redirect && codeChallenge ? { redirect, codeChallenge } : null,
+      });
       if (!login) return c.json({ error: "OIDC is not enabled" }, 404);
       c.header("Set-Cookie", login.cookie);
       return c.redirect(login.authUrl, 302);
@@ -236,9 +255,10 @@ export default new Hono<AppEnv>()
       return c.json({ error: "Single sign-on link failed" }, 500);
     }
   })
-  .post("/oidc/exchange", validate("json", exchangeBody), (c) => {
+  .post("/oidc/exchange", validate("json", oidcExchangeBody), (c) => {
     try {
-      const result = exchangeOidcCallback(c.req.valid("json").code, exchangeRequest(c));
+      const { code, code_verifier: codeVerifier } = c.req.valid("json");
+      const result = exchangeOidcCallback(code, exchangeRequest(c), codeVerifier);
       c.header("Set-Cookie", clearedOidcTransactionCookie(isSecure(c)));
       return c.json(result, 200);
     } catch (error) {

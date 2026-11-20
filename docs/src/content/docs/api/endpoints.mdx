@@ -42,7 +42,7 @@ can change Aurral, files, users, or external services.
 | `GET`    | `/api/auth/google/link`       | Start linking a Google account to the current user                                               |
 | `POST`   | `/api/auth/google/link/start` | Start linking a Google account and return the authorization URL                                  |
 
-The Google sign-in routes return `404` when that sign-in method is off. They sign in only users who already linked the account. The Google link routes, the password change, and the identity changes require a sign-in in the last 15 minutes. Otherwise, call `/api/auth/reauth` first. Google returns to `/sso/google/callback`, and OIDC returns to `/sso/callback`.
+The Google sign-in routes return `404` when that sign-in method is off. They sign in only users who already linked the account. The Google link routes, the password change, and the identity changes require a sign-in in the last 15 minutes. Otherwise, call `/api/auth/reauth` first. Google returns to `/sso/google/callback`, and OIDC returns to `/sso/callback`. An app can end an OIDC sign-in at its own address instead, through `oidcAppRedirect` in the [app API contract](/api/app-contract/).
 
 The liveness, bootstrap, and health routes do not require authentication.
 Aurral returns detailed health fields only for a request with a valid
