@@ -5,7 +5,11 @@ import {
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
-import { getDownloadSourceStatus, getEnabledDownloadSources } from "./downloadSourceService.ts";
+import {
+  getDownloadSourceStatus,
+  getEnabledDownloadSources,
+  servesRequest,
+} from "./downloadSourceService.ts";
 import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import type { JsonObject } from "./jobs/queue.ts";
 import { contractSource } from "./download/nativeSources.ts";
@@ -34,7 +38,7 @@ const AUDIO_EXTENSIONS = new Set([
 type ManualSearchMode = "missing" | "replacement";
 type ManualSource = { id: string; label: string; source: string };
 type ManualSearchJob = Pick<DownloadJob, "id"> &
-  Partial<Pick<DownloadJob, "artistName" | "trackName" | "albumName">>;
+  Partial<Pick<DownloadJob, "artistName" | "trackName" | "albumName" | "requestKind">>;
 type ManualWorkContext = { jobId: string; playlistId: string | null };
 type RawSearchResult = JsonObject;
 type ManualResult = Awaited<ReturnType<typeof searchSource>>[number];
@@ -177,12 +181,13 @@ async function searchSource(source: string, query: string, workContext: ManualWo
   throw new Error("Unknown manual search source");
 }
 
-export function getManualDownloadSources() {
+export function getManualDownloadSources(job: ManualSearchJob, mode: ManualSearchMode) {
   const status = getDownloadSourceStatus();
   const sources: ManualSource[] = [];
   if (status.slskd.configured) sources.push({ id: "slskd", label: "Soulseek", source: "slskd" });
-  for (const { id, label } of getEnabledDownloadSources()) {
-    if (contractSource(id)) sources.push({ id, label, source: id });
+  for (const source of getEnabledDownloadSources()) {
+    if (contractSource(source.id) && servesRequest(source, mode === "missing" ? job : null))
+      sources.push({ id: source.id, label: source.label, source: source.id });
   }
   return sources;
 }
@@ -201,7 +206,9 @@ export async function createManualMissingSearch({
   playlistId?: string | null;
 }) {
   pruneSessions();
-  const sourceOption = getManualDownloadSources().find((entry) => entry.id === text(sourceId));
+  const sourceOption = getManualDownloadSources(job, mode).find(
+    (entry) => entry.id === text(sourceId),
+  );
   if (!sourceOption) throw new Error("That download client is not currently available");
   const query = buildQuery(job);
   if (!query) throw new Error("This track has no searchable artist or title");

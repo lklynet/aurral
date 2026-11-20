@@ -309,6 +309,7 @@ export function activePluginSources() {
       priority: plugin.priority,
       albums: plugin.manifest.downloadSource?.albums === true,
       upgrades: plugin.manifest.downloadSource?.upgrades === true,
+      keeps: plugin.manifest.downloadSource?.keeps === true,
     }));
 }
 

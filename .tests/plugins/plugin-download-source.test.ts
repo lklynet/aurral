@@ -32,7 +32,7 @@ const [
   { clearScheduledLibraryScan, isLibraryScanActive, scheduleLibraryScan },
   manualSearch,
   { downloadPipelineQueue },
-  { pipelinePayloadSchema, processPipelinePayload },
+  { buildNextSourcePayload, pipelinePayloadSchema, processPipelinePayload },
 ] = await setupIsolatedBackend(
   "plugin-download-source",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -210,7 +210,7 @@ afterAll(async () => {
   await cleanupIsolatedState(state);
 });
 
-test("a plugin source joins the download sources by its priority and name, and upgrades when it says so", async () => {
+test("a plugin source joins the download sources by its priority and name, upgrades when it says so, and serves only album requests when it keeps them", async () => {
   await installSource({});
   const plugin = getEnabledDownloadSources().find((source) => source.id === "plugin:tapes");
   assert.equal(plugin?.priority, 5);
@@ -219,6 +219,28 @@ test("a plugin source joins the download sources by its priority and name, and u
 
   await installSource({}, { upgrades: true });
   assert.ok(upgradeSourceIds().includes("plugin:tapes"));
+
+  await installSource({}, { tracks: false, albums: true, keeps: true }, ALBUM_SOURCE);
+  const request = (playlist: string) =>
+    createTrackedJob(
+      downloadTracker,
+      { artistName: "Glass Coast", trackName: "Night Drive", albumName: "Lowlands" },
+      playlist,
+    );
+  const track = request("flow-track");
+  const album = request("album-request");
+  downloadTracker.setRequestKind(album, "album");
+  const manual = (jobId: string, mode: "missing" | "replacement") =>
+    manualSearch
+      .getManualDownloadSources(trackedJob(downloadTracker, jobId), mode)
+      .some((source) => source.id === "plugin:tapes");
+  const served = (jobId: string) => [
+    buildNextSourcePayload({ jobId, phase: "search", allowedSources: ["plugin:tapes"] })?.source,
+    manual(jobId, "missing"),
+    manual(jobId, "replacement"),
+  ];
+  assert.deepEqual(served(track), [undefined, false, false]);
+  assert.deepEqual(served(album), ["plugin:tapes", true, false]);
 });
 
 test("a plugin source's download is checked and filed in the Library", async () => {
@@ -378,7 +400,9 @@ test("manual Search lists a plugin's results, or an album-only plugin's albums, 
 
   await installSource({ fixture });
   assert.deepEqual(
-    manualSearch.getManualDownloadSources().find((source) => source.id === "plugin:tapes"),
+    manualSearch
+      .getManualDownloadSources(trackedJob(downloadTracker, jobId), "missing")
+      .find((source) => source.id === "plugin:tapes"),
     { id: "plugin:tapes", label: "Tapes", source: "plugin:tapes" },
   );
   assert.deepEqual(

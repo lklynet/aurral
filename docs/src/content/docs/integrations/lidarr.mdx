@@ -39,6 +39,8 @@ New artists go to Lidarr's first root folder. To use another one, fill in **Root
 
 Aurral finds a finished album by its MusicBrainz tags, or by artist and album name when Lidarr didn't tag it. If it can't find the album, the download fails and Aurral tries your next source. Turning on Lidarr's tags avoids this. See [Tag Lidarr's files](#tag-lidarrs-files).
 
+With version 0.3.0 or later of the plugin, Lidarr gets only the albums you request. Single tracks, playlist tracks, and flow tracks come from your other download sources, because Lidarr would keep and monitor the whole album for one track.
+
 Lidarr joins your other download sources in **Settings > Downloads > Download clients**. It starts after slskd, deemix, Usenet, and Tidarr. To have Lidarr get your albums first, drag it to the top. See [Download source priority and fallback](/integrations/usenet/#download-source-priority-and-fallback).
 
 Quality profiles, metadata profiles, and upgrades stay in Lidarr. The plugin's page covers its other settings. See [Plugins](/admin/plugins/).
@@ -78,4 +80,4 @@ The copied URL uses the Aurral address in your browser, for example `https://aur
 The URL contains a token for that flow. Treat it as a secret. Anyone with the URL can read the artist list of the flow.
 :::
 
-The feed always matches the flow's current tracklist. It leaves out tracks without a MusicBrainz artist ID. It includes album IDs when they are known. Lidarr versions that support album-level custom lists use these IDs for **Specific Album** monitoring.
+The feed lists the artists in the flow's current tracklist, leaving out tracks without a MusicBrainz artist ID.
