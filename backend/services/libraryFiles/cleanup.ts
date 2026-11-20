@@ -628,16 +628,14 @@ export async function applyCleanupItem(
   return { status: "done", details };
 }
 
+const holdsAudio = async (directory: string) =>
+  (await fs.readdir(directory, { withFileTypes: true }).catch(() => [])).some(
+    (entry) =>
+      entry.isFile() && /\.(aac|aiff|ape|flac|m4a|mp3|oga|ogg|opus|wav|wv)$/i.test(entry.name),
+  );
+
 async function moveAlbumImages(fromDirectory: string, toDirectory: string) {
   const entries = await fs.readdir(fromDirectory, { withFileTypes: true }).catch(() => []);
-  if (
-    entries.some(
-      (entry) =>
-        entry.isFile() && /\.(aac|aiff|ape|flac|m4a|mp3|oga|ogg|opus|wav|wv)$/i.test(entry.name),
-    )
-  ) {
-    return;
-  }
   for (const entry of entries) {
     if (!entry.isFile() || !ALBUM_IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))
       continue;
@@ -685,22 +683,20 @@ export async function finishCleanup(operation: LibraryFileOperation) {
     folders.set(folder, targets);
   }
   const deepestFirst = [...folders.keys()].sort((left, right) => right.length - left.length);
+  // A folder that keeps music or sends it to several folders was split, as
+  // when albums that shared one each get their own, so its images stay.
+  const split = new Set<string>();
   for (const folder of deepestFirst) {
     const [onlyTarget, ...otherTargets] = folders.get(folder) ?? [];
-    if (onlyTarget && !otherTargets.length && folder !== root) {
-      await moveAlbumImages(folder, onlyTarget);
-    }
+    if (otherTargets.length || (await holdsAudio(folder))) split.add(folder);
+    else if (onlyTarget && folder !== root) await moveAlbumImages(folder, onlyTarget);
     await removeEmptyDirectories(folder, root);
   }
   if (moves.length) {
     playlistManager.requestPlaylistSync();
   }
-  // An album that left a folder other music stays in, as when Clean up splits
-  // albums that shared one, has no cover image beside it yet.
   const splitFiles = moves.flatMap(([from, to]) =>
-    (folders.get(path.dirname(from))?.size ?? 0) > 1 && path.dirname(from) !== path.dirname(to)
-      ? [to]
-      : [],
+    split.has(path.dirname(from)) && path.dirname(from) !== path.dirname(to) ? [to] : [],
   );
   if (splitFiles.length) {
     const { resolveChangedAlbumCovers } = await import("../libraryArtwork.ts");

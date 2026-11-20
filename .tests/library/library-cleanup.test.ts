@@ -16,6 +16,7 @@ import {
 import fsPromises from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import sharp from "sharp";
 
 import {
   cleanupIsolatedState,
@@ -45,6 +46,7 @@ const [
   { setMetadataProviderCooldown },
   { scanRegistrySchema },
   { finalizeQualityUpgradeSuccess },
+  { saveCustomArtworkUpload },
 ] = await setupIsolatedBackend(
   "library-cleanup",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -63,6 +65,7 @@ const [
   () => import("../../backend/services/metadataProviderBudget.ts"),
   () => import("../../backend/services/libraryScanWorker.ts"),
   () => import("../../backend/services/qualityUpgradeOutcome.ts"),
+  () => import("../../backend/services/customArtworkService.ts"),
 );
 // Unit tests are offline, so the default metadata provider refuses lookups up front
 // instead of making each one wait its turn in the provider's rate limit.
@@ -692,6 +695,42 @@ test("Clean up gives albums that share a title their own folders, and an album k
     (await cleanUp()).items.filter((item) => item.target),
     [],
   );
+});
+
+test("an album Clean up moves out of a folder it shared gets its own cover", async () => {
+  const folder = path.join(root, "Weezer", "Weezer");
+  const tags = (group: number, date: string, title: string) => ({
+    artist: "Weezer",
+    album: "Weezer",
+    title,
+    track: "1",
+    date,
+    MUSICBRAINZ_RELEASEGROUPID: `3f3f3f3f-0000-4000-8000-00000000010${group}`,
+  });
+  await makeTrack(
+    path.join(folder, "01 - My Name Is Jonas.flac"),
+    tags(1, "1994", "My Name Is Jonas"),
+  );
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  await makeTrack(path.join(folder, "Don't Let Go.flac"), tags(2, "2001", "Don't Let Go"));
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const green = requireValue(
+    db
+      .prepare<[string], { id: number }>(
+        "SELECT id FROM library_albums WHERE release_group_mbid = ?",
+      )
+      .get("3f3f3f3f-0000-4000-8000-000000000102"),
+  );
+  const cover = await sharp({
+    create: { width: 16, height: 16, channels: 3, background: { r: 0, g: 128, b: 0 } },
+  })
+    .png()
+    .toBuffer();
+  await saveCustomArtworkUpload("album", green.id, cover, "image/png");
+
+  await cleanUp();
+
+  assert.equal(await exists(path.join(root, "Weezer", "Weezer (2001)", "cover.jpg")), true);
 });
 
 test("Clean up leaves a read-only folder inside the Library folder alone", async (t: import("vite-plus/test").TestContext) => {
