@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import * as client from "openid-client";
 import type { IDToken, UserInfoResponse } from "openid-client";
 import { db } from "../config/db-sqlite.ts";
@@ -8,6 +9,7 @@ import { userOps, userIdentityOps } from "../db/helpers/index.ts";
 const STATE_TTL_MS = 10 * 60 * 1000;
 const EXCHANGE_TTL_MS = 60 * 1000;
 const OIDC_TRANSACTION_COOKIE = "aurral_oidc_transaction";
+export const OIDC_APP_REDIRECTS = ["aurralpocket://sso"] as const;
 type DiscoveryConfig = Awaited<ReturnType<typeof client.discovery>>;
 type OidcTokens = Awaited<ReturnType<typeof client.authorizationCodeGrant>>;
 type OidcClaims = Partial<IDToken & UserInfoResponse>;
@@ -21,6 +23,7 @@ const pendingLogins = new Map<
     expiresAt: number;
     mode: "login" | "link";
     linkUserId: number | null;
+    app: OidcApp | null;
   }
 >();
 const pendingExchanges = new Map<
@@ -28,12 +31,15 @@ const pendingExchanges = new Map<
   {
     expiresAt: number;
     transactionId: string;
+    codeChallenge: string | null;
     linked: boolean;
     user: ReturnType<typeof toResolvedUser>;
   }
 >();
 let discoveryConfig: DiscoveryConfig | null = null;
 let discoveryKey = "";
+
+export type OidcApp = { redirect: (typeof OIDC_APP_REDIRECTS)[number]; codeChallenge: string };
 
 export type ExchangeRequest = {
   cookie: string | undefined;
@@ -322,7 +328,13 @@ export async function startOidcLogin({
   mode = "login",
   linkUserId = null,
   secure = false,
-}: { mode?: "login" | "link"; linkUserId?: number | null; secure?: boolean } = {}) {
+  app = null,
+}: {
+  mode?: "login" | "link";
+  linkUserId?: number | null;
+  secure?: boolean;
+  app?: OidcApp | null;
+} = {}) {
   if (!isOidcEnabled()) return null;
 
   const { config, oidc } = await getDiscoveryConfig();
@@ -340,6 +352,7 @@ export async function startOidcLogin({
     expiresAt: Date.now() + STATE_TTL_MS,
     mode,
     linkUserId,
+    app,
   });
 
   const parameters = {
@@ -393,6 +406,9 @@ function linkOidcIdentity(
   return toResolvedUser(userOps.getUserById(linkUser.id));
 }
 
+export const oidcCallbackDestination = (state: string | undefined) =>
+  pendingLogins.get(state || "")?.app?.redirect ?? "/sso/complete";
+
 export async function handleOidcCallback(
   query: Record<string, string>,
   cookie: string | undefined,
@@ -429,6 +445,7 @@ export async function handleOidcCallback(
   pendingExchanges.set(code, {
     expiresAt: Date.now() + EXCHANGE_TTL_MS,
     transactionId,
+    codeChallenge: pending.app?.codeChallenge ?? null,
     linked,
     user,
   });
@@ -439,16 +456,28 @@ export async function handleOidcCallback(
   };
 }
 
-export function exchangeOidcCallback(code: string | null | undefined, request: ExchangeRequest) {
+function verifierMatches(codeVerifier: string, codeChallenge: string) {
+  const computed = Buffer.from(createHash("sha256").update(codeVerifier).digest("base64url"));
+  const expected = Buffer.from(codeChallenge);
+  return computed.length === expected.length && timingSafeEqual(computed, expected);
+}
+
+export function exchangeOidcCallback(
+  code: string | null | undefined,
+  request: ExchangeRequest,
+  codeVerifier?: string,
+) {
   if (!isOidcEnabled()) {
     throw Object.assign(new Error("OIDC is not enabled"), { status: 404 });
   }
 
-  const transactionId = getTransactionCookie(request.cookie);
   const exchangeCode = String(code || "");
   pruneExpired(pendingExchanges);
   const pending = pendingExchanges.get(exchangeCode);
-  if (!pending || pending.expiresAt <= Date.now() || pending.transactionId !== transactionId) {
+  const proven = pending?.codeChallenge
+    ? !!codeVerifier && verifierMatches(codeVerifier, pending.codeChallenge)
+    : pending?.transactionId === getTransactionCookie(request.cookie);
+  if (!pending || pending.expiresAt <= Date.now() || !proven) {
     throw Object.assign(new Error("OIDC login session expired"), { status: 400 });
   }
 

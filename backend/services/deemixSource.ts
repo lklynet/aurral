@@ -67,12 +67,11 @@ async function searchTracks(track: ResolvedTrack, denied: ReadonlySet<string>) {
     if (hasUsableSearchCandidates({ source: "deemix", results: readable(), request: track })) break;
     try {
       const results = await deemix().search(query, { limit: SEARCH_LIMIT });
+      // A failed album grab blocks the batch. An individual track can still download.
       mergeSearchResults(
         found,
         seen,
-        results.filter(
-          (result) => !denied.has(result.id) && !denied.has(`${ALBUM}${result.albumId}`),
-        ),
+        results.filter((result) => !denied.has(result.id)),
         (result) => result.id,
       );
     } catch (error) {

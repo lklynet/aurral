@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import * as v from "valibot";
@@ -75,8 +76,10 @@ const session = v.looseObject({
   user: v.looseObject({ username: v.string(), role: v.string() }),
 });
 
-test.skipIf(!has("sso"))("single sign-on and a proxy header both sign a person in", async () => {
-  const started = await fetch(`${api.base}/api/auth/oidc/login`, { redirect: "manual" });
+// Picks Ada at the provider as a browser would, and returns where Aurral sends the
+// browser after the callback, with the cookie the browser holds.
+async function signInAtProvider(query = "") {
+  const started = await fetch(`${api.base}/api/auth/oidc/login${query}`, { redirect: "manual" });
   const cookie = started.headers
     .getSetCookie()
     .map((entry) => entry.split(";")[0])
@@ -89,15 +92,29 @@ test.skipIf(!has("sso"))("single sign-on and a proxy header both sign a person i
   const callback = new URL(approved.headers.get("location") ?? "");
   callback.port = String(ports.aurralApi);
   const finished = await fetch(callback, { redirect: "manual", headers: { cookie } });
-  const code = new URLSearchParams(
-    new URL(finished.headers.get("location") ?? "", api.base).hash.slice(1),
-  ).get("code");
+  return { location: finished.headers.get("location") ?? "", cookie };
+}
+
+const exchangeSsoCode = async (location: string, body: object, headers: HeadersInit = {}) => {
+  const code = new URLSearchParams(location.split("#")[1]).get("code");
   const exchanged = await fetch(`${api.base}/api/auth/oidc/exchange`, {
     method: "POST",
-    headers: { "content-type": "application/json", cookie },
-    body: JSON.stringify({ code }),
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify({ code, ...body }),
   });
-  const ada = v.parse(session, await exchanged.json()).user;
+  return v.parse(v.looseObject({ token: v.string() }), await exchanged.json()).token;
+};
+
+const signedInPerson = async (token: string) =>
+  v.parse(
+    session,
+    await getJson(`${api.base}/api/auth/me`, { headers: { authorization: `Bearer ${token}` } }),
+  ).user;
+
+test.skipIf(!has("sso"))("single sign-on and a proxy header both sign a person in", async () => {
+  const { location, cookie } = await signInAtProvider();
+  assert.match(location, /^\/sso\/complete#code=/);
+  const ada = await signedInPerson(await exchangeSsoCode(location, {}, { cookie }));
   assert.deepEqual([ada.username, ada.role], ["ada", "admin"]);
 
   const grace = v.parse(
@@ -108,3 +125,17 @@ test.skipIf(!has("sso"))("single sign-on and a proxy header both sign a person i
   ).user;
   assert.deepEqual([grace.username, grace.role], ["grace", "user"]);
 });
+
+test.skipIf(!has("sso"))(
+  "an app finishes single sign-on at its own address and signs in with its verifier",
+  async () => {
+    const verifier = randomBytes(32).toString("base64url");
+    const challenge = createHash("sha256").update(verifier).digest("base64url");
+    const { location } = await signInAtProvider(
+      `?app_redirect=${encodeURIComponent("aurralpocket://sso")}&code_challenge=${challenge}`,
+    );
+    assert.match(location, /^aurralpocket:\/\/sso#code=/);
+    const ada = await signedInPerson(await exchangeSsoCode(location, { code_verifier: verifier }));
+    assert.deepEqual([ada.username, ada.role], ["ada", "admin"]);
+  },
+);
