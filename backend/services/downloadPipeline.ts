@@ -38,6 +38,8 @@ import {
   isAlbumGrabSourceId,
   getSourceLabel,
   isAnyDownloadSourceConfigured,
+  getNoSourceMessage,
+  servesRequest,
   type SourceOrder,
 } from "./downloadSourceService.ts";
 import { blockPipelineJobForReview, SEARCH_RESET } from "./pipelineHelpers.ts";
@@ -210,10 +212,12 @@ export function buildNextSourcePayload(
   const allowedSources = Array.isArray(payload?.allowedSources)
     ? new Set(payload.allowedSources)
     : null;
+  const job = payload.jobId ? downloadTracker.getJob(payload.jobId) : null;
   const sources = getEnabledDownloadSources(sourceOrder(payload)).filter(
     (source) =>
       (!allowedSources || allowedSources.has(source.id)) &&
-      (payload?.albumGrab !== true || isAlbumGrabSource(source)),
+      (payload?.albumGrab !== true || isAlbumGrabSource(source)) &&
+      servesRequest(source, job),
   );
   if (sources.length === 0) return null;
   const tried = new Set(Array.isArray(payload?.triedSources) ? payload.triedSources : []);
@@ -560,7 +564,7 @@ async function processSourcePayload(payload: PipelinePayload): Promise<PipelineP
     }
     if (!nextPayload) {
       const job = downloadTracker.getJob(payload.jobId);
-      if (job) await failJob(job, getDownloadSourceNotConfiguredMessage());
+      if (job) await failJob(job, getNoSourceMessage(job));
       return null;
     }
     return processSourcePayload(nextPayload);

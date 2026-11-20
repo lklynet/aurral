@@ -318,12 +318,13 @@ export default new Hono<AppEnv>()
     validate("query", manualSearchQuery),
     (c) => {
       const query = c.req.valid("query");
+      const mode = getManualSearchMode(query.mode);
       const job = getAccessibleManualSearchJob(c.var.user, c.req.param("jobId"), {
-        mode: getManualSearchMode(query.mode),
+        mode,
         playlistId: query.playlistId,
       });
       if (!job) return c.json({ error: "Track is not available for manual search" }, 404);
-      return c.json({ sources: getManualDownloadSources() }, 200);
+      return c.json({ sources: getManualDownloadSources(job, mode) }, 200);
     },
   )
   .post(

@@ -3,6 +3,7 @@ import { dbOps } from "../db/helpers/index.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
 import { getDownloadClient, getUsenetClient } from "./download/downloadClientSettings.ts";
 import { activePluginSources, pluginSourceLabel } from "./plugins/pluginStore.ts";
+import type { DownloadJob } from "./downloadJobs/downloadTracker.ts";
 
 const SOURCE_LABELS = {
   slskd: "Soulseek",
@@ -173,6 +174,16 @@ export const upgradeSourceIds = () => [
     .map((source) => source.id),
 ];
 
+// A source that keeps its downloads in a library of its own, like Lidarr,
+// would keep a whole album there for one track, so it serves only albums.
+export const servesRequest = (
+  source: ReturnType<typeof getEnabledDownloadSources>[number],
+  job: Partial<Pick<DownloadJob, "requestKind">> | null | undefined,
+) => !("keeps" in source && source.keeps) || job?.requestKind === "album";
+
+const sourcesFor = (job: DownloadJob) =>
+  getEnabledDownloadSources().filter((source) => servesRequest(source, job));
+
 export const isAlbumGrabSource = (source: { id: string; albums?: boolean }) =>
   ALBUM_GRAB_SOURCE_IDS.includes(source.id) || source.albums === true;
 
@@ -183,14 +194,14 @@ export const isAlbumGrabSourceId = (id: string) =>
 // The enabled sources that download only a track and rank above every
 // enabled album source, in priority order. A track request searches these
 // before its release.
-export function getQuickSearchSources() {
-  const sources = getEnabledDownloadSources();
+export function getQuickSearchSources(job: DownloadJob) {
+  const sources = sourcesFor(job);
   const firstAlbumSource = sources.findIndex(isAlbumGrabSource);
   return firstAlbumSource > 0 ? sources.slice(0, firstAlbumSource).map((source) => source.id) : [];
 }
 
-export function isAlbumGrabSourceConfigured() {
-  return getEnabledDownloadSources().some(isAlbumGrabSource);
+export function isAlbumGrabSourceConfigured(job: DownloadJob) {
+  return sourcesFor(job).some(isAlbumGrabSource);
 }
 
 export function isAnyDownloadSourceConfigured() {
@@ -207,6 +218,14 @@ export function getDownloadSourceNotConfiguredMessage() {
   if (!status.ytdlp.configured) pieces.push("yt-dlp");
   if (!status.qbittorrent.configured) pieces.push("Prowlarr + qBittorrent");
   return `No download source is configured. Configure ${pieces.join(" or ")} in Settings → Downloads, or turn on a download source plugin, to enable downloads for flows and playlists.`;
+}
+
+export function getNoSourceMessage(job: Partial<Pick<DownloadJob, "requestKind">> | null) {
+  const sources = getEnabledDownloadSources();
+  if (sources.length === 0 || sources.some((source) => servesRequest(source, job)))
+    return getDownloadSourceNotConfiguredMessage();
+  const labels = sources.map((source) => source.label).join(" and ");
+  return `Only requested albums go to ${labels}. Add a download source for single tracks in Settings → Downloads.`;
 }
 
 export function getSourceLabel(sourceId: string | null | undefined) {

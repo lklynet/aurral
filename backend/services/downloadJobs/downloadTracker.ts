@@ -923,7 +923,7 @@ export class DownloadTracker {
   }
 
   canSearchByRelease(job: DownloadJob) {
-    return !job.upgradeForJobId && searchesByRelease(job) && isAlbumGrabSourceConfigured();
+    return !job.upgradeForJobId && searchesByRelease(job) && isAlbumGrabSourceConfigured(job);
   }
 
   // A track request first searches the sources that download only a track
@@ -931,7 +931,9 @@ export class DownloadTracker {
   // A whole-album request never does. It needs no release to start.
   quickSearchSourcesDue(job: DownloadJob) {
     if (job.requestKind !== "track" || job.upgradeForJobId || !this.canAwaitRelease(job)) return [];
-    return getQuickSearchSources().filter((source) => !job.quickSearchedSources.includes(source));
+    return getQuickSearchSources(job).filter(
+      (source) => !job.quickSearchedSources.includes(source),
+    );
   }
 
   startsWithQuickSearch(job: DownloadJob) {
@@ -940,7 +942,7 @@ export class DownloadTracker {
 
   // A track that would search by release once metadata reads its album.
   canAwaitRelease(job: DownloadJob) {
-    return Boolean(job) && triesRelease(job) && isAlbumGrabSourceConfigured();
+    return Boolean(job) && triesRelease(job) && isAlbumGrabSourceConfigured(job);
   }
 
   // The tracks one release attempt fills: this job and the pending tracks of
@@ -968,7 +970,7 @@ export class DownloadTracker {
         : (entry.requestGroupId || null) === (job.requestGroupId || null) &&
           !entry.upgradeForJobId &&
           !this.startsWithQuickSearch(entry));
-    if (!release || !fits(job) || !isAlbumGrabSourceConfigured()) return [];
+    if (!release || !fits(job) || !isAlbumGrabSourceConfigured(job)) return [];
     if (job.upgradeForJobId && !ownerActive(job)) return [];
     const candidates =
       job.requestGroupId || job.upgradeForJobId

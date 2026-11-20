@@ -204,7 +204,7 @@ Set `"downloadSource": { "albums": true }` and export `searchAlbum` and `downloa
 
 `downloadAlbum` receives `result`, `album`, and an empty `directory`. Save the album's audio files anywhere inside `directory` and return nothing. Aurral matches the files to the release's tracks and files each one.
 
-Add `"tracks": false` when the plugin can only download albums, like a torrent source, and leave out `search` and `download`. Aurral then gets a single track from its album: it searches for the album, downloads it, and picks the track's file by its tags.
+Add `"tracks": false` when the plugin can only download albums, like a torrent source, and leave out `search` and `download`. Aurral then gets a single track from its album: it searches for the album, downloads it, and picks the track's file by its tags. A source with `"keeps": true` gets only album requests instead. See [Clients that file their own downloads](#clients-that-file-their-own-downloads).
 
 ### Part of an album
 
@@ -225,6 +225,8 @@ Export `discard` too. Aurral calls `discard({ id })` when it no longer wants a p
 A client that files finished album downloads in its own folder, like Lidarr, can leave them there. When the album is done, return `{ done: true, filed: <count> }` from `status`, with the number of audio files the client has for it, and put nothing in `directory`. No paths: the folder has to be one of the user's read-only folders, which they add in **Settings > Library**, and Aurral finds the album there through its Library index.
 
 Aurral waits until it has indexed that many files for the album, scans the read-only folders once if file events don't arrive, and fails the download if the album never shows up. It checks the files like any download, uses the ones that match where they are, and never moves, changes, or deletes them. A file that doesn't match is skipped instead of going to the review queue. Only album downloads can be filed, and an upgrade can't, because Aurral replaces the file it upgrades.
+
+Set `"keeps": true` in `downloadSource` when the client keeps every album Aurral asks for, like Lidarr monitoring it. Aurral then asks it only for albums the user requested, never for a single track, a playlist track, or a flow track, so one track never leaves a whole album behind in the client.
 
 ## Import lists
 
