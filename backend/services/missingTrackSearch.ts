@@ -9,6 +9,7 @@ import { libraryManager } from "./libraryManager.ts";
 import { ALBUM_IS_OWNED } from "./libraryMediaStore.ts";
 import { albumMediaCondition } from "./libraryQueryService.ts";
 import { logger } from "./logger.ts";
+import { isUnknownTitle } from "./trackMatching/titleText.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { releasedSince, utcDay } from "../../lib/releaseDate.ts";
 
@@ -87,6 +88,7 @@ const isActiveOrCancelled = (job: DownloadJob) =>
 
 function hasSearchableMissingTrack(album: CandidateAlbum, jobs: DownloadJob[]) {
   return missingTracksStmt.all(album.id).some((track) => {
+    if (isUnknownTitle(track.title)) return false;
     const latestJob = jobs.filter((job) => jobMatchesTrack(job, track)).at(-1);
     return latestJob?.status !== "blocked";
   });

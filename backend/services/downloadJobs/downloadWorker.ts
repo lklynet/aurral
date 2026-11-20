@@ -45,6 +45,7 @@ import { recordTrackJobFailed } from "../aurralHistoryService.ts";
 import { recordRequestGroupDownloaded } from "../aurralHistoryRequests.ts";
 import { finalizeQualityUpgradeFailure } from "../qualityUpgradeOutcome.ts";
 import { trackWork } from "../eventLoopWatch.ts";
+import { isUnknownTitle } from "../trackMatching/titleText.ts";
 
 const DEFAULT_CONCURRENCY = 3;
 const SEARCH_SLOT_RECHECK_MS = 2000;
@@ -624,6 +625,13 @@ export class DownloadWorker {
       }
       if (job.upgradeForJobId) {
         await this._enqueueUpgrade(job, runGeneration);
+        return;
+      }
+      if (isUnknownTitle(job.trackName)) {
+        const message = "MusicBrainz doesn't have this track's title yet";
+        downloadTracker.setFailed(job.id, message);
+        recordTrackJobFailed(job, message);
+        await this.checkPlaylistComplete(job.playlistType);
         return;
       }
       let phaseStart = process.hrtime.bigint();

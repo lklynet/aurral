@@ -405,6 +405,24 @@ const storedRequest = (jobId: string) =>
     )
     .get(jobId)!;
 
+test("a track MusicBrainz titles [unknown] fails without a search", async (t) => {
+  useQuickSources();
+  const group = album("untitled", "Untitled Band", [
+    { id: "untitled-release", tracks: ["Named", "[unknown]"] },
+  ]);
+  await serveGroups(t, [group]);
+
+  const [track] = libraryJobs(group, ["[unknown]"]);
+  assert.ok(track !== undefined);
+  await downloadWorker.processJob(trackedJob(downloadTracker, track));
+
+  assert.equal(queued(track), undefined);
+  assert.deepEqual(
+    [trackedJob(downloadTracker, track).status, trackedJob(downloadTracker, track).error],
+    ["failed", "MusicBrainz doesn't have this track's title yet"],
+  );
+});
+
 test("a track request searches yt-dlp ranked first before its release, and never again after; a whole-album request starts on its release", async (t) => {
   const sources = useQuickSources();
   const group = album("quick", "Quick Band", [

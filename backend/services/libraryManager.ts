@@ -107,7 +107,11 @@ import {
   getAlbumByMbid as getMetadataAlbumByMbid,
   getArtistByMbid as getMetadataArtistByMbid,
 } from "./providers/brainzmashProvider.ts";
-import { isSilenceTrack, isVariousArtistsCredit } from "./trackMatching/titleText.ts";
+import {
+  isSilenceTrack,
+  isUnknownTitle,
+  isVariousArtistsCredit,
+} from "./trackMatching/titleText.ts";
 import { recordTrackJobQueued } from "./aurralHistoryService.ts";
 const metadataLookups = new PQueue({ concurrency: 4 });
 
@@ -834,6 +838,7 @@ export class LibraryManager {
       (track) =>
         track.available !== true &&
         track.monitored !== false &&
+        !isUnknownTitle(track.title) &&
         (!requestedTrackIds || requestedTrackIds.has(Number(track.id))),
     );
     const sourceConfigured = isAnyDownloadSourceConfigured();
