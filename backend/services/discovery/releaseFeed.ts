@@ -1,3 +1,4 @@
+import { FACTORY_MONITOR_RULES, releaseMatchesRules } from "../monitoring.ts";
 import { withCoverUrls } from "../releaseGroupCoverService.ts";
 import { getFreshReleasesByArtists } from "./freshReleases.ts";
 import { getRecentMissingReleases, toDay, type ReleaseWindow } from "./recentReleases.ts";
@@ -7,8 +8,23 @@ type RecommendedRelease = ReturnType<typeof getFreshReleasesByArtists>[number];
 
 const recommendedReleases = (userId: number | null) => {
   const ids = getUserDiscovery(userId, 0).body.recommendations.map(({ id }) => id);
-  return ids.length ? getFreshReleasesByArtists(ids) : [];
+  return ids.length
+    ? getFreshReleasesByArtists(ids).filter((release) =>
+        releaseMatchesRules(
+          {
+            id: release.mbid,
+            type: release.albumType,
+            secondaryTypes: release.secondaryTypes,
+            releaseStatuses: [],
+            firstReleaseDate: release.releaseDate,
+          },
+          FACTORY_MONITOR_RULES,
+        ),
+      )
+    : [];
 };
+
+const month = (releaseDate: string) => releaseDate.slice(0, 7);
 
 async function releasesIn(
   when: ReleaseWindow,
@@ -23,10 +39,12 @@ async function releasesIn(
     ({ mbid, releaseDate }) =>
       !libraryIds.has(mbid) && (when === "upcoming" ? releaseDate > today : releaseDate <= today),
   );
-  return [...fromLibrary, ...fromRecommendations].sort((left, right) =>
-    when === "upcoming"
-      ? left.releaseDate.localeCompare(right.releaseDate)
-      : right.releaseDate.localeCompare(left.releaseDate),
+  const direction = when === "upcoming" ? 1 : -1;
+  return [...fromLibrary, ...fromRecommendations].sort(
+    (left, right) =>
+      direction * month(left.releaseDate).localeCompare(month(right.releaseDate)) ||
+      Number(libraryIds.has(right.mbid)) - Number(libraryIds.has(left.mbid)) ||
+      direction * left.releaseDate.localeCompare(right.releaseDate),
   );
 }
 

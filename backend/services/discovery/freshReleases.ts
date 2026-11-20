@@ -111,7 +111,7 @@ export function getFreshReleasesByArtists(artistMbids: Iterable<string | null | 
             releaseDate: release.releaseDate,
             coverUrl: release.coverUrl,
             albumType: release.type,
-            secondaryTypes: [],
+            secondaryTypes: release.secondaryTypes,
             releaseStatuses: [],
             available: false,
             trackCount: 0,
