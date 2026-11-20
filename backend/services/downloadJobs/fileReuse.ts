@@ -19,7 +19,12 @@ import {
   normalizePositiveInteger,
   sanitizePathPart,
 } from "../downloadUtils.ts";
-import { AURRAL_FLOWS_DIR, isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.ts";
+import {
+  AURRAL_FLOWS_DIR,
+  buildTrackDestination,
+  isPathInsideRoot,
+  resolveDownloadRoot,
+} from "../downloadPaths.ts";
 import { recordTrackReused } from "../aurralHistoryService.ts";
 import { playlistManager } from "../playlists/playlistManager.ts";
 
@@ -329,7 +334,12 @@ async function adoptFileIntoPlaylist(
   const albumDir = sanitizePathPart(options.track?.albumName || segments.at(-2), "Unknown Album");
   const destPath = joinUnderRoot(
     targetRoot,
-    path.join(artistDir, albumDir),
+    targetRoot === root
+      ? buildTrackDestination(null, artistDir, albumDir, {
+          root,
+          album: options.track,
+        })
+      : path.join(artistDir, albumDir),
     path.basename(resolvedSource),
   );
   const committed = await commitDownloadedFile(resolvedSource, destPath);
@@ -402,7 +412,9 @@ export async function removePlaylistFileIfUnshared(
   const others = matchingJobs.filter((job) => !excludeJobIds.has(String(job.id || "")));
   const [survivor] = sortReusableJobs(others);
   if (survivor) {
-    const nextPath = await adoptFileIntoPlaylist(resolved, survivor.playlistType, downloadRoot);
+    const nextPath = await adoptFileIntoPlaylist(resolved, survivor.playlistType, downloadRoot, {
+      track: survivor,
+    });
     return { action: nextPath ? "relocated" : "skipped" };
   }
   await fs.rm(resolved, { force: true });

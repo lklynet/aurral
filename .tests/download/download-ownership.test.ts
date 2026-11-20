@@ -8,7 +8,7 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
-const [state, { db }, { dbOps }, { downloadTracker }, ownership, cancellation] =
+const [state, { db }, { dbOps }, { downloadTracker }, ownership, cancellation, libraryStore] =
   await setupIsolatedBackend(
     "download-ownership",
     () => import("../../backend/config/db-sqlite.ts"),
@@ -16,6 +16,7 @@ const [state, { db }, { dbOps }, { downloadTracker }, ownership, cancellation] =
     () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
     () => import("../../backend/services/downloadJobs/downloadOwnership.ts"),
     () => import("../../backend/services/downloadJobs/downloadCancellation.ts"),
+    () => import("../../backend/services/libraryMediaStore.ts"),
   );
 beforeEach(() => {
   resetDatabase(db);
@@ -234,6 +235,7 @@ test("downloads never name a folder or file with a leading or trailing dot", () 
     ownership.downloadDestinationForJob({
       artistName: ".wav_909 & 7thRaw",
       albumName: "...",
+      albumMbid: null,
       playlistType: "library",
     }),
     "wav_909 & 7thRaw/Unknown Album",
@@ -242,8 +244,47 @@ test("downloads never name a folder or file with a leading or trailing dot", () 
     ownership.downloadDestinationForJob({
       artistName: "N.E.R.D.",
       albumName: "Fly or Die. ",
+      albumMbid: null,
       playlistType: "library",
     }),
     "N.E.R.D/Fly or Die",
   );
+});
+
+test("albums of one artist that share a title download into their own folders, even before the Library has the album", () => {
+  const artist = libraryStore.upsertLibraryArtist({
+    identityKey: "mbid:weezer",
+    mbid: "weezer",
+    name: "Weezer",
+  });
+  const album = (group: string, title: string, releaseDate: string, disambiguation = "") =>
+    libraryStore.upsertLibraryAlbum({
+      identityKey: `release-group:${group}`,
+      mbid: group,
+      releaseGroupMbid: group,
+      artistId: artist.id,
+      title,
+      releaseDate,
+      metadata: { librarySource: "aurral", disambiguation },
+    });
+  album("blue", "Weezer", "1994-05-10");
+  album("green", "Weezer", "2001-05-15", "Green Album");
+  const destination = (albumMbid: string) =>
+    ownership.downloadDestinationForJob({
+      artistName: "Weezer",
+      artistMbid: "weezer",
+      albumName: "Weezer",
+      albumMbid,
+      releaseYear: "2008",
+      playlistType: "library",
+    });
+
+  assert.deepEqual(["blue", "green", "red"].map(destination), [
+    "Weezer/Weezer",
+    "Weezer/Weezer (2001)",
+    "Weezer/Weezer (2008)",
+  ]);
+
+  album("live", "Weezer (2001)", "2001-11-01");
+  assert.equal(destination("green"), "Weezer/Weezer (Green Album)");
 });

@@ -238,7 +238,7 @@ async function replaceFirstFile(album: { folder: string }, picture: Buffer | nul
   });
 }
 
-test("album cover URLs carry a version that changes when the album's files change", async () => {
+test("album cover URLs carry a version that changes when the album's files change or move", async () => {
   const album = await albumFixture("versioned", [image]);
   const version = getLibraryArtworkVersions("album", [album.id]).get(String(album.id));
   assert.match(requireFixture(version), /^[\da-f]{12}$/);
@@ -253,6 +253,17 @@ test("album cover URLs carry a version that changes when the album's files chang
 
   await replaceFirstFile(album, blue);
   assert.notEqual(getLibraryArtworkVersions("album", [album.id]).get(String(album.id)), version);
+
+  const split = await albumFixture("split", [image, image]);
+  const versions = [getLibraryArtworkVersions("album", [split.id]).get(String(split.id))];
+  for (const file of ["000.mp3", "001.mp3"]) {
+    db.prepare("UPDATE library_media_files SET path = ? WHERE path = ?").run(
+      path.join(root, "split (2001)", file),
+      path.join(split.folder, file),
+    );
+    versions.push(getLibraryArtworkVersions("album", [split.id]).get(String(split.id)));
+  }
+  assert.equal(new Set(versions).size, 3);
 });
 
 test("clearing artwork gives covers new URLs so browsers fetch them again", async () => {

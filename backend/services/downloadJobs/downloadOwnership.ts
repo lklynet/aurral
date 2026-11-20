@@ -76,13 +76,18 @@ function currentJob(jobId: string) {
 }
 
 export function downloadDestinationForJob(
-  job: Pick<DownloadJob, "artistName" | "albumName"> & JobFields<"playlistId" | "playlistType">,
+  job: Pick<DownloadJob, "artistName" | "albumName" | "albumMbid"> &
+    Partial<Pick<DownloadJob, "artistMbid" | "releaseYear">> &
+    JobFields<"playlistId" | "playlistType">,
 ) {
   return buildTrackDestination(
     job.playlistId || job.playlistType,
     sanitizePathPart(job.artistName, "Unknown Artist"),
     sanitizePathPart(job.albumName, "Unknown Album"),
-    { ephemeral: Boolean(flowPlaylistConfig.getFlow(job.playlistId || job.playlistType)) },
+    {
+      ephemeral: Boolean(flowPlaylistConfig.getFlow(job.playlistId || job.playlistType)),
+      album: job,
+    },
   );
 }
 

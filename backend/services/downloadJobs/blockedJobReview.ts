@@ -61,6 +61,7 @@ export async function approveBlockedJob(jobId: string) {
   const playlistId = job.playlistId || job.playlistType;
   const destination = buildTrackDestination(playlistId, artistDir, albumDir, {
     ephemeral: Boolean(flowPlaylistConfig.getFlow(playlistId)),
+    album: job,
   });
   const finalDir = joinUnderRoot(resolveDownloadRoot(), destination);
   const finalName = buildTrackFileName(job, ext || ".mp3");
