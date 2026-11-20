@@ -454,6 +454,30 @@ test("an album whose only missing tracks are unmonitored is not due", async () =
   assert.equal(searchTime(album.id), null);
 });
 
+test("the search never queues a track MusicBrainz titles [unknown], and an album missing only those is not due", async () => {
+  const retitle = (trackId: number) =>
+    db.prepare("UPDATE library_tracks SET title = '[unknown]' WHERE id = ?").run(trackId);
+  const { albumMbid, tracks, jobIds } = createAlbum({ tracks: ["failed", "missing", "missing"] });
+  retitle(requireFixture(tracks[0]).id);
+  retitle(requireFixture(tracks[1]).id);
+  const untitled = createAlbum({ tracks: ["missing", "available"] });
+  retitle(requireFixture(untitled.tracks[0]).id);
+
+  assert.equal(await runMissingTrackSearch(), 1);
+
+  assert.equal(getJob(jobIds[0]).status, "failed");
+  assert.equal(
+    albumJobs(albumMbid).some((job) => job.trackMbid === requireFixture(tracks[1]).mbid),
+    false,
+  );
+  assert.equal(
+    albumJobs(albumMbid).find((job) => job.trackMbid === requireFixture(tracks[2]).mbid)?.status,
+    "pending",
+  );
+  assert.equal(albumJobs(untitled.albumMbid).length, 0);
+  assert.equal(searchTime(untitled.album.id), null);
+});
+
 test("Retry skips unmonitored tracks, and turning an album back on monitors all of its tracks", async () => {
   const retried = createAlbum({ tracks: ["missing", "missing"] });
   setTrackMonitored(requireFixture(retried.tracks[0]).id, false);

@@ -28,6 +28,10 @@ export function inOtherScript(left: string | null | undefined, right: string | n
 // MusicBrainz titles the gap and pregap tracks of a release "[silence]".
 export const isSilenceTrack = (title: unknown) => /^\s*\[silence\]\s*$/iu.test(String(title ?? ""));
 
+// MusicBrainz titles a track nobody has named yet "[unknown]", which no
+// download source can search for.
+export const isUnknownTitle = (title: unknown) => /^\s*\[unknown\]\s*$/iu.test(String(title ?? ""));
+
 // "Various Artists" credits a compilation, not a performer.
 export function isVariousArtistsCredit(
   name: string | null | undefined,
