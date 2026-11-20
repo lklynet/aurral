@@ -42,6 +42,7 @@ test("the release feed merges Library and recommended albums and EPs into dated 
     [21, "Recommended Soon", "2026-11-14", "EP"],
     [22, "Recommended Single", "2026-11-09", "Single"],
     [23, "Recommended Live", "2026-11-11", "Album", "Live"],
+    [24, "Recommended Latest", "2026-11-11", "EP"],
   ] as const;
   vi.spyOn(http, "get").mockResolvedValue({
     status: 200,
@@ -70,7 +71,10 @@ test("the release feed merges Library and recommended albums and EPs into dated 
   };
 
   assert.deepEqual(await page("released", 0, 2), [["Library Recent", "Shared"], true]);
-  assert.deepEqual(await page("released", 2, 2), [["Recommended Recent", "Library Old"], false]);
+  assert.deepEqual(await page("released", 2, 3), [
+    ["Recommended Latest", "Recommended Recent", "Library Old"],
+    false,
+  ]);
   assert.deepEqual(await page("upcoming", 0, 10), [
     ["Library Soon", "Recommended Soon", "Library Later"],
     false,
@@ -80,18 +84,18 @@ test("the release feed merges Library and recommended albums and EPs into dated 
     [
       "Library Recent",
       "Shared",
+      "Recommended Latest",
       "Recommended Recent",
       "Library Old",
       "Library Soon",
-      "Recommended Soon",
     ],
   );
   const [first] = (await getReleaseFeed({ userId: null, when: "released", limit: 1, now }))
     .releases;
   assert.equal(first?.coverUrl, `/api/artists/release-group/${mbid(11)}/cover/image`);
-  const [, , recommendedRecent] = (
-    await getReleaseFeed({ userId: null, when: "released", limit: 3, now })
-  ).releases;
+  const recommendedRecent = (
+    await getReleaseFeed({ userId: null, when: "released", limit: 10, now })
+  ).releases.find((album) => album.title === "Recommended Recent");
   assert.equal(
     recommendedRecent?.coverUrl,
     `https://imagecache.lidarr.audio/v1/caa/${mbid(30)}/77-500.jpg`,
