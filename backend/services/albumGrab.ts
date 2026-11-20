@@ -105,8 +105,8 @@ export function deniedAlbumSources(jobs: JobFields<"deniedRemoteSources">[], sou
   );
 }
 
-// Blocks the attempted release for every track it did not fill, so neither
-// the next album attempt nor a per-track search takes it again.
+// Blocks the attempted release for every track it did not fill. Each source
+// decides whether the exclusion also applies to individual track downloads.
 export function blockAlbumGrabSource(payload: AlbumGrabPayload, jobs: DownloadJob[]) {
   const candidate = getPayloadCandidate(payload);
   const raw = isRecord(candidate?.raw) ? candidate.raw : null;
