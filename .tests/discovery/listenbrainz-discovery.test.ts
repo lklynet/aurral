@@ -137,10 +137,10 @@ const respond = (url: URL) => {
   if (url.hostname === "api.deezer.com" && url.pathname === "/artist/10/related") {
     return json({ data: [{ id: 41, name: "Flow Pick" }] });
   }
-  if (url.hostname === "lidarrapi.brainzmash.cc" && url.pathname === `/artist/${QUIET.mbid}`) {
+  if (url.hostname === "brainzmash.kell.ly" && url.pathname === `/artist/${QUIET.mbid}`) {
     return json({ id: QUIET.mbid, artistname: QUIET.name, links: [], Albums: [] });
   }
-  if (url.hostname === "lidarrapi.brainzmash.cc" && url.pathname === "/search/artist") {
+  if (url.hostname === "brainzmash.kell.ly" && url.pathname === "/search/artist") {
     return json(
       url.searchParams.get("query") === RELATED.name
         ? [{ id: RELATED.mbid, artistname: RELATED.name }]
@@ -325,7 +325,7 @@ test("flows take Deezer's related artists by name without looking each one up", 
     [[null, "Flow Pick"]],
   );
   assert.equal(
-    requests.some((url) => url.hostname === "lidarrapi.brainzmash.cc"),
+    requests.some((url) => url.hostname === "brainzmash.kell.ly"),
     false,
   );
 });

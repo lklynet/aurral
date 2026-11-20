@@ -76,7 +76,7 @@ const respond = (url: URL) => {
     const similar = similarBySeed.get(seedNames[Number(related[1]) - 1] ?? "") ?? [];
     return { data: similar.map((artist, index) => ({ id: 100 + index, name: artist.name })) };
   }
-  if (url.hostname === "lidarrapi.brainzmash.cc" && url.pathname === "/search/artist") {
+  if (url.hostname === "brainzmash.kell.ly" && url.pathname === "/search/artist") {
     const artist = knownArtists.find(({ name }) => name === url.searchParams.get("query"));
     return artist ? [{ id: artist.mbid, artistname: artist.name }] : [];
   }

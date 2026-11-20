@@ -10,11 +10,7 @@ import {
   cleanupIsolatedState,
   createMockHttpServer,
 } from "./helpers/backendTestHarness.ts";
-import {
-  defaultData,
-  DEFAULT_METADATA_BASE_URL,
-  FALLBACK_METADATA_BASE_URL,
-} from "../backend/config/constants.ts";
+import { defaultData, DEFAULT_METADATA_BASE_URL } from "../backend/config/constants.ts";
 
 const [
   isolatedState,
@@ -46,10 +42,8 @@ const [
 const {
   clearMetadataProviderCaches,
   getAlbumByMbid,
-  getCachedAlbumByMbid,
   getArtistByMbid,
   getCachedArtistByMbid,
-  getMetadataCooldownMs,
   listArtistAlbums,
   searchAlbums,
   searchArtists,
@@ -1015,89 +1009,6 @@ test("an album 429 makes only that album wait out its retry-after", async () => 
     dbOps.updateSettings(previousSettings);
     await server.close();
   }
-});
-
-async function withRelayAndFallback(
-  answer: (response: import("node:http").ServerResponse) => void,
-  run: (requests: { relay: string[]; fallback: string[] }) => Promise<void>,
-) {
-  const requests = { relay: [] as string[], fallback: [] as string[] };
-  const relay = await createMockHttpServer((request, response) => {
-    requests.relay.push(request.url || "");
-    response.statusCode = 429;
-    response.setHeader("retry-after", "604800");
-    response.end("rate limited");
-  });
-  const fallback = await createMockHttpServer((request, response) => {
-    requests.fallback.push(request.url || "");
-    answer(response);
-  });
-  const realGet = http.get.bind(http);
-  vi.spyOn(http, "get").mockImplementation((url, options) =>
-    realGet(
-      String(url)
-        .replace(DEFAULT_METADATA_BASE_URL, relay.url)
-        .replace(FALLBACK_METADATA_BASE_URL, fallback.url),
-      options,
-    ),
-  );
-  try {
-    clearMetadataProviderCaches();
-    await run(requests);
-  } finally {
-    vi.restoreAllMocks();
-    clearMetadataProviderCaches();
-    db.prepare("DELETE FROM metadata_provider_budget").run();
-    await relay.close();
-    await fallback.close();
-  }
-}
-
-const waitsAboutAWeek = (error: unknown) =>
-  asAppError(error)?.code === "ERR_METADATA_COOLDOWN" &&
-  Number(getMetadataCooldownMs(error)) > 6 * 24 * 60 * 60 * 1000;
-
-test("an album the default relay makes wait loads from the fallback server instead", async () => {
-  await withRelayAndFallback(
-    (response) => {
-      response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({ id: "held-album", title: "Fallback Album" }));
-    },
-    async (requests) => {
-      assert.equal((await getAlbumByMbid("held-album")).title, "Fallback Album");
-      assert.equal((await getAlbumByMbid("held-album")).title, "Fallback Album");
-      const refreshed = await getAlbumByMbid("held-album", { forceRefresh: true });
-      assert.equal(refreshed.title, "Fallback Album");
-      assert.deepEqual(requests.relay, ["/album/held-album"]);
-      assert.deepEqual(requests.fallback, ["/album/held-album", "/album/held-album"]);
-    },
-  );
-});
-
-test.each([
-  { failure: "refuses", status: 403, body: "forbidden" },
-  { failure: "has no such album", status: 404, body: "not found" },
-  { failure: "is down", status: 503, body: "unavailable" },
-  { failure: "answers what Aurral can't read", status: 200, body: "[1]" },
-])("a fallback that $failure leaves the relay's wait in place", async ({ status, body }) => {
-  let failing = false;
-  await withRelayAndFallback(
-    (response) => {
-      response.setHeader("content-type", "application/json");
-      response.statusCode = failing ? status : 200;
-      response.end(failing ? body : JSON.stringify({ id: "kept-album", title: "Kept Album" }));
-    },
-    async (requests) => {
-      assert.equal((await getAlbumByMbid("kept-album")).title, "Kept Album");
-      failing = true;
-      await assert.rejects(() => getAlbumByMbid("new-album"), waitsAboutAWeek);
-      const kept = await getAlbumByMbid("kept-album", { forceRefresh: true });
-      assert.equal(kept.title, "Kept Album");
-      assert.equal((await getCachedAlbumByMbid("kept-album"))?.title, "Kept Album");
-      assert.equal((await getAlbumByMbid("kept-album")).title, "Kept Album");
-      assert.deepEqual(requests.relay, ["/album/kept-album", "/album/new-album"]);
-    },
-  );
 });
 
 test("a search 429 pauses every metadata request for at most fifteen minutes", async () => {
