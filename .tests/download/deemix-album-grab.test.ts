@@ -80,7 +80,7 @@ async function serveRelease(
   return id;
 }
 
-test("one deemix album queue fills verified siblings and retries only a missing track elsewhere", async (t) => {
+test("a partial deemix album download can retry missing tracks from the same release", async (t) => {
   const downloads = join(state.baseDir, "deemix-downloads");
   await mkdir(downloads, { recursive: true });
   const firstPath = join(downloads, "01 First.flac");
@@ -253,10 +253,13 @@ test("one deemix album queue fills verified siblings and retries only a missing 
       albumGroupJobIds: undefined,
       releaseMbid: null,
     };
+    assert.deepEqual(trackedJob(downloadTracker, ids[1]).deniedRemoteSources, [
+      ["deemix", "album:42"],
+    ]);
     const retry = await runDeemix(retryPayload);
     assert.deepEqual(
       deemixCandidates(retry).map((candidate) => candidate.raw.id),
-      ["77-2"],
+      ["42-2", "77-2"],
     );
   } finally {
     await mock.close();
