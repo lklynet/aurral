@@ -19,7 +19,12 @@ import {
   normalizePositiveInteger,
   sanitizePathPart,
 } from "../downloadUtils.ts";
-import { AURRAL_FLOWS_DIR, isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.ts";
+import {
+  AURRAL_FLOWS_DIR,
+  buildTrackDestination,
+  isPathInsideRoot,
+  resolveDownloadRoot,
+} from "../downloadPaths.ts";
 import { recordTrackReused } from "../aurralHistoryService.ts";
 import { playlistManager } from "../playlists/playlistManager.ts";
 
@@ -329,7 +334,12 @@ async function adoptFileIntoPlaylist(
   const albumDir = sanitizePathPart(options.track?.albumName || segments.at(-2), "Unknown Album");
   const destPath = joinUnderRoot(
     targetRoot,
-    path.join(artistDir, albumDir),
+    targetRoot === root
+      ? buildTrackDestination(null, artistDir, albumDir, {
+          root,
+          album: options.track?.albumMbid,
+        })
+      : path.join(artistDir, albumDir),
     path.basename(resolvedSource),
   );
   const committed = await commitDownloadedFile(resolvedSource, destPath);

@@ -646,6 +646,46 @@ test("Clean up keeps a file's track number from its tags when the Library's albu
   assert.equal(await exists(download), false);
 });
 
+test("Clean up gives albums that share a title their own folders, and the folder's first album keeps it", async () => {
+  const folder = path.join(root, "Weezer", "Weezer");
+  const weezer = async (group: number, date: string, title: string) =>
+    makeTrack(path.join(folder, `${title}.flac`), {
+      artist: "Weezer",
+      album: "Weezer",
+      title,
+      track: "1",
+      date,
+      MUSICBRAINZ_RELEASEGROUPID: `3f3f3f3f-0000-4000-8000-00000000010${group}`,
+    });
+  await weezer(1, "1994", "My Name Is Jonas");
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  await weezer(2, "2001", "Don't Let Go");
+  await weezer(3, "2019", "Africa");
+  await weezer(4, "2019", "Can't Knock the Hustle");
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  db.prepare(
+    "UPDATE library_albums SET metadata_json = json_set(coalesce(metadata_json, '{}'), '$.disambiguation', 'Teal Album') WHERE release_group_mbid = ?",
+  ).run("3f3f3f3f-0000-4000-8000-000000000103");
+
+  const { items } = await cleanUp();
+
+  const moved = (album: string, title: string) => path.join("Weezer", album, `01 - ${title}.flac`);
+  assert.deepEqual(
+    items.flatMap((item) => (item.target ? [item.target] : [])).toSorted(),
+    [
+      moved("Weezer", "My Name Is Jonas"),
+      moved("Weezer (2001)", "Don't Let Go"),
+      moved("Weezer (2019)", "Can't Knock the Hustle"),
+      moved("Weezer (Teal Album)", "Africa"),
+    ].toSorted(),
+  );
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  assert.deepEqual(
+    (await cleanUp()).items.filter((item) => item.target),
+    [],
+  );
+});
+
 test("Clean up leaves a read-only folder inside the Library folder alone", async (t: import("vite-plus/test").TestContext) => {
   t.onTestFinished(() => dbOps.setJSONSetting("readOnlyFolders", []));
   dbOps.setJSONSetting("readOnlyFolders", [path.join(root, "Shared Artist")]);

@@ -30,6 +30,7 @@ const libraryMetadataSchema = v.looseObject({
   qualityProfile: lenient(v.nullable(v.looseObject({ name: nullableText }))),
   albumType: nullableText,
   releaseType: nullableText,
+  disambiguation: nullableText,
   edition: lenient(v.string()),
   requestedRelease: nullableText,
   trackList: lenient(v.nullable(v.looseObject({ release: nullableText }))),

@@ -279,6 +279,7 @@ async function planAlbum(albumId: number, context: CleanupPlanContext) {
         discNumber: file.disc_number,
       },
       path.extname(file.path),
+      album,
     );
     const variant = target === path.resolve(file.path) ? target : findLibraryFileVariant(target);
     let rename = variant !== path.resolve(file.path);

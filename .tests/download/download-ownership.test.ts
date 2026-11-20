@@ -8,7 +8,7 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
-const [state, { db }, { dbOps }, { downloadTracker }, ownership, cancellation] =
+const [state, { db }, { dbOps }, { downloadTracker }, ownership, cancellation, libraryStore] =
   await setupIsolatedBackend(
     "download-ownership",
     () => import("../../backend/config/db-sqlite.ts"),
@@ -16,6 +16,7 @@ const [state, { db }, { dbOps }, { downloadTracker }, ownership, cancellation] =
     () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
     () => import("../../backend/services/downloadJobs/downloadOwnership.ts"),
     () => import("../../backend/services/downloadJobs/downloadCancellation.ts"),
+    () => import("../../backend/services/libraryMediaStore.ts"),
   );
 beforeEach(() => {
   resetDatabase(db);
@@ -246,4 +247,39 @@ test("downloads never name a folder or file with a leading or trailing dot", () 
     }),
     "N.E.R.D/Fly or Die",
   );
+});
+
+test("albums of one artist that share a title download into their own folders", () => {
+  const artist = libraryStore.upsertLibraryArtist({
+    identityKey: "mbid:weezer",
+    mbid: "weezer",
+    name: "Weezer",
+  });
+  for (const [group, releaseDate] of [
+    ["blue", "1994-05-10"],
+    ["green", "2001-05-15"],
+  ] as const) {
+    libraryStore.upsertLibraryAlbum({
+      identityKey: `release-group:${group}`,
+      mbid: group,
+      releaseGroupMbid: group,
+      artistId: artist.id,
+      title: "Weezer",
+      releaseDate,
+      metadata: { librarySource: "aurral" },
+    });
+  }
+  const destination = (albumMbid: string) =>
+    ownership.downloadDestinationForJob({
+      artistName: "Weezer",
+      albumName: "Weezer",
+      albumMbid,
+      playlistType: "library",
+    });
+
+  assert.deepEqual(["blue", "green", "unknown"].map(destination), [
+    "Weezer/Weezer",
+    "Weezer/Weezer (2001)",
+    "Weezer/Weezer",
+  ]);
 });

@@ -450,9 +450,7 @@ async function repinAlbumAttempt(payload: PipelinePayload) {
   if (!leader) return null;
   const release = await resolveReleaseManifest(leader);
   if (!isPipelinePayloadActive(payload)) return null;
-  for (const id of release ? mapRequest(release, jobs).wanted.values() : []) {
-    downloadTracker.updateMetadata(id, { releaseMbid: release!.releaseMbid });
-  }
+  if (release) downloadTracker.pinRelease(release, mapRequest(release, jobs).wanted);
   return { ...payload, releaseMbid: release?.releaseMbid || null };
 }
 

@@ -561,7 +561,10 @@ function buildPipelinePayload(job: DownloadJob) {
       recordingMbidAliases,
     },
     attempt: 0,
-    destination: buildTrackDestination(playlistId, artistDir, albumDir, { ephemeral }),
+    destination: buildTrackDestination(playlistId, artistDir, albumDir, {
+      ephemeral,
+      album: job.albumMbid,
+    }),
     upgrade: Boolean(job.upgradeForJobId) && !job.manualReplacementSearch,
     upgradeForJobId: job.upgradeForJobId || null,
     manualReplacementSearch: job.manualReplacementSearch === true,
@@ -1077,8 +1080,22 @@ export class DownloadTracker {
     for (const member of members) {
       setActiveDownloadAttemptId(member.id, payload.downloadAttemptId);
       this.setAlbumGrabAttempted(member.id, true);
-      this.updateMetadata(member.id, { releaseMbid: release.releaseMbid });
       if (member.id !== payload.jobId) this.setDownloading(member.id);
+    }
+    this.pinRelease(release, mapRequest(release, members).wanted);
+  }
+
+  // Pins each track to its place on the release, which also numbers a track
+  // that had no number, so its file is named by its position.
+  pinRelease(release: ReleaseManifest, places: Map<number, string>) {
+    for (const [index, id] of places) {
+      const place = release.tracks[index];
+      const numbered = normalizePositiveInteger(this.jobs.get(id)?.trackNumber);
+      this.updateMetadata(id, {
+        releaseMbid: release.releaseMbid,
+        ...(!numbered &&
+          place?.trackNumber && { trackNumber: place.trackNumber, discNumber: place.discNumber }),
+      });
     }
   }
 

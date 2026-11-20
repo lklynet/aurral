@@ -1757,6 +1757,7 @@ test("each track joins only an attempt for the release it is pinned to and liste
   assert.ok(offRelease !== undefined && first !== undefined);
   const [deluxeSecond, deluxeBonus] = libraryJobs(group, ["Second", "Bonus Song"], {
     releaseMbid: "deluxe",
+    trackNumber: null,
   });
   assert.ok(deluxeSecond !== undefined && deluxeBonus !== undefined);
 
@@ -1784,6 +1785,10 @@ test("each track joins only an attempt for the release it is pinned to and liste
   assert.deepEqual(
     [requireQueued(deluxeSecond).releaseMbid, requireQueued(deluxeSecond).albumGroupJobIds],
     ["deluxe", [deluxeSecond, deluxeBonus]],
+  );
+  assert.deepEqual(
+    [deluxeSecond, deluxeBonus].map((id) => trackedJob(downloadTracker, id).trackNumber),
+    [2, 3],
   );
 });
 

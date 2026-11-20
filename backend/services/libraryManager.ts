@@ -2162,6 +2162,7 @@ export class LibraryManager {
             recordings: tracks.map((track) => track.trackMbid),
           },
           albumType: metadata?.type || "Album",
+          disambiguation: metadata?.disambiguation || null,
           secondaryTypes: metadata?.secondaryTypes || [],
           genres: metadata?.genres || [],
           images: metadata?.images || [],

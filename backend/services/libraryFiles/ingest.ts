@@ -360,6 +360,7 @@ async function planItem(
       discNumber: record.discNumber,
     },
     path.extname(item.sourcePath),
+    match.album,
   );
   if (!isPathInsideRoot(target, root)) {
     return {
