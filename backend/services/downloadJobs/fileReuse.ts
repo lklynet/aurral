@@ -337,7 +337,7 @@ async function adoptFileIntoPlaylist(
     targetRoot === root
       ? buildTrackDestination(null, artistDir, albumDir, {
           root,
-          album: options.track?.albumMbid,
+          album: options.track,
         })
       : path.join(artistDir, albumDir),
     path.basename(resolvedSource),

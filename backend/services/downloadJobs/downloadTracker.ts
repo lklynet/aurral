@@ -563,7 +563,7 @@ function buildPipelinePayload(job: DownloadJob) {
     attempt: 0,
     destination: buildTrackDestination(playlistId, artistDir, albumDir, {
       ephemeral,
-      album: job.albumMbid,
+      album: job,
     }),
     upgrade: Boolean(job.upgradeForJobId) && !job.manualReplacementSearch,
     upgradeForJobId: job.upgradeForJobId || null,

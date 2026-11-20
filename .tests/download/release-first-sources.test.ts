@@ -1755,11 +1755,12 @@ test("each track joins only an attempt for the release it is pinned to and liste
     releaseMbid: "standard",
   });
   assert.ok(offRelease !== undefined && first !== undefined);
-  const [deluxeSecond, deluxeBonus] = libraryJobs(group, ["Second", "Bonus Song"], {
-    releaseMbid: "deluxe",
-    trackNumber: null,
-  });
-  assert.ok(deluxeSecond !== undefined && deluxeBonus !== undefined);
+  const [deluxeSecond, deluxeFirst, deluxeBonus] = libraryJobs(
+    group,
+    ["Second", "First", "Bonus Song"],
+    { releaseMbid: "deluxe", trackNumber: null },
+  );
+  assert.ok(deluxeSecond !== undefined && deluxeFirst !== undefined && deluxeBonus !== undefined);
 
   await downloadWorker.processJob(trackedJob(downloadTracker, offRelease));
   assert.equal(requireQueued(offRelease).albumGrab, undefined);
@@ -1769,7 +1770,7 @@ test("each track joins only an attempt for the release it is pinned to and liste
       .length,
     1,
   );
-  for (const id of [first, deluxeSecond, deluxeBonus]) {
+  for (const id of [first, deluxeSecond, deluxeFirst, deluxeBonus]) {
     assert.equal(trackedJob(downloadTracker, id).status, "pending");
     assert.notEqual(trackedJob(downloadTracker, id).albumGrabAttempted, true);
   }
@@ -1785,11 +1786,13 @@ test("each track joins only an attempt for the release it is pinned to and liste
   await downloadWorker.processJob(trackedJob(downloadTracker, deluxeSecond));
   assert.deepEqual(
     [requireQueued(deluxeSecond).releaseMbid, requireQueued(deluxeSecond).albumGroupJobIds],
-    ["deluxe", [deluxeSecond, deluxeBonus]],
+    ["deluxe", [deluxeSecond, deluxeFirst, deluxeBonus]],
   );
   assert.deepEqual(
-    [deluxeSecond, deluxeBonus].map((id) => trackedJob(downloadTracker, id).trackNumber),
-    [2, 3],
+    [deluxeSecond, deluxeFirst, deluxeBonus].map(
+      (id) => trackedJob(downloadTracker, id).trackNumber,
+    ),
+    [2, 1, 3],
   );
 });
 

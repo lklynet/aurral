@@ -77,6 +77,7 @@ function currentJob(jobId: string) {
 
 export function downloadDestinationForJob(
   job: Pick<DownloadJob, "artistName" | "albumName" | "albumMbid"> &
+    Partial<Pick<DownloadJob, "artistMbid" | "releaseYear">> &
     JobFields<"playlistId" | "playlistType">,
 ) {
   return buildTrackDestination(
@@ -85,7 +86,7 @@ export function downloadDestinationForJob(
     sanitizePathPart(job.albumName, "Unknown Album"),
     {
       ephemeral: Boolean(flowPlaylistConfig.getFlow(job.playlistId || job.playlistType)),
-      album: job.albumMbid,
+      album: job,
     },
   );
 }

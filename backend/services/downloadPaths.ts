@@ -1,7 +1,7 @@
 import { readdirSync, type Dirent } from "fs";
 import path from "path";
 import { db } from "../config/db-sqlite.ts";
-import type { LibraryAlbumsRow, LibraryMediaFilesRow } from "../db/rows.ts";
+import type { LibraryAlbumsRow, LibraryArtistsRow, LibraryMediaFilesRow } from "../db/rows.ts";
 import {
   getStoredDownloadFolderPath,
   resolveDefaultDownloadRoot,
@@ -94,6 +94,9 @@ const albumDetailsStmt = db.prepare<
   [number],
   Pick<LibraryAlbumsRow, "release_date" | "metadata_json">
 >("SELECT release_date, metadata_json FROM library_albums WHERE id = ?");
+const artistByMbidStmt = db.prepare<[string], Pick<LibraryArtistsRow, "id">>(
+  "SELECT id FROM library_artists WHERE mbid = ? ORDER BY id LIMIT 1",
+);
 const albumFilesStmt = db.prepare<[number], Pick<LibraryMediaFilesRow, "path">>(
   "SELECT path FROM library_media_files WHERE album_id = ? AND source = 'aurral' AND available = 1",
 );
@@ -137,8 +140,11 @@ function isAlbumName(name: string, title: string, disambiguation: string | null)
 // a folder named for it that holds its files, the oldest album first when two
 // share one. Any other takes the title, then the title with its year, or with
 // its disambiguation when another of them came out that year. Returns null
-// when the album keeps today's name.
-function sameTitleFolder(album: FolderAlbum) {
+// when the album keeps today's name. An album the Library has no row for yet
+// counts as its newest.
+const PENDING_ALBUM = Number.MAX_SAFE_INTEGER;
+
+function sameTitleFolder(album: FolderAlbum, pendingYear: string | null = null) {
   const group = album.release_group_mbid;
   if (!group) return null;
   const title = albumDirName(album.title);
@@ -151,6 +157,11 @@ function sameTitleFolder(album: FolderAlbum) {
   );
   const albums = named
     .map((row) => ({ id: row.id, home: homeFolder(row.id), ...albumFolderFacts(row.id) }))
+    .concat(
+      album.id === PENDING_ALBUM
+        ? [{ id: album.id, home: null, aurral: true, year: pendingYear, disambiguation: null }]
+        : [],
+    )
     .filter((entry) => entry.home || entry.aurral || entry.id === album.id)
     .toSorted((left, right) => left.id - right.id);
   if (albums.length < 2) {
@@ -190,13 +201,35 @@ function sameTitleFolder(album: FolderAlbum) {
   return folders.get(album.id) ?? null;
 }
 
-// The album is a Library album, or the release group or release MBID of one.
-export type LibraryFolderAlbum = FolderAlbum | string | null | undefined;
+type DownloadAlbum = {
+  albumMbid?: string | null;
+  artistMbid?: string | null;
+  albumName?: string | null;
+  releaseYear?: string | number | null;
+};
+
+// The album is a Library album, or a download's album.
+export type LibraryFolderAlbum = FolderAlbum | DownloadAlbum | null | undefined;
+
+const lowerId = (value: unknown) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
 
 export function libraryAlbumFolder(album: LibraryFolderAlbum) {
-  const mbid = typeof album === "string" ? album.trim().toLowerCase() : "";
-  const row = typeof album === "string" ? groupAlbumStmt.get(mbid, mbid, mbid) : album;
-  return row ? sameTitleFolder(row) : null;
+  if (!album) return null;
+  if ("artist_id" in album) return sameTitleFolder(album);
+  const mbid = lowerId(album.albumMbid);
+  if (!mbid) return null;
+  const row = groupAlbumStmt.get(mbid, mbid, mbid);
+  if (row) return sameTitleFolder(row);
+  const artistMbid = lowerId(album.artistMbid);
+  const artist = artistMbid ? artistByMbidStmt.get(artistMbid) : null;
+  if (!artist || !album.albumName) return null;
+  return sameTitleFolder(
+    { id: PENDING_ALBUM, artist_id: artist.id, title: album.albumName, release_group_mbid: mbid },
+    /^\d{4}/.exec(String(album.releaseYear ?? ""))?.[0] ?? null,
+  );
 }
 
 export function buildTrackDestination(

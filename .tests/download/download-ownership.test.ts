@@ -251,7 +251,7 @@ test("downloads never name a folder or file with a leading or trailing dot", () 
   );
 });
 
-test("albums of one artist that share a title download into their own folders", () => {
+test("albums of one artist that share a title download into their own folders, even before the Library has the album", () => {
   const artist = libraryStore.upsertLibraryArtist({
     identityKey: "mbid:weezer",
     mbid: "weezer",
@@ -272,15 +272,17 @@ test("albums of one artist that share a title download into their own folders", 
   const destination = (albumMbid: string) =>
     ownership.downloadDestinationForJob({
       artistName: "Weezer",
+      artistMbid: "weezer",
       albumName: "Weezer",
       albumMbid,
+      releaseYear: "2008",
       playlistType: "library",
     });
 
-  assert.deepEqual(["blue", "green", "unknown"].map(destination), [
+  assert.deepEqual(["blue", "green", "red"].map(destination), [
     "Weezer/Weezer",
     "Weezer/Weezer (2001)",
-    "Weezer/Weezer",
+    "Weezer/Weezer (2008)",
   ]);
 
   album("live", "Weezer (2001)", "2001-11-01");
