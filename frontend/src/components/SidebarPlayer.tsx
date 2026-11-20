@@ -1,6 +1,7 @@
 import { useState, type SyntheticEvent } from "react";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import ArtworkImage from "./ArtworkImage";
+import PlayerDevicesButton from "./PlayerDevicesButton";
 import { PlayerMiniProgress } from "./PlayerProgress";
 import { ChevronRight, Music, Pause, Play } from "./icons";
 
@@ -54,6 +55,9 @@ function SidebarPlayer({ iconsOnly, onRestore, onTooltip }: SidebarPlayerProps) 
           </span>
         )}
       </button>
+      {currentTrack && !iconsOnly ? (
+        <PlayerDevicesButton className="sidebar-player__toggle" />
+      ) : null}
       {currentTrack && !iconsOnly ? (
         <button
           type="button"

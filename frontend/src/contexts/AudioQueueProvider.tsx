@@ -177,7 +177,7 @@ function readDevice() {
 const fetchRemoteQueue = () =>
   parseResponse(playQueueClient.$get()).then(
     ({ queue }) => queue,
-    () => null,
+    () => undefined,
   );
 
 type RemoteQueue = NonNullable<Awaited<ReturnType<typeof fetchRemoteQueue>>>;
@@ -278,6 +278,7 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
   const [remoteOffer, setRemoteOffer] = useState<RemoteQueue | null>(null);
   const remoteOfferRef = useRef(remoteOffer);
   remoteOfferRef.current = remoteOffer;
+  const pullsRef = useRef(0);
 
   const { volume, muted, setVolume, setMuted } = useSharedVolume();
   const [autoplayEnabled, setAutoplayState] = useState(() => readFlag(AUTOPLAY_KEY));
@@ -695,6 +696,12 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     };
   }, [device, dispatch, engine, isRunning, owner, positionOf]);
 
+  const markSaved = useCallback((changed: number) => {
+    remoteSeenRef.current = Math.max(remoteSeenRef.current, changed);
+    pullsRef.current += 1;
+    setRemoteOffer((offer) => (offer && offer.changed <= changed ? null : offer));
+  }, []);
+
   const pushRemote = useCallback(
     (s: QueueState, position: number) => {
       const remote = remoteQueueFor(s, position);
@@ -707,19 +714,18 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
         if (!moved || (isRunning() && now - sent.at < REMOTE_SAVE_MS)) return;
       }
       remoteSentRef.current = { key, positionMs: remote.positionMs, at: now };
+      const sentFor = restoredOwnerRef.current;
       parseResponse(
         playQueueClient.$put({ json: { ...remote, device } }, { init: { keepalive: true } }),
       )
         .then(({ changed }) => {
-          if (!changed) return;
-          remoteSeenRef.current = Math.max(remoteSeenRef.current, changed);
-          setRemoteOffer((offer) => (offer && offer.changed <= changed ? null : offer));
+          if (changed && restoredOwnerRef.current === sentFor) markSaved(changed);
         })
         .catch(() => {
           if (remoteSentRef.current?.key === key) remoteSentRef.current = null;
         });
     },
-    [device, isRunning],
+    [device, isRunning, markSaved],
   );
 
   const saveQueue = useCallback(() => {
@@ -734,6 +740,7 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     (queue: RemoteQueue, autoplay: boolean) => {
       if (!owner) return;
       remoteSeenRef.current = Math.max(remoteSeenRef.current, queue.changed);
+      remoteSentRef.current = null;
       setRemoteOffer(null);
       const tracks = queue.tracks.map(normalizeStreamQueueTrack);
       const action: QueueAction = {
@@ -763,8 +770,15 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
   const pullRemote = useCallback(async () => {
     if (!owner || restoredOwnerRef.current !== owner || isRunning()) return;
     const actions = userActionsRef.current;
+    const pull = ++pullsRef.current;
     const queue = await fetchRemoteQueue();
-    if (restoredOwnerRef.current !== owner || userActionsRef.current !== actions || isRunning()) {
+    if (
+      queue === undefined ||
+      pull !== pullsRef.current ||
+      restoredOwnerRef.current !== owner ||
+      userActionsRef.current !== actions ||
+      isRunning()
+    ) {
       return;
     }
     const step =
@@ -775,7 +789,9 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
         queued: stateRef.current.currentIndex >= 0,
       });
     if (queue && step === "load") takeRemote(queue, false);
-    else setRemoteOffer(step === "offer" ? queue : null);
+    else if (queue && step === "offer") {
+      setRemoteOffer((offer) => (offer?.changed === queue.changed ? offer : queue));
+    } else setRemoteOffer(null);
   }, [device, isRunning, owner, takeRemote]);
 
   const pickUpRemote = useCallback(() => {
@@ -824,9 +840,9 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
   useWebSocketChannel(
     "play-queue",
     (message) => {
-      if (message.type === "play_queue_changed" && message.changedBy !== device) {
-        void pullRemote();
-      }
+      if (message.type !== "play_queue_changed") return;
+      if (message.changedBy === device) markSaved(message.changed);
+      else void pullRemote();
     },
     { enabled: Boolean(owner) },
   );
@@ -871,6 +887,7 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     channel.onmessage = (event: MessageEvent<unknown>) => {
       if (!isRecord(event.data) || event.data.type !== "playing") return;
       ownsQueueRef.current = false;
+      setRemoteOffer(null);
       const snapshot = engine.getSnapshot();
       if (snapshot.isPlaying || snapshot.isStarting) engine.pause();
     };

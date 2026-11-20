@@ -2437,6 +2437,14 @@ textarea:disabled {
   fill: currentColor;
 }
 
+.sidebar-player__toggle.player-devices {
+  color: var(--aurral-accent);
+}
+
+.sidebar-player__toggle.player-devices svg {
+  fill: none;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .sidebar-player__toggle:hover {
     background: var(--aurral-surface-hover);
