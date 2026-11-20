@@ -255,20 +255,18 @@ test("albums of one artist that share a title download into their own folders", 
     mbid: "weezer",
     name: "Weezer",
   });
-  for (const [group, releaseDate] of [
-    ["blue", "1994-05-10"],
-    ["green", "2001-05-15"],
-  ] as const) {
+  const album = (group: string, title: string, releaseDate: string, disambiguation = "") =>
     libraryStore.upsertLibraryAlbum({
       identityKey: `release-group:${group}`,
       mbid: group,
       releaseGroupMbid: group,
       artistId: artist.id,
-      title: "Weezer",
+      title,
       releaseDate,
-      metadata: { librarySource: "aurral" },
+      metadata: { librarySource: "aurral", disambiguation },
     });
-  }
+  album("blue", "Weezer", "1994-05-10");
+  album("green", "Weezer", "2001-05-15", "Green Album");
   const destination = (albumMbid: string) =>
     ownership.downloadDestinationForJob({
       artistName: "Weezer",
@@ -282,4 +280,7 @@ test("albums of one artist that share a title download into their own folders", 
     "Weezer/Weezer (2001)",
     "Weezer/Weezer",
   ]);
+
+  album("live", "Weezer (2001)", "2001-11-01");
+  assert.equal(destination("green"), "Weezer/Weezer (Green Album)");
 });

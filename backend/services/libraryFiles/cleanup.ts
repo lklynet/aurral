@@ -7,6 +7,7 @@ import { db } from "../../config/db-sqlite.ts";
 import type { LibraryAlbumsRow, LibraryArtistsRow, LibraryMediaFilesRow } from "../../db/rows.ts";
 import {
   buildLibraryTrackPath,
+  libraryAlbumFolder,
   findLibraryFileVariant,
   isPathInsideRoot,
   libraryPathKey,
@@ -256,6 +257,7 @@ async function planAlbum(albumId: number, context: CleanupPlanContext) {
   const artist = db
     .prepare<[number], LibraryArtistsRow>("SELECT * FROM library_artists WHERE id = ?")
     .get(album.artist_id);
+  const folder = libraryAlbumFolder(album) ?? album.title;
   const items = [];
   const settled = new Set<string>();
   const winners = new Map<string, string>();
@@ -273,13 +275,12 @@ async function planAlbum(albumId: number, context: CleanupPlanContext) {
       context.root,
       {
         artistName: artist?.name,
-        albumName: album.title,
+        albumName: folder,
         trackName: file.title,
         trackNumber: file.track_number,
         discNumber: file.disc_number,
       },
       path.extname(file.path),
-      album,
     );
     const variant = target === path.resolve(file.path) ? target : findLibraryFileVariant(target);
     let rename = variant !== path.resolve(file.path);
@@ -690,6 +691,13 @@ export async function finishCleanup(operation: LibraryFileOperation) {
       await moveAlbumImages(folder, onlyTarget);
     }
     await removeEmptyDirectories(folder, root);
+  }
+  const movedFolders = moves.flatMap(([from, to]) =>
+    path.dirname(from) === path.dirname(to) ? [] : [to],
+  );
+  if (movedFolders.length) {
+    const { resolveChangedAlbumCovers } = await import("../libraryArtwork.ts");
+    await resolveChangedAlbumCovers(movedFolders);
   }
   if (moves.length) {
     playlistManager.requestPlaylistSync();

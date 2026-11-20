@@ -112,47 +112,62 @@ function homeFolder(albumId: number) {
   );
 }
 
+function albumFolderFacts(albumId: number) {
+  const details = albumDetailsStmt.get(albumId);
+  const metadata = readLibraryMetadata(details?.metadata_json);
+  return {
+    aurral: metadata?.librarySource === "aurral",
+    year: /^\d{4}/.exec(details?.release_date ?? "")?.[0] ?? null,
+    disambiguation: sanitizePathPart(metadata?.disambiguation, "") || null,
+  };
+}
+
+// An album's names are its title, alone or with a year or its disambiguation.
+function isAlbumName(name: string, title: string, disambiguation: string | null) {
+  const key = folderKey(title);
+  const nameKey = folderKey(name);
+  return (
+    nameKey === key ||
+    (nameKey.startsWith(key) && /^ \(\d{4}\)$/.test(nameKey.slice(key.length))) ||
+    (disambiguation !== null && nameKey === folderKey(`${title} (${disambiguation})`))
+  );
+}
+
 // Albums of one artist that share a title each get a folder. An album keeps
-// the folder that holds its files, the oldest album first when two share
-// one. Any other takes the title, then the title with its year, or with its
-// disambiguation when another of them came out that year. Returns null when
-// the album has no namesake, so its folder keeps today's name.
+// a folder named for it that holds its files, the oldest album first when two
+// share one. Any other takes the title, then the title with its year, or with
+// its disambiguation when another of them came out that year. Returns null
+// when the album keeps today's name.
 function sameTitleFolder(album: FolderAlbum) {
   const group = album.release_group_mbid;
   if (!group) return null;
   const title = albumDirName(album.title);
   const key = folderKey(title);
-  const named = artistAlbumsStmt
-    .all(album.artist_id)
-    .filter(
-      (row) =>
-        (row.id === album.id || (row.release_group_mbid && row.release_group_mbid !== group)) &&
-        folderKey(albumDirName(row.title)) === key,
-    );
-  if (named.length < 2) return null;
+  const rows = artistAlbumsStmt.all(album.artist_id);
+  const named = rows.filter(
+    (row) =>
+      (row.id === album.id || (row.release_group_mbid && row.release_group_mbid !== group)) &&
+      folderKey(albumDirName(row.title)) === key,
+  );
   const albums = named
-    .map((row) => {
-      const details = albumDetailsStmt.get(row.id);
-      const metadata = readLibraryMetadata(details?.metadata_json);
-      return {
-        id: row.id,
-        home: homeFolder(row.id),
-        aurral: row.id === album.id || metadata?.librarySource === "aurral",
-        year: /^\d{4}/.exec(details?.release_date ?? "")?.[0] ?? null,
-        disambiguation: sanitizePathPart(metadata?.disambiguation, "") || null,
-      };
-    })
-    .filter((entry) => entry.home || entry.aurral)
+    .map((row) => ({ id: row.id, home: homeFolder(row.id), ...albumFolderFacts(row.id) }))
+    .filter((entry) => entry.home || entry.aurral || entry.id === album.id)
     .toSorted((left, right) => left.id - right.id);
-  if (albums.length < 2) return null;
-  const titled = (name: string) => {
-    const nameKey = folderKey(name);
-    return nameKey === key || nameKey.startsWith(`${key} (`);
-  };
-  const held = new Set<string>();
+  if (albums.length < 2) {
+    const own = albums.find((entry) => entry.id === album.id);
+    const home = own?.home;
+    if (!own || !home || folderKey(home) === key) return null;
+    return isAlbumName(home, title, own.disambiguation) ? home : null;
+  }
+  const held = new Set(
+    rows
+      .map((row) => folderKey(albumDirName(row.title)))
+      .filter((rowKey) => rowKey.startsWith(`${key} (`)),
+  );
   const folders = new Map<number, string>();
   for (const entry of albums) {
-    if (!entry.home || !titled(entry.home) || held.has(folderKey(entry.home))) continue;
+    if (!entry.home || !isAlbumName(entry.home, title, entry.disambiguation)) continue;
+    if (held.has(folderKey(entry.home))) continue;
     held.add(folderKey(entry.home));
     folders.set(entry.id, entry.home);
   }
@@ -168,7 +183,9 @@ function sameTitleFolder(album: FolderAlbum) {
       ...suffixes.flatMap((suffix) => (suffix ? [`${title} (${suffix})`] : [])),
     ].find((name) => !held.has(folderKey(name)));
     if (free) held.add(folderKey(free));
-    folders.set(entry.id, free ?? (entry.home && titled(entry.home) ? entry.home : title));
+    const { home } = entry;
+    const stays = home !== null && isAlbumName(home, title, entry.disambiguation);
+    folders.set(entry.id, free ?? (stays ? home : title));
   }
   return folders.get(album.id) ?? null;
 }
@@ -176,7 +193,7 @@ function sameTitleFolder(album: FolderAlbum) {
 // The album is a Library album, or the release group or release MBID of one.
 export type LibraryFolderAlbum = FolderAlbum | string | null | undefined;
 
-function libraryAlbumFolder(album: LibraryFolderAlbum) {
+export function libraryAlbumFolder(album: LibraryFolderAlbum) {
   const mbid = typeof album === "string" ? album.trim().toLowerCase() : "";
   const row = typeof album === "string" ? groupAlbumStmt.get(mbid, mbid, mbid) : album;
   return row ? sameTitleFolder(row) : null;
@@ -215,7 +232,6 @@ export function buildLibraryTrackPath(
     discNumber?: number | null;
   },
   ext: string,
-  album?: LibraryFolderAlbum,
 ) {
   return path.resolve(
     root,
@@ -223,7 +239,7 @@ export function buildLibraryTrackPath(
       null,
       sanitizePathPart(track?.artistName, "Unknown Artist"),
       albumDirName(track?.albumName),
-      { root, album },
+      { root },
     ),
     buildTrackFileName(track, String(ext || "").toLowerCase()),
   );

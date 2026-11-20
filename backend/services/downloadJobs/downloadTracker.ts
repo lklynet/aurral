@@ -973,15 +973,20 @@ export class DownloadTracker {
         : (entry.requestGroupId || null) === (job.requestGroupId || null) &&
           !entry.upgradeForJobId &&
           !this.startsWithQuickSearch(entry));
-    if (!release || !fits(job) || !isAlbumGrabSourceConfigured(job)) return [];
-    if (job.upgradeForJobId && !ownerActive(job)) return [];
+    const none = { members: [], places: new Map<number, string>() };
+    if (!release || !fits(job) || !isAlbumGrabSourceConfigured(job)) return none;
+    if (job.upgradeForJobId && !ownerActive(job)) return none;
     const candidates =
       job.requestGroupId || job.upgradeForJobId
         ? this.getAll().filter((entry) => entry.id === job.id || joins(entry))
         : [job];
-    const ids = [...mapRequest(release, candidates).wanted.values()];
-    if (!ids.includes(job.id)) return [];
-    return [job.id, ...ids.filter((id) => id !== job.id)].map((id) => this.jobs.get(id)!);
+    const places = mapRequest(release, candidates).wanted;
+    const ids = [...places.values()];
+    if (!ids.includes(job.id)) return none;
+    return {
+      members: [job.id, ...ids.filter((id) => id !== job.id)].map((id) => this.jobs.get(id)!),
+      places,
+    };
   }
 
   // A job that could have searched by release but searches for the track
@@ -1047,13 +1052,15 @@ export class DownloadTracker {
     }
     const payload: PipelinePayload = buildPipelinePayload(job);
     if (!isPipelinePayloadActive(payload)) return false;
-    const members = quick ? [] : this._releaseMembers(job, release);
+    const { members, places } = quick
+      ? { members: [], places: new Map<number, string>() }
+      : this._releaseMembers(job, release);
     if (quick) {
       payload.quickSearch = true;
       payload.allowedSources = this.quickSearchSourcesDue(job);
       this.setDownloading(jobId);
     } else if (members.length > 0) {
-      this._holdForRelease(payload, members, release!);
+      this._holdForRelease(payload, members, places, release!);
     } else if (release !== undefined) {
       this._noteTrackSearch(job, release);
     }
@@ -1072,7 +1079,12 @@ export class DownloadTracker {
     return true;
   }
 
-  _holdForRelease(payload: PipelineStep, members: DownloadJob[], release: TrackerRelease) {
+  _holdForRelease(
+    payload: PipelineStep,
+    members: DownloadJob[],
+    places: Map<number, string>,
+    release: TrackerRelease,
+  ) {
     payload.albumGrab = true;
     payload.releaseMbid = release.releaseMbid;
     payload.albumGroupJobIds = members.map((member) => member.id);
@@ -1082,19 +1094,17 @@ export class DownloadTracker {
       this.setAlbumGrabAttempted(member.id, true);
       if (member.id !== payload.jobId) this.setDownloading(member.id);
     }
-    this.pinRelease(release, mapRequest(release, members).wanted);
+    this.pinRelease(release, places);
   }
 
-  // Pins each track to its place on the release, which also numbers a track
-  // that had no number, so its file is named by its position.
+  // Pins each track to its place on the release, so its file is named by its
+  // position there, including a track that had no number.
   pinRelease(release: ReleaseManifest, places: Map<number, string>) {
     for (const [index, id] of places) {
       const place = release.tracks[index];
-      const numbered = normalizePositiveInteger(this.jobs.get(id)?.trackNumber);
       this.updateMetadata(id, {
         releaseMbid: release.releaseMbid,
-        ...(!numbered &&
-          place?.trackNumber && { trackNumber: place.trackNumber, discNumber: place.discNumber }),
+        ...(place?.trackNumber && { trackNumber: place.trackNumber, discNumber: place.discNumber }),
       });
     }
   }
@@ -1133,13 +1143,13 @@ export class DownloadTracker {
   ) {
     const job = this.jobs.get(payload.jobId);
     if (!job || !["pending", "downloading"].includes(job.status)) return null;
-    const members = this._releaseMembers(job, release);
+    const { members, places } = this._releaseMembers(job, release);
     if (members.length === 0) {
       this._noteTrackSearch(job, release);
       return null;
     }
     const attempt = { ...payload };
-    this._holdForRelease(attempt, members, release!);
+    this._holdForRelease(attempt, members, places, release!);
     recordAlbumGrabQueued(attempt, members);
     return attempt;
   }

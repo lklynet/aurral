@@ -646,7 +646,7 @@ test("Clean up keeps a file's track number from its tags when the Library's albu
   assert.equal(await exists(download), false);
 });
 
-test("Clean up gives albums that share a title their own folders, and the folder's first album keeps it", async () => {
+test("Clean up gives albums that share a title their own folders, and an album keeps its folder after its namesakes leave", async () => {
   const folder = path.join(root, "Weezer", "Weezer");
   const weezer = async (group: number, date: string, title: string) =>
     makeTrack(path.join(folder, `${title}.flac`), {
@@ -679,6 +679,14 @@ test("Clean up gives albums that share a title their own folders, and the folder
       moved("Weezer (Teal Album)", "Africa"),
     ].toSorted(),
   );
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  assert.deepEqual(
+    (await cleanUp()).items.filter((item) => item.target),
+    [],
+  );
+
+  for (const album of ["Weezer", "Weezer (2019)", "Weezer (Teal Album)"])
+    await rm(path.join(root, "Weezer", album), { recursive: true });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   assert.deepEqual(
     (await cleanUp()).items.filter((item) => item.target),

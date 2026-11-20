@@ -11,6 +11,7 @@ import type {
 } from "../../db/rows.ts";
 import {
   buildLibraryTrackPath,
+  libraryAlbumFolder,
   findLibraryFileVariant,
   isPathInsideRoot,
   libraryPathKey,
@@ -354,13 +355,12 @@ async function planItem(
     root,
     {
       artistName: match.artistName,
-      albumName: match.albumName,
+      albumName: libraryAlbumFolder(match.album) ?? match.albumName,
       trackName: record.title,
       trackNumber: record.trackNumber,
       discNumber: record.discNumber,
     },
     path.extname(item.sourcePath),
-    match.album,
   );
   if (!isPathInsideRoot(target, root)) {
     return {
