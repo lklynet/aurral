@@ -692,12 +692,12 @@ export async function finishCleanup(operation: LibraryFileOperation) {
     }
     await removeEmptyDirectories(folder, root);
   }
-  const movedFolders = moves.flatMap(([from, to]) =>
+  const movedAlbumFiles = moves.flatMap(([from, to]) =>
     path.dirname(from) === path.dirname(to) ? [] : [to],
   );
-  if (movedFolders.length) {
+  if (movedAlbumFiles.length) {
     const { resolveChangedAlbumCovers } = await import("../libraryArtwork.ts");
-    await resolveChangedAlbumCovers(movedFolders);
+    await resolveChangedAlbumCovers(movedAlbumFiles);
   }
   if (moves.length) {
     playlistManager.requestPlaylistSync();

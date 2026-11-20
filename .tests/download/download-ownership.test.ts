@@ -235,6 +235,7 @@ test("downloads never name a folder or file with a leading or trailing dot", () 
     ownership.downloadDestinationForJob({
       artistName: ".wav_909 & 7thRaw",
       albumName: "...",
+      albumMbid: null,
       playlistType: "library",
     }),
     "wav_909 & 7thRaw/Unknown Album",
@@ -243,6 +244,7 @@ test("downloads never name a folder or file with a leading or trailing dot", () 
     ownership.downloadDestinationForJob({
       artistName: "N.E.R.D.",
       albumName: "Fly or Die. ",
+      albumMbid: null,
       playlistType: "library",
     }),
     "N.E.R.D/Fly or Die",

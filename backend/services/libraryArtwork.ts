@@ -64,14 +64,13 @@ const albumVersionsStmt = db.prepare<
     files: number;
     bytes: number;
     modified: number;
-    folder: string | null;
+    aurral_path: string | null;
   }
 >(`SELECT album.id, album.mbid, album.release_group_mbid,
     COUNT(media.id) AS files,
     COALESCE(SUM(media.size), 0) AS bytes,
     COALESCE(MAX(media.mtime_ms), 0) AS modified,
-    MIN(CASE WHEN media.source = 'aurral'
-      THEN rtrim(media.path, replace(replace(media.path, '/', ''), '\\', '')) END) AS folder
+    MIN(CASE WHEN media.source = 'aurral' THEN media.path END) AS aurral_path
   FROM library_albums AS album
   LEFT JOIN library_media_files AS media ON media.album_id = album.id AND media.available = 1
   WHERE album.id IN (SELECT value FROM json_each(?))
@@ -152,7 +151,7 @@ const albumVersions = (json: string, revision: string) =>
           row.bytes,
           row.modified,
           row.release_group_mbid ?? row.mbid ?? "",
-          ...(row.folder ? [row.folder] : []),
+          ...(row.aurral_path ? [path.dirname(row.aurral_path)] : []),
         ),
       ]),
   );

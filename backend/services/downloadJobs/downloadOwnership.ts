@@ -76,8 +76,7 @@ function currentJob(jobId: string) {
 }
 
 export function downloadDestinationForJob(
-  job: Pick<DownloadJob, "artistName" | "albumName"> &
-    Partial<Pick<DownloadJob, "albumMbid">> &
+  job: Pick<DownloadJob, "artistName" | "albumName" | "albumMbid"> &
     JobFields<"playlistId" | "playlistType">,
 ) {
   return buildTrackDestination(

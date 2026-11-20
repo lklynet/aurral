@@ -412,7 +412,9 @@ export async function removePlaylistFileIfUnshared(
   const others = matchingJobs.filter((job) => !excludeJobIds.has(String(job.id || "")));
   const [survivor] = sortReusableJobs(others);
   if (survivor) {
-    const nextPath = await adoptFileIntoPlaylist(resolved, survivor.playlistType, downloadRoot);
+    const nextPath = await adoptFileIntoPlaylist(resolved, survivor.playlistType, downloadRoot, {
+      track: survivor,
+    });
     return { action: nextPath ? "relocated" : "skipped" };
   }
   await fs.rm(resolved, { force: true });
