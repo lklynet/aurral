@@ -113,6 +113,7 @@ export const SkipBack = createIcon(icons.SkipBack);
 export const SkipForward = createIcon(icons.SkipForward);
 export const SlidersHorizontal = createIcon(icons.Sliders04);
 export const Sparkles = createIcon(icons.Stars01);
+export const Speaker = createIcon(icons.Speaker01);
 export const Square = createIcon(icons.Square);
 export const SquareCheck = createIcon(icons.CheckSquare);
 export const Star = createIcon(icons.Star01);

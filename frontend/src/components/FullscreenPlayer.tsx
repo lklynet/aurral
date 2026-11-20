@@ -5,6 +5,7 @@ import { useMediaQuery } from "../hooks/useMediaQuery.ts";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import ArtworkImage from "./ArtworkImage";
 import { LibraryItemMenu } from "./LibraryItemMenu";
+import PlayerDevicesButton from "./PlayerDevicesButton";
 import PlayerLyrics, { useTrackLyrics } from "./PlayerLyrics";
 import PlayerOriginLink from "./PlayerOriginLink";
 import { PlayerMiniProgress, PlayerSeek } from "./PlayerProgress";
@@ -405,6 +406,7 @@ export default function FullscreenPlayer({
       <PlayerVisualizer mode={visualizer} scene={view} track={track} />
       <div className="fullscreen-player__grain" aria-hidden="true" />
       <div className="fullscreen-player__corner fullscreen-player__chrome">
+        <PlayerDevicesButton className="btn btn-ghost btn-icon" />
         <LibraryItemMenu
           label="Full screen player"
           menuLabel="Full screen player settings"

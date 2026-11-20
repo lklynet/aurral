@@ -28,6 +28,7 @@ const LONG_PRESS_SLOP_PX = 10;
 export type LibraryMenuItem = {
   id: string;
   label: string;
+  description?: string;
   icon?: MenuIcon;
   disabled?: boolean;
   danger?: boolean;
@@ -554,7 +555,14 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
                 ) : Icon ? (
                   <Icon className="artist-icon-sm" />
                 ) : null}
-                {item.label}
+                {item.description ? (
+                  <span className="artist-menu-item__copy">
+                    <span className="artist-menu-item__title">{item.label}</span>
+                    <span className="artist-menu-item__description">{item.description}</span>
+                  </span>
+                ) : (
+                  item.label
+                )}
               </span>
               {item.radio && item.selected ? (
                 <Check className="artist-icon-sm" aria-hidden="true" />

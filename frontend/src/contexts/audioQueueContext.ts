@@ -76,6 +76,8 @@ export type AudioQueueValue = {
     artwork: string | null,
     artworkSource?: string | null,
   ) => void;
+  queueElsewhere: { device: string; title: string; position: number; savedAt: number } | null;
+  pickUpQueueElsewhere: () => void;
 };
 
 export const AudioQueueContext = createContext<AudioQueueValue | null>(null);
