@@ -1781,6 +1781,7 @@ test("each track joins only an attempt for the release it is pinned to and liste
   );
   assert.equal(trackedJob(downloadTracker, deluxeSecond).status, "pending");
 
+  downloadTracker.updateMetadata(deluxeBonus, { trackNumber: 9 });
   await downloadWorker.processJob(trackedJob(downloadTracker, deluxeSecond));
   assert.deepEqual(
     [requireQueued(deluxeSecond).releaseMbid, requireQueued(deluxeSecond).albumGroupJobIds],

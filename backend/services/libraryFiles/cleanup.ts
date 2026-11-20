@@ -692,15 +692,19 @@ export async function finishCleanup(operation: LibraryFileOperation) {
     }
     await removeEmptyDirectories(folder, root);
   }
-  const movedAlbumFiles = moves.flatMap(([from, to]) =>
-    path.dirname(from) === path.dirname(to) ? [] : [to],
-  );
-  if (movedAlbumFiles.length) {
-    const { resolveChangedAlbumCovers } = await import("../libraryArtwork.ts");
-    await resolveChangedAlbumCovers(movedAlbumFiles);
-  }
   if (moves.length) {
     playlistManager.requestPlaylistSync();
+  }
+  // An album that left a folder other music stays in, as when Clean up splits
+  // albums that shared one, has no cover image beside it yet.
+  const splitFiles = moves.flatMap(([from, to]) =>
+    (folders.get(path.dirname(from))?.size ?? 0) > 1 && path.dirname(from) !== path.dirname(to)
+      ? [to]
+      : [],
+  );
+  if (splitFiles.length) {
+    const { resolveChangedAlbumCovers } = await import("../libraryArtwork.ts");
+    await resolveChangedAlbumCovers(splitFiles);
   }
   if (removing) updateLibraryFileOperation(operation.id, { summary: { removingSources: null } });
   return {
