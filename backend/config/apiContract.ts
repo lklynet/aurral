@@ -16,5 +16,6 @@ export const API_CONTRACT: { version: number; features: string[] } = {
     "friendProfiles",
     "friendBlends",
     "pairing",
+    "oidcAppRedirect",
   ],
 };
