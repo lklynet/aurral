@@ -1267,7 +1267,7 @@ test("a stored job reads as failed when it is done without a file or has an unkn
   assert.equal(reloaded.getStats().failed, 2);
 });
 
-test("finalizes an upgrade when optional quality metadata is absent", async () => {
+test("finalizes an upgrade when optional quality metadata is absent, and the job takes the upgrade's source", async () => {
   const tracker = trackerModule.downloadTracker;
   const library = path.join(isolatedState.baseDir, "weekly-flow", "aurral-weekly-flow");
   const oldPath = path.join(library, "old.mp3");
@@ -1284,13 +1284,24 @@ test("finalizes an upgrade when optional quality metadata is absent", async () =
   assert.ok(sourceId != null);
   tracker.setDone(sourceId, oldPath, "Album");
   tracker.updateQuality(sourceId, { tier: "mp3-128", format: "mp3" });
+  tracker.updateDownloadMetadata(sourceId, {
+    downloadSource: "ytdlp",
+    downloadClient: "yt-dlp",
+    releaseTitle: "Song (Official Audio)",
+  });
   const upgradeId = tracker.addUpgradeJob(trackedJob(tracker, sourceId));
+  assert.ok(upgradeId != null);
+  tracker.updateDownloadMetadata(upgradeId, { downloadSource: "slskd", downloadClient: "slskd" });
 
   await assert.doesNotReject(
     finalizeQualityUpgradeSuccess(trackedJob(tracker, upgradeId), finalPath, undefined),
   );
   assert.equal(tracker.getJob(upgradeId), null);
   assert.equal(tracker.getJob(sourceId)?.finalPath, finalPath);
+  const reloaded = new DownloadTracker().getJob(sourceId);
+  assert.equal(reloaded?.downloadSource, "slskd");
+  assert.equal(reloaded?.downloadClient, "slskd");
+  assert.equal(reloaded?.releaseTitle, null);
 });
 
 test("classifies a file outside the Library folder without making it eligible for upgrades, also when its read-only folder is the Library folder", async () => {
