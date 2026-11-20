@@ -6,7 +6,7 @@ import type {
 import type { InferResponseType } from "hono/client";
 import type { settingsClient } from "../../utils/api/clients/settings.ts";
 
-export const DEFAULT_METADATA_BASE_URL = "https://lidarrapi.brainzmash.cc";
+export const DEFAULT_METADATA_BASE_URL = "https://brainzmash.kell.ly";
 
 export type SavedSettings =
   | Partial<InferResponseType<typeof settingsClient.$get, 200>>

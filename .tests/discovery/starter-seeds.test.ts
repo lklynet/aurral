@@ -83,7 +83,7 @@ beforeAll(() => {
           }
         : url.hostname === "api.deezer.com" && seed
           ? { data: [{ id: 100, name: `Like ${seed}` }] }
-          : url.hostname === "lidarrapi.brainzmash.cc" && query.startsWith("Like ")
+          : url.hostname === "brainzmash.kell.ly" && query.startsWith("Like ")
             ? [{ id: similarMbids.get(query.slice(5)), artistname: query }]
             : {};
     return new Response(JSON.stringify(body), {
