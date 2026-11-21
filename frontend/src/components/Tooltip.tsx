@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
   type FocusEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent,
   type ReactNode,
 } from "react";
@@ -22,13 +21,13 @@ interface TriggerProps {
   "aria-label"?: string;
   "aria-labelledby"?: string;
   "aria-describedby"?: string;
+  "aria-expanded"?: boolean | "true" | "false";
   "aria-hidden"?: boolean | "true" | "false";
   alt?: string;
   role?: string;
   children?: ReactNode;
   onBlur?: (event: FocusEvent<HTMLElement>) => void;
   onFocus?: (event: FocusEvent<HTMLElement>) => void;
-  onKeyDown?: (event: ReactKeyboardEvent<HTMLElement>) => void;
   onPointerDown?: (event: PointerEvent<HTMLElement>) => void;
   onPointerEnter?: (event: PointerEvent<HTMLElement>) => void;
   onPointerLeave?: (event: PointerEvent<HTMLElement>) => void;
@@ -64,7 +63,6 @@ interface TooltipProps {
   content?: ReactNode;
   placement?: TooltipPlacement;
   delay?: number;
-  dismissOnPress?: boolean;
   children: ReactNode;
 }
 
@@ -72,7 +70,6 @@ export default function Tooltip({
   content,
   placement = "side",
   delay = 0,
-  dismissOnPress = false,
   children,
 }: TooltipProps) {
   const tooltipId = useId();
@@ -172,30 +169,21 @@ export default function Tooltip({
 
   if (!isValidElement<TriggerProps>(children) || content == null || content === "") return children;
 
-  const dismissPress = () => {
-    cancelPendingShow();
-    dismissTooltip();
-  };
+  const shown = isTooltipVisible && String(children.props["aria-expanded"]) !== "true";
   const needsLabel = needsTooltipLabel(children);
   const tooltipProvidesLabel = needsLabel || children.props["aria-label"] === String(content);
   const triggerProps: TriggerProps = {
     "aria-describedby": getTooltipDescribedBy({
       existingDescribedBy: children.props["aria-describedby"],
       tooltipId,
-      isVisible: isTooltipVisible,
+      isVisible: shown,
       tooltipProvidesLabel,
     }),
     onBlur: chainHandlers(children.props.onBlur, () => hideTooltip("focus")),
     onFocus: chainHandlers(children.props.onFocus, (event) => {
       if (event.target.matches(":focus-visible")) showTooltip(event.currentTarget, "focus");
     }),
-    onKeyDown: dismissOnPress
-      ? chainHandlers(children.props.onKeyDown, dismissPress)
-      : children.props.onKeyDown,
-    onPointerDown: chainHandlers(
-      children.props.onPointerDown,
-      dismissOnPress ? dismissPress : cancelPendingShow,
-    ),
+    onPointerDown: chainHandlers(children.props.onPointerDown, cancelPendingShow),
     onPointerEnter: chainHandlers(children.props.onPointerEnter, (event) => {
       const trigger = event.currentTarget;
       cancelPendingShow();
@@ -223,11 +211,11 @@ export default function Tooltip({
               id={tooltipId}
               className="aurral-tooltip"
               role="tooltip"
-              aria-hidden={!isTooltipVisible}
+              aria-hidden={!shown}
               style={{
                 ...tooltipPosition,
-                opacity: isTooltipVisible ? 1 : 0,
-                visibility: isTooltipVisible ? "visible" : "hidden",
+                opacity: shown ? 1 : 0,
+                visibility: shown ? "visible" : "hidden",
               }}
             >
               {content}
