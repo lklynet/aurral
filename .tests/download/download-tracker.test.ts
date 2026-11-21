@@ -1234,14 +1234,15 @@ test("drops orphaned upgrade jobs on restart and updates every shared file refer
   assert.equal(tracker.addUpgradeJob(trackedJob(tracker, secondId)), null);
   const reloaded = new DownloadTracker();
   assert.equal(reloaded.getJob(upgradeId), null);
-  assert.ok(reloaded.addUpgradeJob(trackedJob(reloaded, secondId)));
+  const reloadedUpgradeId = reloaded.addUpgradeJob(trackedJob(reloaded, secondId));
+  assert.ok(reloadedUpgradeId);
 
-  const changed = reloaded.replaceFinalPath("/library/Song.mp3", "/library/Song.flac", {
-    tier: "flac-standard",
-    format: "flac",
-    sampleRate: 44100,
-    bitDepth: 16,
-  });
+  const changed = reloaded.replaceFinalPath(
+    "/library/Song.mp3",
+    "/library/Song.flac",
+    { tier: "flac-standard", format: "flac", sampleRate: 44100, bitDepth: 16 },
+    reloadedUpgradeId,
+  );
   assert.equal(changed.length, 2);
   assert.equal(reloaded.getJob(firstId)?.finalPath, "/library/Song.flac");
   assert.equal(reloaded.getJob(secondId)?.qualityTier, "flac-standard");
@@ -1267,41 +1268,113 @@ test("a stored job reads as failed when it is done without a file or has an unkn
   assert.equal(reloaded.getStats().failed, 2);
 });
 
-test("finalizes an upgrade when optional quality metadata is absent, and the job takes the upgrade's source", async () => {
+test("finalizes an upgrade when optional quality metadata is absent, giving the job the upgrade's download details and leaving its Activity alone", async () => {
+  const { recordAlbumGrabQueued } = await import("../../backend/services/albumGrabActivity.ts");
   const tracker = trackerModule.downloadTracker;
   const library = path.join(isolatedState.baseDir, "weekly-flow", "aurral-weekly-flow");
-  const oldPath = path.join(library, "old.mp3");
-  const finalPath = path.join(library, "new.m4a");
   await mkdir(library, { recursive: true });
-  await writeFile(oldPath, "old");
-  await writeFile(finalPath, "new");
+  const cases = [
+    {
+      name: "another source",
+      original: {
+        downloadSource: "ytdlp",
+        downloadClient: "yt-dlp",
+        releaseTitle: "Song (Official Audio)",
+      },
+      upgrade: {
+        downloadSource: "slskd",
+        downloadClient: "slskd",
+        remoteUsername: "new-peer",
+        remoteFilename: "Song.flac",
+      },
+    },
+    {
+      name: "the same source",
+      original: {
+        downloadSource: "usenet",
+        downloadClient: "SABnzbd",
+        downloadClientId: "7",
+        releaseGuid: "old-guid",
+        releaseTitle: "Song MP3",
+        indexerName: "Indexer",
+      },
+      upgrade: {
+        downloadSource: "usenet",
+        downloadClient: "SABnzbd",
+        downloadClientId: "9",
+        releaseGuid: "new-guid",
+        releaseTitle: "Song FLAC",
+        indexerName: "Indexer",
+      },
+    },
+  ];
+  for (const [index, { name, original, upgrade }] of cases.entries()) {
+    const oldPath = path.join(library, `old-${index}.mp3`);
+    const finalPath = path.join(library, `new-${index}.m4a`);
+    await writeFile(oldPath, "old");
+    await writeFile(finalPath, "new");
+    const [sourceId, otherId] = ["Song", "Other"].map((trackName) =>
+      createTrackedJob(
+        tracker,
+        {
+          artistName: "Artist",
+          trackName,
+          albumMbid: `album-${index}`,
+          requestGroupId: `request-${index}`,
+        },
+        "library",
+      ),
+    );
+    assert.ok(sourceId != null && otherId != null);
+    recordAlbumGrabQueued(
+      { albumGrab: true, jobId: sourceId, albumGroupJobIds: [sourceId, otherId] },
+      [trackedJob(tracker, sourceId), trackedJob(tracker, otherId)],
+    );
+    tracker.updateDownloadMetadata(sourceId, original);
+    tracker.setDone(sourceId, oldPath, "Album");
+    tracker.updateQuality(sourceId, { tier: "mp3-128", format: "mp3" });
+    const upgradeId = tracker.addUpgradeJob(trackedJob(tracker, sourceId));
+    assert.ok(upgradeId != null);
+    tracker.updateDownloadMetadata(upgradeId, upgrade);
+    const activityIds = [`aurral-track_download-${sourceId}`, `aurral-album_grab-${sourceId}`];
+    const activity = activityIds.map((id) => dbOps.getAurralHistoryById(id));
+    assert.ok(activity.every(Boolean), name);
 
-  const sourceId = createTrackedJob(
-    tracker,
-    { artistName: "Artist", trackName: "Song" },
-    "discover",
-  );
-  assert.ok(sourceId != null);
-  tracker.setDone(sourceId, oldPath, "Album");
-  tracker.updateQuality(sourceId, { tier: "mp3-128", format: "mp3" });
-  tracker.updateDownloadMetadata(sourceId, {
-    downloadSource: "ytdlp",
-    downloadClient: "yt-dlp",
-    releaseTitle: "Song (Official Audio)",
-  });
-  const upgradeId = tracker.addUpgradeJob(trackedJob(tracker, sourceId));
-  assert.ok(upgradeId != null);
-  tracker.updateDownloadMetadata(upgradeId, { downloadSource: "slskd", downloadClient: "slskd" });
-
-  await assert.doesNotReject(
-    finalizeQualityUpgradeSuccess(trackedJob(tracker, upgradeId), finalPath, undefined),
-  );
-  assert.equal(tracker.getJob(upgradeId), null);
-  assert.equal(tracker.getJob(sourceId)?.finalPath, finalPath);
-  const reloaded = new DownloadTracker().getJob(sourceId);
-  assert.equal(reloaded?.downloadSource, "slskd");
-  assert.equal(reloaded?.downloadClient, "slskd");
-  assert.equal(reloaded?.releaseTitle, null);
+    await assert.doesNotReject(
+      finalizeQualityUpgradeSuccess(trackedJob(tracker, upgradeId), finalPath, undefined),
+    );
+    assert.equal(tracker.getJob(upgradeId), null, name);
+    assert.equal(tracker.getJob(sourceId)?.finalPath, finalPath, name);
+    const reloaded = trackedJob(new DownloadTracker(), sourceId);
+    assert.deepEqual(
+      {
+        downloadSource: reloaded.downloadSource,
+        downloadClient: reloaded.downloadClient,
+        downloadClientId: reloaded.downloadClientId,
+        releaseGuid: reloaded.releaseGuid,
+        releaseTitle: reloaded.releaseTitle,
+        indexerName: reloaded.indexerName,
+        remoteUsername: reloaded.remoteUsername,
+        remoteFilename: reloaded.remoteFilename,
+      },
+      {
+        downloadSource: upgrade.downloadSource,
+        downloadClient: upgrade.downloadClient,
+        downloadClientId: null,
+        releaseGuid: upgrade.releaseGuid ?? null,
+        releaseTitle: upgrade.releaseTitle ?? null,
+        indexerName: upgrade.indexerName ?? null,
+        remoteUsername: upgrade.remoteUsername ?? null,
+        remoteFilename: upgrade.remoteFilename ?? null,
+      },
+      name,
+    );
+    assert.deepEqual(
+      activityIds.map((id) => dbOps.getAurralHistoryById(id)),
+      activity,
+      name,
+    );
+  }
 });
 
 test("classifies a file outside the Library folder without making it eligible for upgrades, also when its read-only folder is the Library folder", async () => {

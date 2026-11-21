@@ -1394,6 +1394,12 @@ export class DownloadTracker {
   }
 
   _update(job: DownloadJob) {
+    this._store(job);
+    recordAlbumTrackState(job);
+    this._touchRevision();
+  }
+
+  _store(job: DownloadJob) {
     updateStmt.run(
       job.status,
       job.stagingPath ?? null,
@@ -1430,8 +1436,6 @@ export class DownloadTracker {
       job.id,
     );
     if (ENDED_STATUSES.has(job.status)) this._dropHeldForReview(job);
-    recordAlbumTrackState(job);
-    this._touchRevision();
   }
 
   addJob(
@@ -1602,11 +1606,15 @@ export class DownloadTracker {
     return true;
   }
 
+  // Every job on the replaced file takes the upgrade's download details
+  // without touching Activity, which keeps the original download's record.
   replaceFinalPath(
     sourcePath: string,
     finalPath: string,
     quality: QualityUpdate | null | undefined,
+    upgradeJobId: string,
   ) {
+    const upgrade = this.jobs.get(upgradeJobId);
     const changed = [];
     for (const job of this.jobs.values()) {
       if (job.status !== "done" || job.finalPath !== sourcePath) continue;
@@ -1619,9 +1627,18 @@ export class DownloadTracker {
       job.qualityBitDepth = quality?.bitDepth ?? null;
       job.qualityCheckedAt = Date.now();
       job.qualityUpgradeCheckedAt = Date.now();
-      this._update(job);
+      this._store(job);
+      if (upgrade) {
+        for (const key of DOWNLOAD_METADATA_KEYS) job[key] = upgrade[key] ?? null;
+        job.downloadClientId = null;
+        updateDownloadMetaStmt.run(
+          ...DOWNLOAD_METADATA_KEYS.map((key) => job[key] ?? null),
+          job.id,
+        );
+      }
       changed.push(job);
     }
+    if (changed.length > 0) this._touchRevision();
     return changed;
   }
 
