@@ -922,7 +922,7 @@ function GlobalPlayerBar({ minimized, onMinimizedChange, rail }: GlobalPlayerBar
         </div>
 
         <div className="global-player__side">
-          <PlayerDevicesButton className="btn btn-ghost btn-icon btn-xs" tooltipPlacement="top" />
+          <PlayerDevicesButton className="btn btn-ghost btn-icon btn-xs" />
           <LibraryItemMenu
             label={currentTrack.title || "Track"}
             contextMenu={false}

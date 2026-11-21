@@ -5,13 +5,7 @@ import { formatPlaybackTime } from "../utils/playbackTime.ts";
 import { LibraryItemMenu } from "./LibraryItemMenu";
 import { Devices, Play } from "./icons";
 
-export default function PlayerDevicesButton({
-  className,
-  tooltipPlacement,
-}: {
-  className: string;
-  tooltipPlacement?: "top";
-}) {
+export default function PlayerDevicesButton({ className }: { className: string }) {
   const { queueElsewhere, pickUpQueueElsewhere } = useAudioQueue();
   const [now, setNow] = useState(Date.now);
   if (!queueElsewhere) return null;
@@ -24,7 +18,7 @@ export default function PlayerDevicesButton({
       triggerIcon={<Devices aria-hidden="true" />}
       triggerClassName={`${className} player-devices`}
       contextMenu={false}
-      tooltipPlacement={tooltipPlacement}
+      tooltipPlacement="top"
       onMenuOpen={() => setNow(Date.now())}
       items={[
         {
