@@ -2437,6 +2437,10 @@ textarea:disabled {
   fill: currentColor;
 }
 
+.sidebar-player__toggle.player-devices svg {
+  fill: none;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .sidebar-player__toggle:hover {
     background: var(--aurral-surface-hover);
@@ -3844,8 +3848,31 @@ textarea:disabled {
 
 .artist-menu-item__main {
   display: inline-flex;
+  min-width: 0;
   align-items: center;
   gap: 0.5rem;
+}
+
+.artist-menu-item__main > svg {
+  flex-shrink: 0;
+}
+
+.artist-menu-item:has(.artist-menu-item__description):not(.artist-menu-item--danger) {
+  color: var(--aurral-text);
+}
+
+.artist-menu-item__copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.125rem;
+  overflow-wrap: anywhere;
+  text-align: start;
+  text-wrap: balance;
+}
+
+.artist-menu-item__description {
+  color: var(--aurral-text-muted);
+  font-size: var(--aurral-font-xs);
 }
 
 .artist-menu-submenu {
@@ -7914,6 +7941,10 @@ textarea:disabled {
   max-height: calc(100dvh - 1rem);
   overflow: visible;
   padding: 0.25rem;
+}
+
+.native-library-item-menu__panel:has(.artist-menu-item__description) {
+  width: min(20rem, calc(100vw - 1rem));
 }
 
 .native-library-item-menu__panel .artist-menu-item.is-selected {
@@ -13296,6 +13327,10 @@ button.playlist-detail__cover {
   min-width: 0;
 }
 
+.global-player__side .player-devices {
+  color: var(--aurral-text);
+}
+
 .global-player__volume {
   width: 6rem;
 }
@@ -14543,6 +14578,14 @@ button.playlist-detail__cover {
   .now-playing__actions .now-playing__lyrics-toggle.is-active,
   .now-playing__actions .now-playing__friends-toggle.is-active {
     color: var(--aurral-text);
+  }
+
+  .now-playing__actions .player-devices {
+    color: var(--aurral-text);
+  }
+
+  .global-player__mini-control.player-devices svg {
+    fill: none;
   }
 
   .now-playing__icon-button:active {

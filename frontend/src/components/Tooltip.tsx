@@ -6,6 +6,7 @@ import {
   useId,
   useRef,
   useState,
+  type AriaAttributes,
   type FocusEvent,
   type PointerEvent,
   type ReactNode,
@@ -21,6 +22,8 @@ interface TriggerProps {
   "aria-label"?: string;
   "aria-labelledby"?: string;
   "aria-describedby"?: string;
+  "aria-expanded"?: boolean | "true" | "false";
+  "aria-haspopup"?: AriaAttributes["aria-haspopup"];
   "aria-hidden"?: boolean | "true" | "false";
   alt?: string;
   role?: string;
@@ -168,13 +171,17 @@ export default function Tooltip({
 
   if (!isValidElement<TriggerProps>(children) || content == null || content === "") return children;
 
+  const menuOpen =
+    String(children.props["aria-haspopup"] ?? false) !== "false" &&
+    String(children.props["aria-expanded"]) === "true";
+  const shown = isTooltipVisible && !menuOpen;
   const needsLabel = needsTooltipLabel(children);
   const tooltipProvidesLabel = needsLabel || children.props["aria-label"] === String(content);
   const triggerProps: TriggerProps = {
     "aria-describedby": getTooltipDescribedBy({
       existingDescribedBy: children.props["aria-describedby"],
       tooltipId,
-      isVisible: isTooltipVisible,
+      isVisible: shown,
       tooltipProvidesLabel,
     }),
     onBlur: chainHandlers(children.props.onBlur, () => hideTooltip("focus")),
@@ -209,11 +216,11 @@ export default function Tooltip({
               id={tooltipId}
               className="aurral-tooltip"
               role="tooltip"
-              aria-hidden={!isTooltipVisible}
+              aria-hidden={!shown}
               style={{
                 ...tooltipPosition,
-                opacity: isTooltipVisible ? 1 : 0,
-                visibility: isTooltipVisible ? "visible" : "hidden",
+                opacity: shown ? 1 : 0,
+                visibility: shown ? "visible" : "hidden",
               }}
             >
               {content}

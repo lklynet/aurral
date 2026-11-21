@@ -59,6 +59,10 @@
   gap: 0.25rem;
 }
 
+.fullscreen-player__corner .player-devices {
+  color: var(--aurral-text);
+}
+
 .fullscreen-player__art {
   display: grid;
   flex: none;

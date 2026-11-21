@@ -7,8 +7,10 @@ import {
   normalizeQueueTrack,
 } from "../../frontend/src/utils/audioQueue.ts";
 import {
+  deviceName,
   parseStoredQueue,
   remoteQueueFor,
+  remoteQueueStep,
   serializeQueue,
 } from "../../frontend/src/utils/queueStorage.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
@@ -61,11 +63,12 @@ test("a reload brings back the same queue, order, and place, paused", () => {
   assert.equal(restored.source?.label, "Mix");
   assert.equal(restored.source?.href, "/library/playlists/p1");
   assert.equal(restored.autoplay, false);
-  assert.equal(
-    parseStoredQueue(serializeQueue(state, { owner: "u1", position: 42.5 }), { owner: "u1" })
-      ?.position,
-    42.5,
+  const reloaded = parseStoredQueue(
+    serializeQueue(state, { owner: "u1", position: 42.5, seen: 1700 }),
+    { owner: "u1" },
   );
+  assert.equal(reloaded?.position, 42.5);
+  assert.equal(reloaded?.seen, 1700);
 
   const unshuffled = queueReducer(restored, { type: "SET_SHUFFLE", enabled: false });
   assert.deepEqual(
@@ -180,4 +183,23 @@ test("other devices get the Aurral tracks around the current one, without previe
   });
   assert.equal(remoteQueueFor(queueReducer(state, { type: "SKIP_TO", index: 1 }), 0), null);
   assert.equal(remoteQueueFor(initialQueueState, 0), null);
+});
+
+test("another device's newer queue loads into an empty player and is offered over a queued one", () => {
+  const remote = { changed: 2000, changedBy: "Aurral Pocket on iPhone 1a2b" };
+  const here = { device: "Aurral web 80bf448e", seen: 1000 };
+
+  assert.equal(remoteQueueStep(remote, { ...here, queued: false }), "load");
+  assert.equal(remoteQueueStep(remote, { ...here, queued: true }), "offer");
+  assert.equal(remoteQueueStep(remote, { ...here, seen: 2000, queued: true }), null);
+  assert.equal(
+    remoteQueueStep({ ...remote, changedBy: here.device }, { ...here, queued: false }),
+    null,
+  );
+});
+
+test("devices drop the tag that tells two Aurral players apart", () => {
+  assert.equal(deviceName("Aurral web 80bf448e"), "Aurral web");
+  assert.equal(deviceName("Aurral Pocket on iPhone 1a2b"), "Aurral Pocket on iPhone");
+  assert.equal(deviceName("Feishin"), "Feishin");
 });

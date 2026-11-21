@@ -103,9 +103,20 @@ export function remoteQueueFor(
   };
 }
 
+export function remoteQueueStep(
+  remote: { changed: number; changedBy: string },
+  { device, seen, queued }: { device: string; seen: number; queued: boolean },
+) {
+  if (remote.changedBy === device || remote.changed <= seen) return null;
+  return queued ? "offer" : "load";
+}
+
+export const deviceName = (device: string) =>
+  /^(Aurral .+) [0-9a-f]{4,8}$/.exec(device)?.[1] ?? device;
+
 export function serializeQueue(
   state: QueueSnapshot,
-  { owner, position = 0 }: { owner: string | null; position?: number },
+  { owner, position = 0, seen = 0 }: { owner: string | null; position?: number; seen?: number },
 ) {
   if (owner == null || state.currentIndex < 0 || state.queue.length === 0) return null;
   const { start, window } = storedWindow(state);
@@ -124,6 +135,7 @@ export function serializeQueue(
     repeatMode: state.repeatMode,
     source: state.source ?? null,
     position: positionOrZero(position),
+    seen,
   });
 }
 
@@ -148,7 +160,7 @@ function isPermutation(order: unknown, length: number): order is number[] {
 export function parseStoredQueue(
   raw: string | null,
   { owner, token }: { owner: string | null; token?: string | null },
-): (Omit<RestoreQueueAction, "type"> & { position: number }) | null {
+): (Omit<RestoreQueueAction, "type"> & { position: number; seen: number }) | null {
   if (!raw || owner == null) return null;
   let stored: unknown;
   try {
@@ -177,5 +189,6 @@ export function parseStoredQueue(
     repeatMode: isRepeatMode(stored.repeatMode) ? stored.repeatMode : "off",
     source: isQueueSource(stored.source) ? stored.source : null,
     position: typeof stored.position === "number" ? positionOrZero(stored.position) : 0,
+    seen: typeof stored.seen === "number" && Number.isFinite(stored.seen) ? stored.seen : 0,
   };
 }

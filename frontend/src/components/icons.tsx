@@ -159,6 +159,15 @@ export function Repeat1(props: IconProps) {
   );
 }
 
+export function Devices(props: IconProps) {
+  return (
+    <IconSvg {...props}>
+      <path d="M14 17H4.6c-.84 0-1.26 0-1.581-.163a1.5 1.5 0 0 1-.656-.656C2.2 15.861 2.2 15.441 2.2 14.6V6.4c0-.84 0-1.26.163-1.581a1.5 1.5 0 0 1 .656-.656C3.34 4 3.76 4 4.6 4h11.8c.84 0 1.26 0 1.581.163a1.5 1.5 0 0 1 .656.656c.163.321.163.741.163 1.581V8M1 20h13" />
+      <rect x="17" y="10" width="6" height="11" rx="1.6" />
+    </IconSvg>
+  );
+}
+
 export function ListStart(props: IconProps) {
   return (
     <IconSvg {...props}>

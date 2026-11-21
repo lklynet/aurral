@@ -28,6 +28,7 @@ const LONG_PRESS_SLOP_PX = 10;
 export type LibraryMenuItem = {
   id: string;
   label: string;
+  description?: string;
   icon?: MenuIcon;
   disabled?: boolean;
   danger?: boolean;
@@ -210,6 +211,7 @@ type LibraryItemMenuProps = {
   disabled?: boolean;
   contextMenu?: boolean;
   align?: "start" | "end";
+  tooltipPlacement?: "top";
 };
 
 export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
@@ -226,6 +228,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     disabled = false,
     contextMenu = true,
     align = "end",
+    tooltipPlacement,
   }: LibraryItemMenuProps,
   ref: ForwardedRef<LibraryItemMenuHandle>,
 ) {
@@ -367,7 +370,10 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
       closeMenu(false);
     };
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeMenu();
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeMenu();
     };
     const closeOnViewportChange = () => closeMenu(false);
     const handleScroll = (event: Event) => {
@@ -387,12 +393,12 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
         });
     };
     document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleEscape);
+    document.addEventListener("keydown", handleEscape, true);
     window.addEventListener("resize", closeOnViewportChange);
     window.addEventListener("scroll", handleScroll, true);
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("keydown", handleEscape, true);
       window.removeEventListener("resize", closeOnViewportChange);
       window.removeEventListener("scroll", handleScroll, true);
     };
@@ -446,7 +452,12 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
   }, [align, anchor]);
 
   useLayoutEffect(() => {
-    if (open) updatePosition();
+    const menu = menuRef.current;
+    if (!open || !menu) return;
+    updatePosition();
+    const observer = new ResizeObserver(updatePosition);
+    observer.observe(menu);
+    return () => observer.disconnect();
   }, [open, updatePosition]);
 
   const handleAction = async (event: ReactMouseEvent<HTMLElement>, item: LibraryMenuItem) => {
@@ -554,7 +565,14 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
                 ) : Icon ? (
                   <Icon className="artist-icon-sm" />
                 ) : null}
-                {item.label}
+                {item.description ? (
+                  <span className="artist-menu-item__copy">
+                    <span>{item.label}</span>
+                    <span className="artist-menu-item__description">{item.description}</span>
+                  </span>
+                ) : (
+                  item.label
+                )}
               </span>
               {item.radio && item.selected ? (
                 <Check className="artist-icon-sm" aria-hidden="true" />
@@ -576,6 +594,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
         ref={triggerRef}
         className={`${triggerClassName}${open ? " is-open" : ""}`}
         label={triggerLabel}
+        tooltipPlacement={tooltipPlacement}
         aria-label={triggerLabel}
         aria-haspopup="menu"
         aria-expanded={open}
