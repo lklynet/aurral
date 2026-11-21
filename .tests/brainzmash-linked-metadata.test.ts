@@ -153,20 +153,6 @@ const externalResponse = (url: string) => {
       ],
     };
   }
-  if (url === "https://api.listenbrainz.org/1/metadata/artist/") {
-    return [
-      {
-        artist_mbid: unlinkedArtistMbid,
-        tag: {
-          artist: [
-            { tag: "seen live", count: 100 },
-            { tag: "classic rock", count: 90 },
-            { tag: "female vocalists", count: 80 },
-          ],
-        },
-      },
-    ];
-  }
   return {};
 };
 
@@ -200,25 +186,15 @@ test("artist identity comes from BrainzMash names, aliases, and linked provider 
   assert.deepEqual([...requests], []);
 });
 
-test("artist genres come from BrainzMash and ListenBrainz only fills artists without genres with real genres", async () => {
+test("artist genres come straight from v1 artist metadata without calling ListenBrainz", async () => {
   const requests = recordExternalRequests();
 
-  const linked = await getArtistTagPayload(
-    linkedArtistMbid,
-    "Queen",
-    await getArtistByMbid(linkedArtistMbid),
-  );
+  const linked = getArtistTagPayload(await getArtistByMbid(linkedArtistMbid));
   assert.deepEqual(linked.genres, ["Rock", "Glam Rock"]);
-  assert.deepEqual([...requests], []);
 
-  const unlinked = await getArtistTagPayload(
-    unlinkedArtistMbid,
-    "Obscure Artist",
-    await getArtistByMbid(unlinkedArtistMbid),
-  );
-  assert.deepEqual(unlinked.genres, ["classic rock"]);
-  assert.equal(requests.length, 1);
-  assert.equal(requests[0], "https://api.listenbrainz.org/1/metadata/artist/");
+  const unlinked = getArtistTagPayload(await getArtistByMbid(unlinkedArtistMbid));
+  assert.deepEqual(unlinked.genres, []);
+  assert.deepEqual([...requests], []);
 });
 
 test("artist previews use the BrainzMash Deezer link instead of a name search", async () => {

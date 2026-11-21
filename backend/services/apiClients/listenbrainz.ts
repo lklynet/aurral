@@ -12,7 +12,6 @@ import createCache from "./simpleCache.ts";
 import { logger } from "../logger.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { MBID_PATTERN } from "../../../lib/mbid.ts";
-import { dbOps } from "../../db/helpers/index.ts";
 import { APP_NAME, APP_VERSION, LISTENBRAINZ_API } from "../../config/constants.ts";
 
 type ListenbrainzSubmitEvent = {
@@ -302,9 +301,5 @@ export const listenbrainzTopArtistsSchema = v.fallback(
   }),
   {},
 );
-
-export function clearListenbrainzStats() {
-  dbOps.clearListenbrainzArtistTags();
-}
 
 export { listenbrainzCache };

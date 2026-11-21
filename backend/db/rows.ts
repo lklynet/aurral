@@ -415,12 +415,6 @@ export interface ListenHistorySourcesRow {
   account: string;
 }
 
-export interface ListenbrainzArtistTagsRow {
-  mbid: string | null;
-  tags_json: string;
-  checked_at: number;
-}
-
 export interface MetadataCallsRow {
   hour: number;
   server: string;

@@ -18,7 +18,6 @@ const [
   { default: search },
   { default: similar },
   { FlowTrackSource },
-  { listenbrainzCache },
   { getArtistTagLists },
 ] = await setupIsolatedBackend(
   "listenbrainz-discovery",
@@ -29,7 +28,6 @@ const [
   () => import("../../backend/routes/search.ts"),
   () => import("../../backend/routes/artists/handlers/similar.ts"),
   () => import("../../backend/services/flows/flowTrackSource.ts"),
-  () => import("../../backend/services/apiClients/listenbrainz.ts"),
   () => import("../../backend/services/musicDataSource/index.ts"),
 );
 
@@ -100,12 +98,22 @@ const respond = (url: URL) => {
         ],
       });
     }
+    if (seed === TAGGED.mbid) {
+      return json({
+        id: TAGGED.mbid,
+        name: TAGGED.name,
+        genres: ["Shoegaze", "Dream Pop"],
+        links: [],
+        albums: [],
+      });
+    }
     const similar = similarBySeed.get(seed);
     if (similar) {
       return json({
         id: seed,
         name:
           seed === LIKED.mbid ? LIKED.name : seed === LIBRARY.mbid ? LIBRARY.name : NEIGHBOR.name,
+        genres: seed === LIKED.mbid ? ["seen live"] : ["seen live", "Shoegaze", "Dream Pop"],
         links: [],
         albums: [],
         similar: similar.map((artist) => ({
@@ -116,26 +124,13 @@ const respond = (url: URL) => {
         })),
       });
     }
-  }
-  if (url.hostname === "api.listenbrainz.org" && url.pathname === "/1/metadata/artist/") {
-    return json(
-      url.searchParams
-        .get("artist_mbids")!
-        .split(",")
-        .map((artistMbid) => ({
-          artist_mbid: artistMbid,
-          tag: {
-            artist:
-              artistMbid === LIKED.mbid
-                ? [{ tag: "seen live", count: 9 }]
-                : [
-                    { tag: "seen live", count: 9 },
-                    { tag: "shoegaze", count: 4 },
-                    { tag: "dream pop", count: 2 },
-                  ],
-          },
-        })),
-    );
+    return json({
+      id: seed,
+      name: "Candidate Artist",
+      genres: ["seen live", "Shoegaze", "Dream Pop"],
+      links: [],
+      albums: [],
+    });
   }
   if (url.hostname === "musicbrainz.org" && url.pathname === "/ws/2/artist") {
     return json({
@@ -254,12 +249,14 @@ test("each user gets personal recommendations from ListenBrainz", async () => {
     requests.some((url) => url.hostname === "ws.audioscrobbler.com"),
     false,
   );
-  const likedTagLookups = requests.filter(
-    (url) =>
-      url.pathname === "/1/metadata/artist/" &&
-      url.searchParams.get("artist_mbids")!.split(",").includes(LIKED.mbid),
+  const likedArtistLookups = requests.filter(
+    (url) => url.hostname === "data.aurral.org" && url.pathname === `/v1/artist/${LIKED.mbid}`,
   );
-  assert.equal(likedTagLookups.length, 1);
+  assert.equal(likedArtistLookups.length, 1);
+  assert.equal(
+    requests.some((url) => url.pathname === "/1/metadata/artist/"),
+    false,
+  );
 });
 
 const searchBodySchema = v.looseObject({
@@ -305,24 +302,20 @@ test("tag search lists MusicBrainz's artists for the tag", async () => {
   assert.equal(search.searchParams.get("query"), 'tag:"shoegaze"');
 });
 
-test("artist tags are kept across restarts and refreshed in the background after a week", async () => {
+test("artist tags come from cached v1 artist metadata and refresh in the background after a week", async () => {
   const loadTags = async () =>
     (await getArtistTagLists([TAGGED]))[0]?.map((tag: { name: string }) => tag.name);
   const lookups = () =>
     requests.filter(
-      (url) =>
-        url.pathname === "/1/metadata/artist/" &&
-        url.searchParams.get("artist_mbids") === TAGGED.mbid,
+      (url) => url.hostname === "data.aurral.org" && url.pathname === `/v1/artist/${TAGGED.mbid}`,
     ).length;
-  const expected = ["seen live", "shoegaze", "dream pop"];
+  const expected = ["shoegaze", "dream pop"];
 
   assert.deepEqual(await loadTags(), expected);
-  listenbrainzCache.flushAll();
   assert.deepEqual(await loadTags(), expected);
   assert.equal(lookups(), 1);
 
   vi.setSystemTime(Date.now() + 8 * 24 * 60 * 60 * 1000);
-  listenbrainzCache.flushAll();
   assert.deepEqual(await loadTags(), expected);
   await vi.runAllTimersAsync();
   assert.equal(lookups(), 2);

@@ -1,12 +1,8 @@
-import * as v from "valibot";
 import {
   deezerGetRelatedArtists,
   getDeezerArtist,
-  listenbrainzRequest,
   musicbrainzSearchArtistsByTag,
 } from "../apiClients/index.ts";
-import { lenient, lenientCount, lenientText } from "../integrationData.ts";
-import { dbOps } from "../../db/helpers/index.ts";
 import { cachedArtistGuess, guessArtistMbid } from "../artistMatch.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import {
@@ -24,53 +20,9 @@ import type { SourceHealth } from "../discovery/tasteProfile.ts";
 import type { MusicArtistRef } from "./index.ts";
 import { normalizeMbid, recordHealth, text } from "./common.ts";
 
-const ARTIST_METADATA_BATCH_SIZE = 50;
 const TAG_SEARCH_PAGE_SIZE = 100;
 const RESOLVE_CONCURRENCY = 4;
-const ARTIST_TAGS_FRESH_MS = 7 * 24 * 60 * 60 * 1000;
 const METADATA_GENRE_ARTISTS_CAP = 200;
-
-const tagSchema = v.fallback(v.looseObject({ tag: lenientText, count: lenientCount }), {});
-const artistTagsSchema = lenient(
-  v.array(
-    v.fallback(
-      v.looseObject({
-        artist_mbid: lenientText,
-        mbid: lenientText,
-        tag: lenient(v.looseObject({ artist: lenient(v.array(tagSchema)) })),
-      }),
-      {},
-    ),
-  ),
-);
-
-const fetchArtistTags = async (mbids: string[], health?: SourceHealth) => {
-  const fetched = new Map<string, ReturnType<typeof toTagList>>();
-  for (let index = 0; index < mbids.length; index += ARTIST_METADATA_BATCH_SIZE) {
-    const batch = mbids.slice(index, index + ARTIST_METADATA_BATCH_SIZE);
-    try {
-      const rows = v.parse(
-        artistTagsSchema,
-        await listenbrainzRequest("/1/metadata/artist/", {
-          artist_mbids: batch.join(","),
-          inc: "tag",
-        }),
-      );
-      recordHealth(health, true);
-      const found = new Map(
-        (Array.isArray(rows) ? rows : []).map((row) => [
-          normalizeMbid(row?.artist_mbid || row?.mbid),
-          toTagList(row?.tag?.artist),
-        ]),
-      );
-      for (const mbid of batch) fetched.set(mbid, found.get(mbid) ?? []);
-    } catch {
-      recordHealth(health, false);
-    }
-  }
-  if (fetched.size) dbOps.saveListenbrainzArtistTags(fetched, Date.now());
-  return fetched;
-};
 
 type TagSearchArtist = Awaited<ReturnType<typeof musicbrainzSearchArtistsByTag>>["artists"][number];
 
@@ -80,17 +32,6 @@ const resolveArtistMbid = async (artist: MusicArtistRef) => {
   const name = text(artist?.name);
   if (!name) return null;
   return guessArtistMbid(name);
-};
-
-const toTagList = (tags: v.InferOutput<typeof tagSchema>[] | undefined) => {
-  const entries = (Array.isArray(tags) ? tags : []).filter((tag) => text(tag?.tag));
-  const topCount = Math.max(1, ...entries.map((tag) => Number(tag.count) || 0));
-  return entries
-    .sort((left, right) => (Number(right.count) || 0) - (Number(left.count) || 0))
-    .map((tag) => ({
-      name: text(tag.tag),
-      count: Math.max(1, Math.round(((Number(tag.count) || 0) / topCount) * 100)),
-    }));
 };
 
 const searchTagArtists = async (
@@ -187,15 +128,21 @@ export const listenbrainzSource = {
   async getArtistTagLists(artists: MusicArtistRef[], { health }: { health?: SourceHealth } = {}) {
     const mbids = await mapWithConcurrency(artists, RESOLVE_CONCURRENCY, resolveArtistMbid);
     const unique = [...new Set(mbids.flatMap((mbid) => (mbid ? [mbid] : [])))];
-    const stored = dbOps.getListenbrainzArtistTags(unique);
-    const freshAfter = Date.now() - ARTIST_TAGS_FRESH_MS;
-    const stale = unique.filter((mbid) => (stored.get(mbid)?.checkedAt ?? Infinity) < freshAfter);
-    if (stale.length) void fetchArtistTags(stale).catch(() => {});
-    const fetched = await fetchArtistTags(
-      unique.filter((mbid) => !stored.has(mbid)),
-      health,
-    );
-    return mbids.map((mbid) => (mbid && (fetched.get(mbid) ?? stored.get(mbid)?.tags)) || []);
+    const fetched = new Map<string, { name: string; count: number }[]>();
+    await mapWithConcurrency(unique, RESOLVE_CONCURRENCY, async (mbid) => {
+      try {
+        const artist = await getArtistByMbid(mbid);
+        recordHealth(health, true);
+        fetched.set(
+          mbid,
+          artist.genres.map((name) => ({ name: name.toLowerCase(), count: 100 })),
+        );
+      } catch {
+        recordHealth(health, false);
+        fetched.set(mbid, []);
+      }
+    });
+    return mbids.map((mbid) => (mbid && fetched.get(mbid)) || []);
   },
 
   getTagArtists,

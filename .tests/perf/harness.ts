@@ -135,7 +135,6 @@ async function startFakeMetadata() {
 }
 
 const FAKE_ANSWERS = new Map<string, unknown>([
-  ["/1/metadata/artist", []],
   ["/v1/profiles/mia_k", { handle: "mia_k", playlists: [] }],
 ]);
 

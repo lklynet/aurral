@@ -254,7 +254,7 @@ test("upgrading clears BrainzMash cache rows and saved defaults when moving to d
   assert.deepEqual(
     db
       .prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('metadata_request_state', 'listenbrainz_release_groups')",
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('metadata_request_state', 'listenbrainz_release_groups', 'listenbrainz_artist_tags')",
       )
       .pluck()
       .all(),

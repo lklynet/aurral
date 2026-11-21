@@ -447,6 +447,7 @@ const moveMetadataToDataAurral: Migration = (db) =>
     WHERE substr(cache_key, 1, 26) = 'https://brainzmash.kell.ly';
     DROP TABLE IF EXISTS metadata_request_state;
     DROP TABLE IF EXISTS listenbrainz_release_groups;
+    DROP TABLE IF EXISTS listenbrainz_artist_tags;
   `);
 
 export const migrations: Migration[] = [

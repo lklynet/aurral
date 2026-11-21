@@ -1,4 +1,4 @@
-import { clearListenbrainzStats, listenbrainzCache } from "./listenbrainz.ts";
+import { listenbrainzCache } from "./listenbrainz.ts";
 import { clearDeezerCaches } from "./deezer.ts";
 import {
   musicbrainzArtistNameCache,
@@ -15,7 +15,6 @@ export function clearApiCaches() {
   clearMetadataProviderCaches();
   clearReleaseManifests();
   listenbrainzCache.flushAll();
-  clearListenbrainzStats();
   clearDeezerCaches();
   musicbrainzArtistNameCache.flushAll();
   musicbrainzReleaseGroupsCache.flushAll();

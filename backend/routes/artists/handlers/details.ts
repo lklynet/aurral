@@ -27,16 +27,6 @@ import {
 import { asAppError, errorResponseText } from "../../../../lib/errors.ts";
 import { isErrorStatus } from "../../shared/errorStatus.ts";
 
-const TAG_WAIT_MS = 2000;
-
-const tagsWithin = (tags: ReturnType<typeof getArtistTagPayload>) => {
-  let timer: NodeJS.Timeout | undefined;
-  const deadline = new Promise<Awaited<typeof tags>>((resolve) => {
-    timer = setTimeout(resolve, TAG_WAIT_MS, { tags: [], genres: [] });
-  });
-  return Promise.race([tags, deadline]).finally(() => clearTimeout(timer));
-};
-
 function filterByReleaseTypes<T extends { type: string; secondaryTypes?: string[] }>(
   albums: T[],
   selectedReleaseTypes: string[] | null,
@@ -77,7 +67,7 @@ async function loadArtistDetails(
     coreOnly || !metadataArtist
       ? []
       : metadataArtist.appearsOn.slice(0, appearsOnLimit ?? 24).map(toAppearsOnReleaseGroup);
-  const tagPayload = await tagsWithin(getArtistTagPayload(mbid, name, metadataArtist));
+  const tagPayload = getArtistTagPayload(metadataArtist);
   return {
     ...buildArtistBase(name, mbid, metadataArtist),
     tags: tagPayload.tags,

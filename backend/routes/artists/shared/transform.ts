@@ -1,6 +1,5 @@
 import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
-import { getArtistTagLists, getSimilarArtists } from "../../../services/musicDataSource/index.ts";
-import { isKnownGenre } from "../../../services/musicGenres.ts";
+import { getSimilarArtists } from "../../../services/musicDataSource/index.ts";
 import { guessArtistMbid } from "../../../services/artistMatch.ts";
 import { mapWithConcurrency } from "../../../services/discovery/helpers.ts";
 import type {
@@ -82,27 +81,11 @@ export function toLegacyRelations(metadataArtist: NormalizedArtist | null) {
     : [];
 }
 
-export async function getArtistTagPayload(
-  mbid: string,
-  artistName = "",
-  metadataArtist: NormalizedArtist | null = null,
-) {
-  const metadataGenres = Array.isArray(metadataArtist?.genres)
-    ? metadataArtist.genres.filter(Boolean)
-    : [];
-  if (metadataGenres.length > 0) {
-    return {
-      tags: metadataGenres.map((genre) => ({ name: genre, count: 0 })),
-      genres: metadataGenres,
-    };
-  }
-  const [sourceTags = []]: { name: string; count: number }[][] = await getArtistTagLists([
-    { mbid, name: artistName },
-  ]);
-  const tags = sourceTags.filter((tag) => isKnownGenre(tag.name));
+export function getArtistTagPayload(metadataArtist: NormalizedArtist | null = null) {
+  const genres = Array.isArray(metadataArtist?.genres) ? metadataArtist.genres.filter(Boolean) : [];
   return {
-    tags,
-    genres: tags.map((tag) => tag.name),
+    tags: genres.map((genre) => ({ name: genre, count: 0 })),
+    genres,
   };
 }
 
