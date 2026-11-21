@@ -243,7 +243,9 @@ test(
         )) as typeof fork,
     });
     t.onTestFinished(() => watcher.close());
-    const [error] = await once(watcher, "error");
+    const error = await new Promise<NodeJS.ErrnoException>((resolve) =>
+      watcher.once("error", resolve),
+    );
     assert.equal(error.message, "Stale file handle");
     assert.equal(error.code, "ESTALE");
   },
