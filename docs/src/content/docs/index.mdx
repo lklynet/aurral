@@ -5,24 +5,20 @@ description: Install, configure, and use Aurral.
 
 import { Card, CardGrid } from "@astrojs/starlight/components";
 
-Aurral is a self-hosted app for music discovery, downloads, and playback. It finds artists you do not have yet, downloads tracks for flows and imported playlists, and plays your library in the browser, at [music.aurral.org](/using/music-aurral-org/), and in Subsonic apps.
+Aurral is a self-hosted music app that handles discovery, downloads, library management, and playback in one container. It finds artists you don't have yet, grabs tracks for your flows and imported playlists, verifies and tags the files, and plays everything in the browser, at [music.aurral.org](/using/music-aurral-org/), or in any Subsonic app.
 
 ![Aurral Discover page](../../../../web/screenshots/discover.webp)
 
 ## Get started
 
 1. [Install Aurral with Docker](/getting-started/docker/).
-2. [Set up the shared filesystem](/getting-started/storage/). Aurral must read the files that your other services write.
+2. [Set up the shared filesystem](/getting-started/storage/) if you're connecting other downloaders or media servers.
 3. [Complete first-run setup](/getting-started/first-run/).
-4. Connect the services that you use.
-
-:::note
-Aurral keeps your music in its Library folder and manages it itself. Lidarr is optional: Aurral can play the music in Lidarr's folders and download albums through Lidarr with a plugin.
-:::
+4. Connect whatever optional services you actually want, or skip all of them and just start listening.
 
 ## How Aurral fits
 
-Aurral indexes the music in its Library folder, and in read-only folders you add. This index is the Library. Aurral plays Library tracks in its built-in player and serves them to Subsonic clients. Navidrome, Plex, and Jellyfin can read the Library folder and Aurral's playlist files.
+Aurral manages its own Library folder and can also index read-only folders you don't want touched. Everything in Aurral works standalone with nothing else connected. If you already run Navidrome, Plex, or Jellyfin, point them at the Library folder and Aurral's M3U playlist files and they pick everything up automatically.
 
 ## Essential guides
 
@@ -40,11 +36,11 @@ Aurral indexes the music in its Library folder, and in read-only folders you add
   <Card title="Use it anywhere">
     Your server at one address, from any browser. [music.aurral.org](/using/music-aurral-org/)
   </Card>
-  <Card title="Use Lidarr">
-    Play Lidarr's music and download through Lidarr. [Lidarr](/integrations/lidarr/)
-  </Card>
   <Card title="Run Aurral">
     Storage, users, environment variables, and troubleshooting. [Administration](/admin/storage/)
+  </Card>
+  <Card title="FAQ">
+    Answers to the most common questions and recurring Reddit myths. [Read the FAQ](/faq/)
   </Card>
 </CardGrid>
 

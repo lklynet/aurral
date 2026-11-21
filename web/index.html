@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Aurral: self-hosted music discovery</title>
+    <title>Aurral: self-hosted music that doesn't feel like a chore</title>
     <meta
       name="description"
-      content="The best open-source music discovery for your self-hosted library. Recommendations, rotating flows, and playlist downloads."
+      content="Find music you'll actually like, download it automatically, and play it anywhere. One container, zero API keys, and you own every file."
     />
     <meta name="theme-color" content="#000000" />
     <link rel="canonical" href="https://aurral.org/" />
@@ -15,10 +15,10 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://aurral.org/" />
     <meta property="og:site_name" content="Aurral" />
-    <meta property="og:title" content="Aurral: self-hosted music discovery" />
+    <meta property="og:title" content="Aurral: self-hosted music that doesn't feel like a chore" />
     <meta
       property="og:description"
-      content="The best open-source music discovery for your self-hosted library."
+      content="Find music you'll actually like, download it automatically, and play it anywhere. One container, zero API keys, and you own every file."
     />
     <meta property="og:image" content="https://aurral.org/screenshots/discover.webp" />
     <meta property="og:image:alt" content="The Aurral Discover page" />
@@ -1056,9 +1056,10 @@
         <nav aria-label="Primary">
           <ul>
             <li><a href="https://docs.aurral.org/">Docs</a></li>
+            <li><a href="https://docs.aurral.org/faq/">FAQ</a></li>
             <li>
               <a href="https://github.com/lklynet/aurral"
-                >GitHub <span data-stat="stars">1.7K</span><span class="sr"> stars</span></a
+                >GitHub <span data-stat="stars">2K</span><span class="sr"> stars</span></a
               >
             </li>
             <li class="hide-narrow"><a href="https://discord.gg/cpPYfgVURJ">Discord</a></li>
@@ -1069,15 +1070,18 @@
 
     <main id="main">
       <section class="wrap hero" aria-labelledby="hero-title">
-        <h1 id="hero-title">The best in<br />open-source<br />music discovery.</h1>
-        <p class="lede">Find new music, keep it in your library, and play it anywhere.</p>
+        <h1 id="hero-title">Self-hosted music<br />that doesn't feel<br />like a chore.</h1>
+        <p class="lede">
+          Find music you'll actually like, download it automatically, and play it anywhere. One
+          container, zero API keys, and you own every file.
+        </p>
         <div class="actions">
           <a class="button primary" href="https://docs.aurral.org/getting-started/docker/"
             >Get started</a
           >
           <a class="button" href="https://github.com/lklynet/aurral">View on GitHub</a>
         </div>
-        <p class="meta">Free and MIT licensed · <span data-stat="version">v2.10.0</span></p>
+        <p class="meta">Free and MIT licensed · <span data-stat="version">v3.0.1</span></p>
       </section>
 
       <div class="wrap">
@@ -1114,7 +1118,7 @@
           <dl>
             <div>
               <dt>GitHub stars</dt>
-              <dd data-stat="stars">1.7K</dd>
+              <dd data-stat="stars">2K</dd>
             </div>
             <div>
               <dt>Docker pulls</dt>
@@ -1122,7 +1126,7 @@
             </div>
             <div>
               <dt>Latest release, <span data-stat="released">recently</span></dt>
-              <dd data-stat="version">v2.10.0</dd>
+              <dd data-stat="version">v3.0.1</dd>
             </div>
             <div>
               <dt>Integrations</dt>
@@ -1135,29 +1139,31 @@
       <section class="chapter" aria-labelledby="discover-title">
         <div class="wrap">
           <h2 id="discover-title">
-            Recommendations from your own listening.
-            <span class="quiet">Built from your library and listening history.</span>
+            Discovery that shows its work.
+            <span class="quiet"
+              >Built from what you actually listen to, with a real reason for every pick.</span
+            >
           </h2>
           <ul class="features">
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-history" /></svg>
-              <h3>Your history</h3>
-              <p>Your library plus ListenBrainz or Koito history.</p>
+              <h3>Start from your history</h3>
+              <p>Bring your Spotify history, your existing library, ListenBrainz, or Koito.</p>
             </li>
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-tune" /></svg>
               <h3>Adjustable depth</h3>
-              <p>Safer, balanced, or deeper. More like this, less like that.</p>
+              <p>Safer, balanced, or deeper cuts. Block artists or genres you never want to see.</p>
             </li>
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-trending" /></svg>
               <h3>Trends</h3>
-              <p>Global trends, tags, and recent releases in one place.</p>
+              <p>Global trends, tags, and fresh releases in one place.</p>
             </li>
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-pin" /></svg>
               <h3>Concerts</h3>
-              <p>Nearby concerts for the artists you already love.</p>
+              <p>Nearby shows for the artists you already listen to.</p>
             </li>
           </ul>
           <figure class="shot">
@@ -1180,7 +1186,8 @@
           <h2 id="playlists-title">
             Playlists that refill themselves.
             <span class="quiet"
-              >Flows mix discovery and your library on a schedule, then fetch the tracks.</span
+              >Pick the vibe and the schedule. Aurral builds the tracklist, grabs the files, and
+              cleans up after itself.</span
             >
           </h2>
           <ul class="features">
@@ -1405,32 +1412,22 @@
           <h2 id="stack-title">
             Every integration is optional.
             <span class="quiet"
-              >Connect the services you already run and skip the ones you don't.</span
+              >Already running Navidrome, Plex, or Jellyfin? Aurral plays nice with all of them.
+              Running none of them? Even better. One container is enough.</span
             >
           </h2>
           <div class="groups">
             <div>
-              <h3>Library</h3>
-              <ul>
-                <li data-integration>
-                  <a href="https://docs.aurral.org/integrations/lidarr/">Lidarr</a>
-                </li>
-                <li data-integration>
-                  <a href="https://docs.aurral.org/integrations/metadata/">MusicBrainz</a>
-                </li>
-              </ul>
-            </div>
-            <div>
               <h3>Downloads</h3>
               <ul>
-                <li data-integration>
-                  <a href="https://docs.aurral.org/integrations/slskd/">slskd</a>
-                </li>
                 <li data-integration>
                   <a href="https://docs.aurral.org/integrations/ytdlp/">yt-dlp</a>
                 </li>
                 <li data-integration>
-                  <a href="https://docs.aurral.org/integrations/deemix/">deemix</a>
+                  <a href="https://docs.aurral.org/integrations/slskd/">slskd</a>
+                </li>
+                <li data-integration>
+                  <a href="https://docs.aurral.org/integrations/qbittorrent/">qBittorrent</a>
                 </li>
                 <li data-integration>
                   <a href="https://docs.aurral.org/integrations/usenet/">SABnzbd</a>
@@ -1439,10 +1436,10 @@
                   <a href="https://docs.aurral.org/integrations/usenet/">NZBGet</a>
                 </li>
                 <li data-integration>
-                  <a href="https://docs.aurral.org/integrations/qbittorrent/">qBittorrent</a>
+                  <a href="https://docs.aurral.org/integrations/tidarr/">Tidarr</a>
                 </li>
                 <li data-integration>
-                  <a href="https://docs.aurral.org/integrations/tidarr/">Tidarr</a>
+                  <a href="https://docs.aurral.org/integrations/deemix/">deemix</a>
                 </li>
               </ul>
             </div>
@@ -1488,6 +1485,17 @@
                 </li>
               </ul>
             </div>
+            <div>
+              <h3>Library</h3>
+              <ul>
+                <li data-integration>
+                  <a href="https://docs.aurral.org/integrations/metadata/">MusicBrainz</a>
+                </li>
+                <li data-integration>
+                  <a href="https://docs.aurral.org/integrations/lidarr/">Lidarr</a>
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
       </section>
@@ -1495,9 +1503,11 @@
       <section class="chapter install" aria-labelledby="install-title">
         <div class="wrap">
           <div class="copy">
-            <h2 id="install-title">Install with Docker Compose.</h2>
+            <h2 id="install-title">Up in 60 seconds.</h2>
             <p class="body">
-              Run <code>docker compose up -d</code>, open port 3001, and create your admin account.
+              One container, and built-in yt-dlp works out of the box. Run
+              <code>docker compose up -d</code>, open port 3001, and stop babysitting a five-app
+              music stack.
             </p>
             <div class="links">
               <a class="link" href="https://docs.aurral.org/getting-started/docker/"
@@ -1538,7 +1548,7 @@
           <img src="favicon.svg" alt="" width="65" height="48" />
           <h2 id="closing-title">Free and open source.</h2>
           <p class="lede">
-            MIT licensed and shaped by the people who run it. Sponsors keep it free.
+            MIT licensed, no paywalled pro tier, and funded by the people who actually run it.
           </p>
           <div class="actions">
             <a class="button primary" href="https://docs.aurral.org/getting-started/docker/"
@@ -1557,15 +1567,16 @@
             <img src="favicon.svg" alt="" width="27" height="20" />
             Aurral
           </a>
-          <p>Self-hosted music discovery.</p>
+          <p>Own your music. Skip the busywork.</p>
         </div>
         <nav aria-labelledby="footer-docs">
           <h2 id="footer-docs">Docs</h2>
           <ul>
             <li><a href="https://docs.aurral.org/">Overview</a></li>
             <li><a href="https://docs.aurral.org/getting-started/docker/">Get started</a></li>
-            <li><a href="https://docs.aurral.org/integrations/lidarr/">Integrations</a></li>
+            <li><a href="https://docs.aurral.org/integrations/slskd/">Integrations</a></li>
             <li><a href="https://docs.aurral.org/api/overview/">API</a></li>
+            <li><a href="https://docs.aurral.org/faq/">FAQ</a></li>
           </ul>
         </nav>
         <nav aria-labelledby="footer-project">
