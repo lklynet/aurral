@@ -51,7 +51,7 @@ const slim = (release: ListenbrainzFreshRelease) => {
           releaseDate: release.release_date,
           coverUrl:
             release.caa_id && release.caa_release_mbid
-              ? `https://imagecache.lidarr.audio/v1/caa/${release.caa_release_mbid}/${release.caa_id}-500.jpg`
+              ? `https://coverartarchive.org/release/${release.caa_release_mbid}/${release.caa_id}-500.jpg`
               : null,
         },
       ]
