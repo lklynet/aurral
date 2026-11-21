@@ -33,6 +33,7 @@ import {
 import { formatTrackTotal } from "./playlists/playlistPageUtils";
 import { getApiErrorMessage } from "../utils/api/errors.ts";
 import { playlistPath } from "../navigation/playlistPaths";
+import { albumPath } from "../../../lib/albumPath.ts";
 import { readRouteSeed } from "../navigation/routeSeed.ts";
 import { resolveAlbumPath, resolveArtistPath } from "../navigation/resolveLinks.ts";
 import { useTrackSaveActions } from "../hooks/useTrackSaveActions";
@@ -124,10 +125,26 @@ function BrowsePlaylistDetail({
   const trackSaveActions = useTrackSaveActions();
 
   const getArtistLink = (track: PreviewTrack) => {
+    if (track.artistMbid) {
+      return {
+        to: `/artist/${encodeURIComponent(track.artistMbid)}`,
+        state: { artistName: track.artistName },
+      };
+    }
     const to = resolveArtistPath({ name: track.artistName });
     return to ? { to } : null;
   };
   const getAlbumLink = (track: PreviewTrack) => {
+    if (track.albumMbid) {
+      return {
+        to: albumPath(track.albumMbid),
+        state: {
+          ...(track.artistMbid && { artistMbid: track.artistMbid }),
+          artistName: track.artistName,
+          focusReleaseGroup: { id: track.albumMbid, title: track.albumName || "" },
+        },
+      };
+    }
     const to = resolveAlbumPath({
       artistName: track.artistName,
       albumName: track.albumName,
@@ -136,8 +153,8 @@ function BrowsePlaylistDetail({
     });
     return to ? { to } : null;
   };
-  const openLink = (link: { to: string } | null) => {
-    if (link) navigate(link.to);
+  const openLink = (link: { to: string; state?: unknown } | null) => {
+    if (link) navigate(link.to, link.state ? { state: link.state } : undefined);
   };
 
   const handleAdd = async () => {
