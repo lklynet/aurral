@@ -126,6 +126,7 @@ export interface DownloadJobsRow {
   started_by_playlist: string | null;
   cause: string | null;
   cause_playlist_id: string | null;
+  file_missing_at: number | null;
 }
 
 export interface DownloadJobsRevisionRow {

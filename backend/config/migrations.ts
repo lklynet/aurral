@@ -225,6 +225,15 @@ const recordDownloadCauses: Migration = (db) => {
   }
 };
 
+// A done download whose file is gone, as when the track was replaced outside
+// Aurral, has nothing to upgrade.
+const recordMissingDownloadFiles: Migration = (db) => {
+  const hasColumn = db
+    .prepare("SELECT 1 FROM pragma_table_info('download_jobs') WHERE name = 'file_missing_at'")
+    .get();
+  if (!hasColumn) db.exec("ALTER TABLE download_jobs ADD COLUMN file_missing_at INTEGER");
+};
+
 const createHubLinks: Migration = (db) =>
   db.exec(`
     CREATE TABLE IF NOT EXISTS hub_links (
@@ -464,6 +473,7 @@ export const migrations: Migration[] = [
   storeReleaseFeedCovers,
   moveMetadataToMaintainersServer,
   forgetSavedRelayAddress,
+  recordMissingDownloadFiles,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

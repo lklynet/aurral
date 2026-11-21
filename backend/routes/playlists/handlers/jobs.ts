@@ -469,6 +469,9 @@ export default new Hono<AppEnv>()
         409,
       );
     }
+    if (result === "missing-file") {
+      return c.json({ error: "This track's file is no longer in the Library" }, 409);
+    }
     if (result !== "queued") {
       return c.json({ error: "Track is not eligible for an upgrade" }, 409);
     }

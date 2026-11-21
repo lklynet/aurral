@@ -1,6 +1,8 @@
+import fs from "node:fs/promises";
 import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import path from "path";
 import { parseFile } from "music-metadata";
+import { asAppError } from "../../lib/errors.ts";
 import { db } from "../config/db-sqlite.ts";
 import type { LibraryMediaFilesRow } from "../db/rows.ts";
 import { indexUnmonitoredJobs } from "./unmonitoredJobs.ts";
@@ -111,6 +113,7 @@ function upgradeBlocker(
   isUnmonitored = indexUnmonitoredJobs(),
 ) {
   if (!job?.id || job.status !== "done" || !isAurralOwnedPath(job.finalPath)) return "ineligible";
+  if (job.fileMissingAt) return "missing-file";
   if (getQualityState({ tier: job.qualityTier }, getQualityProfile()) === "preferred")
     return "ineligible";
   if (!hasUpgradeSource()) return "ineligible";
@@ -130,6 +133,14 @@ async function prepareQualityUpgrade(
   if (!job?.id || job.status !== "done" || !isAurralOwnedPath(job.finalPath)) {
     return { status: "ineligible" };
   }
+  // The job's stored quality is its old file's, so a file replaced outside
+  // Aurral would otherwise be upgraded as if it were still there.
+  const missing = await fs.access(job.finalPath!).then(
+    () => false,
+    (error: unknown) => asAppError(error)?.code === "ENOENT",
+  );
+  downloadTracker.markFileMissing(job.finalPath!, missing);
+  if (missing) return { status: "missing-file" };
   if (!job.qualityCheckedAt) await classifyQualityJob(job);
   const current = downloadTracker.getJob(job.id);
   const blocker = upgradeBlocker(current, isUnmonitored);
