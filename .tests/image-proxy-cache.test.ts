@@ -314,3 +314,58 @@ test("a cached image whose saved extension points outside the cache is never ser
     await fs.rm(state.baseDir, { recursive: true, force: true });
   }
 });
+
+test("Cover Art Archive thumbnails that 404 fall back to the original image and Deezer blank redirects are rejected", async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-image-fallbacks-"));
+  const previousDataDir = process.env.AURRAL_DATA_DIR;
+  const originalFetch = global.fetch;
+  process.env.AURRAL_DATA_DIR = dataDir;
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+  try {
+    vi.resetModules();
+    const { fetchRemoteImage, isDeezerPlaceholderArtistImage } =
+      await import("../backend/services/imageProxyService.ts");
+    const requested: string[] = [];
+    global.fetch = async (url, init) => {
+      const target = String(url);
+      requested.push(`${init?.method || "GET"} ${target}`);
+      if (target.endsWith("/46721848595-1200.jpg")) {
+        return new Response("missing", { status: 404 });
+      }
+      if (target.endsWith("/46721848595.jpg")) {
+        return new Response(png, { status: 200, headers: { "content-type": "image/png" } });
+      }
+      if (target.includes("cdn-images.dzcdn.net/images/artist/e1591dcf/")) {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: "/images/artist/d41d8cd98f00b204e9800998ecf8427e/1000x1000-000000-80-0-0.jpg",
+          },
+        });
+      }
+      return new Response("unexpected", { status: 500 });
+    };
+
+    const recovered = await fetchRemoteImage(
+      "https://coverartarchive.org/release/740528de-181a-4b07-985b-34284afc1504/46721848595-1200.jpg",
+    );
+    assert.equal(recovered.contentType, "image/png");
+    assert.deepEqual(requested, [
+      "GET https://coverartarchive.org/release/740528de-181a-4b07-985b-34284afc1504/46721848595-1200.jpg",
+      "GET https://coverartarchive.org/release/740528de-181a-4b07-985b-34284afc1504/46721848595.jpg",
+    ]);
+
+    const deezerBlankUrl =
+      "https://cdn-images.dzcdn.net/images/artist/e1591dcf/1000x1000-000000-80-0-0.jpg";
+    assert.equal(await isDeezerPlaceholderArtistImage(deezerBlankUrl), true);
+    await assert.rejects(() => fetchRemoteImage(deezerBlankUrl), /Deezer blank placeholder/);
+  } finally {
+    global.fetch = originalFetch;
+    if (previousDataDir === undefined) delete process.env.AURRAL_DATA_DIR;
+    else process.env.AURRAL_DATA_DIR = previousDataDir;
+    await fs.rm(dataDir, { recursive: true, force: true });
+  }
+});

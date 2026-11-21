@@ -113,9 +113,15 @@ function createDeezerCache<Value>(ttlSeconds: number, maxEntries?: number) {
   return { ...cache, load };
 }
 
+const DEEZER_BLANK_ARTIST_HASH = "d41d8cd98f00b204e9800998ecf8427e";
+
 const deezerArtistPhoto = (artist: DeezerArtist) => {
   const url = artist.picture_xl || artist.picture_big || artist.picture_medium;
-  return url && !url.includes("/images/artist//") ? url : null;
+  return url &&
+    !url.includes("/images/artist//") &&
+    !url.includes(`/images/artist/${DEEZER_BLANK_ARTIST_HASH}/`)
+    ? url
+    : null;
 };
 
 const toArtist = (artist: DeezerArtist) => ({

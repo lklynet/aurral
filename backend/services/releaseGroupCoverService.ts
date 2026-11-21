@@ -2,6 +2,7 @@ import { dbOps } from "../db/helpers/index.ts";
 import {
   buildStableImageProxyUrl,
   fetchRemoteImage,
+  isDeezerPlaceholderArtistImage,
   warmPublicImageUrl,
 } from "./imageProxyService.ts";
 import {
@@ -109,6 +110,7 @@ export const fetchDeezerArtistImageUrl = async ({
         ? await getDeezerArtist(artistName, { throwOnError })
         : null;
     if (!artist?.imageUrl) return null;
+    if (await isDeezerPlaceholderArtistImage(artist.imageUrl)) return null;
     return toPublicCoverUrl(artist.imageUrl);
   } catch (error) {
     if (throwOnError) throw error;
