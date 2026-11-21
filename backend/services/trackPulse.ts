@@ -75,15 +75,14 @@ export async function filePulse(path: string) {
 const cache = new Map<string, Promise<TrackPulse | null>>();
 const decodes = new PQueue({ concurrency: 2 });
 
-export function trackPulse(albumId: string, trackId: string) {
-  const key = `${albumId}:${trackId}`;
+function cachedPulse(key: string, resolvePath: () => string | null) {
   const cached = cache.get(key);
   if (cached) {
     cache.delete(key);
     cache.set(key, cached);
     return cached;
   }
-  const path = resolveLibraryTrackPath(albumId, trackId);
+  const path = resolvePath();
   if (!path) return Promise.resolve(null);
   const pending = decodes.add(() => filePulse(path)).then((pulse) => pulse ?? null);
   cache.set(key, pending);
@@ -94,3 +93,8 @@ export function trackPulse(albumId: string, trackId: string) {
   if (cache.size > CACHE_SIZE && !oldest.done) cache.delete(oldest.value);
   return pending;
 }
+
+export const trackPulse = (albumId: string, trackId: string) =>
+  cachedPulse(`${albumId}:${trackId}`, () => resolveLibraryTrackPath(albumId, trackId));
+
+export const pathPulse = (path: string) => cachedPulse(`path:${path}`, () => path);

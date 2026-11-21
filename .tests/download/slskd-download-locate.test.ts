@@ -1,4 +1,4 @@
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "fs/promises";
 import os from "os";
@@ -135,6 +135,32 @@ test("commitDownloadedFile moves without overwriting existing targets", async ()
   assert.equal(await fs.readFile(finalPath, "utf8"), "new-audio");
   await assert.rejects(() => fs.stat(source), /ENOENT/);
   await fs.rm(root, { recursive: true, force: true });
+});
+
+test("commitDownloadedFile keeps a copy made across filesystems when the download client's file cannot be removed", async (t: import("vite-plus/test").TestContext) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-import-cross-device-"));
+  t.onTestFinished(async () => {
+    vi.restoreAllMocks();
+    await fs.rm(root, { recursive: true, force: true });
+  });
+  const source = path.join(root, "slskd", "Track.flac");
+  const target = path.join(root, "aurral", "Track.flac");
+  await fs.mkdir(path.dirname(source), { recursive: true });
+  await fs.writeFile(source, "downloaded-audio", "utf8");
+  const rename = fs.rename.bind(fs);
+  vi.spyOn(fs, "rename").mockImplementation(async (from, to) => {
+    if (from === source) throw Object.assign(new Error("cross-device link"), { code: "EXDEV" });
+    return rename(from, to);
+  });
+  const rm = fs.rm.bind(fs);
+  vi.spyOn(fs, "rm").mockImplementation(async (file, options) => {
+    if (file === source) throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+    return rm(file, options);
+  });
+
+  assert.equal(await commitDownloadedFile(source, target), target);
+  assert.equal(await fs.readFile(target, "utf8"), "downloaded-audio");
+  assert.deepEqual(await fs.readdir(path.dirname(target)), ["Track.flac"]);
 });
 
 test("commitDownloadedFile can preserve a shared source for another consumer", async () => {
