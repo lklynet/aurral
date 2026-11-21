@@ -21,12 +21,45 @@ test("artist details return release listener counts and dates from the v1 artist
         name: "Plaid",
         sortName: "Plaid",
         genres: ["Electronic"],
+        images: [{ kind: "poster", url: "https://images.example/plaid.jpg" }],
+        similar: [
+          {
+            id: "7e54d133-2525-4bc0-ae94-000000000002",
+            name: "Autechre",
+            score: 1.5,
+            image: "https://images.example/autechre.jpg",
+          },
+        ],
+        topTracks: [
+          {
+            recordingId: "rec-eeyen",
+            title: "Eyen",
+            albumId: "11000000-0000-4000-8000-000000000000",
+            durationMs: 251_000,
+            listeners: 1200,
+          },
+        ],
+        appearsOn: [
+          {
+            id: "41000000-0000-4000-8000-000000000000",
+            title: "Warp10+3",
+            type: "Album",
+            artistName: "Various Artists",
+          },
+          {
+            id: "51000000-0000-4000-8000-000000000000",
+            title: "Artificial Intelligence",
+            type: "Album",
+            artistName: "Various Artists",
+          },
+        ],
         albums: [
           {
             id: "11000000-0000-4000-8000-000000000000",
             title: "Double Figure",
             type: "Album",
             firstReleaseDate: "2001-05-28",
+            cover: "https://coverartarchive.org/release/11/front-500.jpg",
             listeners: 4906,
           },
           {
@@ -50,7 +83,7 @@ test("artist details return release listener counts and dates from the v1 artist
 
   const response = await detailsClient.artists[":mbid"].$get({
     param: { mbid },
-    query: { mode: "core" },
+    query: { appearsOnLimit: "1" },
   });
   const artist = await response.json();
   assert.ok("release-groups" in artist);
@@ -68,4 +101,13 @@ test("artist details return release listener counts and dates from the v1 artist
       { title: "Double Figure", type: "Single", date: null, listenerCount: null },
     ],
   );
+  assert.equal(artist.images.length, 1);
+  assert.equal(artist.similar[0]?.name, "Autechre");
+  assert.equal(artist.topTracks[0]?.title, "Eyen");
+  assert.equal(artist.topTracks[0]?.album, "Double Figure");
+  assert.equal(artist.topTracks[0]?.albumMbid, "11000000-0000-4000-8000-000000000000");
+  assert.equal(artist.topTracks[0]?.trackMbid, "rec-eeyen");
+  assert.ok(artist.topTracks[0]?.preview_url?.startsWith("/api/deezer/preview?"));
+  assert.equal(artist["appears-on-release-groups"].length, 1);
+  assert.equal(artist["appears-on-has-more"], true);
 });

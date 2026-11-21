@@ -95,6 +95,23 @@ const buildDirectArtistImagePayload = (directImages: ImageList = []) => {
   return images;
 };
 
+export const getDirectOrCachedArtistImages = (
+  mbid: string,
+  directImages: ImageList = [],
+): CachedArtistImage[] => {
+  const direct = buildDirectArtistImagePayload(directImages);
+  if (direct.length > 0) return direct;
+  const cached = dbOps.getImage(mbid);
+  if (
+    cached?.imageUrl &&
+    cached.imageUrl !== "NOT_FOUND" &&
+    !LEGACY_COVER_HOST_PATTERN.test(cached.imageUrl)
+  ) {
+    return buildCachedArtistImagePayload(buildStableImageProxyUrl(cached.imageUrl), cached.images);
+  }
+  return [];
+};
+
 const addToNegativeCache = (mbid: string) => {
   if (negativeImageCache.size >= MAX_NEGATIVE_CACHE) {
     const firstKey = negativeImageCache.keys().next().value;

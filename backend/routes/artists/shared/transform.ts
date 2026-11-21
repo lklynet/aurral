@@ -1,11 +1,14 @@
 import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
+import { deezerPreviewSearchPath } from "../../../services/apiClients/deezer.ts";
 import { getSimilarArtists } from "../../../services/musicDataSource/index.ts";
 import { guessArtistMbid } from "../../../services/artistMatch.ts";
 import { mapWithConcurrency } from "../../../services/discovery/helpers.ts";
-import type {
-  NormalizedAppearsOnAlbum,
-  NormalizedArtist,
-  NormalizedArtistAlbum,
+import { releaseGroupCoverImageUrl } from "../../../services/releaseGroupCoverService.ts";
+import {
+  similarScoreToMatch,
+  type NormalizedAppearsOnAlbum,
+  type NormalizedArtist,
+  type NormalizedArtistAlbum,
 } from "../../../services/providers/metadataMappers.ts";
 
 export function toArtistReleaseGroup(
@@ -113,6 +116,47 @@ export async function getSimilarArtistCards(
     match: Math.round(artist.match * 100),
   }));
   return cards.filter((card) => card.id);
+}
+
+export function toDirectSimilarArtists(metadataArtist: NormalizedArtist | null, limit = 10) {
+  return (metadataArtist?.similar ?? [])
+    .filter((entry) => Boolean(entry.id))
+    .slice(0, limit)
+    .map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      image: buildImageProxyUrl(entry.image),
+      match: Math.round(similarScoreToMatch(entry.score) * 100),
+    }));
+}
+
+export function toArtistTopTracks(
+  metadataArtist: NormalizedArtist | null,
+  fallbackArtistName = "",
+  limit = 10,
+) {
+  if (!metadataArtist?.topTracks.length) return [];
+  const artistName = metadataArtist.name || fallbackArtistName;
+  const albumsById = new Map(metadataArtist.albums.map((album) => [album.id, album]));
+  return metadataArtist.topTracks.slice(0, limit).flatMap((track) => {
+    const title = track.title.trim();
+    if (!title) return [];
+    const album = track.albumId ? albumsById.get(track.albumId) : undefined;
+    return [
+      {
+        id: track.recordingId || `${metadataArtist.id}:${title}`,
+        title,
+        duration_ms: track.durationMs ?? null,
+        album: album?.title || null,
+        albumMbid: track.albumId || null,
+        trackMbid: track.recordingId || null,
+        artworkUrl:
+          buildImageProxyUrl(album?.cover) ||
+          (track.albumId ? releaseGroupCoverImageUrl(track.albumId) : null),
+        preview_url: artistName ? deezerPreviewSearchPath(artistName, title) : null,
+      },
+    ];
+  });
 }
 
 export function buildArtistBase(

@@ -12,7 +12,7 @@
       "cold": 127,
       "warm": 121
     },
-    "bytes": 181069,
+    "bytes": 180730,
     "scans": []
   },
   "library albums": {
@@ -157,16 +157,12 @@
   },
   "discover artist": {
     "queries": {
-      "cold": 65,
-      "warm": 56
+      "cold": 52,
+      "warm": 45
     },
-    "bytes": 2138,
+    "bytes": 2180,
     "scans": [],
     "calls": {
-      "api.deezer.com": {
-        "cold": 1,
-        "warm": 1
-      },
       "metadata": {
         "cold": 1,
         "warm": 0
@@ -380,9 +376,9 @@
   "subsonic getRandomSongs": {
     "queries": {
       "cold": 15,
-      "warm": 16
+      "warm": 15
     },
-    "bytes": 44176,
+    "bytes": 43924,
     "scans": []
   },
   "subsonic getGenres": {
@@ -470,7 +466,7 @@
       "cold": 24,
       "warm": 24
     },
-    "bytes": 43927,
+    "bytes": 44082,
     "scans": []
   }
 }

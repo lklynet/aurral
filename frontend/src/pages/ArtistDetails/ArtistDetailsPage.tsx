@@ -188,7 +188,10 @@ function ArtistDetailsPage() {
     showInfo,
   });
 
-  const preview = usePreviewPlayer(mbid, artistNameFromNav, artist);
+  const preview = usePreviewPlayer(mbid, artistNameFromNav, artist, {
+    initialTracks: details.topTracks,
+    loadingDetails: loadingReleases,
+  });
   const {
     previewTracks,
     loadingPreview,
@@ -268,7 +271,8 @@ function ArtistDetailsPage() {
       trackName: track.title,
       albumName: track.album || "",
       artistMbid: mbid || "",
-      albumMbid: "",
+      albumMbid: track.albumMbid || "",
+      trackMbid: track.trackMbid || "",
       releaseYear: null,
       durationMs: track?.duration_ms,
       reason: "Artist preview",

@@ -16,13 +16,18 @@ import {
   releaseTypesQuery,
 } from "../utils.ts";
 import { getArtistByMbid } from "../../../services/providers/metadataProvider.ts";
-import { invalidateArtistImage } from "../../../services/imageService.ts";
+import {
+  getDirectOrCachedArtistImages,
+  invalidateArtistImage,
+} from "../../../services/imageService.ts";
 import { withCoverUrls } from "../../../services/releaseGroupCoverService.ts";
 import {
   getArtistTagPayload,
   buildArtistBase,
   toAppearsOnReleaseGroup,
   toArtistReleaseGroup,
+  toArtistTopTracks,
+  toDirectSimilarArtists,
 } from "../shared/transform.ts";
 import { asAppError, errorResponseText } from "../../../../lib/errors.ts";
 import { isErrorStatus } from "../../shared/errorStatus.ts";
@@ -41,11 +46,13 @@ function filterByReleaseTypes<T extends { type: string; secondaryTypes?: string[
 async function loadArtistDetails(
   mbid: string,
   {
+    cacheMbid,
     artistName,
     coreOnly,
     selectedReleaseTypes,
     appearsOnLimit,
   }: {
+    cacheMbid: string;
     artistName: string;
     coreOnly: boolean;
     selectedReleaseTypes: string[] | null;
@@ -63,17 +70,20 @@ async function loadArtistDetails(
         toArtistReleaseGroup(album, { id: metadataArtist.id, name: metadataArtist.name || name }),
       )
     : [];
-  const appearsOnReleaseGroups =
-    coreOnly || !metadataArtist
-      ? []
-      : metadataArtist.appearsOn.slice(0, appearsOnLimit ?? 24).map(toAppearsOnReleaseGroup);
+  const totalAppearsOn = metadataArtist?.appearsOn ?? [];
+  const appearsOnSlice = coreOnly ? [] : totalAppearsOn.slice(0, appearsOnLimit ?? 24);
+  const appearsOnReleaseGroups = appearsOnSlice.map(toAppearsOnReleaseGroup);
   const tagPayload = getArtistTagPayload(metadataArtist);
   return {
     ...buildArtistBase(name, mbid, metadataArtist),
     tags: tagPayload.tags,
     genres: tagPayload.genres,
+    images: getDirectOrCachedArtistImages(cacheMbid, metadataArtist?.images),
+    similar: toDirectSimilarArtists(metadataArtist, 10),
+    topTracks: toArtistTopTracks(metadataArtist, name, 10),
     "release-groups": withCoverUrls(releaseGroups),
     "appears-on-release-groups": withCoverUrls(appearsOnReleaseGroups),
+    "appears-on-has-more": !coreOnly && totalAppearsOn.length > appearsOnSlice.length,
     "release-group-count": releaseGroups.length,
     "release-count": releaseGroups.length,
   };
@@ -205,6 +215,7 @@ export default new Hono<AppEnv>()
       const resolvedMbid = override?.musicbrainzId || mbid;
 
       const fetchPromise = loadArtistDetails(resolvedMbid, {
+        cacheMbid: mbid,
         artistName: query.artistName,
         coreOnly,
         selectedReleaseTypes,
@@ -220,8 +231,13 @@ export default new Hono<AppEnv>()
           {
             ...buildArtistBase(query.artistName || "Unknown Artist", resolvedMbid),
             tags: [],
+            genres: [],
+            images: [],
+            similar: [],
+            topTracks: [],
             "release-groups": [],
             "appears-on-release-groups": [],
+            "appears-on-has-more": false,
             "release-group-count": 0,
             "release-count": 0,
           },
