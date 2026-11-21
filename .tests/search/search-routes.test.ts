@@ -34,7 +34,7 @@ const [
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
-  () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../../backend/services/providers/metadataProvider.ts"),
   () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),

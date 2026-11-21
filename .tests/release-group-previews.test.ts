@@ -14,41 +14,41 @@ const songs = ["Low Light", "Quiet Hours"];
 const provider = await createMockHttpServer((request, response) => {
   const pathname = new URL(request.url || "/", "http://localhost").pathname;
   response.setHeader("content-type", "application/json");
-  const quietBand = { id: artist, artistname: "Quiet Band" };
+  const quietBand = { id: artist, name: "Quiet Band" };
   const body =
-    pathname === `/album/${album}`
+    pathname === `/v1/album/${album}`
       ? {
           id: album,
           title: "Night Songs",
           type: "Album",
-          artistid: artist,
+          artistId: artist,
           artists: [quietBand],
           releases: [
             {
               id: `${album}-release`,
               status: "Official",
-              tracks: songs.map((trackname, index) => ({
+              tracks: songs.map((title, index) => ({
                 id: `track-${index + 1}`,
-                recordingid: recordings[index],
-                trackname,
-                trackposition: index + 1,
-                mediumnumber: 1,
+                recordingId: recordings[index],
+                title,
+                trackPosition: index + 1,
+                mediumNumber: 1,
               })),
             },
           ],
         }
-      : pathname === `/artist/${artist}`
+      : pathname === `/v1/artist/${artist}`
         ? {
             ...quietBand,
             images: [],
-            Albums: [],
+            albums: [],
             links: [{ type: "deezer", target: "https://www.deezer.com/artist/77" }],
           }
         : null;
   response.statusCode = body ? 200 : 404;
   response.end(JSON.stringify(body ?? {}));
 });
-process.env.BRAINZMASH_BASE_URL = provider.url;
+process.env.METADATA_BASE_URL = provider.url;
 
 const [state, { http }, { default: releaseGroupRoutes }] = await setupIsolatedBackend(
   "release-group-previews",
@@ -59,7 +59,7 @@ const [state, { http }, { default: releaseGroupRoutes }] = await setupIsolatedBa
 afterAll(async () => {
   await cleanupIsolatedState(state);
   await provider.close();
-  delete process.env.BRAINZMASH_BASE_URL;
+  delete process.env.METADATA_BASE_URL;
 });
 
 test("album previews match Deezer by the album's own artist and title when the page sends none", async () => {

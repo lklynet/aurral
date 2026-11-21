@@ -5,7 +5,7 @@ import {
   rerankRecommendations,
 } from "../backend/services/discovery/recommendationPipeline.ts";
 import { testDownloadClient } from "../backend/services/download/downloadClientSettings.ts";
-import { getLinkedArtistProviderIds } from "../backend/services/providers/brainzmashMappers.ts";
+import { getLinkedArtistProviderIds } from "../backend/services/providers/metadataMappers.ts";
 import { getCapabilities } from "../backend/services/trackMatching/candidateNormalizer.ts";
 
 test("testDownloadClient reports an unknown client for inherited object keys", async () => {

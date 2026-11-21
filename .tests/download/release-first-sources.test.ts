@@ -170,14 +170,14 @@ function libraryJobs(
     createTrackedJob(
       downloadTracker,
       {
-        artistName: requireFixture(group.artists[0]).artistname,
+        artistName: requireFixture(group.artists[0]).name,
         albumName: group.title,
         albumMbid: group.id,
         releaseMbid,
         requestGroupId,
         trackName,
         trackNumber:
-          release.tracks.find((track) => track.trackname === trackName)?.trackposition || null,
+          release.tracks.find((track) => track.title === trackName)?.trackPosition || null,
         durationMs: 200000,
         ...extra,
       },

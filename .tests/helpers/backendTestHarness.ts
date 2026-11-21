@@ -41,7 +41,6 @@ const RESET_TABLES = [
   "deezer_mbid_cache",
   "musicbrainz_artist_mbid_cache",
   "metadata_response_cache",
-  "metadata_request_state",
   "artist_overrides",
   "library_file_operation_items",
   "library_file_operations",

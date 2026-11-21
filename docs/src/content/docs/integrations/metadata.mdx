@@ -3,21 +3,19 @@ title: Metadata and search
 description: Where Aurral gets artist and album data, and how to point it at another metadata server.
 ---
 
-Aurral gets artist pages, album details, release dates, genres, and catalog search from `brainzmash.kell.ly`, a BrainzMash server built on MusicBrainz data and run by the Aurral maintainers. Most installations need no setup.
+Aurral gets artist pages, album details, release dates, similar artists, top tracks, and genre lists from `data.aurral.org`, static JSON files built daily from MusicBrainz and ListenBrainz by the Aurral maintainers. Catalog search goes through the same host. Most installations need no setup.
 
-When BrainzMash has no data for an item, Aurral asks other services. For example, it uses Deezer for artist images and previews, and ListenBrainz for tags. It uses the Deezer ID from the BrainzMash links when one exists, so it does not have to search Deezer by name.
-
-On artist pages, Aurral ranks popular releases by how many people played each one on ListenBrainz. It also takes a release date from ListenBrainz when BrainzMash has none.
+When an artist or album is too new to have a file on `data.aurral.org` yet, Aurral fills the gap straight from MusicBrainz. It still uses Deezer for previews and as a fallback for artist artwork, top tracks, or related artists when the metadata files do not have them.
 
 ## Use another metadata server
 
-To use your own BrainzMash server:
+To point Aurral at your own copy of the metadata files:
 
 1. Open Settings and search for **Metadata**. This section is not in the Settings navigation.
 2. Enter the server address in **Base URL**.
 
-Leave **Base URL** empty to use the hosted service. You can also set the address with the `BRAINZMASH_BASE_URL` environment variable. A value in Settings takes precedence.
+Leave **Base URL** empty to use `https://data.aurral.org`. You can also set the address with the `METADATA_BASE_URL` environment variable. A value in Settings takes precedence.
 
 ## Sponsorship
 
-The hosted metadata service runs on the maintainer's own infrastructure and can be unavailable at times. [Sponsor Aurral](/sponsorship/) to help keep it reliable.
+The hosted metadata service runs on the maintainer's own infrastructure. [Sponsor Aurral](/sponsorship/) to help keep it reliable.

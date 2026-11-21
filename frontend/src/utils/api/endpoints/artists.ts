@@ -38,14 +38,6 @@ type ArtistVideo = NonNullable<
 
 const coverFetch = apiFetchWithin(4000);
 
-export const getReleaseTrackCredits = (mbid: string, { signal }: { signal?: AbortSignal } = {}) =>
-  parseResponse(
-    artistsClient.release[":mbid"].credits.$get(
-      { param: { mbid: encodeURIComponent(mbid) } },
-      { init: { signal } },
-    ),
-  );
-
 export const getReleaseGroupTracks = (
   mbid: string,
   { release, signal }: { release?: string; signal?: AbortSignal } = {},

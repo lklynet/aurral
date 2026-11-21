@@ -50,20 +50,20 @@ function metadataAlbum(mbid: string, tracks: string[], title: string = "Aurral A
   return {
     id: mbid,
     title,
-    artistid: artistMbid,
-    artists: [{ id: artistMbid, artistname: "Aurral Artist" }],
-    releasedate: "2026-01-02",
+    artistId: artistMbid,
+    artists: [{ id: artistMbid, name: "Aurral Artist" }],
+    releaseDate: "2026-01-02",
     releases: [
       {
         id: `${mbid}-release`,
         status: "Official",
         tracks: tracks.map((id, index) => ({
           id: `${id}-recording`,
-          recordingid: id,
-          trackname: `Track ${index + 1}`,
-          trackposition: index + 1,
-          mediumnumber: 1,
-          durationms: 180000,
+          recordingId: id,
+          title: `Track ${index + 1}`,
+          trackPosition: index + 1,
+          mediumNumber: 1,
+          durationMs: 180000,
         })),
       },
     ],
@@ -83,28 +83,28 @@ test("Aurral writes library album state, queues missing tracks, and refuses an a
   const server = await createMockHttpServer((request, response) => {
     const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
     response.setHeader("content-type", "application/json");
-    if (pathname === `/artist/${artistMbid}`) {
+    if (pathname === `/v1/artist/${artistMbid}`) {
       response.end(
-        JSON.stringify({ id: artistMbid, artistname: "Aurral Artist", sortname: "Aurral Artist" }),
+        JSON.stringify({ id: artistMbid, name: "Aurral Artist", sortName: "Aurral Artist" }),
       );
       return;
     }
-    if (pathname === `/album/${albumMbid}`) {
+    if (pathname === `/v1/album/${albumMbid}`) {
       response.end(JSON.stringify(metadataAlbum(albumMbid, trackMbids)));
       return;
     }
-    if (pathname === `/album/${ambiguousAlbumMbid}`) {
+    if (pathname === `/v1/album/${ambiguousAlbumMbid}`) {
       response.end(JSON.stringify(metadataAlbum(albumMbid, trackMbids, "Ambiguous Album")));
       return;
     }
-    if (pathname === `/album/${incompleteAlbumMbid}`) {
+    if (pathname === `/v1/album/${incompleteAlbumMbid}`) {
       response.end(
         JSON.stringify({
           id: incompleteAlbumMbid,
           title: "Incomplete Album",
-          artistid: artistMbid,
-          artists: [{ id: artistMbid, artistname: "Aurral Artist" }],
-          releasedate: "2026-02-03",
+          artistId: artistMbid,
+          artists: [{ id: artistMbid, name: "Aurral Artist" }],
+          releaseDate: "2026-02-03",
           releases: [],
         }),
       );
@@ -127,7 +127,7 @@ test("Aurral writes library album state, queues missing tracks, and refuses an a
     },
   });
   const { clearMetadataProviderCaches } =
-    await import("../../backend/services/providers/brainzmashProvider.ts");
+    await import("../../backend/services/providers/metadataProvider.ts");
   clearMetadataProviderCaches();
   downloadWorker.start = async () => {};
   const providerGet = http.get.bind(http);

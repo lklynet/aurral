@@ -435,6 +435,20 @@ const forgetSavedRelayAddress: Migration = (db) =>
         IN ('https://lidarrapi.brainzmash.cc', 'http://lidarrapi.brainzmash.cc');
   `);
 
+// Aurral moved to static v1 files on data.aurral.org, which replace BrainzMash's
+// entity shapes, so old BrainzMash cache rows and saved defaults are cleared.
+const moveMetadataToDataAurral: Migration = (db) =>
+  db.exec(`
+    UPDATE settings SET value = json_set(value, '$.metadata.baseUrl', '')
+    WHERE key = 'integrations' AND json_valid(value)
+      AND rtrim(lower(value ->> '$.metadata.baseUrl'), '/')
+        IN ('https://brainzmash.kell.ly', 'http://brainzmash.kell.ly');
+    DELETE FROM metadata_response_cache
+    WHERE substr(cache_key, 1, 26) = 'https://brainzmash.kell.ly';
+    DROP TABLE IF EXISTS metadata_request_state;
+    DROP TABLE IF EXISTS listenbrainz_release_groups;
+  `);
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -464,6 +478,7 @@ export const migrations: Migration[] = [
   storeReleaseFeedCovers,
   moveMetadataToMaintainersServer,
   forgetSavedRelayAddress,
+  moveMetadataToDataAurral,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

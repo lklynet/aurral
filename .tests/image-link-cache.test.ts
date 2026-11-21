@@ -75,7 +75,7 @@ const providerServer = await createMockHttpServer((request, response) => {
     }),
   );
 });
-process.env.BRAINZMASH_BASE_URL = providerServer.url;
+process.env.METADATA_BASE_URL = providerServer.url;
 
 const [isolatedState, { dbOps }, { getArtistImage }, { fetchReleaseGroupCoverUrl }] =
   await setupIsolatedBackend(
@@ -101,7 +101,7 @@ const stubImageHost = (t: TestContext) =>
 afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
   await providerServer.close();
-  delete process.env.BRAINZMASH_BASE_URL;
+  delete process.env.METADATA_BASE_URL;
 });
 
 test("cached artist image links survive byte-cache eviction without metadata requests", async () => {

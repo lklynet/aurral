@@ -36,7 +36,7 @@ import type {
   NormalizedAlbum,
   NormalizedRelease,
   NormalizedTrack,
-} from "./providers/brainzmashMappers.ts";
+} from "./providers/metadataMappers.ts";
 
 const now = () => Date.now();
 

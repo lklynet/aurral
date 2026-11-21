@@ -2,6 +2,7 @@ import { testUser } from "../helpers/userFixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
+import * as v from "valibot";
 import {
   cleanupIsolatedState,
   resetDatabase,
@@ -40,6 +41,17 @@ const FLOW_SEED = { name: "Flow Seed", mbid: mbid(6) };
 const NEIGHBOR = { name: "Neighbor Artist", mbid: mbid(4) };
 const TAGGED = { name: "Tagged Artist", mbid: mbid(5) };
 const RELATED = { name: "Related Pick", mbid: mbid(31) };
+const SIMILAR_SEED = { name: "Static Similar Seed", mbid: mbid(7) };
+const SIMILAR_PICK = {
+  name: "Static Similar Pick",
+  mbid: mbid(41),
+  image: "https://images.example/similar-pick.jpg",
+};
+const GENRE_PICK = {
+  name: "Electronic Pioneer",
+  mbid: mbid(42),
+  image: "https://images.example/electronic-pioneer.jpg",
+};
 const RELATED_PHOTO = "https://cdn-images.dzcdn.net/images/artist/related/1000x1000.jpg";
 const CLOSE_PICK = { name: "Close Pick", mbid: mbid(11) };
 const SHARED_PICK = { name: "Shared Pick", mbid: mbid(12) };
@@ -72,17 +84,38 @@ const json = (body: unknown, status: number = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 const respond = (url: URL) => {
-  if (url.hostname === "labs.api.listenbrainz.org" && url.pathname === "/similar-artists/json") {
-    const seed = url.searchParams.get("artist_mbids");
-    assert.ok(seed != null);
-    return json(
-      (similarBySeed.get(seed) || []).map((artist) => ({
-        artist_mbid: artist.mbid,
-        name: artist.name,
-        score: artist.score,
-        reference_mbid: seed,
-      })),
-    );
+  if (url.hostname === "data.aurral.org" && url.pathname.startsWith("/v1/artist/")) {
+    const seed = url.pathname.slice("/v1/artist/".length);
+    if (seed === QUIET.mbid) {
+      return json({ id: QUIET.mbid, name: QUIET.name, links: [], albums: [] });
+    }
+    if (seed === SIMILAR_SEED.mbid) {
+      return json({
+        id: SIMILAR_SEED.mbid,
+        name: SIMILAR_SEED.name,
+        links: [],
+        albums: [],
+        similar: [
+          { id: SIMILAR_PICK.mbid, name: SIMILAR_PICK.name, score: 1.4, image: SIMILAR_PICK.image },
+        ],
+      });
+    }
+    const similar = similarBySeed.get(seed);
+    if (similar) {
+      return json({
+        id: seed,
+        name:
+          seed === LIKED.mbid ? LIKED.name : seed === LIBRARY.mbid ? LIBRARY.name : NEIGHBOR.name,
+        links: [],
+        albums: [],
+        similar: similar.map((artist) => ({
+          id: artist.mbid,
+          name: artist.name,
+          score: artist.score / 500,
+          image: null,
+        })),
+      });
+    }
   }
   if (url.hostname === "api.listenbrainz.org" && url.pathname === "/1/metadata/artist/") {
     return json(
@@ -137,13 +170,18 @@ const respond = (url: URL) => {
   if (url.hostname === "api.deezer.com" && url.pathname === "/artist/10/related") {
     return json({ data: [{ id: 41, name: "Flow Pick" }] });
   }
-  if (url.hostname === "brainzmash.kell.ly" && url.pathname === `/artist/${QUIET.mbid}`) {
-    return json({ id: QUIET.mbid, artistname: QUIET.name, links: [], Albums: [] });
+  if (url.hostname === "data.aurral.org" && url.pathname === "/v1/genre/electronic") {
+    return json({
+      name: "Electronic",
+      artists: [
+        { id: GENRE_PICK.mbid, name: GENRE_PICK.name, image: GENRE_PICK.image, listeners: 40000 },
+      ],
+    });
   }
-  if (url.hostname === "brainzmash.kell.ly" && url.pathname === "/search/artist") {
+  if (url.hostname === "data.aurral.org" && url.pathname === "/search/artist") {
     return json(
       url.searchParams.get("query") === RELATED.name
-        ? [{ id: RELATED.mbid, artistname: RELATED.name }]
+        ? [{ id: RELATED.mbid, name: RELATED.name }]
         : [],
     );
   }
@@ -224,11 +262,33 @@ test("each user gets personal recommendations from ListenBrainz", async () => {
   assert.equal(likedTagLookups.length, 1);
 });
 
+const searchBodySchema = v.looseObject({
+  items: v.array(
+    v.looseObject({
+      id: v.optional(v.nullable(v.string())),
+      name: v.string(),
+      image: v.optional(v.nullable(v.string())),
+    }),
+  ),
+  hasMore: v.optional(v.boolean()),
+});
+
+const similarBodySchema = v.object({
+  artists: v.array(
+    v.looseObject({
+      id: v.string(),
+      name: v.string(),
+      image: v.optional(v.nullable(v.string())),
+      match: v.optional(v.number()),
+    }),
+  ),
+});
+
 const requestSearch = async (query: string) => {
   const response = await signedInAs(testUser(alice.id))
     .route("/", search)
     .request(`/search${query}`);
-  return { status: response.status, body: await response.json() };
+  return { status: response.status, body: v.parse(searchBodySchema, await response.json()) };
 };
 
 test("tag search lists MusicBrainz's artists for the tag", async () => {
@@ -236,39 +296,13 @@ test("tag search lists MusicBrainz's artists for the tag", async () => {
 
   assert.equal(status, 200);
   assert.deepEqual(
-    body.items.map((artist: { name: string }) => artist.name),
+    body.items.map((artist) => artist.name),
     ["Shoegaze Leader", "Shoegaze Second"],
   );
   assert.equal(body.hasMore, false);
   const search = requests.find((url) => url.hostname === "musicbrainz.org");
   assert.ok(search != null);
   assert.equal(search.searchParams.get("query"), 'tag:"shoegaze"');
-});
-
-test("artist pages fall back to ListenBrainz similar artists and keep them across restarts", async () => {
-  const loadSimilar = async () => {
-    const response = await similar.request(
-      `/artists/${NEIGHBOR.mbid}/similar?${new URLSearchParams({ artistName: NEIGHBOR.name })}`,
-    );
-    const body: { artists: { name: string; match: number }[] } = await response.json();
-    return body.artists.map((artist) => [artist.name, artist.match]);
-  };
-  const expected = [
-    [CLOSE_PICK.name, 100],
-    [SHARED_PICK.name, 50],
-  ];
-
-  assert.deepEqual(await loadSimilar(), expected);
-  listenbrainzCache.flushAll();
-  assert.deepEqual(await loadSimilar(), expected);
-  assert.equal(
-    requests.filter(
-      (url) =>
-        url.pathname === "/similar-artists/json" &&
-        url.searchParams.get("artist_mbids") === NEIGHBOR.mbid,
-    ).length,
-    1,
-  );
 });
 
 test("artist tags are kept across restarts and refreshed in the background after a week", async () => {
@@ -298,8 +332,7 @@ test("artist pages list Deezer's related artists that MusicBrainz knows", async 
   const response = await similar.request(
     `/artists/${QUIET.mbid}/similar?${new URLSearchParams({ artistName: QUIET.name })}`,
   );
-  const body: { artists: { id: string; name: string; image: string | null }[] } =
-    await response.json();
+  const body = v.parse(similarBodySchema, await response.json());
 
   assert.deepEqual(
     body.artists.map((artist) => [artist.id, artist.name]),
@@ -325,7 +358,41 @@ test("flows take Deezer's related artists by name without looking each one up", 
     [[null, "Flow Pick"]],
   );
   assert.equal(
-    requests.some((url) => url.hostname === "brainzmash.kell.ly"),
+    requests.some((url) => url.hostname === "data.aurral.org"),
+    false,
+  );
+});
+
+test("artist pages and genre search use v1 static similar artists and genre lists before falling back", async () => {
+  const similarResponse = await similar.request(
+    `/artists/${SIMILAR_SEED.mbid}/similar?${new URLSearchParams({ artistName: SIMILAR_SEED.name })}`,
+  );
+  const similarBody = v.parse(similarBodySchema, await similarResponse.json());
+  assert.deepEqual(
+    similarBody.artists.map((artist) => [artist.id, artist.name, artist.image]),
+    [[SIMILAR_PICK.mbid, SIMILAR_PICK.name, SIMILAR_PICK.image]],
+  );
+  assert.ok(
+    similarBody.artists[0]!.match !== undefined &&
+      similarBody.artists[0]!.match > 50 &&
+      similarBody.artists[0]!.match <= 100,
+  );
+  assert.equal(
+    requests.some(
+      (url) => url.hostname === "api.deezer.com" || url.hostname.endsWith("listenbrainz.org"),
+    ),
+    false,
+  );
+
+  requests = [];
+  const genreSearch = await requestSearch("?scope=tag&q=%23electronic");
+  assert.equal(genreSearch.status, 200);
+  assert.deepEqual(
+    genreSearch.body.items.map((artist) => [artist.id, artist.name, artist.image]),
+    [[GENRE_PICK.mbid, GENRE_PICK.name, GENRE_PICK.image]],
+  );
+  assert.equal(
+    requests.some((url) => url.hostname === "musicbrainz.org"),
     false,
   );
 });

@@ -17,7 +17,7 @@ const [state, { db }, { dbOps, userOps }, { hashPassword }, { app }, provider] =
     () => import("../../backend/db/helpers/index.ts"),
     () => import("../../backend/services/passwordHash.ts"),
     () => import("../../backend/app.ts"),
-    () => import("../../backend/services/providers/brainzmashProvider.ts"),
+    () => import("../../backend/services/providers/metadataProvider.ts"),
   );
 
 const fixture = (name: string) =>
@@ -31,17 +31,17 @@ const daftPunk = "056e4f3e-d505-4dad-8ec1-d04f521cbb56";
 const discovery = "48117b90-a16e-34ca-a514-19c702df1158";
 const oneMoreTime = "4b7a5d7b-9a12-4a2c-8f3e-7f0d3d4b3c11";
 
-const artist = (id: string, artistname: string) => ({ id, artistname, genres: [], images: [] });
+const artist = (id: string, name: string) => ({ id, name, genres: [], images: [] });
 const albumSearchResult = (
   id: string,
   title: string,
-  artistEntry: { id: string; artistname: string; genres: never[]; images: never[] },
+  artistEntry: { id: string; name: string; genres: never[]; images: never[] },
 ) => ({
   id,
   title,
   type: "Album",
-  releasedate: "2001-03-12",
-  artistid: artistEntry.id,
+  releaseDate: "2001-03-12",
+  artistId: artistEntry.id,
   artists: [artistEntry],
   images: [],
 });
@@ -129,7 +129,7 @@ test("a Spotify album link resolves through song.link to MusicBrainz ids and is 
   metadataRoutes = {
     "/search/artist": [pinkFloydArtist],
     "/search/album": [albumSearchResult(darkSide, "The Dark Side of the Moon", pinkFloydArtist)],
-    [`/album/${darkSide}`]: albumSearchResult(
+    [`/v1/album/${darkSide}`]: albumSearchResult(
       darkSide,
       "The Dark Side of the Moon",
       pinkFloydArtist,
@@ -164,7 +164,7 @@ test("Apple Music links resolve the artist, album, and recording without reusing
   metadataRoutes = {
     "/search/artist": [daftPunkArtist],
     "/search/album": [albumSearchResult(discovery, "Discovery", daftPunkArtist)],
-    [`/album/${discovery}`]: {
+    [`/v1/album/${discovery}`]: {
       ...albumSearchResult(discovery, "Discovery", daftPunkArtist),
       releases: [
         {
@@ -174,17 +174,17 @@ test("Apple Music links resolve the artist, album, and recording without reusing
           tracks: [
             {
               id: "t1",
-              recordingid: oneMoreTime,
-              trackname: "One More Time",
-              trackposition: 1,
-              mediumnumber: 1,
+              recordingId: oneMoreTime,
+              title: "One More Time",
+              trackPosition: 1,
+              mediumNumber: 1,
             },
             {
               id: "t2",
-              recordingid: "9a3c5b1e-0d3e-4f4a-9a5b-2c1d0e7f8a92",
-              trackname: "Aerodynamic",
-              trackposition: 2,
-              mediumnumber: 1,
+              recordingId: "9a3c5b1e-0d3e-4f4a-9a5b-2c1d0e7f8a92",
+              title: "Aerodynamic",
+              trackPosition: 2,
+              mediumNumber: 1,
             },
           ],
         },

@@ -20,7 +20,7 @@ import {
   listArtistAlbums,
   searchAlbums,
   searchArtists,
-} from "../../../services/providers/brainzmashProvider.ts";
+} from "../../../services/providers/metadataProvider.ts";
 import { withCoverUrls } from "../../../services/releaseGroupCoverService.ts";
 import { listTrackMatches, matchLibraryTrack } from "../../../services/libraryFiles/trackMatch.ts";
 
@@ -74,9 +74,10 @@ async function albumMatches(
   query: string,
 ) {
   const candidates = album.artist_mbid
-    ? withCoverUrls(await listArtistAlbums(album.artist_mbid, { hydrateLimit: 0 })).map(
-        (entry) => ({ ...entry, releaseDate: null }),
-      )
+    ? withCoverUrls(await listArtistAlbums(album.artist_mbid)).map((entry) => ({
+        ...entry,
+        releaseDate: entry.firstReleaseDate,
+      }))
     : (
         await searchAlbums(query || album.title, {
           artistName: album.artist_name,

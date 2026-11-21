@@ -1,4 +1,3 @@
-import pMap from "p-map";
 import * as v from "valibot";
 import { isOwnKey } from "../../../lib/ownKey.ts";
 import { isRecord } from "../../../lib/isRecord.ts";
@@ -13,26 +12,30 @@ import {
   rankAlbumCandidates,
   scoreTextMatch,
   selectAlbumRelease,
-} from "./brainzmashRanking.ts";
+} from "./metadataRanking.ts";
 import {
   albumSchema,
   artistDetailSchema,
-  artistSchema,
+  genreSchema,
+  genresIndexSchema,
+  searchAlbumSchema,
+  searchArtistSchema,
   toNormalizedAlbum,
   toNormalizedArtist,
-  toNormalizedArtistAlbum,
-  type BrainzmashImage,
+  toNormalizedGenre,
+  toNormalizedSearchArtist,
+  type MetadataImage,
   type NormalizedAlbum,
   type NormalizedArtist,
+  type NormalizedArtistAlbum,
   type NormalizedRelease,
-} from "./brainzmashMappers.ts";
+} from "./metadataMappers.ts";
 import { selectAlbumCover } from "../imageRanking.ts";
 import {
   coreAlbumTitle,
   isSilenceTrack,
   withoutFeaturedArtists,
 } from "../trackMatching/titleText.ts";
-import createRateLimiter from "../apiClients/rateLimiter.ts";
 import {
   artistCreditSchema,
   musicbrainzGet,
@@ -43,25 +46,7 @@ import { albumSearchTexts, parseSearchQuery, rankByMatch } from "../searchText.t
 import { runSharedInflight, type InflightRequests } from "../sharedInflight.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import { describeCurrentWork } from "../eventLoopWatch.ts";
-import { setTimeout as delay } from "node:timers/promises";
-import {
-  acquireMetadataRequest,
-  clearMetadataRequestStates,
-  completeMetadataRequest,
-  deferMetadataRequest,
-  recordMetadataCall,
-  failMetadataRequest,
-  getMetadataProviderBudget,
-  getMetadataRequestState,
-  METADATA_RATE_LIMIT_MAX_COOLDOWN_MS,
-  releaseMetadataRequest,
-  reserveMetadataProviderRequest,
-  setMetadataProviderCooldown,
-} from "../metadataProviderBudget.ts";
-
-type ArtistDetailAlbum = Omit<ReturnType<typeof toNormalizedArtistAlbum>, "rating"> & {
-  rating: NormalizedAlbum["rating"];
-};
+import { recordMetadataCall } from "../metadataProviderBudget.ts";
 
 type CachedMetadata<T> = { value: T; freshUntil: number; staleUntil: number };
 
@@ -72,6 +57,44 @@ const releaseGroupSearchSchema = v.looseObject({ "release-groups": v.array(v.unk
 const releaseGroupHitSchema = v.looseObject({
   ...releaseGroupSchema.entries,
   score: v.optional(v.number()),
+});
+
+const musicbrainzGenreSchema = v.looseObject({
+  name: v.optional(v.string()),
+  count: v.optional(v.number()),
+});
+
+const musicbrainzRelationSchema = v.looseObject({
+  type: v.optional(v.string()),
+  url: v.optional(v.looseObject({ resource: v.optional(v.string()) })),
+});
+
+const musicbrainzRatingSchema = v.nullish(
+  v.looseObject({
+    "votes-count": v.nullish(v.number()),
+    value: v.nullish(v.number()),
+  }),
+);
+
+const musicbrainzArtistDetailSchema = v.looseObject({
+  id: v.string(),
+  name: v.optional(v.string()),
+  "sort-name": v.optional(v.string()),
+  type: v.nullish(v.string()),
+  disambiguation: v.optional(v.string()),
+  genres: v.optional(v.array(musicbrainzGenreSchema)),
+  aliases: v.optional(v.array(v.looseObject({ name: v.optional(v.string()) }))),
+  relations: v.optional(v.array(musicbrainzRelationSchema)),
+  rating: musicbrainzRatingSchema,
+  "release-groups": v.optional(v.array(releaseGroupSchema)),
+});
+
+const musicbrainzReleaseGroupDetailSchema = v.looseObject({
+  ...releaseGroupSchema.entries,
+  disambiguation: v.optional(v.string()),
+  genres: v.optional(v.array(musicbrainzGenreSchema)),
+  relations: v.optional(v.array(musicbrainzRelationSchema)),
+  rating: musicbrainzRatingSchema,
 });
 
 const musicbrainzTrackSchema = v.looseObject({
@@ -96,6 +119,9 @@ const musicbrainzReleaseSchema = v.looseObject({
   status: v.nullish(v.string()),
   date: v.optional(v.string()),
   country: v.nullish(v.string()),
+  "label-info": v.optional(
+    v.array(v.looseObject({ label: v.nullish(v.looseObject({ name: v.optional(v.string()) })) })),
+  ),
   media: v.optional(
     v.array(
       v.looseObject({
@@ -122,7 +148,7 @@ interface AlbumSearchItem {
   secondaryTypes: string[];
   releaseDate: string | null;
   coverUrl: string | null;
-  images: BrainzmashImage[];
+  images: MetadataImage[];
   inLibrary: boolean;
   score: number;
   releaseStatuses: string[];
@@ -147,22 +173,16 @@ const INCOMPLETE_ALBUM_CACHE_TTL_SECONDS = 60 * 60;
 const METADATA_ENTITY_STALE_TTL_SECONDS = 30 * 24 * 60 * 60;
 const METADATA_SEARCH_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const METADATA_NOT_FOUND_CACHE_TTL_SECONDS = 24 * 60 * 60;
-const METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS = 5_000;
-const METADATA_FORBIDDEN_COOLDOWN_MS = 5 * 60_000;
 const METADATA_CACHE_MAX_ENTRIES = 20_000;
 const METADATA_HOT_CACHE_TTL_SECONDS = 60;
 const METADATA_HOT_CACHE_MAX_ENTRIES = 50;
 const METADATA_STORE_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+const MUSICBRAINZ_FALLBACK_ENTITY_TTL_SECONDS = 60 * 60;
 const MUSICBRAINZ_FALLBACK_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const MUSICBRAINZ_FALLBACK_RETRY_SECONDS = 5 * 60;
 const MIN_ALBUM_SEARCH_WINDOW = 25;
-const METADATA_REQUEST_MIN_INTERVAL_MS = 100;
 const METADATA_REQUEST_TIMEOUT_MS = 8000;
 const METADATA_RESPONSE_BODY_TIMEOUT_MS = 90_000;
-const METADATA_REQUEST_LEASE_MS = 2 * 60_000;
-const METADATA_REQUEST_LEASE_POLL_MS = 250;
-const METADATA_MAX_QUEUED_REQUESTS =
-  Math.floor(METADATA_REQUEST_TIMEOUT_MS / METADATA_REQUEST_MIN_INTERVAL_MS) - 1;
 const metadataHotCache = createCache<CachedMetadata<unknown>>(
   METADATA_HOT_CACHE_TTL_SECONDS,
   METADATA_HOT_CACHE_MAX_ENTRIES,
@@ -172,24 +192,29 @@ const metadataNotFoundCache = createCache<true>(
   METADATA_NOT_FOUND_CACHE_TTL_SECONDS,
   METADATA_CACHE_MAX_ENTRIES,
 );
+const musicbrainzArtistFallbackCache = createCache<NormalizedArtist | null>(
+  MUSICBRAINZ_FALLBACK_ENTITY_TTL_SECONDS,
+  500,
+);
+const musicbrainzAlbumFallbackCache = createCache<NormalizedAlbum | null>(
+  MUSICBRAINZ_FALLBACK_ENTITY_TTL_SECONDS,
+  500,
+);
 const musicbrainzAlbumReleasesCache = createCache<NormalizedRelease[]>(
   MUSICBRAINZ_FALLBACK_CACHE_TTL_SECONDS,
   500,
 );
 const providerInflightRequests: InflightRequests = new Map();
-const providerRequestLimiter = createRateLimiter(METADATA_REQUEST_MIN_INTERVAL_MS, {
-  maxQueue: METADATA_MAX_QUEUED_REQUESTS,
-});
 const METADATA_MAX_RETRIES = 1;
-const ALBUM_LIST_CONCURRENCY = 8;
 
 export function clearMetadataProviderCaches() {
   metadataHotCache.flushAll();
   dbOps.clearMetadataResponses();
   metadataNotFoundCache.flushAll();
+  musicbrainzArtistFallbackCache.flushAll();
+  musicbrainzAlbumFallbackCache.flushAll();
   musicbrainzAlbumReleasesCache.flushAll();
   providerInflightRequests.clear();
-  clearMetadataRequestStates();
 }
 
 const healthState: {
@@ -201,7 +226,7 @@ const healthState: {
   lastFailureAt: string | null;
   lastFailureReason: string;
 } = {
-  configuredProvider: "brainzmash",
+  configuredProvider: "aurral-data",
   activeBaseUrl: null,
   failoverActive: false,
   lastCheckedAt: null,
@@ -222,7 +247,7 @@ function getSettingsMetadata() {
 export function getMetadataBaseUrl() {
   const metadata = getSettingsMetadata();
   const raw = String(
-    metadata.baseUrl || process.env.BRAINZMASH_BASE_URL || DEFAULT_METADATA_BASE_URL,
+    metadata.baseUrl || process.env.METADATA_BASE_URL || DEFAULT_METADATA_BASE_URL,
   ).trim();
   try {
     const parsed = new URL(raw);
@@ -240,7 +265,11 @@ function getUserAgent() {
 }
 
 function isEntityMetadataPath(path: string) {
-  return /^\/(?:album|artist)\/[^/]+$/.test(path);
+  return /^\/v1\/(?:album|artist|genre)\/[^/]+$/.test(path) || path === "/v1/genres";
+}
+
+function isAlbumMetadataPath(path: string) {
+  return /^\/v1\/album\/[^/]+$/.test(path);
 }
 
 export function isMetadataNotFoundError(error: unknown) {
@@ -255,79 +284,11 @@ function createMetadataNotFoundError() {
   return error;
 }
 
-function createMetadataCircuitError(code: string, status: number, remainingMs: number) {
-  const error: MetadataError = new Error(
-    code === "ERR_METADATA_FORBIDDEN"
-      ? "Metadata provider access is temporarily blocked"
-      : "Metadata provider rate limit cooldown is active",
-  );
-  error.code = code;
-  error.retryAfterMs = Math.max(0, Math.ceil(remainingMs));
-  error.response = { status };
-  return error;
-}
-
-function createMetadataCooldownError(remainingMs: number) {
-  const error: MetadataError = new Error(
-    "Metadata resource is cooling down after a failed request",
-  );
-  error.code = "ERR_METADATA_COOLDOWN";
-  error.retryAfterMs = Math.max(0, Math.ceil(remainingMs));
-  return error;
-}
-
-export function isMetadataCircuitError(error: unknown) {
-  const failure = asAppError(error);
-  return (
-    failure?.code === "ERR_METADATA_FORBIDDEN" ||
-    failure?.code === "ERR_METADATA_RATE_LIMITED" ||
-    failure?.code === "ERR_METADATA_COOLDOWN"
-  );
-}
-
-export function getMetadataCooldownMs(error: unknown) {
-  return isMetadataCircuitError(error) &&
-    error instanceof Error &&
-    "retryAfterMs" in error &&
-    typeof error.retryAfterMs === "number"
-    ? error.retryAfterMs
-    : null;
-}
-
-function getRetryAfterMs(error: unknown) {
-  const headers = asAppError(error)?.response?.headers;
-  const retryAfter = headers?.["retry-after"] ?? headers?.["Retry-After"];
-  const seconds = Number(retryAfter);
-  if (Number.isFinite(seconds) && seconds >= 0) {
-    return Math.max(METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS, seconds * 1000);
-  }
-  const retryAt = Date.parse(String(retryAfter || ""));
-  if (Number.isFinite(retryAt)) {
-    return Math.max(METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS, retryAt - Date.now());
-  }
-  return METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS;
-}
-
-function getMetadataCircuitError(baseUrl: string) {
-  const now = Date.now();
-  const budget = getMetadataProviderBudget(baseUrl);
-  const forbiddenUntil = budget.forbidden_until ?? 0;
-  const rateLimitedUntil = budget.rate_limited_until ?? 0;
-  if (forbiddenUntil > now) {
-    return createMetadataCircuitError("ERR_METADATA_FORBIDDEN", 403, forbiddenUntil - now);
-  }
-  if (rateLimitedUntil > now) {
-    return createMetadataCircuitError("ERR_METADATA_RATE_LIMITED", 429, rateLimitedUntil - now);
-  }
-  return null;
-}
-
-function openMetadataCircuit(baseUrl: string, status: number, error: unknown) {
-  const cooldownMs =
-    status === 403
-      ? METADATA_FORBIDDEN_COOLDOWN_MS
-      : Math.min(getRetryAfterMs(error), METADATA_RATE_LIMIT_MAX_COOLDOWN_MS);
-  setMetadataProviderCooldown(baseUrl, status, Date.now() + cooldownMs);
+function endpointName(path: string) {
+  if (path === "/v1/genres") return "genres";
+  const match = /^\/v1\/(album|artist|genre)\/[^/]+$/.exec(path);
+  if (match) return match[1]!;
+  return path.replace(/^\/+/, "");
 }
 
 function countMetadataCall(baseUrl: string, path: string, status: unknown, sentAt: number) {
@@ -335,7 +296,7 @@ function countMetadataCall(baseUrl: string, path: string, status: unknown, sentA
     recordMetadataCall(
       {
         server: new URL(baseUrl).host,
-        endpoint: path.slice(1, isEntityMetadataPath(path) ? path.lastIndexOf("/") : undefined),
+        endpoint: endpointName(path),
         work: describeCurrentWork() ?? "other",
         status: String(status),
       },
@@ -359,7 +320,7 @@ function getMetadataCachePolicy(path: string, value?: unknown) {
   if (isEntityMetadataPath(path)) {
     return {
       freshTtlSeconds:
-        /^\/album\/[^/]+$/.test(path) &&
+        isAlbumMetadataPath(path) &&
         isRecord(value) &&
         (!Array.isArray(value.releases) || value.releases.length === 0)
           ? INCOMPLETE_ALBUM_CACHE_TTL_SECONDS
@@ -460,26 +421,6 @@ async function storeMetadata(
   }
 }
 
-async function waitForMetadataRequestOwner<Schema extends v.GenericSchema>(
-  cacheKey: string,
-  schema: Schema,
-  signal: AbortSignal,
-) {
-  while (true) {
-    signal.throwIfAborted();
-    const state = getMetadataRequestState(cacheKey);
-    const now = Date.now();
-    if (state?.retryAfter && state.retryAfter > now) return { retryAt: state.retryAfter };
-    if (!state?.leased || state.leaseUntil <= now) {
-      const cached = await readCachedMetadata(cacheKey, schema, { persistent: true });
-      return cached ? ({ found: true, value: cached.value } as const) : ({ found: false } as const);
-    }
-    await delay(Math.min(METADATA_REQUEST_LEASE_POLL_MS, state.leaseUntil - now), undefined, {
-      signal,
-    });
-  }
-}
-
 function forgetMetadata(cacheKey: string) {
   metadataHotCache.delete(cacheKey);
   dbOps.deleteMetadataResponse(cacheKey);
@@ -493,19 +434,13 @@ function refreshMetadata<Schema extends v.GenericSchema>(
   {
     signal,
     fallbackValue,
-  }: MetadataRequestOptions & { fallbackValue?: v.InferOutput<Schema> } = {},
+    cacheNotFound = true,
+  }: MetadataRequestOptions & {
+    fallbackValue?: v.InferOutput<Schema>;
+    cacheNotFound?: boolean;
+  } = {},
 ): Promise<v.InferOutput<Schema>> {
   const baseUrl = getMetadataBaseUrl();
-  const coolingDown = (retryAt: number) => {
-    if (fallbackValue !== undefined) return fallbackValue;
-    throw createMetadataCooldownError(retryAt - Date.now());
-  };
-  const circuitError = getMetadataCircuitError(baseUrl);
-  if (circuitError) {
-    return fallbackValue !== undefined
-      ? Promise.resolve(fallbackValue)
-      : Promise.reject(circuitError);
-  }
   healthState.activeBaseUrl = baseUrl;
   healthState.lastCheckedAt = nowIso();
 
@@ -513,112 +448,47 @@ function refreshMetadata<Schema extends v.GenericSchema>(
     providerInflightRequests,
     cacheKey,
     async (sharedSignal: AbortSignal) => {
-      const ownsPersistentRequest = isEntityMetadataPath(path);
-      let leaseToken: string | null = null;
-      if (ownsPersistentRequest) {
-        while (!leaseToken) {
-          const claim = acquireMetadataRequest(cacheKey, METADATA_REQUEST_LEASE_MS);
-          if (claim.acquired) {
-            leaseToken = claim.token;
-            break;
-          }
-          if (claim.retryAfter > Date.now()) return coolingDown(claim.retryAfter);
-          const shared = await waitForMetadataRequestOwner(cacheKey, schema, sharedSignal);
-          if (shared.retryAt) return coolingDown(shared.retryAt);
-          if (shared.found) return shared.value;
-        }
-      }
-      const maxRetries = ownsPersistentRequest ? 0 : METADATA_MAX_RETRIES;
-      for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-        let providerRequestStarted = false;
+      for (let attempt = 0; attempt <= METADATA_MAX_RETRIES; attempt += 1) {
         if (sharedSignal.aborted) {
-          if (leaseToken) releaseMetadataRequest(cacheKey, leaseToken);
           throw sharedSignal.reason || new Error("The operation was aborted");
         }
-        // A request BrainzMash has received is finished and cached even when every caller has left.
-        const unsent = new AbortController();
-        if (ownsPersistentRequest) {
-          sharedSignal.addEventListener(
-            "abort",
-            () => {
-              if (!providerRequestStarted) unsent.abort(sharedSignal.reason);
-            },
-            { once: true },
-          );
-        }
-        const requestSignal = ownsPersistentRequest ? unsent.signal : sharedSignal;
+        const sentAt = Date.now();
         try {
-          const response = await providerRequestLimiter.schedule(
-            async (remainingMs) => {
-              const activeCircuitError = getMetadataCircuitError(baseUrl);
-              if (activeCircuitError) throw activeCircuitError;
-              const admissionStarted = Date.now();
-              let waitMs;
-              while (
-                (waitMs = reserveMetadataProviderRequest(
-                  baseUrl,
-                  METADATA_REQUEST_MIN_INTERVAL_MS,
-                )) > 0
-              ) {
-                if (waitMs >= remainingMs - (Date.now() - admissionStarted)) {
-                  const error: MetadataError = new Error(
-                    "Metadata provider request deadline exceeded",
-                  );
-                  error.code = "ETIMEDOUT";
-                  throw error;
-                }
-                await delay(waitMs, undefined, { signal: requestSignal });
-                const waitingCircuit = getMetadataCircuitError(baseUrl);
-                if (waitingCircuit) throw waitingCircuit;
-              }
-              const circuitAfterWait = getMetadataCircuitError(baseUrl);
-              if (circuitAfterWait) throw circuitAfterWait;
-              providerRequestStarted = true;
-              const sentAt = Date.now();
-              return http
-                .get(`${baseUrl}${path}`, {
-                  query: params,
-                  timeoutMs: METADATA_REQUEST_TIMEOUT_MS,
-                  bodyTimeoutMs: METADATA_RESPONSE_BODY_TIMEOUT_MS,
-                  headers: {
-                    "User-Agent": getUserAgent(),
-                  },
-                  signal: requestSignal,
-                })
-                .then(
-                  (response) => {
-                    countMetadataCall(baseUrl, path, response.status, sentAt);
-                    return response;
-                  },
-                  (error: unknown) => {
-                    const failure = asAppError(error);
-                    countMetadataCall(
-                      baseUrl,
-                      path,
-                      failure?.response?.status ?? failure?.code ?? "error",
-                      sentAt,
-                    );
-                    throw error;
-                  },
-                );
-            },
-            {
-              signal: requestSignal,
+          const response = await http
+            .get(`${baseUrl}${path}`, {
+              query: params,
               timeoutMs: METADATA_REQUEST_TIMEOUT_MS,
-              priority: ownsPersistentRequest ? 0 : 1,
-            },
-          );
-          const value = readOne(schema, response.data, { service: "BrainzMash", endpoint: path });
+              bodyTimeoutMs: METADATA_RESPONSE_BODY_TIMEOUT_MS,
+              headers: {
+                "User-Agent": getUserAgent(),
+              },
+              signal: sharedSignal,
+            })
+            .then(
+              (response) => {
+                countMetadataCall(baseUrl, path, response.status, sentAt);
+                return response;
+              },
+              (error: unknown) => {
+                const failure = asAppError(error);
+                countMetadataCall(
+                  baseUrl,
+                  path,
+                  failure?.response?.status ?? failure?.code ?? "error",
+                  sentAt,
+                );
+                throw error;
+              },
+            );
+          const value = readOne(schema, response.data, { service: "Metadata", endpoint: path });
           await storeMetadata(cacheKey, value, getMetadataCachePolicy(path, value));
-          if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
           metadataNotFoundCache.delete(cacheKey);
           healthState.lastSuccessAt = healthState.lastCheckedAt;
           healthState.lastFailureReason = "";
           return value;
         } catch (error) {
-          if (requestSignal.aborted) {
-            if (leaseToken) releaseMetadataRequest(cacheKey, leaseToken);
-            throw requestSignal.reason || error;
+          if (sharedSignal.aborted) {
+            throw sharedSignal.reason || error;
           }
           const failure = asAppError(error);
           const status = failure?.response?.status;
@@ -627,37 +497,11 @@ function refreshMetadata<Schema extends v.GenericSchema>(
             status != null
               ? `HTTP ${status}`
               : String(failure?.code || failure?.message || "Unknown error");
-          // A 429 for one album or artist is about that entity, so only it waits
-          // out the Retry-After BrainzMash sent.
-          if (status === 429 && leaseToken && !isMetadataCircuitError(error)) {
-            const retryAfterMs = getRetryAfterMs(error);
-            const retryAt = Date.now() + retryAfterMs;
-            deferMetadataRequest(cacheKey, leaseToken, retryAt);
-            logger.info("metadata", "BrainzMash rate limited a request", {
-              path,
-              retryAfterSeconds: Math.round(retryAfterMs / 1000),
-            });
-            return coolingDown(retryAt);
-          }
-          if (status === 403 || status === 429) {
-            if (!isMetadataCircuitError(error)) {
-              openMetadataCircuit(baseUrl, status, error);
-            }
-            if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
-            if (fallbackValue !== undefined) return fallbackValue;
-            throw error;
-          }
           if (status === 404 && isEntityMetadataPath(path)) {
             forgetMetadata(cacheKey);
-            metadataNotFoundCache.set(cacheKey, true);
-            if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
+            if (cacheNotFound) metadataNotFoundCache.set(cacheKey, true);
           }
-          if (attempt === maxRetries || !isRetryable(error)) {
-            if (leaseToken && isRetryable(error) && providerRequestStarted) {
-              failMetadataRequest(cacheKey, leaseToken);
-            } else if (leaseToken && providerRequestStarted) {
-              completeMetadataRequest(cacheKey, leaseToken);
-            } else if (leaseToken) releaseMetadataRequest(cacheKey, leaseToken);
+          if (attempt === METADATA_MAX_RETRIES || !isRetryable(error)) {
             if (fallbackValue !== undefined && isRetryable(error)) return fallbackValue;
             throw error;
           }
@@ -689,7 +533,11 @@ async function request<Schema extends v.GenericSchema>(
     signal,
     forceRefresh = false,
     keepStale,
-  }: MetadataRequestOptions & { keepStale?: (value: v.InferOutput<Schema>) => boolean } = {},
+    cacheNotFound = true,
+  }: MetadataRequestOptions & {
+    keepStale?: (value: v.InferOutput<Schema>) => boolean;
+    cacheNotFound?: boolean;
+  } = {},
 ): Promise<v.InferOutput<Schema>> {
   const baseUrl = getMetadataBaseUrl();
   const cacheKey = `${baseUrl}${path}:${JSON.stringify(params)}`;
@@ -707,6 +555,7 @@ async function request<Schema extends v.GenericSchema>(
   }
   return refreshMetadata(schema, cacheKey, path, params, {
     signal,
+    cacheNotFound,
     ...(cached && { fallbackValue: cached.value }),
   });
 }
@@ -731,17 +580,137 @@ function applyReleaseTypeFilter<T extends { type: string; secondaryTypes?: strin
   });
 }
 
-export async function getArtistByMbid(mbid: string, { signal }: MetadataRequestOptions = {}) {
-  const data = await request(artistDetailSchema, `/artist/${mbid}`, {}, { signal });
-  return toNormalizedArtist(data);
+function toMusicbrainzGenres(genres: v.InferOutput<typeof musicbrainzGenreSchema>[] | undefined) {
+  return [...(genres ?? [])]
+    .sort((left, right) => (right.count ?? 0) - (left.count ?? 0))
+    .map((genre) => String(genre.name || "").trim())
+    .filter(Boolean);
+}
+
+function toMusicbrainzLinks(
+  relations: v.InferOutput<typeof musicbrainzRelationSchema>[] | undefined,
+) {
+  return (relations ?? []).flatMap((relation) => {
+    const target = String(relation.url?.resource || "").trim();
+    return target ? [{ type: String(relation.type || "").trim() || "external", target }] : [];
+  });
+}
+
+function toMusicbrainzRating(rating: v.InferOutput<typeof musicbrainzRatingSchema>) {
+  return rating?.value != null
+    ? { count: rating["votes-count"] ?? 0, value: Math.round(rating.value * 20) / 10 }
+    : null;
+}
+
+function toMusicbrainzArtist(
+  raw: v.InferOutput<typeof musicbrainzArtistDetailSchema>,
+): NormalizedArtist {
+  const name = String(raw.name || "").trim();
+  return {
+    id: raw.id,
+    name,
+    sortName: String(raw["sort-name"] || "").trim() || name,
+    type: String(raw.type || "").trim() || null,
+    status: null,
+    disambiguation: String(raw.disambiguation || "").trim(),
+    overview: "",
+    genres: toMusicbrainzGenres(raw.genres),
+    aliases: [
+      ...new Set(
+        (raw.aliases ?? []).map((alias) => String(alias.name || "").trim()).filter(Boolean),
+      ),
+    ],
+    images: [],
+    links: toMusicbrainzLinks(raw.relations),
+    rating: toMusicbrainzRating(raw.rating),
+    listeners: 0,
+    albums: (raw["release-groups"] ?? []).map((rg): NormalizedArtistAlbum => ({
+      id: rg.id,
+      title: String(rg.title || "").trim(),
+      type: String(rg["primary-type"] || "").trim() || "Album",
+      secondaryTypes: (rg["secondary-types"] ?? []).map((entry) => entry.trim()).filter(Boolean),
+      releaseStatuses: [],
+      firstReleaseDate: String(rg["first-release-date"] || "").trim() || null,
+      rating: null,
+      cover: null,
+      trackCount: null,
+      listeners: 0,
+    })),
+    appearsOn: [],
+    topTracks: [],
+    similar: [],
+  };
+}
+
+async function getMusicbrainzArtistFallback(
+  mbid: string,
+  { signal }: { signal?: AbortSignal } = {},
+) {
+  const cached = musicbrainzArtistFallbackCache.get(mbid);
+  if (cached !== undefined) return cached;
+  try {
+    const artist = await runSharedInflight(
+      providerInflightRequests,
+      `musicbrainz:artist:${mbid}`,
+      async (sharedSignal: AbortSignal) => {
+        const raw = await musicbrainzGet(
+          musicbrainzArtistDetailSchema,
+          `/artist/${mbid}`,
+          { inc: "aliases+genres+url-rels+ratings+release-groups" },
+          { signal: sharedSignal },
+        );
+        return toMusicbrainzArtist(raw);
+      },
+      { signal },
+    );
+    musicbrainzArtistFallbackCache.set(mbid, artist);
+    return artist;
+  } catch (error) {
+    signal?.throwIfAborted();
+    if (asAppError(error)?.response?.status === 404) {
+      musicbrainzArtistFallbackCache.set(mbid, null, METADATA_NOT_FOUND_CACHE_TTL_SECONDS);
+      return null;
+    }
+    logger.info("metadata", "MusicBrainz could not fill a missing artist", {
+      mbid,
+      reason: safeLogDiagnostic(error),
+    });
+    musicbrainzArtistFallbackCache.set(mbid, null, MUSICBRAINZ_FALLBACK_RETRY_SECONDS);
+    return null;
+  }
+}
+
+export async function getArtistByMbid(
+  mbid: string,
+  { signal, forceRefresh = false }: MetadataRequestOptions = {},
+) {
+  const cacheKey = `${getMetadataBaseUrl()}/v1/artist/${mbid}:{}`;
+  try {
+    const data = await request(
+      artistDetailSchema,
+      `/v1/artist/${mbid}`,
+      {},
+      { signal, forceRefresh, cacheNotFound: !UUID_REGEX.test(mbid) },
+    );
+    return toNormalizedArtist(data);
+  } catch (error) {
+    if (!isMetadataNotFoundError(error) || !UUID_REGEX.test(mbid)) throw error;
+    const fallback = await getMusicbrainzArtistFallback(mbid, { signal });
+    if (fallback) return fallback;
+    if (musicbrainzArtistFallbackCache.get(mbid) === null) {
+      metadataNotFoundCache.set(cacheKey, true, MUSICBRAINZ_FALLBACK_RETRY_SECONDS);
+    }
+    throw error;
+  }
 }
 
 export async function getCachedArtistByMbid(mbid: string) {
   const cached = await readCachedMetadata(
-    `${getMetadataBaseUrl()}/artist/${mbid}:{}`,
+    `${getMetadataBaseUrl()}/v1/artist/${mbid}:{}`,
     artistDetailSchema,
   );
-  return cached ? toNormalizedArtist(cached.value) : null;
+  if (cached) return toNormalizedArtist(cached.value);
+  return musicbrainzArtistFallbackCache.get(mbid) ?? null;
 }
 
 function toNormalizedMusicbrainzRelease(raw: v.InferOutput<typeof musicbrainzReleaseSchema>) {
@@ -751,7 +720,13 @@ function toNormalizedMusicbrainzRelease(raw: v.InferOutput<typeof musicbrainzRel
     title: String(raw.title || "").trim(),
     status: String(raw.status || "").trim() || null,
     country: raw.country ? [raw.country] : [],
-    label: [],
+    label: [
+      ...new Set(
+        (raw["label-info"] ?? [])
+          .map((entry) => String(entry.label?.name || "").trim())
+          .filter(Boolean),
+      ),
+    ],
     media: media.map((medium, index) => ({
       format: String(medium.format || "").trim(),
       name: String(medium.title || "").trim(),
@@ -774,6 +749,12 @@ function toNormalizedMusicbrainzRelease(raw: v.InferOutput<typeof musicbrainzRel
           mediumNumber: medium.position ?? mediumIndex + 1,
           durationMs: track.length ?? track.recording?.length ?? null,
           artistId: credit?.[0]?.artist?.id || null,
+          credits: (credit ?? []).flatMap((entry) => {
+            const name = String(entry.name || entry.artist?.name || "").trim();
+            return name
+              ? [{ name, mbid: entry.artist?.id || null, joinPhrase: entry.joinphrase ?? "" }]
+              : [];
+          }),
         };
       }),
     ),
@@ -798,7 +779,7 @@ async function getMusicbrainzAlbumReleases(
           "/release",
           {
             "release-group": albumMbid,
-            inc: "recordings+artist-credits",
+            inc: "recordings+artist-credits+labels",
             limit: 100,
           },
           { signal: sharedSignal },
@@ -823,12 +804,101 @@ async function getMusicbrainzAlbumReleases(
   }
 }
 
+async function getMusicbrainzAlbumFallback(
+  albumMbid: string,
+  { signal }: { signal?: AbortSignal } = {},
+) {
+  const cached = musicbrainzAlbumFallbackCache.get(albumMbid);
+  if (cached !== undefined) return cached;
+  try {
+    const album = await runSharedInflight(
+      providerInflightRequests,
+      `musicbrainz:album:${albumMbid}`,
+      async (sharedSignal: AbortSignal) => {
+        const raw = await musicbrainzGet(
+          musicbrainzReleaseGroupDetailSchema,
+          `/release-group/${albumMbid}`,
+          { inc: "artists+genres+url-rels+ratings" },
+          { signal: sharedSignal },
+        );
+        const artists: NormalizedArtist[] = (raw["artist-credit"] ?? []).flatMap((credit) => {
+          const id = String(credit.artist?.id || "").trim();
+          const name = String(credit.artist?.name || credit.name || "").trim();
+          if (!id || !name) return [];
+          return [
+            toNormalizedArtist({
+              id,
+              name,
+              sortName: name,
+            }),
+          ];
+        });
+        return {
+          id: raw.id,
+          title: String(raw.title || "").trim(),
+          artistId: artists[0]?.id || null,
+          artists,
+          type: String(raw["primary-type"] || "").trim() || "Album",
+          secondaryTypes: (raw["secondary-types"] ?? [])
+            .map((entry) => entry.trim())
+            .filter(Boolean),
+          releaseDate: String(raw["first-release-date"] || "").trim() || null,
+          disambiguation: String(raw.disambiguation || "").trim(),
+          genres: toMusicbrainzGenres(raw.genres),
+          aliases: [],
+          overview: "",
+          images: [],
+          cover: null,
+          links: toMusicbrainzLinks(raw.relations),
+          releases: [],
+          rating: toMusicbrainzRating(raw.rating),
+          listeners: 0,
+        } satisfies NormalizedAlbum;
+      },
+      { signal },
+    );
+    musicbrainzAlbumFallbackCache.set(albumMbid, album);
+    return album;
+  } catch (error) {
+    signal?.throwIfAborted();
+    if (asAppError(error)?.response?.status === 404) {
+      musicbrainzAlbumFallbackCache.set(albumMbid, null, METADATA_NOT_FOUND_CACHE_TTL_SECONDS);
+      return null;
+    }
+    logger.info("metadata", "MusicBrainz could not fill a missing album", {
+      albumMbid,
+      reason: safeLogDiagnostic(error),
+    });
+    musicbrainzAlbumFallbackCache.set(albumMbid, null, MUSICBRAINZ_FALLBACK_RETRY_SECONDS);
+    return null;
+  }
+}
+
 export async function getAlbumByMbid(
   albumMbid: string,
   { signal, forceRefresh = false, withFallbackReleases = false }: MetadataRequestOptions = {},
 ) {
-  const data = await request(albumSchema, `/album/${albumMbid}`, {}, { signal, forceRefresh });
-  const album = toNormalizedAlbum(data);
+  const cacheKey = `${getMetadataBaseUrl()}/v1/album/${albumMbid}:{}`;
+  let album: NormalizedAlbum;
+  try {
+    const data = await request(
+      albumSchema,
+      `/v1/album/${albumMbid}`,
+      {},
+      { signal, forceRefresh, cacheNotFound: !UUID_REGEX.test(albumMbid) },
+    );
+    album = toNormalizedAlbum(data);
+  } catch (error) {
+    if (!isMetadataNotFoundError(error) || !UUID_REGEX.test(albumMbid)) throw error;
+    const fallback = await getMusicbrainzAlbumFallback(albumMbid, { signal });
+    if (!fallback) {
+      if (musicbrainzAlbumFallbackCache.get(albumMbid) === null) {
+        metadataNotFoundCache.set(cacheKey, true, MUSICBRAINZ_FALLBACK_RETRY_SECONDS);
+      }
+      throw error;
+    }
+    album = fallback;
+  }
   if (!withFallbackReleases || album.releases.length > 0 || !UUID_REGEX.test(albumMbid))
     return album;
   const releases = await getMusicbrainzAlbumReleases(albumMbid, { signal });
@@ -837,10 +907,38 @@ export async function getAlbumByMbid(
 
 export async function getCachedAlbumByMbid(albumMbid: string) {
   const cached = await readCachedMetadata(
-    `${getMetadataBaseUrl()}/album/${albumMbid}:{}`,
+    `${getMetadataBaseUrl()}/v1/album/${albumMbid}:{}`,
     albumSchema,
   );
-  return cached ? toNormalizedAlbum(cached.value) : null;
+  if (cached) return toNormalizedAlbum(cached.value);
+  return musicbrainzAlbumFallbackCache.get(albumMbid) ?? null;
+}
+
+export async function getGenreBySlug(slug: string, { signal }: MetadataRequestOptions = {}) {
+  const normalized = String(slug || "").trim();
+  if (!normalized) return null;
+  try {
+    const data = await request(
+      genreSchema,
+      `/v1/genre/${encodeURIComponent(normalized)}`,
+      {},
+      { signal },
+    );
+    return toNormalizedGenre(data);
+  } catch (error) {
+    signal?.throwIfAborted();
+    if (isMetadataNotFoundError(error)) return null;
+    throw error;
+  }
+}
+
+export async function getGenresIndex({ signal }: MetadataRequestOptions = {}) {
+  const data = await request(genresIndexSchema, "/v1/genres", {}, { signal });
+  return (data.genres ?? []).map((genre) => ({
+    key: genre.key,
+    name: String(genre.name || "").trim() || genre.key,
+    artists: genre.artists ?? 0,
+  }));
 }
 
 export async function getAlbumTracksByAlbumMbid(
@@ -853,13 +951,24 @@ export async function getAlbumTracksByAlbumMbid(
   const release = chooseRelease(album);
   if (!Array.isArray(release?.tracks)) return [];
   const discNames = new Map(release.media.map((medium) => [medium.position, medium.name]));
+  const artistsById = new Map(album.artists.map((artist) => [artist.id, artist]));
   return release.tracks
     .filter((track) => !isSilenceTrack(track.title))
-    .map((track) => ({
-      ...track,
-      releaseMbid: release.id || null,
-      discTitle: discNames.get(track.mediumNumber || 1) || null,
-    }));
+    .map((track) => {
+      const creditArtist =
+        !track.credits?.length && track.artistId ? artistsById.get(track.artistId) : null;
+      const credits = track.credits?.length
+        ? track.credits
+        : creditArtist
+          ? [{ name: creditArtist.name, mbid: creditArtist.id, joinPhrase: "" }]
+          : undefined;
+      return {
+        ...track,
+        ...(credits && { credits }),
+        releaseMbid: release.id || null,
+        discTitle: discNames.get(track.mediumNumber || 1) || null,
+      };
+    });
 }
 
 export async function searchArtists(
@@ -874,10 +983,10 @@ export async function searchArtists(
   let items: NormalizedArtist[] = [];
   try {
     const data = await request(searchResultsSchema, "/search/artist", { query, limit }, { signal });
-    items = readMany(artistSchema, data, {
-      service: "BrainzMash",
+    items = readMany(searchArtistSchema, data, {
+      service: "Metadata",
       endpoint: "/search/artist",
-    }).map(toNormalizedArtist);
+    }).map(toNormalizedSearchArtist);
   } catch (error) {
     signal?.throwIfAborted();
     if (throwOnFailure) throw error;
@@ -930,25 +1039,32 @@ export async function searchAlbums(
       },
       { signal },
     );
-    const albums = readMany(albumSchema, data, {
-      service: "BrainzMash",
+    const albums = readMany(searchAlbumSchema, data, {
+      service: "Metadata",
       endpoint: "/search/album",
     });
     items = albums.map((entry, index) => {
       const artists = entry.artists ?? [];
-      const credited = artists.find((artist) => artist.id === entry.artistid) || artists[0];
-      const primaryArtist = credited ? toNormalizedArtist(credited) : null;
-      const images = entry.images ?? [];
+      const artistId = entry.artistId ?? entry.artistid ?? null;
+      const credited = artists.find((artist) => artist.id === artistId) || artists[0];
+      const primaryArtist = credited ? toNormalizedSearchArtist(credited) : null;
+      const images: MetadataImage[] = (entry.images ?? []).flatMap((image) => {
+        const url = String(image.url ?? image.Url ?? "").trim();
+        return url
+          ? [{ kind: String(image.kind ?? image.CoverType ?? "").trim() || "Cover", url }]
+          : [];
+      });
       const coverImage = selectAlbumCover(images);
+      const coverUrl = String(entry.cover || coverImage?.url || "").trim() || null;
       return {
         id: entry.id,
         title: entry.title || "Untitled Release",
         artistName: primaryArtist?.name || artistName || "Unknown Artist",
-        artistId: entry.artistid || primaryArtist?.id || null,
+        artistId: artistId || primaryArtist?.id || null,
         type: entry.type || "Album",
-        secondaryTypes: entry.secondarytypes ?? [],
-        releaseDate: entry.releasedate || null,
-        coverUrl: coverImage?.Url ? String(coverImage.Url).trim() : null,
+        secondaryTypes: entry.secondaryTypes ?? entry.secondarytypes ?? [],
+        releaseDate: entry.releaseDate || entry.releasedate || null,
+        coverUrl,
         images,
         inLibrary: false,
         score: Math.max(0, 100 - index),
@@ -1125,42 +1241,24 @@ export async function resolveAlbumByArtistAndTitle({
   return null;
 }
 
-// A release date in the past does not change, so a list that reads an album
-// for its date takes a cached one at any age instead of refreshing it.
-function wasReleased(album: v.InferOutput<typeof albumSchema>) {
-  const date = String(album.releasedate || "").trim();
-  return date !== "" && date < new Date().toISOString().slice(0, date.length);
-}
-
 export async function listArtistAlbums(
   artistMbid: string,
   {
     releaseTypes = [],
-    includeTrackCounts = false,
-    hydrateLimit = 30,
     only,
     signal,
     forceRefresh = false,
   }: {
     releaseTypes?: string[] | string;
-    includeTrackCounts?: boolean;
-    hydrateLimit?: number;
-    only?: (album: ArtistDetailAlbum) => boolean;
+    only?: (album: NormalizedArtistAlbum) => boolean;
     signal?: AbortSignal;
     forceRefresh?: boolean;
   } = {},
 ) {
-  const rawArtist = await request(
-    artistDetailSchema,
-    `/artist/${artistMbid}`,
-    {},
-    { signal, forceRefresh },
-  );
-  const artist = toNormalizedArtist(rawArtist);
-  let albums: ArtistDetailAlbum[] = (rawArtist.Albums ?? []).map(toNormalizedArtistAlbum);
-  albums = applyReleaseTypeFilter(albums, releaseTypes);
+  const artist = await getArtistByMbid(artistMbid, { signal, forceRefresh });
+  let albums = applyReleaseTypeFilter(artist.albums, releaseTypes);
   if (only) albums = albums.filter(only);
-  albums.sort((left, right) => {
+  albums = [...albums].sort((left, right) => {
     const leftBootleg = (left.releaseStatuses || []).includes("Bootleg") ? 1 : 0;
     const rightBootleg = (right.releaseStatuses || []).includes("Bootleg") ? 1 : 0;
     if (leftBootleg !== rightBootleg) return leftBootleg - rightBootleg;
@@ -1170,24 +1268,6 @@ export async function listArtistAlbums(
     if (leftType !== rightType) return leftType - rightType;
     return String(left.title || "").localeCompare(String(right.title || ""));
   });
-
-  const safeHydrateLimit =
-    Number.isFinite(Number(hydrateLimit)) && Number(hydrateLimit) >= 0
-      ? Math.min(100, Math.floor(Number(hydrateLimit)))
-      : 30;
-  await pMap(
-    albums.slice(0, safeHydrateLimit),
-    async (album) => {
-      try {
-        const hydrated = toNormalizedAlbum(
-          await request(albumSchema, `/album/${album.id}`, {}, { signal, keepStale: wasReleased }),
-        );
-        album.firstReleaseDate = hydrated.releaseDate;
-        if (includeTrackCounts) album.rating = hydrated.rating || null;
-      } catch {}
-    },
-    { concurrency: ALBUM_LIST_CONCURRENCY },
-  );
 
   return albums.map((album) => ({
     ...album,
@@ -1206,7 +1286,7 @@ export async function getArtistNameByMbid(
 
 export function getMetadataProviderHealthSnapshot() {
   return {
-    brainzmash: {
+    metadata: {
       configuredProvider: healthState.configuredProvider,
       activeBaseUrl: getMetadataBaseUrl(),
       failoverActive: healthState.failoverActive,

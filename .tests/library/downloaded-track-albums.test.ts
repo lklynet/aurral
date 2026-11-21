@@ -32,7 +32,7 @@ const [
   () => import("../../backend/services/libraryManager.ts"),
   () => import("../../backend/services/libraryQueryService.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
-  () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../../backend/services/providers/metadataProvider.ts"),
   () => import("../../backend/routes/api.ts"),
 );
 
@@ -57,7 +57,7 @@ const musicRoot = path.join(isolatedState.dataDir, "music");
 const metadataServer = await createMockHttpServer((request, response) => {
   const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
   response.setHeader("content-type", "application/json");
-  if (pathname !== `/album/${albumMbid}`) {
+  if (pathname !== `/v1/album/${albumMbid}`) {
     response.writeHead(404);
     response.end(JSON.stringify({ error: "not found" }));
     return;
@@ -66,18 +66,18 @@ const metadataServer = await createMockHttpServer((request, response) => {
     JSON.stringify({
       id: albumMbid,
       title: "Playlist Album",
-      artistid: artistMbid,
-      artists: [{ id: artistMbid, artistname: "Playlist Artist" }],
+      artistId: artistMbid,
+      artists: [{ id: artistMbid, name: "Playlist Artist" }],
       releases: [
         {
           id: `${albumMbid}-release`,
           status: "Official",
           tracks: trackMbids.map((id, index) => ({
             id: `${id}-track`,
-            recordingid: id,
-            trackname: `Track ${index + 1}`,
-            trackposition: index + 1,
-            mediumnumber: 1,
+            recordingId: id,
+            title: `Track ${index + 1}`,
+            trackPosition: index + 1,
+            mediumNumber: 1,
           })),
         },
       ],

@@ -13,7 +13,7 @@ import {
   getLibraryTrackOwnershipBatch,
 } from "./libraryQueryService.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
-import { searchAlbums, searchArtists } from "./providers/brainzmashProvider.ts";
+import { searchAlbums, searchArtists } from "./providers/metadataProvider.ts";
 import { parsePositiveInt } from "./searchService.ts";
 import { withCoverUrls } from "./releaseGroupCoverService.ts";
 import {
@@ -43,7 +43,7 @@ type DeezerTrack = Awaited<ReturnType<typeof searchDeezerTracks>>[number];
 
 export type ArtistSearchResult = {
   type: "artist";
-  source: "brainzmash" | "library";
+  source: "metadata" | "library";
   id: string;
   key: string;
   name: string;
@@ -57,7 +57,7 @@ export type ArtistSearchResult = {
 
 export type AlbumSearchResult = {
   type: "album";
-  source: "brainzmash" | "library";
+  source: "metadata" | "library";
   id: string | null;
   key: string;
   title: string;
@@ -124,7 +124,7 @@ const releaseKey = (title: unknown) => searchKey(String(title ?? "").replace(/[(
 function toArtist(item: ProviderArtist): ArtistSearchResult {
   return {
     type: "artist",
-    source: "brainzmash",
+    source: "metadata",
     id: item.id,
     key: item.id,
     name: item.name,
@@ -139,7 +139,7 @@ function toArtist(item: ProviderArtist): ArtistSearchResult {
 function toAlbum(item: ProviderAlbum): AlbumSearchResult {
   return {
     type: "album",
-    source: "brainzmash",
+    source: "metadata",
     id: item.id ?? null,
     key: item.id ?? "",
     title: item.title,

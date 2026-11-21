@@ -1,13 +1,75 @@
 import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
-import { listenbrainzGetReleaseGroupStats } from "../../../services/apiClients/listenbrainz.ts";
 import { getArtistTagLists, getSimilarArtists } from "../../../services/musicDataSource/index.ts";
 import { isKnownGenre } from "../../../services/musicGenres.ts";
 import { guessArtistMbid } from "../../../services/artistMatch.ts";
 import { mapWithConcurrency } from "../../../services/discovery/helpers.ts";
-import type { musicbrainzGetArtistReleaseGroups } from "../../../services/apiClients/index.ts";
-import type { NormalizedArtist } from "../../../services/providers/brainzmashMappers.ts";
+import type {
+  NormalizedAppearsOnAlbum,
+  NormalizedArtist,
+  NormalizedArtistAlbum,
+} from "../../../services/providers/metadataMappers.ts";
 
-type ReleaseGroupSummary = Awaited<ReturnType<typeof musicbrainzGetArtistReleaseGroups>>[number];
+export function toArtistReleaseGroup(
+  album: NormalizedArtistAlbum,
+  artist: Pick<NormalizedArtist, "id" | "name">,
+) {
+  return {
+    id: album.id,
+    title: album.title || "",
+    "first-release-date": album.firstReleaseDate || null,
+    "primary-type": album.type || "Album",
+    "secondary-types": Array.isArray(album.secondaryTypes) ? album.secondaryTypes : [],
+    rating: album.rating || null,
+    listenerCount: album.listeners > 0 ? album.listeners : null,
+    coverUrl: buildImageProxyUrl(album.cover),
+    "artist-credit": artist.name
+      ? [
+          {
+            name: artist.name,
+            artist: artist.id ? { id: artist.id, name: artist.name } : { name: artist.name },
+          },
+        ]
+      : [],
+  };
+}
+
+export type AppearsOnReleaseGroup = {
+  id: string;
+  title: string;
+  "first-release-date": string | null;
+  "primary-type": string;
+  "secondary-types": string[];
+  rating: { count: number; value: number } | null;
+  listenerCount?: number | null;
+  coverUrl?: string | null;
+  "artist-credit": { name?: string; artist?: { id?: string; name?: string } }[];
+  releases: { id: string; status: string | null; date: string | null; title: string }[];
+};
+
+export function toAppearsOnReleaseGroup(album: NormalizedAppearsOnAlbum): AppearsOnReleaseGroup {
+  const artistName = album.artistName || "";
+  return {
+    id: album.id,
+    title: album.title || "Untitled release",
+    "first-release-date": album.firstReleaseDate || null,
+    "primary-type": album.type || "Album",
+    "secondary-types": Array.isArray(album.secondaryTypes) ? album.secondaryTypes : [],
+    rating: album.rating || null,
+    listenerCount: album.listeners > 0 ? album.listeners : null,
+    coverUrl: buildImageProxyUrl(album.cover),
+    "artist-credit": artistName
+      ? [
+          {
+            name: artistName,
+            artist: album.artistId
+              ? { id: album.artistId, name: artistName }
+              : { name: artistName },
+          },
+        ]
+      : [],
+    releases: [],
+  };
+}
 
 export function toLegacyRelations(metadataArtist: NormalizedArtist | null) {
   return Array.isArray(metadataArtist?.links)
@@ -68,30 +130,6 @@ export async function getSimilarArtistCards(
     match: Math.round(artist.match * 100),
   }));
   return cards.filter((card) => card.id);
-}
-
-const LISTENBRAINZ_WAIT_MS = 2000;
-
-export async function withListenBrainzStats(releaseGroups: ReleaseGroupSummary[]) {
-  const { records, pending } = await listenbrainzGetReleaseGroupStats(releaseGroups, {
-    waitMs: LISTENBRAINZ_WAIT_MS,
-  });
-  return {
-    pending,
-    releaseGroups: releaseGroups.map((releaseGroup) => {
-      const record = records.get(releaseGroup.id);
-      return {
-        ...releaseGroup,
-        ...(record?.listen_count &&
-          record.listener_count && {
-            listenCount: record.listen_count,
-            listenerCount: record.listener_count,
-          }),
-        "first-release-date":
-          releaseGroup["first-release-date"] || record?.first_release_date || null,
-      };
-    }),
-  };
 }
 
 export function buildArtistBase(

@@ -121,8 +121,8 @@ Aurral works over your local network directly, over any VPN, or behind any rever
 
 ### "What is the hosted metadata server collecting from my server?"
 
-Nothing personal. The hosted metadata server is a relay built on MusicBrainz data, run by the maintainers so Aurral works out of the box without requiring API keys or hammering MusicBrainz directly.
+Nothing personal. The hosted metadata server (`data.aurral.org`) serves static JSON files built from MusicBrainz and ListenBrainz dumps by the maintainers so Aurral works out of the box without requiring API keys or hammering MusicBrainz directly.
 
-All it ever sees are artist and album MusicBrainz IDs, catalog search queries, the `Aurral/<version>` User-Agent, and your server's IP. It never sees your accounts, listening history, playlists, or library contents. Aurral only fetches metadata for what you're looking at and caches it locally.
+All it ever sees are artist, album, and genre requests, catalog search queries, the `Aurral/<version>` User-Agent, and your server's IP. It never sees your accounts, listening history, playlists, or library contents. Aurral only fetches metadata for what you're looking at and caches it locally.
 
-If you'd rather not touch our server at all, self-host your own metadata server and point Aurral at it in **Settings > Metadata > Base URL** (or set `BRAINZMASH_BASE_URL`). See [Metadata and search](/integrations/metadata/).
+If you'd rather not touch our server at all, self-host your own metadata server and point Aurral at it in **Settings > Metadata > Base URL** (or set `METADATA_BASE_URL`). See [Metadata and search](/integrations/metadata/).

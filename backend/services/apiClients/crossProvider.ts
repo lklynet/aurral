@@ -1,5 +1,5 @@
 import { dbOps } from "../../db/helpers/index.ts";
-import { resolveAlbumByArtistAndTitle } from "../providers/brainzmashProvider.ts";
+import { resolveAlbumByArtistAndTitle } from "../providers/metadataProvider.ts";
 import { guessArtistMbid } from "../artistMatch.ts";
 import { musicbrainzFindTrackReleaseGroup } from "./musicbrainz.ts";
 

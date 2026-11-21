@@ -33,8 +33,6 @@ const [
   { clearApiCaches },
   { db },
   { resolveReleaseManifest },
-  { getMetadataBaseUrl },
-  { setMetadataProviderCooldown },
 ] = await setupIsolatedBackend(
   "aurral-album-lifecycle",
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
@@ -52,12 +50,7 @@ const [
   () => import("../../backend/services/apiClients/clearCache.ts"),
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/services/releaseResolver.ts"),
-  () => import("../../backend/services/providers/brainzmashProvider.ts"),
-  () => import("../../backend/services/metadataProviderBudget.ts"),
 );
-// Unit tests are offline, so the default metadata provider refuses lookups up front
-// instead of making each one wait its turn in the provider's rate limit.
-setMetadataProviderCooldown(getMetadataBaseUrl(), 403, Number.MAX_SAFE_INTEGER);
 
 const { downloadTracker, DownloadTracker } = trackerModule;
 const history = await import("../../backend/services/aurralHistoryService.ts");
@@ -1072,12 +1065,12 @@ test("an album asks for its most common edition and a shorter download leaves it
     status: "Official",
     tracks: Array.from({ length: count }, (_, index) => ({
       id: `${id}-${index}`,
-      recordingid: recording(index + 1),
-      trackname: `Edition Song ${index + 1}`,
-      artistid: artistMbid,
-      durationms: 1000,
-      trackposition: (index % perDisc) + 1,
-      mediumnumber: Math.floor(index / perDisc) + 1,
+      recordingId: recording(index + 1),
+      title: `Edition Song ${index + 1}`,
+      artistId: artistMbid,
+      durationMs: 1000,
+      trackPosition: (index % perDisc) + 1,
+      mediumNumber: Math.floor(index / perDisc) + 1,
     })),
   });
   const standard = {
@@ -1085,14 +1078,14 @@ test("an album asks for its most common edition and a shorter download leaves it
     status: "Official",
     tracks: release("standard", 3)
       .tracks.slice(1)
-      .map((track, index) => ({ ...track, trackposition: index + 1 })),
+      .map((track, index) => ({ ...track, trackPosition: index + 1 })),
   };
   const misprint = {
     id: "misprint",
     status: "Official",
     tracks: release("misprint", 3)
       .tracks.reverse()
-      .map((track, index) => ({ ...track, trackposition: index + 1 })),
+      .map((track, index) => ({ ...track, trackPosition: index + 1 })),
   };
   const releases = [
     standard,
@@ -1103,7 +1096,7 @@ test("an album asks for its most common edition and a shorter download leaves it
   ];
   const metadata = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
-    if (new URL(request.url || "/", "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
+    if (new URL(request.url || "/", "http://127.0.0.1").pathname !== `/v1/album/${albumMbid}`) {
       response.writeHead(404);
       response.end("{}");
       return;
@@ -1112,8 +1105,8 @@ test("an album asks for its most common edition and a shorter download leaves it
       JSON.stringify({
         id: albumMbid,
         title: "Edition Album",
-        artistid: artistMbid,
-        artists: [{ id: artistMbid, artistname: "Edition Artist" }],
+        artistId: artistMbid,
+        artists: [{ id: artistMbid, name: "Edition Artist" }],
         releases,
       }),
     );
@@ -1243,12 +1236,12 @@ test("an album that wants the expanded edition keeps wanting the extra track a d
     status: "Official",
     tracks: Array.from({ length: count }, (_, index) => ({
       id: `${id}-${index}`,
-      recordingid: `eeeeeeee-eeee-4eee-8eee-30000000000${index + 1}`,
-      trackname: `Expanded Song ${index + 1}`,
-      artistid: artistMbid,
-      durationms: 1000,
-      trackposition: index + 1,
-      mediumnumber: 1,
+      recordingId: `eeeeeeee-eeee-4eee-8eee-30000000000${index + 1}`,
+      title: `Expanded Song ${index + 1}`,
+      artistId: artistMbid,
+      durationMs: 1000,
+      trackPosition: index + 1,
+      mediumNumber: 1,
     })),
   });
   const releases = [
@@ -1259,7 +1252,7 @@ test("an album that wants the expanded edition keeps wanting the extra track a d
   ];
   const metadata = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
-    if (new URL(request.url || "/", "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
+    if (new URL(request.url || "/", "http://127.0.0.1").pathname !== `/v1/album/${albumMbid}`) {
       response.writeHead(404);
       response.end("{}");
       return;
@@ -1268,8 +1261,8 @@ test("an album that wants the expanded edition keeps wanting the extra track a d
       JSON.stringify({
         id: albumMbid,
         title: "Expanded Album",
-        artistid: artistMbid,
-        artists: [{ id: artistMbid, artistname: "Expanded Artist" }],
+        artistId: artistMbid,
+        artists: [{ id: artistMbid, name: "Expanded Artist" }],
         releases,
       }),
     );
@@ -1369,17 +1362,17 @@ test("an album asked for in an edition downloads that edition", async (t: TestCo
     status: "Official",
     tracks: Array.from({ length: count }, (_, index) => ({
       id: `${id}-${index}`,
-      recordingid: `eeeeeeee-eeee-4eee-8eee-40000000000${index + 1}`,
-      trackname: `Chosen Song ${index + 1}`,
-      artistid: artistMbid,
-      durationms: 1000,
-      trackposition: index + 1,
-      mediumnumber: 1,
+      recordingId: `eeeeeeee-eeee-4eee-8eee-40000000000${index + 1}`,
+      title: `Chosen Song ${index + 1}`,
+      artistId: artistMbid,
+      durationMs: 1000,
+      trackPosition: index + 1,
+      mediumNumber: 1,
     })),
   });
   const metadata = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
-    if (new URL(request.url || "/", "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
+    if (new URL(request.url || "/", "http://127.0.0.1").pathname !== `/v1/album/${albumMbid}`) {
       response.writeHead(404);
       response.end("{}");
       return;
@@ -1388,8 +1381,8 @@ test("an album asked for in an edition downloads that edition", async (t: TestCo
       JSON.stringify({
         id: albumMbid,
         title: "Chosen Album",
-        artistid: artistMbid,
-        artists: [{ id: artistMbid, artistname: "Chosen Artist" }],
+        artistId: artistMbid,
+        artists: [{ id: artistMbid, name: "Chosen Artist" }],
         releases: [release("cd", 2), release("digital", 2), release(deluxe, 3)],
       }),
     );
@@ -1451,7 +1444,7 @@ test("a two-disc album downloads a title it repeats on each disc to two names", 
   const recording = (index: number) => `dddddddd-dddd-4ddd-8ddd-10000000000${index}`;
   const metadata = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
-    if (new URL(request.url || "/", "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
+    if (new URL(request.url || "/", "http://127.0.0.1").pathname !== `/v1/album/${albumMbid}`) {
       response.writeHead(404);
       response.end("{}");
       return;
@@ -1460,20 +1453,20 @@ test("a two-disc album downloads a title it repeats on each disc to two names", 
       JSON.stringify({
         id: albumMbid,
         title: "Disc Album",
-        artistid: artistMbid,
-        artists: [{ id: artistMbid, artistname: "Disc Artist" }],
+        artistId: artistMbid,
+        artists: [{ id: artistMbid, name: "Disc Artist" }],
         releases: [
           {
             id: "two-disc",
             status: "Official",
             tracks: tracklist.map(([disc, position, title], index) => ({
               id: `two-disc-${index}`,
-              recordingid: recording(index),
-              trackname: title,
-              artistid: artistMbid,
-              durationms: 1000,
-              trackposition: position,
-              mediumnumber: disc,
+              recordingId: recording(index),
+              title,
+              artistId: artistMbid,
+              durationMs: 1000,
+              trackPosition: position,
+              mediumNumber: disc,
             })),
           },
         ],
@@ -1564,14 +1557,14 @@ test("an album asks for its release's own lengths and fills a missing one from p
   const pressing = (id: string, lengths: (number | null)[], recording: number = 2) => ({
     id,
     status: "Official",
-    tracks: lengths.map((durationms, index) => ({
+    tracks: lengths.map((durationMs, index) => ({
       id: `${id}-${index}`,
-      recordingid: `eeeeeeee-eeee-4eee-8eee-${recording}0000000000${index + 1}`,
-      trackname: `Pressing Song ${index + 1}`,
-      artistid: artistMbid,
-      durationms,
-      trackposition: index + 1,
-      mediumnumber: 1,
+      recordingId: `eeeeeeee-eeee-4eee-8eee-${recording}0000000000${index + 1}`,
+      title: `Pressing Song ${index + 1}`,
+      artistId: artistMbid,
+      durationMs,
+      trackPosition: index + 1,
+      mediumNumber: 1,
     })),
   });
   const releases = [
@@ -1582,7 +1575,7 @@ test("an album asks for its release's own lengths and fills a missing one from p
   ];
   const metadata = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
-    if (new URL(request.url || "/", "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
+    if (new URL(request.url || "/", "http://127.0.0.1").pathname !== `/v1/album/${albumMbid}`) {
       response.writeHead(404);
       response.end("{}");
       return;
@@ -1591,8 +1584,8 @@ test("an album asks for its release's own lengths and fills a missing one from p
       JSON.stringify({
         id: albumMbid,
         title: "Pressing Album",
-        artistid: artistMbid,
-        artists: [{ id: artistMbid, artistname: "Pressing Artist" }],
+        artistId: artistMbid,
+        artists: [{ id: artistMbid, name: "Pressing Artist" }],
         releases,
       }),
     );
@@ -1641,17 +1634,17 @@ test("asking for an album downloads the missing tracks of the edition its track 
     status: "Official",
     tracks: recordings.map((recordingIndex, index) => ({
       id: `${id}-${index}`,
-      recordingid: recording(recordingIndex),
-      trackname: `Listed Song ${index + 1}`,
-      artistid: recordingIndex === 3 ? "1a1a1a1a-1a1a-4a1a-8a1a-000000000013" : artistMbid,
-      durationms: 1000,
-      trackposition: index + 1,
-      mediumnumber: 1,
+      recordingId: recording(recordingIndex),
+      title: `Listed Song ${index + 1}`,
+      artistId: recordingIndex === 3 ? "1a1a1a1a-1a1a-4a1a-8a1a-000000000013" : artistMbid,
+      durationMs: 1000,
+      trackPosition: index + 1,
+      mediumNumber: 1,
     })),
   });
   const metadata = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
-    if (new URL(request.url || "/", "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
+    if (new URL(request.url || "/", "http://127.0.0.1").pathname !== `/v1/album/${albumMbid}`) {
       response.writeHead(404);
       response.end("{}");
       return;
@@ -1660,10 +1653,10 @@ test("asking for an album downloads the missing tracks of the edition its track 
       JSON.stringify({
         id: albumMbid,
         title: "Listed Album",
-        artistid: artistMbid,
+        artistId: artistMbid,
         artists: [
-          { id: artistMbid, artistname: "Listed Artist" },
-          { id: "1a1a1a1a-1a1a-4a1a-8a1a-000000000013", artistname: "Listed Guest" },
+          { id: artistMbid, name: "Listed Artist" },
+          { id: "1a1a1a1a-1a1a-4a1a-8a1a-000000000013", name: "Listed Guest" },
         ],
         releases: [
           release("listed-standard", [1, 4]),
@@ -1809,7 +1802,7 @@ test("asking for an album leaves out its [silence] places, and a file tagged wit
   ];
   const metadata = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
-    if (new URL(request.url || "/", "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
+    if (new URL(request.url || "/", "http://127.0.0.1").pathname !== `/v1/album/${albumMbid}`) {
       response.writeHead(404);
       response.end("{}");
       return;
@@ -1818,20 +1811,20 @@ test("asking for an album leaves out its [silence] places, and a file tagged wit
       JSON.stringify({
         id: albumMbid,
         title: "Silent Album",
-        artistid: artistMbid,
-        artists: [{ id: artistMbid, artistname: "Silent Artist" }],
+        artistId: artistMbid,
+        artists: [{ id: artistMbid, name: "Silent Artist" }],
         releases: [
           {
             id: "silent-release",
             status: "Official",
-            tracks: tracks.map(([recordingid, trackname], index) => ({
+            tracks: tracks.map(([recordingId, title], index) => ({
               id: `silent-release-${index}`,
-              recordingid,
-              trackname,
-              artistid: artistMbid,
-              durationms: 4000,
-              trackposition: index + 1,
-              mediumnumber: 1,
+              recordingId,
+              title,
+              artistId: artistMbid,
+              durationMs: 4000,
+              trackPosition: index + 1,
+              mediumNumber: 1,
             })),
           },
         ],
