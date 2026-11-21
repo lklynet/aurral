@@ -211,6 +211,7 @@ type LibraryItemMenuProps = {
   disabled?: boolean;
   contextMenu?: boolean;
   align?: "start" | "end";
+  tooltipPlacement?: "top";
 };
 
 export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
@@ -227,6 +228,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     disabled = false,
     contextMenu = true,
     align = "end",
+    tooltipPlacement,
   }: LibraryItemMenuProps,
   ref: ForwardedRef<LibraryItemMenuHandle>,
 ) {
@@ -557,7 +559,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
                 ) : null}
                 {item.description ? (
                   <span className="artist-menu-item__copy">
-                    <span className="artist-menu-item__title">{item.label}</span>
+                    <span>{item.label}</span>
                     <span className="artist-menu-item__description">{item.description}</span>
                   </span>
                 ) : (
@@ -584,6 +586,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
         ref={triggerRef}
         className={`${triggerClassName}${open ? " is-open" : ""}`}
         label={triggerLabel}
+        tooltipPlacement={tooltipPlacement}
         aria-label={triggerLabel}
         aria-haspopup="menu"
         aria-expanded={open}

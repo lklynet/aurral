@@ -3852,23 +3852,31 @@ textarea:disabled {
 
 .artist-menu-item__main {
   display: inline-flex;
+  min-width: 0;
   align-items: center;
   gap: 0.5rem;
+}
+
+.artist-menu-item__main > svg {
+  flex-shrink: 0;
+}
+
+.artist-menu-item:has(.artist-menu-item__description):not(.artist-menu-item--danger) {
+  color: var(--aurral-text);
 }
 
 .artist-menu-item__copy {
   display: grid;
   min-width: 0;
+  gap: 0.125rem;
+  overflow-wrap: anywhere;
   text-align: start;
-}
-
-.artist-menu-item__title {
-  color: var(--aurral-text);
 }
 
 .artist-menu-item__description {
   color: var(--aurral-text-muted);
   font-size: var(--aurral-font-xs);
+  text-wrap: balance;
 }
 
 .artist-menu-submenu {

@@ -698,7 +698,6 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
 
   const markSaved = useCallback((changed: number) => {
     remoteSeenRef.current = Math.max(remoteSeenRef.current, changed);
-    pullsRef.current += 1;
     setRemoteOffer((offer) => (offer && offer.changed <= changed ? null : offer));
   }, []);
 
@@ -887,6 +886,7 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     channel.onmessage = (event: MessageEvent<unknown>) => {
       if (!isRecord(event.data) || event.data.type !== "playing") return;
       ownsQueueRef.current = false;
+      pullsRef.current += 1;
       setRemoteOffer(null);
       const snapshot = engine.getSnapshot();
       if (snapshot.isPlaying || snapshot.isStarting) engine.pause();
