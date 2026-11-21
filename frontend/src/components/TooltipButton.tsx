@@ -23,7 +23,7 @@ const TooltipButton = forwardRef<HTMLButtonElement, TooltipButtonProps>(function
   const tooltipLabel = tooltipTitle ?? label;
 
   return (
-    <Tooltip content={tooltipLabel} placement={tooltipPlacement} delay={1000}>
+    <Tooltip content={tooltipLabel} placement={tooltipPlacement} delay={1000} dismissOnPress>
       <button
         {...buttonProps}
         ref={ref}

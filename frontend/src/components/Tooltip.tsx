@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type FocusEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent,
   type ReactNode,
 } from "react";
@@ -27,6 +28,7 @@ interface TriggerProps {
   children?: ReactNode;
   onBlur?: (event: FocusEvent<HTMLElement>) => void;
   onFocus?: (event: FocusEvent<HTMLElement>) => void;
+  onKeyDown?: (event: ReactKeyboardEvent<HTMLElement>) => void;
   onPointerDown?: (event: PointerEvent<HTMLElement>) => void;
   onPointerEnter?: (event: PointerEvent<HTMLElement>) => void;
   onPointerLeave?: (event: PointerEvent<HTMLElement>) => void;
@@ -62,6 +64,7 @@ interface TooltipProps {
   content?: ReactNode;
   placement?: TooltipPlacement;
   delay?: number;
+  dismissOnPress?: boolean;
   children: ReactNode;
 }
 
@@ -69,6 +72,7 @@ export default function Tooltip({
   content,
   placement = "side",
   delay = 0,
+  dismissOnPress = false,
   children,
 }: TooltipProps) {
   const tooltipId = useId();
@@ -168,6 +172,10 @@ export default function Tooltip({
 
   if (!isValidElement<TriggerProps>(children) || content == null || content === "") return children;
 
+  const dismissPress = () => {
+    cancelPendingShow();
+    dismissTooltip();
+  };
   const needsLabel = needsTooltipLabel(children);
   const tooltipProvidesLabel = needsLabel || children.props["aria-label"] === String(content);
   const triggerProps: TriggerProps = {
@@ -181,10 +189,13 @@ export default function Tooltip({
     onFocus: chainHandlers(children.props.onFocus, (event) => {
       if (event.target.matches(":focus-visible")) showTooltip(event.currentTarget, "focus");
     }),
-    onPointerDown: chainHandlers(children.props.onPointerDown, () => {
-      cancelPendingShow();
-      dismissTooltip();
-    }),
+    onKeyDown: dismissOnPress
+      ? chainHandlers(children.props.onKeyDown, dismissPress)
+      : children.props.onKeyDown,
+    onPointerDown: chainHandlers(
+      children.props.onPointerDown,
+      dismissOnPress ? dismissPress : cancelPendingShow,
+    ),
     onPointerEnter: chainHandlers(children.props.onPointerEnter, (event) => {
       const trigger = event.currentTarget;
       cancelPendingShow();
