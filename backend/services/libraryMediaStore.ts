@@ -54,7 +54,7 @@ const hasNonLatinLetters = (value: unknown) =>
   /(?![a-z0-9])[\p{L}\p{N}]/u.test(
     spellLetters(value)
       .normalize("NFKD")
-      .replace(/[̀-ͯ]/g, ""),
+      .replace(/[\u0300-\u036f]/g, ""),
   );
 
 const asciiKeyPart = (value: unknown) =>
