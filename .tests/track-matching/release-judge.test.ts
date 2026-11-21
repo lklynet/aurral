@@ -131,7 +131,7 @@ test("repeated titles pair by place, then by the closest lengths", () => {
   assert.deepEqual(judgeRelease(timed, listing(timed, unplaced)).fileForTrack, [0, 1]);
 });
 
-test("a distinct bonus song rejects the release for the whole album and for one wanted track", () => {
+test("a distinct bonus song is left out of a release that holds every track", () => {
   for (const bonus of [
     {
       title: "Bonus Song",
@@ -152,11 +152,9 @@ test("a distinct bonus song rejects the release for the whole album and for one 
       { artists: [], ...bonus },
     ]);
     const verdict = judgeRelease(album, offered);
-    assert.equal(verdict.kind, "rejected", bonus.title);
-    assert.equal(verdict.reason, "extra-tracks");
-    assert.deepEqual(verdict.extras, [4]);
-    assert.deepEqual([...verdict.missing], []);
-    assert.equal(releaseHolds(album, offered, 0), false);
+    assert.equal(verdict.kind, "exact", bonus.title);
+    assert.deepEqual(verdict.copiesForTrack, [[0], [1], [2], [3]]);
+    assert.equal(releaseHolds(album, offered, 0), true);
   }
 });
 
@@ -222,34 +220,29 @@ test("a copy whose length misses the window beside its verified copy is not an e
       path: "The Band/Album/05 Bonus Song.flac",
     },
   ]);
-  assert.equal(judgeRelease(album, withBonus).reason, "extra-tracks");
-  assert.equal(releaseHolds(album, withBonus, 0), false);
+  assert.equal(judgeRelease(album, withBonus).reason, "missing-tracks");
+  assert.equal(releaseHolds(album, withBonus, 0), true);
+  assert.equal(releaseHolds(album, withBonus, 3), false);
 });
 
 test("a second file is a copy only when it is the same song at a compatible place and length", () => {
   const parts = release(["Part 1", "Part 2", "Closer"]);
   const complete = parts.tracks.map((_, index) => fileFor(parts, index));
-  for (const [name, extra, reason] of [
-    [
-      "live copy",
-      fileFor(parts, 0, { title: "Part 1 (Live)", trackNumber: null }),
-      "unrequested-variant",
-    ],
+  for (const [name, extra] of [
+    ["live copy", fileFor(parts, 0, { title: "Part 1 (Live)", trackNumber: null })],
     [
       "copy eleven seconds longer",
       fileFor(parts, 0, {
         durationMs: requireFixture(parts.tracks[0]).durationMs + 11000,
         trackNumber: null,
       }),
-      "extra-tracks",
     ],
-    ["copy at another place", fileFor(parts, 0, { trackNumber: 3 }), "extra-tracks"],
-    ["similar title", fileFor(parts, 0, { title: "Part 3", trackNumber: null }), "extra-tracks"],
-  ] satisfies [unknown, unknown, unknown][]) {
+    ["copy at another place", fileFor(parts, 0, { trackNumber: 3 })],
+    ["similar title", fileFor(parts, 0, { title: "Part 3", trackNumber: null })],
+  ] satisfies [unknown, unknown][]) {
     const verdict = judgeRelease(parts, listing(parts, [...complete, extra]));
-    assert.equal(verdict.kind, "rejected", name);
-    assert.equal(verdict.reason, reason, name);
-    assert.deepEqual(verdict.extras, [3], name);
+    assert.equal(verdict.kind, "exact", name);
+    assert.deepEqual(verdict.copiesForTrack, [[0], [1], [2]], name);
   }
 });
 

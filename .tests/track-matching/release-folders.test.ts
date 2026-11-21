@@ -115,9 +115,14 @@ test("disc folders named by word, format, or subtitle join one release folder", 
       { tracks: mellon.tracks.slice(2) },
     ),
   ];
-  assert.equal(
-    selectSoulseekAlbumFolder(deluxe, jobsFor(mellon), { manifest: mellon }).decision,
-    "skip",
+  assert.deepEqual(
+    picked(selectSoulseekAlbumFolder(deluxe, jobsFor(mellon), { manifest: mellon })),
+    [
+      ["job-0", "01 - Tonight.flac"],
+      ["job-1", "02 - Zero.flac"],
+      ["job-2", "01 - Bodies.flac"],
+      ["job-3", "02 - Thirty-Three.flac"],
+    ],
   );
 });
 

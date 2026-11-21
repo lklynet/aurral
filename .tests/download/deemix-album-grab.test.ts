@@ -342,7 +342,7 @@ const deezerAlbum = (tracks: ReturnType<typeof albumTrack>[]) => ({
   tracks,
 });
 
-test("deemix album grab takes only an album whose whole tracklist is the requested release", async (t) => {
+test("deemix album grab takes only an album whose tracklist holds the whole requested release", async (t) => {
   const { getDownloadClient } =
     await import("../../backend/services/download/downloadClientSettings.ts");
   const client = getDownloadClient("deemix");
@@ -353,18 +353,12 @@ test("deemix album grab takes only an album whose whole tracklist is the request
       albumTrack(title, index, { readable: false }),
     ),
     deluxe: ["First", "Second", "Bonus"].map((title, index) => albumTrack(title, index)),
-    hidden: ["First", "Second", "Bonus"].map((title, index) =>
-      albumTrack(title, index, { readable: index < 2 }),
-    ),
-    exact: ["First", "Second"].map((title, index) => albumTrack(title, index)),
   };
   vi.spyOn(client, "searchAlbums").mockImplementation(async () => [
     albumEntry("other", "Other Album"),
     albumEntry("wrong", "Album"),
     albumEntry("locked", "Album"),
     albumEntry("deluxe", "Album (Deluxe Edition)"),
-    albumEntry("hidden", "Album"),
-    albumEntry("exact", "Album"),
   ]);
   const tracklist = vi
     .spyOn(client, "getAlbum")
@@ -374,7 +368,7 @@ test("deemix album grab takes only an album whose whole tracklist is the request
   assert.equal(result.phase, "download");
   assert.deepEqual(
     deemixCandidates(result).map((candidate) => candidate.raw.id),
-    ["exact"],
+    ["deluxe"],
   );
   assert.ok(!tracklist.mock.calls.some((call) => call[0] === "other"));
 });
