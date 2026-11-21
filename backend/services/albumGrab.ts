@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import { isRecord } from "../../lib/isRecord.ts";
 import type { PipelinePayload } from "./downloadPipeline.ts";
 import path from "node:path";
@@ -36,7 +37,9 @@ import {
   withPipelineCommitLock,
 } from "./downloadJobs/downloadCancellation.ts";
 import { downloadDestinationForJob } from "./downloadJobs/downloadOwnership.ts";
-import { attemptRelease } from "./releaseResolver.ts";
+import { storeLibraryAlbumTrackList, findLibraryAlbumTrack } from "./libraryMediaStore.ts";
+import { scheduleLibraryScan } from "./libraryScanWorker.ts";
+import { attemptRelease, monitoredEditionAlbum } from "./releaseResolver.ts";
 
 type AlbumGrabCandidate = { raw?: unknown; releaseVerified?: unknown };
 
@@ -270,11 +273,13 @@ export async function finishAlbumGrab<Payload extends PipelinePayload>(
   // Only a listing the release judge accepted proves the release. A Usenet
   // title never does, and a candidate queued before candidates said so is
   // judged by its files like one.
+  const monitoredAlbum = source === "usenet" ? monitoredEditionAlbum(jobs, manifest) : null;
   const assigned = await assignDownloadedAlbumFiles({
     jobs,
     filePaths,
     source,
     manifest,
+    allowLargerEdition: monitoredAlbum != null,
     verified: getPayloadCandidate<AlbumGrabCandidate>(payload)?.releaseVerified === true,
   });
   if (assigned.rejected.length > 0) {
@@ -302,6 +307,58 @@ export async function finishAlbumGrab<Payload extends PipelinePayload>(
     indexerName: grabLeader?.indexerName ?? null,
     remoteUsername: grabLeader?.remoteUsername ?? null,
   };
+  const otherEdition = assigned.otherEdition;
+  if (otherEdition && monitoredAlbum != null) {
+    const leader = jobs[0]!;
+    const destination = joinUnderRoot(playlistRoot, downloadDestinationForJob(leader));
+    const committed = await withPipelineCommitLock(payload, async () => {
+      if (monitoredEditionAlbum(jobs, manifest) !== monitoredAlbum) return false;
+      const completed = downloadTracker
+        .getByAlbumMbid((mbid) => mbid === manifest.releaseGroupMbid)
+        .filter((job) => job.status === "done" && job.playlistType === "library");
+      for (const bonus of assigned.bonusFiles) {
+        const track = bonus.track;
+        const local = findLibraryAlbumTrack(`release-group:${manifest.releaseGroupMbid}`, {
+          title: track.trackName,
+          discNumber: track.discNumber ?? 1,
+          trackNumber: track.trackNumber ?? 0,
+        });
+        if (local && (local.has_files || !local.monitored)) continue;
+        const finalPath = path.join(
+          destination,
+          buildTrackFileName(track, path.extname(bonus.filePath)),
+        );
+        const existing = completed.find(
+          (job) =>
+            job.trackMbid === track.trackMbid &&
+            job.trackNumber === track.trackNumber &&
+            job.discNumber === track.discNumber,
+        );
+        if (
+          existing?.finalPath &&
+          (await fs.stat(existing.finalPath).then(
+            (stat) => stat.isFile(),
+            () => false,
+          ))
+        )
+          continue;
+        const saved = await commitDownloadedFile(bonus.filePath, finalPath, {
+          preserveSource: true,
+        });
+        await writeImportedFileMetadata(saved, track, { source, jobId: leader.id });
+        const job = downloadTracker.ensureLibraryTrackJob(track, saved);
+        if (job) {
+          downloadTracker.updateDownloadMetadata(job.id, albumMetadata);
+          if (bonus.quality) downloadTracker.updateQuality(job.id, bonus.quality);
+        }
+        scheduleLibraryScan({ includeReadOnly: false, changedPaths: [saved] });
+      }
+      return true;
+    });
+    if (committed.cancelled) return null;
+    if (!committed.result)
+      return fallbackAlbumGrabToTracks(payload, "The monitored edition changed");
+  }
   for (const match of assigned.accepted) {
     const job = downloadTracker.getJob(match.jobId);
     if (!job || !["pending", "downloading"].includes(job.status)) continue;
@@ -317,13 +374,20 @@ export async function finishAlbumGrab<Payload extends PipelinePayload>(
       const ext = path.extname(match.filePath).toLowerCase() || ".flac";
       const destination = joinUnderRoot(playlistRoot, peerPayload.destination);
       const placed = match.trackNumber
-        ? { ...job, trackNumber: match.trackNumber, discNumber: match.discNumber }
+        ? {
+            ...job,
+            releaseMbid: otherEdition?.manifest.releaseMbid ?? job.releaseMbid,
+            trackNumber: match.trackNumber,
+            discNumber: match.discNumber,
+          }
         : job;
       const finalPath = path.join(destination, buildTrackFileName(placed, ext));
       const committed = await withPipelineCommitLock(peerPayload, async () => {
         const committedFinalPath = inPlace
           ? match.filePath
-          : await commitDownloadedFile(match.filePath, finalPath);
+          : await commitDownloadedFile(match.filePath, finalPath, {
+              preserveSource: !!otherEdition,
+            });
         if (!inPlace)
           await writeImportedFileMetadata(committedFinalPath, buildResolvedJobTrack(placed), {
             source,
@@ -351,6 +415,20 @@ export async function finishAlbumGrab<Payload extends PipelinePayload>(
         reason: safeLogDiagnostic(error),
       });
     }
+  }
+  if (
+    otherEdition &&
+    monitoredAlbum != null &&
+    jobs.every((job) => job.status === "done") &&
+    monitoredEditionAlbum(jobs, manifest) === monitoredAlbum
+  ) {
+    storeLibraryAlbumTrackList(monitoredAlbum, {
+      release: { ...otherEdition.release, title: jobs[0]?.albumName || otherEdition.release.title },
+      useReleasePositions: true,
+      artistNameFor: (track) =>
+        otherEdition.manifest.tracks.find((entry) => entry.recordingMbid === track.recordingId)
+          ?.artists[0] ?? null,
+    });
   }
   if (assigned.accepted.length === 0 || (filePaths || []).length > assigned.unreadableCount) {
     blockAlbumGrabSource(payload, albumGrabJobs(payload));

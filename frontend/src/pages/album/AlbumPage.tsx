@@ -205,7 +205,7 @@ function AlbumPage() {
   } = useReleaseGroupTracks(releaseGroupMbid, {
     artistMbid: locationState?.artistMbid || undefined,
     deezerAlbumId: focusRelease?.deezerAlbumId ? String(focusRelease.deezerAlbumId) : undefined,
-    release: editions.previewRelease,
+    release: editions.tracklistRelease,
   });
 
   useEffect(() => {
@@ -638,6 +638,9 @@ function AlbumPage() {
                   </span>
                 </Fragment>
               ))}
+              {editions.differentEdition && !editions.previewRelease ? (
+                <span> · Different edition in Library</span>
+              ) : null}
               {meta.length ? null : unmonitoredIcon}
             </>
           )

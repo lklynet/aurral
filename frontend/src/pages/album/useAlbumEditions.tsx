@@ -34,7 +34,9 @@ export function useAlbumEditions({
     staleTime: 5 * 60 * 1000,
   });
   const editions = data?.editions ?? NO_EDITIONS;
-  const library = data?.library ?? null;
+  const preferred = data?.library ?? null;
+  const library = data?.fileEdition ?? preferred;
+  const differentEdition = Boolean(preferred && library && preferred !== library);
   const fallback = library ?? editions[0]?.id ?? null;
   const visible = editions.length > 1 && (libraryAlbumId == null || library != null);
   const requested = searchParams.get("edition");
@@ -103,6 +105,8 @@ export function useAlbumEditions({
                   {" · "}
                   <span className="native-library-detail__edition-owned">In Library</span>
                 </>
+              ) : differentEdition && edition.id === preferred ? (
+                " · Requested"
               ) : null}
             </>
           ),
@@ -114,19 +118,28 @@ export function useAlbumEditions({
     libraryAlbumId != null && previewRelease && libraryEdition
       ? {
           name: libraryEdition.name,
-          action: canChoose ? (
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => void adopt()}
-              disabled={saving}
-              aria-busy={saving}
-            >
-              Use this edition
-            </button>
-          ) : null,
+          action:
+            canChoose && previewRelease !== preferred ? (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => void adopt()}
+                disabled={saving}
+                aria-busy={saving}
+              >
+                Use this edition
+              </button>
+            ) : null,
         }
       : null;
 
-  return { visible, viewing, previewRelease, select, note };
+  return {
+    visible,
+    viewing,
+    previewRelease,
+    tracklistRelease: previewRelease ?? (differentEdition && library ? library : undefined),
+    differentEdition,
+    select,
+    note,
+  };
 }

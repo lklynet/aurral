@@ -1738,10 +1738,12 @@ export function storeLibraryAlbumTrackList(
   {
     release,
     basis = null,
+    useReleasePositions = false,
     artistNameFor = () => null,
   }: {
     release: AlbumRelease | null;
     basis?: string | null;
+    useReleasePositions?: boolean;
     artistNameFor?: (track: ReleaseTrack) => string | null;
   },
 ) {
@@ -1789,6 +1791,28 @@ export function storeLibraryAlbumTrackList(
       return songs.get(songKey(track.title))!.length === 1 && named.length === 1 ? named[0] : null;
     });
     fill((track) => unused.find(recorded(track)));
+    if (useReleasePositions) {
+      // Delete the old places first: a recording may occur twice and its places may swap.
+      const moved = places.flatMap((have, index) => {
+        const place = tracks[index]!;
+        return have &&
+          (have.disc_number !== place.discNumber || have.track_number !== place.trackNumber)
+          ? [{ have, place }]
+          : [];
+      });
+      const remove = db.prepare(
+        "DELETE FROM library_album_tracks WHERE album_id=? AND track_id=? AND disc_number=? AND track_number=?",
+      );
+      for (const { have } of moved)
+        remove.run(album.id, have.id, have.disc_number, have.track_number);
+      for (const { have, place } of moved)
+        linkLibraryAlbumTrack({
+          albumId: album.id,
+          trackId: have.id,
+          discNumber: place.discNumber,
+          trackNumber: place.trackNumber,
+        });
+    }
     const recordings = [];
     for (const [index, track] of tracks.entries()) {
       const have = places[index];
