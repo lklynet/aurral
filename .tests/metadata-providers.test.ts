@@ -388,6 +388,10 @@ test("metadata past its stale window is removed from storage", async () => {
   const previousSettings = dbOps.getSettings();
   const server = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
+    if (request.url?.startsWith("/v1/search/artist")) {
+      response.end(JSON.stringify({ artists: [] }));
+      return;
+    }
     response.end(
       JSON.stringify({ id: requireFixture(request.url).split("/").at(-1), title: "Album" }),
     );
@@ -854,7 +858,9 @@ test("search metadata coalesces concurrent misses and shares fresh cache entries
     const requestNumber = ++requests;
     resolveRequestStarted();
     void responseReleased.then(() => {
-      response.end(JSON.stringify([{ id: `artist-${requestNumber}`, name: "Artist" }]));
+      response.end(
+        JSON.stringify({ artists: [{ id: `artist-${requestNumber}`, name: "Artist" }] }),
+      );
     });
   });
   try {
@@ -889,7 +895,7 @@ test("album search shows no results when its MusicBrainz fallback is down", asyn
   const previousSettings = dbOps.getSettings();
   const server = await createMockHttpServer((_request, response) => {
     response.setHeader("content-type", "application/json");
-    response.end("[]");
+    response.end(JSON.stringify({ albums: [] }));
   });
   const providerGet = http.get.bind(http);
   vi.spyOn(http, "get").mockImplementation(async (url, options) => {

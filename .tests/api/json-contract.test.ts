@@ -126,10 +126,22 @@ beforeAll(async () => {
   resetDatabase(db);
   metadataServer = await createMockHttpServer((request, response) => {
     response.setHeader("Content-Type", "application/json");
-    if (requireFixture(request.url).startsWith("/search/artist"))
-      return response.end(JSON.stringify([artistData]));
-    if (requireFixture(request.url).startsWith("/search/album"))
-      return response.end(JSON.stringify([albumData]));
+    if (requireFixture(request.url).startsWith("/v1/search/artist"))
+      return response.end(JSON.stringify({ artists: [artistData] }));
+    if (requireFixture(request.url).startsWith("/v1/search/album"))
+      return response.end(
+        JSON.stringify({
+          albums: [{ ...albumData, artistId: artistMbid, artistName: artistData.name }],
+        }),
+      );
+    if (requireFixture(request.url).startsWith("/v1/search"))
+      return response.end(
+        JSON.stringify({
+          artists: [artistData],
+          albums: [{ ...albumData, artistId: artistMbid, artistName: artistData.name }],
+          tracks: [],
+        }),
+      );
     if (request.url === `/v1/artist/${artistMbid}`) return response.end(JSON.stringify(artistData));
     if (request.url === `/v1/album/${albumMbid}`) return response.end(JSON.stringify(albumData));
     response.writeHead(404).end(JSON.stringify({ error: "Unknown fixture" }));

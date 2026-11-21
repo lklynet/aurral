@@ -42,6 +42,7 @@ const albumSearchResult = (
   type: "Album",
   releaseDate: "2001-03-12",
   artistId: artistEntry.id,
+  artistName: artistEntry.name,
   artists: [artistEntry],
   images: [],
 });
@@ -100,7 +101,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   resetDatabase(db);
   provider.clearMetadataProviderCaches();
-  metadataRoutes = { "/search/artist": [], "/search/album": [] };
+  metadataRoutes = { "/v1/search/artist": { artists: [] }, "/v1/search/album": { albums: [] } };
   dbOps.updateSettings({
     onboardingComplete: true,
     integrations: {
@@ -127,8 +128,10 @@ afterAll(async () => {
 test("a Spotify album link resolves through song.link to MusicBrainz ids and is cached by URL", async (t) => {
   const pinkFloydArtist = artist(pinkFloyd, "Pink Floyd");
   metadataRoutes = {
-    "/search/artist": [pinkFloydArtist],
-    "/search/album": [albumSearchResult(darkSide, "The Dark Side of the Moon", pinkFloydArtist)],
+    "/v1/search/artist": { artists: [pinkFloydArtist] },
+    "/v1/search/album": {
+      albums: [albumSearchResult(darkSide, "The Dark Side of the Moon", pinkFloydArtist)],
+    },
     [`/v1/album/${darkSide}`]: albumSearchResult(
       darkSide,
       "The Dark Side of the Moon",
@@ -162,8 +165,8 @@ test("a Spotify album link resolves through song.link to MusicBrainz ids and is 
 test("Apple Music links resolve the artist, album, and recording without reusing another album's match", async (t) => {
   const daftPunkArtist = artist(daftPunk, "Daft Punk");
   metadataRoutes = {
-    "/search/artist": [daftPunkArtist],
-    "/search/album": [albumSearchResult(discovery, "Discovery", daftPunkArtist)],
+    "/v1/search/artist": { artists: [daftPunkArtist] },
+    "/v1/search/album": { albums: [albumSearchResult(discovery, "Discovery", daftPunkArtist)] },
     [`/v1/album/${discovery}`]: {
       ...albumSearchResult(discovery, "Discovery", daftPunkArtist),
       releases: [

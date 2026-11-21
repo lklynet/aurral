@@ -76,9 +76,9 @@ const respond = (url: URL) => {
     const similar = similarBySeed.get(seedNames[Number(related[1]) - 1] ?? "") ?? [];
     return { data: similar.map((artist, index) => ({ id: 100 + index, name: artist.name })) };
   }
-  if (url.hostname === "data.aurral.org" && url.pathname === "/search/artist") {
-    const artist = knownArtists.find(({ name }) => name === url.searchParams.get("query"));
-    return artist ? [{ id: artist.mbid, name: artist.name }] : [];
+  if (url.hostname === "data.aurral.org" && url.pathname === "/v1/search/artist") {
+    const artist = knownArtists.find(({ name }) => name === url.searchParams.get("q"));
+    return { artists: artist ? [{ id: artist.mbid, name: artist.name }] : [] };
   }
   if (url.hostname === "data.aurral.org" && url.pathname.startsWith("/v1/artist/")) {
     const id = url.pathname.slice("/v1/artist/".length);

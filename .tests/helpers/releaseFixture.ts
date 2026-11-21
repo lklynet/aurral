@@ -85,7 +85,14 @@ export function brainzmashGroup({
 // a release loads by its ID through the real metadata path. An unavailable
 // path answers 503, and a missing one 404, as a provider that does not know it.
 // A searchable provider also finds a group by its exact title.
-export async function serveGroups<Group extends { id: string; title?: string; releases?: unknown }>(
+export async function serveGroups<
+  Group extends {
+    id: string;
+    title?: string;
+    artists?: { id?: string; name?: string }[];
+    releases?: unknown;
+  },
+>(
   t: TestContext,
   groups: Group[],
   {
@@ -119,14 +126,17 @@ export async function serveGroups<Group extends { id: string; title?: string; re
     const parsed = new URL(url);
     if (parsed.hostname !== METADATA_HOST) return original.call(http, url, ...rest);
     const down = unavailable(parsed.pathname);
-    const query = String(
-      rest[0]?.query?.query ?? parsed.searchParams.get("query") ?? "",
-    ).toLowerCase();
+    const query = String(rest[0]?.query?.q ?? parsed.searchParams.get("q") ?? "").toLowerCase();
     const found =
-      searchable && parsed.pathname === "/search/album"
-        ? groups
-            .filter((group) => String(group.title || "").toLowerCase() === query)
-            .map(({ releases, ...group }) => group)
+      searchable && parsed.pathname === "/v1/search/album"
+        ? {
+            albums: groups
+              .filter((group) => String(group.title || "").toLowerCase() === query)
+              .map(({ releases, ...group }) => ({
+                ...group,
+                artistName: group.artists?.[0]?.name ?? "",
+              })),
+          }
         : null;
     const data = down || missing(parsed.pathname) ? null : found || byPath.get(parsed.pathname);
     if (data)

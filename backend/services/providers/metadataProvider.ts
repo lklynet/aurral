@@ -15,22 +15,27 @@ import {
 } from "./metadataRanking.ts";
 import {
   albumSchema,
+  albumSearchResponseSchema,
   artistDetailSchema,
+  artistSearchResponseSchema,
   genreSchema,
   genresIndexSchema,
-  searchAlbumSchema,
-  searchArtistSchema,
+  searchAlbumItemSchema,
+  searchArtistItemSchema,
+  searchTrackItemSchema,
   toNormalizedAlbum,
   toNormalizedArtist,
   toNormalizedGenre,
   toNormalizedSearchArtist,
+  toNormalizedSearchTrack,
+  unifiedSearchResponseSchema,
   type MetadataImage,
   type NormalizedAlbum,
   type NormalizedArtist,
   type NormalizedArtistAlbum,
   type NormalizedRelease,
+  type NormalizedSearchTrack,
 } from "./metadataMappers.ts";
-import { selectAlbumCover } from "../imageRanking.ts";
 import {
   coreAlbumTitle,
   isSilenceTrack,
@@ -49,8 +54,6 @@ import { describeCurrentWork } from "../eventLoopWatch.ts";
 import { recordMetadataCall } from "../metadataProviderBudget.ts";
 
 type CachedMetadata<T> = { value: T; freshUntil: number; staleUntil: number };
-
-const searchResultsSchema = v.array(v.unknown());
 
 const releaseGroupSearchSchema = v.looseObject({ "release-groups": v.array(v.unknown()) });
 
@@ -151,6 +154,7 @@ interface AlbumSearchItem {
   images: MetadataImage[];
   inLibrary: boolean;
   score: number;
+  listeners: number;
   releaseStatuses: string[];
 }
 
@@ -286,6 +290,9 @@ function createMetadataNotFoundError() {
 
 function endpointName(path: string) {
   if (path === "/v1/genres") return "genres";
+  if (path === "/v1/search") return "search";
+  const searchMatch = /^\/v1\/search\/(artist|album|track)$/.exec(path);
+  if (searchMatch) return `search/${searchMatch[1]!}`;
   const match = /^\/v1\/(album|artist|genre)\/[^/]+$/.exec(path);
   if (match) return match[1]!;
   return path.replace(/^\/+/, "");
@@ -971,6 +978,62 @@ export async function getAlbumTracksByAlbumMbid(
     });
 }
 
+function toAlbumSearchItem(
+  entry: v.InferOutput<typeof searchAlbumItemSchema>,
+  index: number,
+  fallbackArtistName = "",
+): AlbumSearchItem {
+  const coverUrl = String(entry.cover || "").trim() || null;
+  const listeners =
+    typeof entry.listeners === "number" && Number.isFinite(entry.listeners) && entry.listeners > 0
+      ? Math.round(entry.listeners)
+      : 0;
+  return {
+    id: entry.id,
+    title: entry.title || "Untitled Release",
+    artistName: String(entry.artistName || "").trim() || fallbackArtistName || "Unknown Artist",
+    artistId: String(entry.artistId || "").trim() || null,
+    type: entry.type || "Album",
+    secondaryTypes: (entry.secondaryTypes ?? []).map((value) => value.trim()).filter(Boolean),
+    releaseDate: String(entry.releaseDate || "").trim() || null,
+    coverUrl,
+    images: coverUrl ? [{ kind: "Cover", url: coverUrl }] : [],
+    inLibrary: false,
+    score: Math.max(0, 100 - index),
+    listeners,
+    releaseStatuses: [],
+  };
+}
+
+export async function searchUnifiedCatalog(
+  query: string,
+  { limit = 30, signal }: { limit?: number; signal?: AbortSignal } = {},
+): Promise<{
+  artists: NormalizedArtist[];
+  albums: AlbumSearchItem[];
+  tracks: NormalizedSearchTrack[];
+}> {
+  const data = await request(
+    unifiedSearchResponseSchema,
+    "/v1/search",
+    { q: query, limit },
+    { signal },
+  );
+  const artists = readMany(searchArtistItemSchema, data.artists ?? [], {
+    service: "Metadata",
+    endpoint: "/v1/search",
+  }).map(toNormalizedSearchArtist);
+  const albums = readMany(searchAlbumItemSchema, data.albums ?? [], {
+    service: "Metadata",
+    endpoint: "/v1/search",
+  }).map((entry, index) => toAlbumSearchItem(entry, index));
+  const tracks = readMany(searchTrackItemSchema, data.tracks ?? [], {
+    service: "Metadata",
+    endpoint: "/v1/search",
+  }).map(toNormalizedSearchTrack);
+  return { artists, albums, tracks };
+}
+
 export async function searchArtists(
   query: string,
   {
@@ -982,10 +1045,15 @@ export async function searchArtists(
 ) {
   let items: NormalizedArtist[] = [];
   try {
-    const data = await request(searchResultsSchema, "/search/artist", { query, limit }, { signal });
-    items = readMany(searchArtistSchema, data, {
+    const data = await request(
+      artistSearchResponseSchema,
+      "/v1/search/artist",
+      { q: query, limit },
+      { signal },
+    );
+    items = readMany(searchArtistItemSchema, data.artists ?? [], {
       service: "Metadata",
-      endpoint: "/search/artist",
+      endpoint: "/v1/search/artist",
     }).map(toNormalizedSearchArtist);
   } catch (error) {
     signal?.throwIfAborted();
@@ -1030,47 +1098,20 @@ export async function searchAlbums(
 
   try {
     const data = await request(
-      searchResultsSchema,
-      "/search/album",
+      albumSearchResponseSchema,
+      "/v1/search/album",
       {
-        query,
+        q: query,
         limit: requestedLimit,
         ...(artistName && { artist: artistName }),
       },
       { signal },
     );
-    const albums = readMany(searchAlbumSchema, data, {
+    const albums = readMany(searchAlbumItemSchema, data.albums ?? [], {
       service: "Metadata",
-      endpoint: "/search/album",
+      endpoint: "/v1/search/album",
     });
-    items = albums.map((entry, index) => {
-      const artists = entry.artists ?? [];
-      const artistId = entry.artistId ?? entry.artistid ?? null;
-      const credited = artists.find((artist) => artist.id === artistId) || artists[0];
-      const primaryArtist = credited ? toNormalizedSearchArtist(credited) : null;
-      const images: MetadataImage[] = (entry.images ?? []).flatMap((image) => {
-        const url = String(image.url ?? image.Url ?? "").trim();
-        return url
-          ? [{ kind: String(image.kind ?? image.CoverType ?? "").trim() || "Cover", url }]
-          : [];
-      });
-      const coverImage = selectAlbumCover(images);
-      const coverUrl = String(entry.cover || coverImage?.url || "").trim() || null;
-      return {
-        id: entry.id,
-        title: entry.title || "Untitled Release",
-        artistName: primaryArtist?.name || artistName || "Unknown Artist",
-        artistId: artistId || primaryArtist?.id || null,
-        type: entry.type || "Album",
-        secondaryTypes: entry.secondaryTypes ?? entry.secondarytypes ?? [],
-        releaseDate: entry.releaseDate || entry.releasedate || null,
-        coverUrl,
-        images,
-        inLibrary: false,
-        score: Math.max(0, 100 - index),
-        releaseStatuses: [],
-      };
-    });
+    items = albums.map((entry, index) => toAlbumSearchItem(entry, index, artistName));
   } catch (error) {
     signal?.throwIfAborted();
     failure = error;
@@ -1116,6 +1157,7 @@ export async function searchAlbums(
         images: [],
         inLibrary: false,
         score: entry.score || Math.max(0, 100 - index),
+        listeners: 0,
         releaseStatuses: [],
       };
     });

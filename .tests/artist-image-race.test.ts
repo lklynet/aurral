@@ -38,8 +38,8 @@ globalThis.fetch = async (input) => {
   const url = new URL(String(input));
   const fixture = fixtures.get(`${url.hostname}${url.pathname}`);
   if (fixture) return Response.json(await fixture(url));
-  if (url.hostname === "metadata.invalid" && url.pathname === "/search/artist") {
-    return Response.json([]);
+  if (url.hostname === "metadata.invalid" && url.pathname === "/v1/search/artist") {
+    return Response.json({ artists: [] });
   }
   if (url.hostname === "api.deezer.com" && url.pathname === "/search/artist") {
     return Response.json({ data: [], total: 0 });
@@ -278,14 +278,14 @@ test("an artist without an image never takes a namesake's image or page", async 
   const namesake = artistId(211);
   artist(mbid);
   artist(namesake, { images: [image(oldImage)] });
-  fixtures.set("metadata.invalid/search/artist", async () => [
-    { id: namesake, name: `Artist ${mbid}`, images: [image(oldImage)] },
-  ]);
+  fixtures.set("metadata.invalid/v1/search/artist", async () => ({
+    artists: [{ id: namesake, name: `Artist ${mbid}`, image: oldImage }],
+  }));
   try {
     assert.equal((await getArtistImage(mbid)).url, null);
     assert.equal(dbOps.getArtistOverride(mbid), null);
   } finally {
-    fixtures.delete("metadata.invalid/search/artist");
+    fixtures.delete("metadata.invalid/v1/search/artist");
   }
 });
 

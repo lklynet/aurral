@@ -80,29 +80,31 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
 
   vi.spyOn(http, "get").mockImplementation(async (url, options) => {
     const path = new URL(url).pathname;
-    if (path === "/search/album") {
+    if (path === "/v1/search/album") {
       return {
         status: 200,
         statusText: "OK",
         headers: {},
-        data: options?.query?.artist
-          ? [
-              {
-                id: "wrong-album",
-                title: "Jet Set Radio",
-                artistId: "wrong-artist",
-                artists: [{ id: "wrong-artist", name: "Vulgar Unicorn" }],
-              },
-            ]
-          : [
-              {
-                id: "correct-album",
-                title: "Jet Set Radio Future Original Sound Tracks",
-                artistId: "correct-artist",
-                artists: [{ id: "correct-artist", name: "長沼英樹" }],
-                releaseDate: "2002-03-20",
-              },
-            ],
+        data: {
+          albums: options?.query?.artist
+            ? [
+                {
+                  id: "wrong-album",
+                  title: "Jet Set Radio",
+                  artistId: "wrong-artist",
+                  artistName: "Vulgar Unicorn",
+                },
+              ]
+            : [
+                {
+                  id: "correct-album",
+                  title: "Jet Set Radio Future Original Sound Tracks",
+                  artistId: "correct-artist",
+                  artistName: "長沼英樹",
+                  releaseDate: "2002-03-20",
+                },
+              ],
+        },
       };
     }
     if (path === "/v1/album/wrong-album") {
@@ -503,6 +505,7 @@ const albumEntry = (
   title,
   type: "Album",
   artistId: artist.id,
+  artistName: artist.name,
   artists: [artist],
   ...(tracks && {
     releases: [
@@ -526,11 +529,13 @@ test("a download credited to an artist and a guest takes the lead artist, and no
   const namesake = artistEntry("andrew-dance", "Andrew Dance", { disambiguation: "techno artist" });
   const other = artistEntry("other-band", "Other Band");
   stubMetadata(t, (path, params) => {
-    if (path === "/search/artist") {
-      return params.query === "Dance Gavin Dance" ? [lead] : [lead, namesake];
+    if (path === "/v1/search/artist") {
+      return { artists: params.q === "Dance Gavin Dance" ? [lead] : [lead, namesake] };
     }
-    if (path === "/search/album")
-      return params.artist ? [] : [albumEntry("other-afterburner", "Afterburner", other)];
+    if (path === "/v1/search/album")
+      return {
+        albums: params.artist ? [] : [albumEntry("other-afterburner", "Afterburner", other)],
+      };
     if (path === "/v1/album/other-afterburner")
       return albumEntry("other-afterburner", "Afterburner", other, ["Afterburner"]);
     return null;
@@ -572,7 +577,7 @@ test("a download credited to an artist and a guest takes the lead artist, and no
 test('a download credited with "&" takes the artist MusicBrainz names with "and"', async (t) => {
   const band = artistEntry("belle-and-sebastian", "Belle and Sebastian");
   const namesake = artistEntry("sebastian", "Sebastian", { disambiguation: "French producer" });
-  stubMetadata(t, (path) => (path === "/search/artist" ? [namesake, band] : null));
+  stubMetadata(t, (path) => (path === "/v1/search/artist" ? { artists: [namesake, band] } : null));
 
   const resolved = await resolveTrackSearchContext({
     artistName: "Belle & Sebastian",
@@ -601,10 +606,12 @@ test("a download takes the album of its title that lists the song, over the albu
     requireFixture(deluxe.releases[0]),
   );
   stubMetadata(t, (path: string, params) => {
-    if (path === "/search/album") {
-      return Object.values(albums)
-        .filter((album) => album.title === params.query)
-        .map(({ releases, ...album }) => album);
+    if (path === "/v1/search/album") {
+      return {
+        albums: Object.values(albums)
+          .filter((album) => album.title === params.q)
+          .map(({ releases, ...album }) => album),
+      };
     }
     if (path === "/v1/artist/weezer") {
       return {
@@ -709,7 +716,8 @@ test("a download takes the album of its title from the year it names, when the a
   };
   const fetched: string[] = [];
   stubMetadata(t, (path: string) => {
-    if (path === "/search/album" || path === "/ws/2/release-group") return [];
+    if (path === "/v1/search/album") return { albums: [] };
+    if (path === "/ws/2/release-group") return { "release-groups": [] };
     if (path === "/v1/artist/hits-band") {
       return {
         ...band,
@@ -831,16 +839,18 @@ test("a track's tracklist, place, and length all come from the edition its relea
 test("a track that names only its release and album title is searched on that release", async (t) => {
   const album = editionAlbum();
   stubMetadata(t, (path) => {
-    if (path === "/search/album")
-      return [
-        {
-          id: album.id,
-          title: album.title,
-          type: "Album",
-          artistId: album.artistId,
-          artists: album.artists,
-        },
-      ];
+    if (path === "/v1/search/album")
+      return {
+        albums: [
+          {
+            id: album.id,
+            title: album.title,
+            type: "Album",
+            artistId: album.artistId,
+            artistName: album.artists[0]?.name ?? "",
+          },
+        ],
+      };
     return path === "/v1/album/edition-album" ? album : null;
   });
   const resolved = await resolveTrackSearchContext({
@@ -858,16 +868,18 @@ test("a track that names only its release and album title is searched on that re
 test("an album ID the metadata provider does not know is replaced by the album its title names", async (t) => {
   const album = editionAlbum();
   stubMetadata(t, (path) => {
-    if (path === "/search/album")
-      return [
-        {
-          id: album.id,
-          title: album.title,
-          type: "Album",
-          artistId: album.artistId,
-          artists: album.artists,
-        },
-      ];
+    if (path === "/v1/search/album")
+      return {
+        albums: [
+          {
+            id: album.id,
+            title: album.title,
+            type: "Album",
+            artistId: album.artistId,
+            artistName: album.artists[0]?.name ?? "",
+          },
+        ],
+      };
     if (path === "/v1/album/edition-deluxe")
       throw Object.assign(new Error("Not Found"), { response: { status: 404 } });
     return path === "/v1/album/edition-album" ? album : null;

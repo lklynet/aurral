@@ -110,11 +110,13 @@ beforeAll(async () => {
       body = artists[url.pathname.split("/")[3] ?? ""] || null;
     if (url.pathname.startsWith("/v1/album/"))
       body = groups[url.pathname.split("/")[3] ?? ""] || null;
-    if (url.pathname === "/search/artist") {
-      body =
-        url.searchParams.get("query") === "Wrongly Matched"
-          ? [{ id: MATCHED_BY_NAME_MBID, name: "Wrongly Matched" }]
-          : [];
+    if (url.pathname === "/v1/search/artist") {
+      body = {
+        artists:
+          url.searchParams.get("q") === "Wrongly Matched"
+            ? [{ id: MATCHED_BY_NAME_MBID, name: "Wrongly Matched" }]
+            : [],
+      };
     }
     if (!body) {
       response.writeHead(404);

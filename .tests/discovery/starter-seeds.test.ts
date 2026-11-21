@@ -70,7 +70,7 @@ beforeAll(() => {
     const url = new URL(String(input));
     const related = /^\/artist\/(\d+)\/related$/.exec(url.pathname);
     const seed = seedNames[Number(related?.[1]) - 1];
-    const query = url.searchParams.get("query") ?? "";
+    const query = url.searchParams.get("q") ?? "";
     const body =
       url.hostname === "api.deezer.com" && url.pathname === "/search/artist"
         ? {
@@ -84,9 +84,9 @@ beforeAll(() => {
         : url.hostname === "api.deezer.com" && seed
           ? { data: [{ id: 100, name: `Like ${seed}` }] }
           : url.hostname === "data.aurral.org" &&
-              url.pathname === "/search/artist" &&
+              url.pathname === "/v1/search/artist" &&
               query.startsWith("Like ")
-            ? [{ id: similarMbids.get(query.slice(5)), name: query }]
+            ? { artists: [{ id: similarMbids.get(query.slice(5)), name: query }] }
             : url.hostname === "data.aurral.org"
               ? null
               : {};

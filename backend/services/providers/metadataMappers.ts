@@ -6,26 +6,10 @@ const texts = v.nullish(v.array(v.string()));
 
 const v1ImageSchema = v.looseObject({ kind: text, url: text });
 
-const searchImageSchema = v.looseObject({
-  kind: text,
-  url: text,
-  CoverType: text,
-  Url: text,
-});
-
 const linkSchema = v.looseObject({ type: text, target: text });
 
 const v1RatingSchema = v.nullish(
   v.looseObject({ count: v.nullish(v.number()), value: v.nullish(v.number()) }),
-);
-
-const searchRatingSchema = v.nullish(
-  v.looseObject({
-    count: v.nullish(v.number()),
-    value: v.nullish(v.number()),
-    Count: v.nullish(v.number()),
-    Value: v.nullish(v.number()),
-  }),
 );
 
 export const artistAlbumSchema = v.looseObject({
@@ -158,43 +142,58 @@ export const genresIndexSchema = v.looseObject({
   ),
 });
 
-export const searchArtistSchema = v.looseObject({
+export const searchArtistItemSchema = v.looseObject({
   id: v.string(),
   name: text,
   sortName: text,
-  artistname: text,
-  sortname: text,
   type: text,
-  status: text,
   disambiguation: text,
-  overview: text,
   genres: texts,
   aliases: texts,
-  artistaliases: texts,
-  images: v.nullish(v.array(searchImageSchema)),
-  links: v.nullish(v.array(linkSchema)),
-  rating: searchRatingSchema,
+  image: text,
+  listeners: v.nullish(v.number()),
 });
 
-export const searchAlbumSchema = v.looseObject({
+export const searchAlbumItemSchema = v.looseObject({
   id: v.string(),
   title: text,
   artistId: text,
-  artistid: text,
-  artists: v.nullish(v.array(searchArtistSchema)),
+  artistName: text,
   type: text,
   secondaryTypes: texts,
-  secondarytypes: texts,
   releaseDate: text,
-  releasedate: text,
-  disambiguation: text,
-  genres: texts,
-  aliases: texts,
-  overview: text,
-  images: v.nullish(v.array(searchImageSchema)),
   cover: text,
-  links: v.nullish(v.array(linkSchema)),
-  rating: searchRatingSchema,
+  listeners: v.nullish(v.number()),
+});
+
+export const searchTrackItemSchema = v.looseObject({
+  recordingId: v.string(),
+  title: text,
+  artistId: text,
+  artistName: text,
+  albumId: text,
+  albumTitle: text,
+  cover: text,
+  durationMs: v.nullish(v.number()),
+  listeners: v.nullish(v.number()),
+});
+
+export const artistSearchResponseSchema = v.looseObject({
+  artists: v.nullish(v.array(v.unknown())),
+});
+
+export const albumSearchResponseSchema = v.looseObject({
+  albums: v.nullish(v.array(v.unknown())),
+});
+
+export const trackSearchResponseSchema = v.looseObject({
+  tracks: v.nullish(v.array(v.unknown())),
+});
+
+export const unifiedSearchResponseSchema = v.looseObject({
+  artists: v.nullish(v.array(v.unknown())),
+  albums: v.nullish(v.array(v.unknown())),
+  tracks: v.nullish(v.array(v.unknown())),
 });
 
 export type MetadataImage = { kind: string; url: string };
@@ -207,6 +206,7 @@ export type NormalizedTrack = ReturnType<typeof toNormalizedTrack>;
 export type NormalizedRelease = ReturnType<typeof toNormalizedRelease>;
 export type NormalizedAlbum = ReturnType<typeof toNormalizedAlbum>;
 export type NormalizedGenre = ReturnType<typeof toNormalizedGenre>;
+export type NormalizedSearchTrack = ReturnType<typeof toNormalizedSearchTrack>;
 
 function clean(value: string | null | undefined) {
   return value?.trim() ?? "";
@@ -224,21 +224,16 @@ function toCount(value: number | null | undefined) {
   return Number.isFinite(value) && value! > 0 ? Math.round(value!) : 0;
 }
 
-function toRating(rating: v.InferOutput<typeof searchRatingSchema>) {
-  const value = rating?.value ?? rating?.Value;
-  const count = rating?.count ?? rating?.Count ?? 0;
+function toRating(rating: v.InferOutput<typeof v1RatingSchema>) {
+  const value = rating?.value;
+  const count = rating?.count ?? 0;
   return value != null ? { count, value } : null;
 }
 
-function toNormalizedImage(image: {
-  kind?: string | null;
-  url?: string | null;
-  CoverType?: string | null;
-  Url?: string | null;
-}) {
-  const url = clean(image.url ?? image.Url);
+function toNormalizedImage(image: { kind?: string | null; url?: string | null }) {
+  const url = clean(image.url);
   if (!url) return null;
-  return { kind: clean(image.kind ?? image.CoverType) || "Cover", url };
+  return { kind: clean(image.kind) || "Cover", url };
 }
 
 function toNormalizedLink(link: v.InferOutput<typeof linkSchema>) {
@@ -248,15 +243,7 @@ function toNormalizedLink(link: v.InferOutput<typeof linkSchema>) {
 }
 
 function toNormalizedImages(
-  images:
-    | {
-        kind?: string | null;
-        url?: string | null;
-        CoverType?: string | null;
-        Url?: string | null;
-      }[]
-    | null
-    | undefined,
+  images: { kind?: string | null; url?: string | null }[] | null | undefined,
 ) {
   return (images ?? [])
     .map(toNormalizedImage)
@@ -372,27 +359,42 @@ export function toNormalizedArtist(raw: v.InferOutput<typeof artistDetailSchema>
   };
 }
 
-export function toNormalizedSearchArtist(raw: v.InferOutput<typeof searchArtistSchema>) {
-  const name = clean(raw.name ?? raw.artistname);
+export function toNormalizedSearchArtist(raw: v.InferOutput<typeof searchArtistItemSchema>) {
+  const name = clean(raw.name);
+  const image = clean(raw.image);
   return {
     id: raw.id,
     name,
-    sortName: clean(raw.sortName ?? raw.sortname) || name,
+    sortName: clean(raw.sortName) || name,
     type: clean(raw.type) || null,
-    status: clean(raw.status) || null,
+    status: null,
     disambiguation: clean(raw.disambiguation),
-    overview: clean(raw.overview),
+    overview: "",
     genres: cleanList(raw.genres),
-    aliases: cleanList(raw.aliases ?? raw.artistaliases),
-    images: toNormalizedImages(raw.images),
-    links: toNormalizedLinks(raw.links),
-    rating: toRating(raw.rating),
-    listeners: 0,
+    aliases: cleanList(raw.aliases),
+    images: image ? [{ kind: "Poster", url: image }] : ([] as MetadataImage[]),
+    links: [] as { type: string; target: string }[],
+    rating: null,
+    listeners: toCount(raw.listeners),
     albums: [] as NormalizedArtistAlbum[],
     appearsOn: [] as NormalizedAppearsOnAlbum[],
     topTracks: [] as NormalizedTopTrack[],
     similar: [] as NormalizedSimilarArtist[],
   } satisfies NormalizedArtist;
+}
+
+export function toNormalizedSearchTrack(raw: v.InferOutput<typeof searchTrackItemSchema>) {
+  return {
+    recordingId: clean(raw.recordingId),
+    title: clean(raw.title),
+    artistId: clean(raw.artistId) || null,
+    artistName: clean(raw.artistName) || "Unknown Artist",
+    albumId: clean(raw.albumId) || null,
+    albumTitle: clean(raw.albumTitle) || null,
+    cover: clean(raw.cover) || null,
+    durationMs: raw.durationMs ?? null,
+    listeners: toCount(raw.listeners),
+  };
 }
 
 export function toNormalizedTrack(raw: v.InferOutput<typeof trackSchema>) {

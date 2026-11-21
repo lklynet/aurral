@@ -755,7 +755,7 @@ test("a configured scan resolves untagged artists only on one unambiguous MusicB
       response.end(JSON.stringify({ id: url.pathname.slice("/v1/artist/".length), albums: [] }));
       return;
     }
-    const query = url.searchParams.get("query") ?? "";
+    const query = url.searchParams.get("q") ?? "";
     const results =
       {
         [names.renamed]: [{ id: mbids.renamed, name: `The Bravery${suffix}` }],
@@ -775,7 +775,7 @@ test("a configured scan resolves untagged artists only on one unambiguous MusicB
       return;
     }
     response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify(results));
+    response.end(JSON.stringify({ artists: results }));
   });
   const originalSettings = dbOps.getSettings();
   dbOps.updateSettings({

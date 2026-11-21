@@ -163,7 +163,7 @@ const metadataServer = await createMockHttpServer((request, response) => {
   if (
     providerDown &&
     (pathname === `/v1/album/${outageReleaseGroup}` ||
-      url.searchParams.get("query")?.includes("Outage"))
+      url.searchParams.get("q")?.includes("Outage"))
   ) {
     response.writeHead(503);
     return response.end(JSON.stringify({ error: "unavailable" }));
@@ -177,18 +177,18 @@ const metadataServer = await createMockHttpServer((request, response) => {
   if (pathname === `/v1/album/${laterReleaseGroup}`)
     return response.end(JSON.stringify(laterAlbum));
   if (pathname === `/v1/album/${twoDiscGroup}`) return response.end(JSON.stringify(twoDiscAlbum));
-  if (pathname === "/search/album") {
+  if (pathname === "/v1/search/album") {
     return response.end(
-      JSON.stringify(
-        [album, laterAlbum].map((entry) => ({
+      JSON.stringify({
+        albums: [album, laterAlbum].map((entry) => ({
           id: entry.id,
           title: entry.title,
           artistId: artistMbid,
-          artists: entry.artists,
+          artistName: entry.artists[0]?.name ?? "",
           releaseDate: entry.releaseDate,
           type: "Album",
         })),
-      ),
+      }),
     );
   }
   response.writeHead(404);

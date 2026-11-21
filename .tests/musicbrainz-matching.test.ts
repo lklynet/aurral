@@ -57,19 +57,20 @@ const server = await createMockHttpServer((request, response) => {
     response.writeHead(status, { "content-type": "application/json" });
     response.end(body === undefined ? undefined : JSON.stringify(body));
   };
-  if (url.pathname === "/search/artist") {
+  if (url.pathname === "/v1/search/artist") {
     if (!searchAvailable) return reply(400);
-    return reply(200, url.searchParams.get("query") === "Nirvana" ? [grunge, sixties] : []);
+    return reply(200, {
+      artists: url.searchParams.get("q") === "Nirvana" ? [grunge, sixties] : [],
+    });
   }
-  if (url.pathname === "/search/album") {
+  if (url.pathname === "/v1/search/album") {
     albumSearches += 1;
-    const query = url.searchParams.get("query") || "";
-    return reply(
-      200,
-      query.startsWith("Nevermind")
-        ? [{ id: NEVERMIND, title: "Nevermind", artistId: GRUNGE, artists: [grunge] }]
+    const query = url.searchParams.get("q") || "";
+    return reply(200, {
+      albums: query.startsWith("Nevermind")
+        ? [{ id: NEVERMIND, title: "Nevermind", artistId: GRUNGE, artistName: grunge.name }]
         : [],
-    );
+    });
   }
   if (url.pathname === `/v1/album/${NEVERMIND}`) {
     return reply(200, {

@@ -11,7 +11,13 @@ import {
   type CatalogueArtist,
 } from "../catalogue/catalogue.ts";
 import { indexMusic, releaseDate, type Music } from "../outside/music.ts";
-import { searchAlbums, searchArtists } from "./search.ts";
+import {
+  searchAlbums,
+  searchArtists,
+  searchV1Albums,
+  searchV1Artists,
+  searchV1Tracks,
+} from "./search.ts";
 
 const catalogue = loadCatalogue();
 const music = indexMusic(catalogue);
@@ -218,7 +224,31 @@ createServer((request, response) => {
     return send(response, 404, { error: "Not in the Eden catalogue" });
   }
 
-  const query = url.searchParams.get("query") ?? "";
+  const query = url.searchParams.get("q") ?? url.searchParams.get("query") ?? "";
+  if (url.pathname === "/v1/search") {
+    const limit = limitOf(url.searchParams, 24);
+    return send(response, 200, {
+      artists: searchV1Artists(catalogue, query, limit),
+      albums: searchV1Albums(catalogue, query, "", limit),
+      tracks: searchV1Tracks(catalogue, query, limit),
+    });
+  }
+  if (url.pathname === "/v1/search/artist") {
+    return send(response, 200, {
+      artists: searchV1Artists(catalogue, query, limitOf(url.searchParams, 24)),
+    });
+  }
+  if (url.pathname === "/v1/search/album") {
+    const artist = url.searchParams.get("artist") ?? "";
+    return send(response, 200, {
+      albums: searchV1Albums(catalogue, query, artist, limitOf(url.searchParams, 24)),
+    });
+  }
+  if (url.pathname === "/v1/search/track") {
+    return send(response, 200, {
+      tracks: searchV1Tracks(catalogue, query, limitOf(url.searchParams, 24)),
+    });
+  }
   if (url.pathname.endsWith("/search/artist")) {
     return send(response, 200, searchArtists(catalogue, query, limitOf(url.searchParams, 24)));
   }

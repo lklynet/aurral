@@ -13,10 +13,9 @@ Aurral serves static v1 JSON files built from MusicBrainz and ListenBrainz at `h
 - `v1/artist/<mbid>`: artist profile, hydrated albums (with release dates, covers, track counts, ratings, and listener counts), appears-on list (up to 100), top tracks (up to 20), and similar artists (up to 30, scored from ListenBrainz listening data).
 - `v1/album/<mbid>`: release group details, releases, tracks, and non-trivial per-track credits.
 - `v1/genre/<slug>` and `v1/genres`: top artists per genre (up to 200) and the genre index.
+- `v1/search`, `v1/search/artist`, `v1/search/album`, and `v1/search/track`: served by a Cloudflare Worker over D1 FTS5 indexes built from the same MusicBrainz + ListenBrainz dataset, ranked by exact/prefix match and listener counts, cached at Cloudflare's edge for an hour.
 
-Search stays at `/search/artist` and `/search/album` on the same host until `data.aurral.org` serves its own search index.
-
-When an artist or album MBID is not yet in the daily build (`404`), Aurral falls back directly to MusicBrainz (`musicbrainzHttp.ts`) and caches the fallback for an hour so the install picks up the static file after the next daily publish. Aurral does not fall back to BrainzMash for entity files. Deezer stays an optional fallback for previews, artwork, top tracks, and related artists when an artist file lacks them.
+When an artist or album MBID is not yet in the daily build (`404`), Aurral falls back directly to MusicBrainz (`musicbrainzHttp.ts`) and caches the fallback for an hour so the install picks up the static file after the next daily publish. Aurral does not fall back to BrainzMash. Deezer stays an optional fallback for previews, playlists, and missing artwork, top tracks, or related artists when an artist file lacks them.
 
 ## Request rules
 

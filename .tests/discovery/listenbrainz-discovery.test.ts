@@ -173,12 +173,13 @@ const respond = (url: URL) => {
       ],
     });
   }
-  if (url.hostname === "data.aurral.org" && url.pathname === "/search/artist") {
-    return json(
-      url.searchParams.get("query") === RELATED.name
-        ? [{ id: RELATED.mbid, name: RELATED.name }]
-        : [],
-    );
+  if (url.hostname === "data.aurral.org" && url.pathname === "/v1/search/artist") {
+    return json({
+      artists:
+        url.searchParams.get("q") === RELATED.name
+          ? [{ id: RELATED.mbid, name: RELATED.name }]
+          : [],
+    });
   }
   if (url.hostname === "api.deezer.com" && url.pathname === "/artist/7/top") {
     return json({
