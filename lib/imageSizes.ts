@@ -11,15 +11,18 @@ const FANART_SQUARE =
 const DEEZER =
   /^(https?:\/\/[\w-]+\.dzcdn\.net\/images\/[a-z]+\/[0-9a-f]+\/)\d+x\d+(-[^/?#]*\.(?:jpg|png))$/i;
 const DEEZER_WIDTHS = [120, 250, 500, 1000];
+const CAA_COVER =
+  /^(https?:\/\/coverartarchive\.org\/release\/[^/?#]+\/[^/?#]+)-(?:250|500|1200)(\.[a-z]+)$/i;
 const LIDARR_COVER =
   /^(https?:\/\/imagecache\.lidarr\.audio\/v1\/caa\/[^/?#]+\/[^/?#]+)-(?:250|500|1200)(\.[a-z]+)$/i;
-const LIDARR_COVER_WIDTHS = [250, 500, 1200];
-const ARTIST_PHOTO = /^https?:\/\/tadb\.brainzmash\.cc\/images\/media\/artist\/thumb\/[^/?#]+$/i;
+const COVER_ARCHIVE_WIDTHS = [250, 500, 1200];
+const ARTIST_PHOTO = /^https?:\/\/r2\.theaudiodb\.com\/images\/media\/artist\/thumb\/[^/?#]+$/i;
 const AURRAL_COVER =
   /\/api\/(?:playlists\/(?:artwork\/[^/?#]+|flow-templates\/[^/?#]+\/cover)|discover\/playlists\/[^/?#]+\/[^/?#]+\/cover)(?:\?|$)/;
 const AURRAL_COVER_WIDTH = 1000;
 
-export const originalImage = (url: string) => url.replace(LIDARR_COVER, "$1$2");
+export const originalImage = (url: string) =>
+  url.replace(CAA_COVER, "$1$2").replace(LIDARR_COVER, "$1$2");
 
 export function imageSizes(url: string): ImageSize[] {
   if (FANART.test(url)) {
@@ -36,10 +39,10 @@ export function imageSizes(url: string): ImageSize[] {
       width,
     }));
   }
-  const lidarrCover = url.match(LIDARR_COVER);
-  if (lidarrCover) {
-    return LIDARR_COVER_WIDTHS.map((width) => ({
-      url: `${lidarrCover[1]}-${width}${lidarrCover[2]}`,
+  const archiveCover = url.match(CAA_COVER) ?? url.match(LIDARR_COVER);
+  if (archiveCover) {
+    return COVER_ARCHIVE_WIDTHS.map((width) => ({
+      url: `${archiveCover[1]}-${width}${archiveCover[2]}`,
       width,
     }));
   }

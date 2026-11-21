@@ -8,7 +8,7 @@ import {
   storedRules,
 } from "./monitoring.ts";
 import { getLibraryManagementEntry, setLibraryManagement } from "./libraryManagementStore.ts";
-import { getNormalizedText } from "./providers/brainzmashRanking.ts";
+import { getNormalizedText } from "./providers/metadataRanking.ts";
 
 const DEFAULTS_KEY = "monitoringDefaults";
 

@@ -5,7 +5,7 @@ import {
   resolveArtistPath,
   resolveLibraryArtistPath,
 } from "../navigation/resolveLinks.ts";
-import type { toNormalizedAlbum } from "../../../backend/services/providers/brainzmashMappers.ts";
+import type { toNormalizedAlbum } from "../../../backend/services/providers/metadataMappers.ts";
 
 type AlbumRating = NonNullable<ReturnType<typeof toNormalizedAlbum>["rating"]>;
 

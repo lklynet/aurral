@@ -1,4 +1,4 @@
-import { getLinkedDeezerArtistId } from "../../backend/services/providers/brainzmashMappers.ts";
+import { getLinkedDeezerArtistId } from "../../backend/services/providers/metadataMappers.ts";
 import { CATALOGUE_ARTISTS, VARIOUS_ARTISTS_ID } from "../catalogue/artists.ts";
 import { albumEdition, type Catalogue, type CatalogueArtist } from "../catalogue/catalogue.ts";
 import { searchKey } from "../metadata/search.ts";

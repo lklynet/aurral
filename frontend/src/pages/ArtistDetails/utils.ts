@@ -9,12 +9,14 @@ import {
 import { formatCompactNumber } from "../../utils/numberFormat.ts";
 import { resolveAuthenticatedApiAssetUrl } from "../../utils/api/core.ts";
 import type { ArtistDetailsResponse } from "../../utils/api/endpoints/artists.ts";
-import type { LegacyReleaseGroupSummary } from "../../../../backend/services/providers/brainzmashMappers.ts";
+import type { LegacyReleaseGroupSummary } from "../../../../backend/services/providers/metadataMappers.ts";
 import type { LibraryAlbumEntry, OwnedAlbum } from "./hooks/useArtistDetails.ts";
 
 export type ReleaseListViewMode = "grid" | "list";
 
-export type ReleaseGroup = Partial<Omit<LegacyReleaseGroupSummary, "artist-credit">> & {
+export type ReleaseGroup = Partial<
+  Omit<LegacyReleaseGroupSummary, "artist-credit" | "listenerCount">
+> & {
   "artist-credit"?: { name?: string; artist?: { id?: string; name?: string } }[];
   mbid?: string | null;
   foreignAlbumId?: string | null;

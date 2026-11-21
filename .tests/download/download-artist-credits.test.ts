@@ -29,22 +29,6 @@ const job = {
   trackMbid: "5d7d5e5b-3e0a-4b83-9a43-6b2fa2a1d6a1",
 };
 
-const release = {
-  media: [
-    {
-      tracks: [
-        {
-          "artist-credit": [
-            { name: "Kendrick Lamar", joinphrase: " & ", artist: { id: KENDRICK } },
-            { name: "SZA", joinphrase: "", artist: { id: SZA } },
-          ],
-          recording: { id: job.trackMbid },
-        },
-      ],
-    },
-  ],
-};
-
 function makeAudio(name: string, codec: string[]) {
   const filePath = path.join(tempDir, name);
   const result = spawnSync(
@@ -58,20 +42,57 @@ function makeAudio(name: string, codec: string[]) {
   return filePath;
 }
 
-const isReleaseLookup = (url: URL, releaseMbid: string) =>
-  url.hostname === "musicbrainz.org" && url.pathname === `/ws/2/release/${releaseMbid}`;
+const isReleaseBrowse = (url: URL, albumMbid: string) =>
+  url.hostname === "musicbrainz.org" &&
+  url.pathname === "/ws/2/release" &&
+  url.searchParams.get("release-group") === albumMbid;
 
 afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
   await rm(tempDir, { recursive: true, force: true });
 });
 
-test("a download keeps the guest artists its MusicBrainz track credit names", async (t) => {
-  const releaseMbid = "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1";
-  let lookups = 0;
+test("a download reads guest credits from v1 album metadata without calling MusicBrainz", async (t) => {
+  const releaseMbid = "e5e5e5e5-e5e5-4e5e-8e5e-e5e5e5e5e5e5";
+  const albumMbid = "f6f6f6f6-f6f6-4f6f-8f6f-f6f6f6f6f6f6";
+  let mbLookups = 0;
   stubFetch(t, (url) => {
-    if (isReleaseLookup(url, releaseMbid)) lookups += 1;
-    return isReleaseLookup(url, releaseMbid) ? json(release) : json({}, 404);
+    if (url.hostname === "musicbrainz.org") {
+      mbLookups += 1;
+      return json({}, 404);
+    }
+    if (url.pathname === `/v1/album/${albumMbid}`) {
+      return json({
+        id: albumMbid,
+        title: job.albumName,
+        artistId: KENDRICK,
+        artists: [
+          { id: KENDRICK, name: "Kendrick Lamar" },
+          { id: SZA, name: "SZA" },
+        ],
+        releases: [
+          {
+            id: releaseMbid,
+            status: "Official",
+            tracks: [
+              {
+                id: "track-1",
+                recordingId: job.trackMbid,
+                title: job.trackName,
+                trackPosition: 1,
+                mediumNumber: 1,
+                artistId: KENDRICK,
+                credits: [
+                  { id: KENDRICK, name: "Kendrick Lamar", joinPhrase: " & " },
+                  { id: SZA, name: "SZA", joinPhrase: "" },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+    }
+    return json({}, 404);
   });
   const files = [
     makeAudio("stars.mp3", ["-c:a", "libmp3lame"]),
@@ -79,9 +100,11 @@ test("a download keeps the guest artists its MusicBrainz track credit names", as
     makeAudio("stars.m4a", ["-c:a", "aac"]),
   ];
 
-  for (const filePath of files) await writeAudioMetadata(filePath, { ...job, releaseMbid });
+  for (const filePath of files) {
+    await writeAudioMetadata(filePath, { ...job, albumMbid, releaseMbid });
+  }
 
-  assert.equal(lookups, 1);
+  assert.equal(mbLookups, 0);
   for (const filePath of files) {
     const { common } = await parseFile(filePath);
     assert.equal(common.artist, "Kendrick Lamar & SZA", filePath);
@@ -92,39 +115,103 @@ test("a download keeps the guest artists its MusicBrainz track credit names", as
   }
 });
 
-test("a download keeps its album artist when MusicBrainz can't give the track's credit, and asks once per release", async (t) => {
-  const releaseMbid = "b2b2b2b2-b2b2-4b2b-8b2b-b2b2b2b2b2b2";
-  let lookups = 0;
+test("a download fills guest credits from the MusicBrainz album fallback once per album when the album file is missing", async (t) => {
+  const albumMbid = "a0a0a0a0-a0a0-4a0a-8a0a-a0a0a0a0a0a0";
+  const releaseMbid = "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1";
+  let releaseBrowseCalls = 0;
   stubFetch(t, (url) => {
-    if (isReleaseLookup(url, releaseMbid)) lookups += 1;
-    return json({}, 500);
+    if (url.hostname === "musicbrainz.org" && url.pathname === `/ws/2/release-group/${albumMbid}`) {
+      return json({
+        id: albumMbid,
+        title: job.albumName,
+        "primary-type": "Album",
+        "artist-credit": [
+          { name: "Kendrick Lamar", artist: { id: KENDRICK, name: "Kendrick Lamar" } },
+        ],
+      });
+    }
+    if (isReleaseBrowse(url, albumMbid)) {
+      releaseBrowseCalls += 1;
+      return json({
+        releases: [
+          {
+            id: releaseMbid,
+            title: job.albumName,
+            status: "Official",
+            media: [
+              {
+                position: 1,
+                tracks: [
+                  {
+                    id: "t-1",
+                    position: 1,
+                    title: job.trackName,
+                    "artist-credit": [
+                      { name: "Kendrick Lamar", joinphrase: " & ", artist: { id: KENDRICK } },
+                      { name: "SZA", joinphrase: "", artist: { id: SZA } },
+                    ],
+                    recording: { id: job.trackMbid },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+    }
+    return json({}, 404);
   });
   const files = [
-    makeAudio("down-1.flac", ["-c:a", "flac"]),
-    makeAudio("down-2.flac", ["-c:a", "flac"]),
+    makeAudio("mb-1.flac", ["-c:a", "flac"]),
+    makeAudio("mb-2.flac", ["-c:a", "flac"]),
   ];
 
-  for (const filePath of files) await writeAudioMetadata(filePath, { ...job, releaseMbid });
+  for (const filePath of files) {
+    await writeAudioMetadata(filePath, { ...job, albumMbid, releaseMbid });
+  }
 
-  assert.equal(lookups, 1);
+  assert.equal(releaseBrowseCalls, 1);
   for (const filePath of files) {
     const { common } = await parseFile(filePath);
-    assert.equal(common.artist, "Kendrick Lamar");
-    assert.deepEqual(common.musicbrainz_artistid, [KENDRICK]);
+    assert.equal(common.artist, "Kendrick Lamar & SZA", filePath);
+    assert.deepEqual(common.artists, ["Kendrick Lamar", "SZA"], filePath);
+    assert.deepEqual(common.musicbrainz_artistid, [KENDRICK, SZA], filePath);
   }
 });
 
+test("a download keeps its album artist when album metadata is unavailable", async (t) => {
+  const albumMbid = "b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1";
+  const releaseMbid = "b2b2b2b2-b2b2-4b2b-8b2b-b2b2b2b2b2b2";
+  stubFetch(t, () => json({}, 500));
+  const filePath = makeAudio("down-1.flac", ["-c:a", "flac"]);
+
+  await writeAudioMetadata(filePath, { ...job, albumMbid, releaseMbid });
+
+  const { common } = await parseFile(filePath);
+  assert.equal(common.artist, "Kendrick Lamar");
+  assert.deepEqual(common.musicbrainz_artistid, [KENDRICK]);
+});
+
 test("re-tagging a file with a credit for one artist replaces an uploader's list of others", async (t) => {
+  const albumMbid = "c2c2c2c2-c2c2-4c2c-8c2c-c2c2c2c2c2c2";
   const releaseMbid = "c3c3c3c3-c3c3-4c3c-8c3c-c3c3c3c3c3c3";
   stubFetch(t, (url) =>
-    isReleaseLookup(url, releaseMbid)
+    url.pathname === `/v1/album/${albumMbid}`
       ? json({
-          media: [
+          id: albumMbid,
+          title: job.albumName,
+          artistId: KENDRICK,
+          artists: [{ id: KENDRICK, name: "Kendrick Lamar" }],
+          releases: [
             {
+              id: releaseMbid,
+              status: "Official",
               tracks: [
                 {
-                  "artist-credit": [{ name: "Kendrick Lamar", artist: { id: KENDRICK } }],
-                  recording: { id: job.trackMbid },
+                  id: "track-1",
+                  recordingId: job.trackMbid,
+                  title: job.trackName,
+                  artistId: KENDRICK,
                 },
               ],
             },
@@ -142,7 +229,7 @@ test("re-tagging a file with a credit for one artist replaces an uploader's list
   file.save();
   file.dispose();
 
-  await writeAudioMetadata(filePath, { ...job, releaseMbid });
+  await writeAudioMetadata(filePath, { ...job, albumMbid, releaseMbid });
 
   const { common } = await parseFile(filePath);
   assert.deepEqual(common.artists, ["Kendrick Lamar"]);
@@ -153,33 +240,34 @@ test("a track request takes its album artist from the album's main artist", asyn
   const albumMbid = "fce8fe8b-9402-3893-b4a2-5bacefdb8f1f";
   const albumArtist = "11bf566b-a73e-4e8c-ba82-83fdcddd0aed";
   const performer = "f98a61b4-0000-4000-8000-000000000001";
-  const album = {
-    id: albumMbid,
-    title: "Hôtel Costes 9",
-    artistid: albumArtist,
-    artists: [
-      { id: performer, artistname: "One Self" },
-      { id: albumArtist, artistname: "Stéphane Pompougnac" },
-    ],
-    genres: ["downtempo"],
-  };
-  stubFetch(t, (url) => {
-    if (isReleaseLookup(url, releaseMbid)) {
-      return json({
-        media: [
-          {
-            tracks: [
-              {
-                "artist-credit": [{ name: "One Self", joinphrase: "", artist: { id: performer } }],
-                recording: { id: job.trackMbid },
-              },
-            ],
-          },
-        ],
-      });
-    }
-    return url.pathname === `/album/${albumMbid}` ? json(album) : json({}, 404);
-  });
+  stubFetch(t, (url) =>
+    url.pathname === `/v1/album/${albumMbid}`
+      ? json({
+          id: albumMbid,
+          title: "Hôtel Costes 9",
+          artistId: albumArtist,
+          artists: [
+            { id: performer, name: "One Self" },
+            { id: albumArtist, name: "Stéphane Pompougnac" },
+          ],
+          genres: ["downtempo"],
+          releases: [
+            {
+              id: releaseMbid,
+              status: "Official",
+              tracks: [
+                {
+                  id: "track-1",
+                  recordingId: job.trackMbid,
+                  title: "Bluebird",
+                  artistId: performer,
+                },
+              ],
+            },
+          ],
+        })
+      : json({}, 404),
+  );
   const filePath = makeAudio("bluebird.flac", ["-c:a", "flac"]);
 
   await writeAudioMetadata(filePath, {

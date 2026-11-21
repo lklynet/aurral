@@ -44,16 +44,18 @@ const albumMbid = "935aa404-893a-4ce5-9494-24c0058977e3";
 const trackMbid = "df59c0af-9fd7-46b9-ae81-6db6bffce095";
 const artistData = {
   id: artistMbid,
-  artistname: "Contract Artist",
+  name: "Contract Artist",
   genres: [],
   images: [],
-  Albums: [{ Id: albumMbid, Title: "Contract Album", Type: "Album", ReleaseDate: "2026-01-01" }],
+  albums: [
+    { id: albumMbid, title: "Contract Album", type: "Album", firstReleaseDate: "2026-01-01" },
+  ],
 };
 const albumData = {
   id: albumMbid,
   title: "Contract Album",
   type: "Album",
-  releasedate: "2026-01-01",
+  releaseDate: "2026-01-01",
   artists: [artistData],
   genres: [],
   images: [],
@@ -128,8 +130,8 @@ beforeAll(async () => {
       return response.end(JSON.stringify([artistData]));
     if (requireFixture(request.url).startsWith("/search/album"))
       return response.end(JSON.stringify([albumData]));
-    if (request.url === `/artist/${artistMbid}`) return response.end(JSON.stringify(artistData));
-    if (request.url === `/album/${albumMbid}`) return response.end(JSON.stringify(albumData));
+    if (request.url === `/v1/artist/${artistMbid}`) return response.end(JSON.stringify(artistData));
+    if (request.url === `/v1/album/${albumMbid}`) return response.end(JSON.stringify(albumData));
     response.writeHead(404).end(JSON.stringify({ error: "Unknown fixture" }));
   });
   dbOps.updateSettings({
@@ -197,7 +199,7 @@ beforeAll(async () => {
   artist = libraryStore.upsertLibraryArtist({
     identityKey: "contract:artist",
     mbid: artistMbid,
-    name: artistData.artistname,
+    name: artistData.name,
   });
   album = libraryStore.upsertLibraryAlbum({
     identityKey: "contract:album",

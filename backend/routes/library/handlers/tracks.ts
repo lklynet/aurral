@@ -7,7 +7,7 @@ import { hasPermission } from "../../../services/auth.ts";
 import { requireAdmin, requireAuth, requirePermission } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
-import { getAlbumTracksByAlbumMbid } from "../../../services/providers/brainzmashProvider.ts";
+import { getAlbumTracksByAlbumMbid } from "../../../services/providers/metadataProvider.ts";
 import { chooseLibraryRelease } from "../../../services/releaseResolver.ts";
 import {
   enrichTracksWithDeezerPreviews,

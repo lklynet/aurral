@@ -22,7 +22,6 @@ export type OwnedAlbum = LibraryLookup["ownedAlbums"][number];
 
 const APPEARS_ON_PAGE_SIZE = 24;
 const SIMILAR_ARTIST_LIMIT = 10;
-const STATS_PENDING_REFETCH_MS = 2000;
 const EMPTY_LIBRARY_ALBUMS: LibraryAlbums = [];
 const EMPTY_OWNED_ALBUMS: OwnedAlbum[] = [];
 const EMPTY_SIMILAR_ARTISTS: never[] = [];
@@ -64,8 +63,6 @@ export function useArtistDetails(
           )
       : skipToken,
     staleTime: 5 * 60_000,
-    refetchInterval: (query) =>
-      query.state.data?.["release-stats-pending"] ? STATS_PENDING_REFETCH_MS : false,
   });
 
   const appearsOnQuery = useInfiniteQuery({

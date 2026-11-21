@@ -8,7 +8,6 @@ import type {
   DeezerMbidCacheRow,
   ImagesCacheRow,
   ListenbrainzArtistTagsRow,
-  ListenbrainzReleaseGroupsRow,
   MetadataResponseCacheRow,
   MusicbrainzArtistMbidCacheRow,
 } from "../rows.ts";
@@ -60,19 +59,10 @@ export interface CacheOps {
   deleteMetadataResponse: (cacheKey: string) => Database.RunResult;
   clearMetadataResponses: () => Database.RunResult;
   cleanMetadataResponses: (maxEntries: number) => number;
-  getListenbrainzReleaseGroups: (mbids: string[]) => Map<string, ListenbrainzReleaseGroupRecord>;
-  saveListenbrainzReleaseGroupDates: (dates: Map<string, string | null>, checkedAt: number) => void;
-  saveListenbrainzReleaseGroupPopularity: (
-    popularity: Map<string, { listenCount: number; listenerCount: number } | null>,
-    checkedAt: number,
-  ) => void;
-  clearListenbrainzReleaseGroups: () => Database.RunResult;
   getListenbrainzArtistTags: (mbids: string[]) => Map<string, ListenbrainzArtistTags>;
   saveListenbrainzArtistTags: (tags: Map<string, ArtistTag[]>, checkedAt: number) => void;
   clearListenbrainzArtistTags: () => Database.RunResult;
 }
-
-export type ListenbrainzReleaseGroupRecord = Omit<ListenbrainzReleaseGroupsRow, "mbid">;
 
 const artistTagsSchema = listOf(v.object({ name: v.string(), count: v.number() }));
 type ArtistTag = v.InferOutput<typeof artistTagsSchema>[number];
@@ -161,64 +151,7 @@ const trimMetadataResponsesStmt = db.prepare<[number]>(
   )`,
 );
 
-const getListenbrainzReleaseGroupsStmt = db.prepare<
-  [string],
-  ListenbrainzReleaseGroupsRow & { mbid: string }
->("SELECT * FROM listenbrainz_release_groups WHERE mbid IN (SELECT value FROM json_each(?))");
-const saveListenbrainzReleaseGroupDateStmt = db.prepare<[string, string | null, number]>(
-  `INSERT INTO listenbrainz_release_groups (mbid, first_release_date, dates_checked_at)
-    VALUES (?, ?, ?)
-    ON CONFLICT(mbid) DO UPDATE SET
-      first_release_date = excluded.first_release_date,
-      dates_checked_at = excluded.dates_checked_at`,
-);
-const saveListenbrainzReleaseGroupPopularityStmt = db.prepare<
-  [string, number | null, number | null, number]
->(
-  `INSERT INTO listenbrainz_release_groups (mbid, listen_count, listener_count, popularity_checked_at)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(mbid) DO UPDATE SET
-      listen_count = excluded.listen_count,
-      listener_count = excluded.listener_count,
-      popularity_checked_at = excluded.popularity_checked_at`,
-);
-const clearListenbrainzReleaseGroupsStmt = db.prepare<[]>(
-  "DELETE FROM listenbrainz_release_groups",
-);
-const saveListenbrainzReleaseGroupDates = db.transaction(
-  (dates: Map<string, string | null>, checkedAt: number) => {
-    for (const [mbid, date] of dates)
-      saveListenbrainzReleaseGroupDateStmt.run(mbid, date, checkedAt);
-  },
-);
-const saveListenbrainzReleaseGroupPopularity = db.transaction(
-  (
-    popularity: Map<string, { listenCount: number; listenerCount: number } | null>,
-    checkedAt: number,
-  ) => {
-    for (const [mbid, counts] of popularity) {
-      saveListenbrainzReleaseGroupPopularityStmt.run(
-        mbid,
-        counts?.listenCount ?? null,
-        counts?.listenerCount ?? null,
-        checkedAt,
-      );
-    }
-  },
-);
-
 export default function register(dbOps: CacheOps) {
-  dbOps.getListenbrainzReleaseGroups = function (mbids) {
-    const records = new Map<string, ListenbrainzReleaseGroupRecord>();
-    if (!mbids.length) return records;
-    for (const { mbid, ...record } of getListenbrainzReleaseGroupsStmt.all(JSON.stringify(mbids))) {
-      records.set(mbid, record);
-    }
-    return records;
-  };
-  dbOps.saveListenbrainzReleaseGroupDates = saveListenbrainzReleaseGroupDates;
-  dbOps.saveListenbrainzReleaseGroupPopularity = saveListenbrainzReleaseGroupPopularity;
-  dbOps.clearListenbrainzReleaseGroups = () => clearListenbrainzReleaseGroupsStmt.run();
   dbOps.getListenbrainzArtistTags = function (mbids) {
     const records = new Map<string, ListenbrainzArtistTags>();
     if (!mbids.length) return records;

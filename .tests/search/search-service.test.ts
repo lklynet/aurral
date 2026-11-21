@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { createMockHttpServer } from "../helpers/backendTestHarness.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 import { dbOps } from "../../backend/db/helpers/index.ts";
-import { clearMetadataProviderCaches } from "../../backend/services/providers/brainzmashProvider.ts";
+import { clearMetadataProviderCaches } from "../../backend/services/providers/metadataProvider.ts";
 import {
   normalizeAlbumReleaseTypesFilter,
   searchAlbums,

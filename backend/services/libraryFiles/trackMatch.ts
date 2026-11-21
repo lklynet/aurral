@@ -1,7 +1,7 @@
 import { db } from "../../config/db-sqlite.ts";
 import { UnsupportedTagFormatError, writeAudioTags } from "../audioTags.ts";
 import { getLibraryMediaFile } from "../libraryMediaStore.ts";
-import { getAlbumByMbid, isMetadataNotFoundError } from "../providers/brainzmashProvider.ts";
+import { getAlbumByMbid, isMetadataNotFoundError } from "../providers/metadataProvider.ts";
 import { readLibraryMetadata } from "../libraryMetadata.ts";
 import { albumEdition } from "../releaseResolver.ts";
 import { adoptLibraryFileIdentity } from "./fileIdentity.ts";

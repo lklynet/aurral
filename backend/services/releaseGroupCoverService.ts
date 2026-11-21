@@ -9,12 +9,8 @@ import {
   getDeezerArtistById,
   resolveDeezerAlbumForPreview,
 } from "./apiClients/deezer.ts";
-import {
-  getAlbumByMbid,
-  isMetadataCircuitError,
-  isMetadataNotFoundError,
-} from "./providers/brainzmashProvider.ts";
-import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.ts";
+import { getAlbumByMbid, isMetadataNotFoundError } from "./providers/metadataProvider.ts";
+import { getLinkedDeezerArtistId } from "./providers/metadataMappers.ts";
 import { selectAlbumCover } from "./imageRanking.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 
@@ -143,7 +139,7 @@ const fetchReleaseGroupCoverUncached = async (
     deezerArtistId = getLinkedDeezerArtistId(album.artists[0]?.links);
     deezerArtistName ||= album.artists[0]?.name || "";
     deezerAlbumTitle ||= album.title;
-    const cover = foundCover(selectAlbumCover(album.images)?.url);
+    const cover = foundCover(album.cover || selectAlbumCover(album.images)?.url);
     if (cover && bypassCache && (await isDeadLink(cover.imageUrl))) {
       deadCover = cover;
     } else if (cover) {
@@ -153,11 +149,10 @@ const fetchReleaseGroupCoverUncached = async (
   } catch (error) {
     if (!isMetadataNotFoundError(error)) {
       sawTransientError = true;
-      if (!isMetadataCircuitError(error))
-        logger.warn("images", "Release-group cover metadata lookup failed", {
-          releaseGroupMbid,
-          reason: safeLogDiagnostic(error),
-        });
+      logger.warn("images", "Release-group cover metadata lookup failed", {
+        releaseGroupMbid,
+        reason: safeLogDiagnostic(error),
+      });
     }
   }
   const deezerCover = await fetchDeezerAlbumCover({

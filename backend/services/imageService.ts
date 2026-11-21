@@ -3,9 +3,9 @@ import { dbOps } from "../db/helpers/index.ts";
 import type { ArtistOverride } from "../db/helpers/overrides.ts";
 import { buildStableImageProxyUrl } from "./imageProxyService.ts";
 import { getArtistImageKindRank, getImageUrl, type ImageList } from "./imageRanking.ts";
-import type { NormalizedArtist } from "./providers/brainzmashMappers.ts";
-import { getArtistByMbid, listArtistAlbums } from "./providers/brainzmashProvider.ts";
-import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.ts";
+import type { NormalizedArtist } from "./providers/metadataMappers.ts";
+import { getArtistByMbid, listArtistAlbums } from "./providers/metadataProvider.ts";
+import { getLinkedDeezerArtistId } from "./providers/metadataMappers.ts";
 import { wikimediaGetArtistPhotoUrl } from "./apiClients/wikimedia.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import {
@@ -15,7 +15,10 @@ import {
 } from "./releaseGroupCoverService.ts";
 
 type ReleaseGroupSummary = Awaited<ReturnType<typeof listArtistAlbums>>[number];
-type ArtistReleaseGroup = Pick<ReleaseGroupSummary, "id"> & { title?: string };
+type ArtistReleaseGroup = Pick<ReleaseGroupSummary, "id"> & {
+  title?: string;
+  cover?: string | null;
+};
 type FoundReleaseGroupCover = { releaseGroupId: string; imageUrl: string; types: string[] };
 type GetArtistImageOptions = { forceRefresh?: boolean; artistName?: string | null };
 type ArtistImageResult = {
@@ -159,9 +162,7 @@ const recoverArtistCoverFromCachedReleaseGroups = async (resolvedMbid: string) =
     }
   }
 
-  const albums: ArtistReleaseGroup[] = await listArtistAlbums(resolvedMbid, {
-    hydrateLimit: 0,
-  }).catch(() => []);
+  const albums: ArtistReleaseGroup[] = await listArtistAlbums(resolvedMbid).catch(() => []);
 
   for (const rg of albums) {
     const cachedUrl = getCachedUrl(`rg:${rg.id}`);
@@ -315,7 +316,23 @@ export const getArtistImage = async (
         ? cachedRg === "NOT_FOUND"
           ? []
           : [{ id: cachedRg }]
-        : await listArtistAlbums(resolvedMbid, { hydrateLimit: 0 });
+        : await listArtistAlbums(resolvedMbid);
+
+      const directAlbumCover = albums.find((rg) => rg.cover);
+      if (directAlbumCover?.cover) {
+        const artistImageUrl = buildStableImageProxyUrl(directAlbumCover.cover);
+        if (artistImageUrl) {
+          const result = buildArtistCoverFromUrl(artistImageUrl);
+          if (isCurrentRequest()) {
+            negativeImageCache.delete(mbid);
+            dbOps.setImage(mbid, artistImageUrl, result.images);
+          }
+          if (!cachedRg || forceRefresh) {
+            dbOps.setDeezerMbidCache(rgCacheKey, directAlbumCover.id);
+          }
+          return result;
+        }
+      }
 
       const ordered = albums.slice(0, 25);
 

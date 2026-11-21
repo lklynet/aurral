@@ -33,7 +33,7 @@ const [
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/services/libraryQueryService.ts"),
-  () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../../backend/services/providers/metadataProvider.ts"),
   () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/trackMatching/index.ts"),
   () => import("../../backend/services/downloadUtils.ts"),
@@ -52,7 +52,7 @@ const tracks = [
 const metadataServer = await createMockHttpServer((request, response) => {
   const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
   response.setHeader("content-type", "application/json");
-  if (pathname !== `/album/${albumMbid}`) {
+  if (pathname !== `/v1/album/${albumMbid}`) {
     response.writeHead(404);
     response.end(JSON.stringify({ error: "not found" }));
     return;
@@ -61,13 +61,13 @@ const metadataServer = await createMockHttpServer((request, response) => {
     JSON.stringify({
       id: albumMbid,
       title: "Guardians of the Galaxy: Awesome Mix, Vol. 1",
-      artistid: variousArtists,
+      artistId: variousArtists,
       artists: [
-        { id: variousArtists, artistname: "Various Artists" },
+        { id: variousArtists, name: "Various Artists" },
         ...tracks.map(([artistId, artistName]) => ({
           id: artistId,
-          artistname: artistName,
-          artistaliases: artistName === "Blue Swede" ? ["Björn Skifs & Blåblus"] : [],
+          name: artistName,
+          aliases: artistName === "Blue Swede" ? ["Björn Skifs & Blåblus"] : [],
         })),
       ],
       releases: [
@@ -76,12 +76,12 @@ const metadataServer = await createMockHttpServer((request, response) => {
           status: "Official",
           tracks: tracks.map(([artistId, , title, durationMs], index) => ({
             id: `track-${index}`,
-            recordingid: `aaaaaaaa-0000-4000-8000-00000000000${index}`,
-            trackname: title,
-            artistid: artistId,
-            durationms: durationMs,
-            trackposition: index + 1,
-            mediumnumber: 1,
+            recordingId: `aaaaaaaa-0000-4000-8000-00000000000${index}`,
+            title,
+            artistId,
+            durationMs,
+            trackPosition: index + 1,
+            mediumNumber: 1,
           })),
         },
       ],

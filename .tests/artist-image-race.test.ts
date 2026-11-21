@@ -31,8 +31,8 @@ const [state, { dbOps }, { getArtistImage }, { default: details }, { default: ar
 useFakeClock();
 
 const originalFetch = globalThis.fetch;
-const previousMetadataUrl = process.env.BRAINZMASH_BASE_URL;
-process.env.BRAINZMASH_BASE_URL = "http://metadata.invalid";
+const previousMetadataUrl = process.env.METADATA_BASE_URL;
+process.env.METADATA_BASE_URL = "http://metadata.invalid";
 const fixtures = new Map();
 globalThis.fetch = async (input) => {
   const url = new URL(String(input));
@@ -57,15 +57,15 @@ const app = signedInAs(testUser(1, { role: "admin" }))
 
 afterAll(async () => {
   globalThis.fetch = originalFetch;
-  if (previousMetadataUrl === undefined) delete process.env.BRAINZMASH_BASE_URL;
-  else process.env.BRAINZMASH_BASE_URL = previousMetadataUrl;
+  if (previousMetadataUrl === undefined) delete process.env.METADATA_BASE_URL;
+  else process.env.METADATA_BASE_URL = previousMetadataUrl;
   await cleanupIsolatedState(state);
 });
 
 const artistId = (number: number) => `11111111-1111-4111-8111-${String(number).padStart(12, "0")}`;
 const oldImage = "https://images.example/old-artist.jpg";
 const newImage = "https://images.example/current-artist.jpg";
-const image = (url: string) => ({ CoverType: "Artist", Url: url });
+const image = (url: string) => ({ kind: "Artist", url });
 
 function gate() {
   const started = Promise.withResolvers<void>();
@@ -87,24 +87,24 @@ function artist(
     albums = [],
     before = async () => {},
   }: {
-    images?: { CoverType: string; Url: string }[];
-    albums?: { Id: string; Title: string; Type: string }[];
+    images?: { kind: string; url: string }[];
+    albums?: { id: string; title: string; type: string; cover?: string | null }[];
     before?: () => Promise<void>;
   } = {},
 ) {
-  fixtures.set(`metadata.invalid/artist/${mbid}`, async () => {
+  fixtures.set(`metadata.invalid/v1/artist/${mbid}`, async () => {
     await before();
     return {
       id: mbid,
-      artistname: `Artist ${mbid}`,
-      sortname: `Artist ${mbid}`,
+      name: `Artist ${mbid}`,
+      sortName: `Artist ${mbid}`,
       type: "Person",
       status: "Ended",
       images,
-      Albums: albums,
+      albums,
       links: [],
       genres: [],
-      artistaliases: [],
+      aliases: [],
       overview: "",
     };
   });
@@ -145,14 +145,14 @@ for (const [index, source, lookup] of [
     const albumId = artistId(index + 200);
     artist(mbid, {
       images: source === "direct image" ? [image(oldImage)] : [],
-      albums: source === "album image" ? [{ Id: albumId, Title: "Old Album", Type: "Album" }] : [],
+      albums: source === "album image" ? [{ id: albumId, title: "Old Album", type: "Album" }] : [],
       before: () => oldGate.wait(),
     });
     artist(replacement, { images: [image(newImage)] });
-    fixtures.set(`metadata.invalid/album/${albumId}`, async () => ({
+    fixtures.set(`metadata.invalid/v1/album/${albumId}`, async () => ({
       id: albumId,
       title: "Old Album",
-      images: [{ CoverType: "Cover", Url: oldImage }],
+      images: [{ kind: "Cover", url: oldImage }],
       artists: [],
       releases: [],
     }));
@@ -199,7 +199,7 @@ test("cached album recovery cannot overwrite an image selected after an override
   const albumId = artistId(207);
   const oldGate = gate();
   artist(mbid, {
-    albums: [{ Id: albumId, Title: "Old Album", Type: "Album" }],
+    albums: [{ id: albumId, title: "Old Album", type: "Album" }],
     before: () => oldGate.wait(),
   });
   artist(replacement, { images: [image(newImage)] });
@@ -279,7 +279,7 @@ test("an artist without an image never takes a namesake's image or page", async 
   artist(mbid);
   artist(namesake, { images: [image(oldImage)] });
   fixtures.set("metadata.invalid/search/artist", async () => [
-    { id: namesake, artistname: `Artist ${mbid}`, images: [image(oldImage)] },
+    { id: namesake, name: `Artist ${mbid}`, images: [image(oldImage)] },
   ]);
   try {
     assert.equal((await getArtistImage(mbid)).url, null);
@@ -374,7 +374,7 @@ for (const [index, recoveredUrl] of [
     const providerGate = gate();
     let providerRequests = 0;
     artist(mbid, {
-      albums: [{ Id: albumId, Title: "Old Album", Type: "Album" }],
+      albums: [{ id: albumId, title: "Old Album", type: "Album" }],
       before: () => recoveryGate.wait(),
     });
     fixtures.set(`api.deezer.com/artist/${deezerArtistId}`, async () => {
@@ -447,13 +447,13 @@ test("a forced refresh searches albums that a pending lookup skips", async () =>
   const albumId = artistId(219);
   const lookupGate = gate();
   artist(mbid, {
-    albums: [{ Id: albumId, Title: "Current Album", Type: "Album" }],
+    albums: [{ id: albumId, title: "Current Album", type: "Album" }],
     before: () => lookupGate.wait(),
   });
-  fixtures.set(`metadata.invalid/album/${albumId}`, async () => ({
+  fixtures.set(`metadata.invalid/v1/album/${albumId}`, async () => ({
     id: albumId,
     title: "Current Album",
-    images: [{ CoverType: "Cover", Url: newImage }],
+    images: [{ kind: "Cover", url: newImage }],
     artists: [],
     releases: [],
   }));

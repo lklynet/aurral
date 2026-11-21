@@ -12,7 +12,7 @@ import {
   normalizeReleaseText as normalizeText,
   normalizeTitle,
   getYear,
-} from "../providers/brainzmashRanking.ts";
+} from "../providers/metadataRanking.ts";
 import {
   coreAlbumTitle,
   isVariousArtistsCredit,

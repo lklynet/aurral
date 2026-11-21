@@ -83,11 +83,15 @@ beforeAll(() => {
           }
         : url.hostname === "api.deezer.com" && seed
           ? { data: [{ id: 100, name: `Like ${seed}` }] }
-          : url.hostname === "brainzmash.kell.ly" && query.startsWith("Like ")
-            ? [{ id: similarMbids.get(query.slice(5)), artistname: query }]
-            : {};
-    return new Response(JSON.stringify(body), {
-      status: 200,
+          : url.hostname === "data.aurral.org" &&
+              url.pathname === "/search/artist" &&
+              query.startsWith("Like ")
+            ? [{ id: similarMbids.get(query.slice(5)), name: query }]
+            : url.hostname === "data.aurral.org"
+              ? null
+              : {};
+    return new Response(JSON.stringify(body ?? {}), {
+      status: body === null ? 404 : 200,
       headers: { "content-type": "application/json" },
     });
   };

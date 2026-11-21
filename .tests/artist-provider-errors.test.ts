@@ -19,23 +19,23 @@ const provider = await createMockHttpServer((req, res) => {
   const path = requireFixture(req.url);
   providerRequests.push(path);
   res.setHeader("content-type", "application/json");
-  if (path.startsWith("/album/")) {
-    const id = path.slice("/album/".length);
-    const images = [{ CoverType: "Cover", Url: `https://images.example/${id}.jpg` }];
+  if (path.startsWith("/v1/album/")) {
+    const id = path.slice("/v1/album/".length);
+    const images = [{ kind: "Cover", url: `https://images.example/${id}.jpg` }];
     res.end(JSON.stringify({ id, title: id, images }));
     return;
   }
   res.end(
     JSON.stringify(
-      path.startsWith("/artist/")
+      path.startsWith("/v1/artist/")
         ? {
             id: mbid,
-            artistname: "Provider Artist",
+            name: "Provider Artist",
             images: [],
-            Albums: Array.from({ length: albumCount }, (_, index) => ({
-              Id: `album-${index + 1}`,
-              Title: `Album ${index + 1}`,
-              Type: "Album",
+            albums: Array.from({ length: albumCount }, (_, index) => ({
+              id: `album-${index + 1}`,
+              title: `Album ${index + 1}`,
+              type: "Album",
             })),
             links: [
               ...(artistLinked
@@ -50,7 +50,7 @@ const provider = await createMockHttpServer((req, res) => {
     ),
   );
 });
-process.env.BRAINZMASH_BASE_URL = provider.url;
+process.env.METADATA_BASE_URL = provider.url;
 const [
   state,
   { http },
@@ -67,7 +67,7 @@ const [
   () => import("../backend/services/imageService.ts"),
   () => import("../backend/db/helpers/index.ts"),
   () => import("../backend/config/db-sqlite.ts"),
-  () => import("../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../backend/services/providers/metadataProvider.ts"),
   () => import("../backend/services/musicDataSource/index.ts"),
 );
 
@@ -83,7 +83,7 @@ beforeEach(() => {
 afterAll(async () => {
   await cleanupIsolatedState(state);
   await provider.close();
-  delete process.env.BRAINZMASH_BASE_URL;
+  delete process.env.METADATA_BASE_URL;
 });
 
 function responses(
@@ -402,11 +402,11 @@ test("an artist with no photo takes an album cover without loading every album",
 
   assert.match(String(image.url), /^https:\/\/images\.example\/album-[1-4]\.jpg$/);
   assert.deepEqual(providerRequests.toSorted(), [
-    "/album/album-1",
-    "/album/album-2",
-    "/album/album-3",
-    "/album/album-4",
-    `/artist/${mbid}`,
+    "/v1/album/album-1",
+    "/v1/album/album-2",
+    "/v1/album/album-3",
+    "/v1/album/album-4",
+    `/v1/artist/${mbid}`,
   ]);
 });
 

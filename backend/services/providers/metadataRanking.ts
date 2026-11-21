@@ -1,4 +1,4 @@
-import type { NormalizedRelease, NormalizedTrack } from "./brainzmashMappers.ts";
+import type { NormalizedRelease, NormalizedTrack } from "./metadataMappers.ts";
 
 type Track = Partial<NormalizedTrack> & {
   discNumber?: unknown;
