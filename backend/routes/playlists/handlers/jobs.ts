@@ -52,6 +52,7 @@ import {
   isAurralOwnedPath,
 } from "../../../services/qualityProfile.ts";
 import { readOnlyFolderPaths } from "../../../services/libraryFolders.ts";
+import { fetchMissingJobIds } from "../../../services/playlists/fetchMissing.ts";
 import { getLibraryTrackOwnershipBatch } from "../../../services/libraryQueryService.ts";
 import { playlistTrackFavoriteIds } from "../../../services/subsonicLibraryService.ts";
 import { logger, safeLogDiagnostic } from "../../../services/logger.ts";
@@ -245,14 +246,18 @@ export default new Hono<AppEnv>()
           : null;
       const staticPlaylist = flowPlaylistConfig.getStaticPlaylist(playlistId);
       const jobs = staticPlaylist
-        ? orderJobsByPlaylistTracks(staticPlaylistJobs(staticPlaylist), staticPlaylist.tracks)
-            .slice(0, limit ?? undefined)
-            .map((job) => ({ ...job, playlistId, playlistType: playlistId }))
+        ? orderJobsByPlaylistTracks(
+            staticPlaylistJobs(staticPlaylist),
+            staticPlaylist.tracks,
+          ).slice(0, limit ?? undefined)
         : downloadTracker.getByPlaylistType(playlistId, limit);
       const profile = getQualityProfile();
       const readOnlyRoots = readOnlyFolderPaths();
-      const accessibleJobs = filterJobsForUser(user, jobs);
+      const accessibleJobs = staticPlaylist ? jobs : filterJobsForUser(user, jobs);
       const libraryOwnership = getLibraryTrackOwnershipBatch(accessibleJobs);
+      const fetchable = staticPlaylist
+        ? fetchMissingJobIds(staticPlaylist, accessibleJobs, libraryOwnership)
+        : null;
       const favoriteIds = playlistTrackFavoriteIds(playlistId, accessibleJobs);
       const customArtwork = getCustomArtworkMap(
         "playlist-track",
@@ -261,7 +266,12 @@ export default new Hono<AppEnv>()
       const addedBy = staticPlaylist?.memberUserIds ? trackAdders(staticPlaylist) : null;
       return c.json(
         accessibleJobs.map((job, index) => ({
-          ...toPublicJob(job, profile, readOnlyRoots),
+          ...toPublicJob(
+            staticPlaylist ? { ...job, playlistId, playlistType: playlistId } : job,
+            profile,
+            readOnlyRoots,
+          ),
+          ...(fetchable && { canFetchMissing: fetchable.has(job.id) }),
           libraryOwned: libraryOwnership[index] === true,
           favoriteId: favoriteIds[index],
           ...(addedBy && { addedBy: addedBy.get(job.id) ?? null }),

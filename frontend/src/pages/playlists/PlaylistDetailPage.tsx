@@ -1,8 +1,17 @@
 import { usePlaylistArtwork } from "../../hooks/usePlaylistArtwork.ts";
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
-import { Clock, LogOut, Pencil, RefreshCw, Share, Trash2, Users } from "../../components/icons";
+import {
+  Clock,
+  Download,
+  LogOut,
+  Pencil,
+  RefreshCw,
+  Share,
+  Trash2,
+  Users,
+} from "../../components/icons";
 import { useShareAction } from "../../hooks/useShareAction.ts";
 import { DotLoader } from "../../components/DotLoader";
 import {
@@ -129,8 +138,8 @@ export default function PlaylistDetailPage() {
 
 function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: PlaylistDetailProps) {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const { showSuccess, showError } = useToast();
+  const { user, bootstrap } = useAuth();
+  const { showSuccess, showError, showInfo } = useToast();
   const { artworkUrlFor } = usePlaylistArtwork();
   const share = useShareAction();
   const pluginActions = usePlaylistPluginActions(playlist.id);
@@ -149,6 +158,36 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
       hiddenTrackIds ? savedTracks.filter((track) => !hiddenTrackIds.has(track.id)) : savedTracks,
     [hiddenTrackIds, savedTracks],
   );
+  const fetchMissing = useMutation({
+    mutationFn: () =>
+      parseResponse(
+        sharedPlaylist["fetch-missing"].$post({
+          param: { playlistId: encodeURIComponent(playlist.id) },
+        }),
+      ),
+    onSuccess: async ({ trackCount }) => {
+      if (trackCount) showSuccess(`Queued downloads for ${formatTrackTotal(trackCount)}`);
+      else showInfo("No missing tracks are ready to fetch.");
+      await Promise.all([fetchStatus(), refresh()]);
+    },
+    onError: (err) => showError(getApiErrorMessage(err, "Couldn't fetch missing tracks")),
+  });
+  const missingCount = bootstrap?.api?.features?.includes("staticPlaylistFetchMissing")
+    ? tracks.filter((track) => track.canFetchMissing).length
+    : 0;
+  const followDownloads = fetchMissing.data?.queued === true;
+  useEffect(() => {
+    if (followDownloads) void refresh();
+  }, [
+    followDownloads,
+    stats.pending,
+    stats.downloading,
+    stats.done,
+    stats.failed,
+    stats.blocked,
+    refresh,
+  ]);
+
   const playbackSource = {
     type: "playlist",
     id: playlist.id,
@@ -498,6 +537,24 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
               onPlay={playback.handlePlayAll}
               onShuffle={playback.handleShufflePlay}
             />
+            {(missingCount > 0 || fetchMissing.isPending) && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={fetchMissing.isPending}
+                aria-label="Fetch Missing"
+                aria-description={`Queue server downloads for ${formatTrackTotal(missingCount)} in this playlist.`}
+                aria-busy={fetchMissing.isPending}
+                onClick={() => fetchMissing.mutate()}
+              >
+                {fetchMissing.isPending ? (
+                  <DotLoader size="sm" label={null} />
+                ) : (
+                  <Download aria-hidden="true" />
+                )}
+                {fetchMissing.isPending ? "Queuing…" : `Fetch Missing (${missingCount})`}
+              </button>
+            )}
             <LibraryItemMenu
               label={playlist.name}
               contextMenu={false}

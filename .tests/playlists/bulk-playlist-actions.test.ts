@@ -656,3 +656,112 @@ test("a bulk operation Aurral can't read changes nothing and reads as gone", asy
     undefined,
   );
 });
+
+test("fetch missing accepts only eligible playlist jobs and rechecks membership before download", async (t) => {
+  const f = fixture(t, 9);
+  const id = (index: number) => requireFixture(f.jobs[index]).id;
+  const pathname = `/static-playlists/${f.source.id}/fetch-missing`;
+  const { stopPlaylistOperationWorker } =
+    await import("../../backend/services/playlists/playlistOperationWorker.ts");
+  await stopPlaylistOperationWorker();
+  vi.spyOn(playlistOperationQueue, "start").mockImplementation(async () => undefined);
+  const sources = await import("../../backend/services/downloadSourceService.ts");
+  const configured = vi.spyOn(sources, "isAnyDownloadSourceConfigured").mockReturnValue(false);
+  const { cancelDownloadJobs } =
+    await import("../../backend/services/downloadJobs/downloadCancellation.ts");
+  const media = await import("../../backend/services/libraryMediaStore.ts");
+  const owned = media.upsertLibraryTrack({
+    identityKey: "owned",
+    title: "Track 7",
+    artistName: "Artist",
+  });
+  const artist = media.upsertLibraryArtist({ identityKey: "artist", name: "Artist" });
+  const album = media.upsertLibraryAlbum({
+    identityKey: "album",
+    title: "Album",
+    artistId: artist.id,
+  });
+  media.linkLibraryAlbumTrack({ trackId: owned.id, albumId: album.id });
+  media.upsertLibraryMediaFile({
+    trackId: owned.id,
+    albumId: album.id,
+    source: "readonly",
+    path: path.join(state.baseDir, "owned.flac"),
+    available: true,
+  });
+
+  for (const index of [0, 2, 7, 8]) downloadTracker.setSaved(id(index));
+  downloadTracker.setFailed(id(1), "No match");
+  downloadTracker.setBlocked(id(4), "Needs review");
+  downloadTracker.setDone(id(5), path.join(state.baseDir, "completed.flac"));
+  downloadTracker.setCancelled(id(6));
+  cancelDownloadJobs([id(8)]);
+  const unrelated = downloadTracker.addJob(
+    { artistName: "Elsewhere", trackName: "Unrelated" },
+    "library",
+  );
+  assert.ok(unrelated);
+  downloadTracker.setSaved(unrelated);
+
+  const rows: { id: string; canFetchMissing: boolean }[] = await (
+    await send(f.user, "GET", `/jobs/${f.source.id}`)
+  ).json();
+  assert.deepEqual(
+    rows
+      .filter((row) => row.canFetchMissing)
+      .map((row) => row.id)
+      .sort(),
+    [id(0), id(1), id(2)].sort(),
+  );
+  assert.equal((await send(f.user, "POST", pathname)).status, 409);
+  assert.equal(
+    (
+      await send(
+        { ...f.user, permissions: { ...f.user.permissions, accessPlaylists: false } },
+        "POST",
+        pathname,
+      )
+    ).status,
+    403,
+  );
+  const other = requireFixture(
+    userOps.createUser("other", "unused", "user", { accessPlaylists: true }),
+  );
+  assert.equal((await send(other, "POST", pathname)).status, 404);
+  configured.mockReturnValue(true);
+  config.flowPlaylistConfig.updateStaticPlaylist(f.source.id, { memberUserIds: [other.id] });
+  const queue = await import("../../backend/services/playlists/playlistOperationQueue.ts");
+  const enqueue = vi.spyOn(queue.playlistOperationQueue, "enqueuePayload");
+  const first = await (await send(other, "POST", pathname)).json();
+  assert.equal(first.queued, true);
+  assert.equal(first.trackCount, 3);
+  assert.ok(first.operationId > 0);
+  assert.deepEqual(await (await send(other, "POST", pathname)).json(), first);
+  assert.equal(playlistOperationQueue.readyCount(), 1);
+
+  const payload = requireFixture(enqueue.mock.calls[0])[0];
+  const remaining = f.source.tracks.filter((track) => track.canonicalJobId !== id(2));
+  config.flowPlaylistConfig.updateStaticPlaylist(f.source.id, {
+    memberUserIds: [],
+    tracks: remaining,
+  });
+  assert.deepEqual(await operations.processPlaylistOperation(payload), { queued: 0 });
+  config.flowPlaylistConfig.updateStaticPlaylist(f.source.id, { memberUserIds: [other.id] });
+  assert.deepEqual(await operations.processPlaylistOperation(payload), { queued: 2 });
+  assert.deepEqual(await operations.processPlaylistOperation(payload), { queued: 0 });
+  assert.deepEqual(
+    f.jobs.map((job) => downloadTracker.getJob(job.id)?.status),
+    ["pending", "pending", "saved", "pending", "blocked", "done", "cancelled", "saved", "saved"],
+  );
+  assert.equal(downloadTracker.getJob(unrelated)?.status, "saved");
+  configured.mockReturnValue(false);
+  const empty = await send(other, "POST", pathname);
+  assert.equal(empty.status, 200);
+  assert.deepEqual(await empty.json(), {
+    success: true,
+    playlistId: f.source.id,
+    queued: false,
+    trackCount: 0,
+    operationId: null,
+  });
+});
