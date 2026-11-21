@@ -1621,7 +1621,8 @@ export class DownloadTracker {
     if (quality.upgradeCheckedAt !== undefined) {
       job.qualityUpgradeCheckedAt = quality.upgradeCheckedAt;
     }
-    this._update(job);
+    this._store(job);
+    this._touchRevision();
     return true;
   }
 
@@ -1629,7 +1630,8 @@ export class DownloadTracker {
     const job = this.jobs.get(id);
     if (!job) return false;
     job.qualityUpgradeCheckedAt = checkedAt;
-    this._update(job);
+    this._store(job);
+    this._touchRevision();
     return true;
   }
 
@@ -1642,6 +1644,9 @@ export class DownloadTracker {
     upgradeJobId: string,
   ) {
     const upgrade = this.jobs.get(upgradeJobId);
+    const hasUpgradeMetadata = Boolean(
+      upgrade && DOWNLOAD_METADATA_KEYS.some((key) => upgrade[key] != null),
+    );
     const changed = [];
     for (const job of this.jobs.values()) {
       if (job.status !== "done" || job.finalPath !== sourcePath) continue;
@@ -1655,7 +1660,7 @@ export class DownloadTracker {
       job.qualityCheckedAt = Date.now();
       job.qualityUpgradeCheckedAt = Date.now();
       this._store(job);
-      if (upgrade) {
+      if (hasUpgradeMetadata && upgrade) {
         for (const key of DOWNLOAD_METADATA_KEYS) job[key] = upgrade[key] ?? null;
         job.downloadClientId = null;
         updateDownloadMetaStmt.run(
