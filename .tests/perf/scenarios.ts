@@ -22,11 +22,13 @@ const homeRails = ["plays", "random", "newest", "played", "released"].map((sort)
   }),
 );
 
+export type ScenarioRequest = string | { path: string; json: Record<string, unknown> };
+
 export type Scenario = {
   name: string;
   random?: true;
   writes?: true;
-  requests: (context: PerfContext) => string[];
+  requests: (context: PerfContext) => ScenarioRequest[];
 };
 
 const DISCOVER_ARTIST = "90000000-0000-4000-8000-000000000001";
@@ -220,7 +222,7 @@ export const scenarios: Scenario[] = [
     name: "subsonic playlists",
     requests: ({ playlistId }) => [
       "/rest/getPlaylists",
-      `/rest/getPlaylist?id=${encodeURIComponent(playlistId)}`,
+      `/rest/getPlaylist?id=${encodeURIComponent(`shared:${playlistId}`)}`,
     ],
   },
   {
@@ -249,5 +251,14 @@ export const scenarios: Scenario[] = [
     name: "subsonic getSimilarSongs",
     random: true,
     requests: ({ trackId }) => [`/rest/getSimilarSongs?id=song:${trackId}&count=50`],
+  },
+  {
+    name: "fetch missing in an available playlist",
+    requests: ({ playlistId }) => [
+      {
+        path: `/api/playlists/static-playlists/${encodeURIComponent(playlistId)}/fetch-missing`,
+        json: {},
+      },
+    ],
   },
 ];

@@ -106,3 +106,40 @@ test.skipIf(!has("webhooks", "gotify"))(
     });
   },
 );
+
+test("Fetch Missing downloads a saved playlist track and a second fetch finds nothing", async () => {
+  await leaveOn((source) => source === "ytdlp");
+  const release = worldRelease(9);
+  const track = release.files[0]!;
+  const { playlistId } = v.parse(
+    v.object({ playlistId: v.string() }),
+    await api.post("/playlists/static-playlists", {
+      name: "Eden saved tracks",
+      tracks: [{ artistName: release.artist, albumName: release.album, trackName: track.title }],
+      downloadMissing: false,
+    }),
+  );
+  const getJobs = async () =>
+    v.parse(
+      v.array(v.object({ id: v.string(), canFetchMissing: v.boolean(), status: v.string() })),
+      await api.get(`/playlists/jobs/${playlistId}`),
+    );
+  const saved = await until("the playlist to list its saved track", async () => {
+    const [job] = await getJobs();
+    return job?.status === "saved" && job;
+  });
+  assert.equal(saved.canFetchMissing, true);
+  const fetchMissing = async () =>
+    v.parse(
+      v.object({ trackCount: v.number(), queued: v.boolean() }),
+      await api.post(`/playlists/static-playlists/${playlistId}/fetch-missing`),
+    );
+  assert.deepEqual(await fetchMissing(), { trackCount: 1, queued: true });
+  const downloaded = await until("the saved song to finish downloading", async () => {
+    const [job] = await getJobs();
+    return job?.status === "done" && job;
+  });
+  assert.equal(downloaded.id, saved.id);
+  assert.equal(downloaded.canFetchMissing, false);
+  assert.deepEqual(await fetchMissing(), { trackCount: 0, queued: false });
+});

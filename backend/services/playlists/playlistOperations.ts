@@ -863,6 +863,12 @@ export async function processPlaylistOperation(
         return (await import("../shareLinks/import.ts")).importShare(payload);
       case "disable-flow-cleanup":
         return runFlowCleanup(payload);
+      case "static-playlist-fetch-missing":
+        return (await import("./fetchMissing.ts")).fetchMissingPlaylistTracks(
+          String(payload.playlistId),
+          unknownList(payload.jobIds).map(String),
+          Number(payload.requesterId),
+        );
       case "flow-download-saved":
         return downloadSavedFlowTracks(payload);
       case "delete-flow":

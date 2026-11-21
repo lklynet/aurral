@@ -1,10 +1,10 @@
 {
   "app shell": {
     "queries": {
-      "cold": 13,
-      "warm": 13
+      "cold": 12,
+      "warm": 12
     },
-    "bytes": 1652,
+    "bytes": 1716,
     "scans": []
   },
   "library home": {
@@ -490,5 +490,13 @@
         "warm": 0
       }
     }
+  },
+  "fetch missing in an available playlist": {
+    "queries": {
+      "cold": 4,
+      "warm": 4
+    },
+    "bytes": 117,
+    "scans": []
   }
 }

@@ -17,7 +17,7 @@ import {
   seedPerfNeighbor,
   seedPerfPlaylistJobs,
 } from "./seed.ts";
-import type { PerfContext, Scenario } from "./scenarios.ts";
+import type { PerfContext, Scenario, ScenarioRequest } from "./scenarios.ts";
 
 const SUBSONIC_AUTH = { u: "test", p: "password", v: "1.16.1", c: "perf", f: "json" };
 
@@ -217,7 +217,7 @@ export async function startPerfApp({ artists }: { artists: number }) {
       ownerUserId: user.id,
       tracks: tracks.map(({ path: _path, ...track }) => track),
     });
-    playlistId = `shared:${playlist.id}`;
+    playlistId = playlist.id;
   }
   for (const { path } of editSongs.flat()) {
     await mkdir(dirname(path), { recursive: true });
@@ -250,7 +250,8 @@ export async function startPerfApp({ artists }: { artists: number }) {
     },
   };
 
-  async function request(path: string) {
+  async function request(input: ScenarioRequest) {
+    const path = typeof input === "string" ? input : input.path;
     const url = new URL(path, baseUrl);
     const headers: Record<string, string> = { "accept-encoding": "gzip" };
     if (url.pathname.startsWith("/rest/")) {
@@ -258,7 +259,13 @@ export async function startPerfApp({ artists }: { artists: number }) {
     } else {
       headers.authorization = `Bearer ${token}`;
     }
-    const response = await fetch(url, { headers });
+    const init: RequestInit = { headers };
+    if (typeof input !== "string") {
+      headers["content-type"] = "application/json";
+      init.method = "POST";
+      init.body = JSON.stringify(input.json);
+    }
+    const response = await fetch(url, init);
     const body = await response.text();
     if (!response.ok || body.includes('"status":"failed"')) {
       throw new Error(`${path} returned ${response.status}: ${body.slice(0, 300)}`);

@@ -5,7 +5,12 @@ import {
   getBulkOperation,
 } from "../../../services/playlists/bulkOperationStore.ts";
 import { captureStaticPlaylistSelection } from "../../../services/playlists/trackRemoval.ts";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
+import { fetchMissingJobIds } from "../../../services/playlists/fetchMissing.ts";
+import {
+  getDownloadSourceNotConfiguredMessage,
+  isAnyDownloadSourceConfigured,
+} from "../../../services/downloadSourceService.ts";
 import {
   flowPlaylistConfig,
   normalizeImportSource,
@@ -501,6 +506,36 @@ const staticPlaylistRoutes = new Hono<AppEnv>()
         500,
       );
     }
+  })
+  .post("/:playlistId/fetch-missing", requirePlaylistAccess, async (c) => {
+    const playlistId = c.req.param("playlistId");
+    const playlist = getAccessibleStaticPlaylist(c.var.user, playlistId);
+    if (!playlist) return c.json({ error: "Playlist not found" }, 404);
+    const jobIds = [...fetchMissingJobIds(playlist)].sort();
+    if (!jobIds.length)
+      return c.json(
+        { success: true, playlistId, queued: false, trackCount: 0, operationId: null },
+        200,
+      );
+    if (!isAnyDownloadSourceConfigured())
+      return c.json({ error: getDownloadSourceNotConfiguredMessage() }, 409);
+    const kind = "static-playlist-fetch-missing";
+    const requesterId = c.var.user.id;
+    const selection = createHash("sha256").update(JSON.stringify(jobIds)).digest("hex");
+    const result = await playlistOperationQueue.enqueuePayload(
+      { kind, label: `${kind}:${playlistId}`, playlistId, requesterId, jobIds },
+      { dedupeKey: `${kind}:${playlistId}:${requesterId}:${selection}` },
+    );
+    return c.json(
+      {
+        success: true,
+        playlistId,
+        queued: true,
+        trackCount: jobIds.length,
+        operationId: result.operationId,
+      },
+      200,
+    );
   })
   .post("/:playlistId/tracks/:jobId/research", requirePlaylistAccess, async (c) => {
     try {
