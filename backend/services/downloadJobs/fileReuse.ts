@@ -9,7 +9,7 @@ import {
   findLibraryArtist,
   findLibraryTracksForAlbum,
 } from "../libraryReadModel.ts";
-import { getLibraryForArtistReferences } from "../libraryQueryService.ts";
+import { getLibraryForArtistReferences, getLibraryTrackTitle } from "../libraryQueryService.ts";
 import { getLibraryFileIds, getLibraryMediaFile } from "../libraryMediaStore.ts";
 import { classifyLibraryFileQuality } from "../qualityProfile.ts";
 import { scheduleLibraryScan as scheduleLibraryScanJob } from "../libraryScanWorker.ts";
@@ -679,18 +679,38 @@ const resolveReplacedFileSource: typeof resolveRepairTrackSource = async (track,
   return source ? { source, reason: null } : resolveRepairTrackSource(track, options);
 };
 
+// Jobs whose file left the Library, for the tracks of the files a scan indexed.
+function jobsMissingIndexedTrack(changed: Set<string>) {
+  const titles = new Set<string>();
+  for (const filePath of changed) {
+    const media = indexedFile(filePath);
+    const title = media?.available === 1 ? getLibraryTrackTitle(media.track_id) : null;
+    if (title) titles.add(title);
+  }
+  return new Set(
+    [...titles].flatMap((title) =>
+      downloadTracker
+        .getDoneByTrackName(title)
+        .filter((job) => job.finalPath && !indexedFile(path.resolve(job.finalPath)))
+        .map((job) => job.id),
+    ),
+  );
+}
+
 // Jobs follow the files a scan changed: a job whose file the scan removed
 // moves to the Library's copy of its track, even for an album request, which
-// otherwise never reuses Library files. Every job takes the quality the scan
-// read. A file that is only unavailable, like one on a drive that is not
-// connected, keeps its jobs as they are.
+// otherwise never reuses Library files. So does a job whose file left the
+// Library before the scan that indexed its track's new file. Every job takes
+// the quality the scan read. A file that is only unavailable, like one on a
+// drive that is not connected, keeps its jobs as they are.
 export async function followChangedLibraryFiles(changedPaths: string[]) {
   const changed = new Set(changedPaths.map((filePath) => path.resolve(filePath)));
   const playlistTypes = new Set<string>();
   const followed = new Map<string, string[]>();
+  const missingTrackJobIds = jobsMissingIndexedTrack(changed);
   for (const job of downloadTracker.getAll()) {
     if (job.status !== "done" || job.upgradeForJobId) continue;
-    if (!changed.has(path.resolve(job.finalPath))) continue;
+    if (!changed.has(path.resolve(job.finalPath)) && !missingTrackJobIds.has(job.id)) continue;
     if (!indexedFile(path.resolve(job.finalPath))) {
       const result = await restoreCompletedTrack(job, {
         requeueOnMissing: false,
