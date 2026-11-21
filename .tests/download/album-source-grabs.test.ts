@@ -669,11 +669,15 @@ async function pinnedUpgrade(
     "-t",
     "1",
     ...mp3,
+    "-metadata",
+    "artist=The Band",
+    "-metadata",
+    "title=Second",
     original,
   ]);
   const folder = join(state.baseDir, `${group}-release`);
   await mkdir(folder, { recursive: true });
-  for (const [index, title] of titles.entries()) {
+  for (const [index, title] of [...titles, "Bonus"].entries()) {
     await execFileAsync("ffmpeg", [
       "-hide_banner",
       "-loglevel",
@@ -751,8 +755,12 @@ async function pinnedUpgrade(
   };
 }
 
-test("an upgrade downloads its release first, imports only its own track, and replaces the old file", async (t) => {
+test("a single-track upgrade takes a better copy from the first album even when it contains a bonus track", async (t) => {
   const upgrade = await pinnedUpgrade(t, "upgrade-by-release");
+  await cp(upgrade.original, join(upgrade.folder, "02 - Second.mp3"));
+  upgrade.download.candidates.push(
+    usenetCandidate({ guid: "another-edition", title: "The Band - Another Edition" }),
+  );
   const { append } = mockNzbget(t, upgrade.folder);
   const trackSearch = vi.spyOn(prowlarrClient, "search").mockImplementation(async () => []);
 
@@ -771,8 +779,8 @@ test("an upgrade downloads its release first, imports only its own track, and re
   assert.ok((await stat(upgraded.finalPath!)).isFile());
   await assert.rejects(stat(upgrade.original));
   assert.deepEqual(
-    (await readdir(dirname(upgraded.finalPath!))).filter((name) => name.includes("First")),
-    [],
+    (await readdir(dirname(upgraded.finalPath!))).filter((name) => /\.(flac|mp3)$/i.test(name)),
+    ["02 - Second.flac"],
   );
   assert.deepEqual(
     [
