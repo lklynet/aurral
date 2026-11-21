@@ -63,7 +63,7 @@ export async function finalizeQualityUpgradeSuccess(
     upgradedPath = await takeReplacedFileName(oldPath, finalPath);
     replaced = true;
   }
-  const changed = downloadTracker.replaceFinalPath(oldPath, upgradedPath, quality);
+  const changed = downloadTracker.replaceFinalPath(oldPath, upgradedPath, quality, upgradeJob.id);
   if (replaced) {
     await adoptLibraryFileIdentity(upgradedPath, { previousPath: oldPath }).catch((error) => {
       logger.warn("quality-upgrade", "The Library could not follow an upgraded file", {
