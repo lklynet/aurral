@@ -81,7 +81,6 @@ function hasConflictingYear(title: string, expectedYear: string | null) {
 }
 
 function scoreFormat(title: string) {
-  // "WEBFLAC" glues the source to the codec, so split it before matching.
   const text = splitGluedSourceCodec(normalizeText(title));
   if (/\bflac\b|\blossless\b|\b24bit\b|\b24 bit\b/.test(text)) {
     return 12;

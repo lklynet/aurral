@@ -819,16 +819,9 @@ test("Usenet matcher prefers matching audio releases and keeps fallback candidat
   assert.equal(ranked[0]?.releaseAdmissible, true);
   const selected = selectRankedUsenetCandidates(ranked, 2);
   assert.equal(selected.length, 2);
-});
 
-test("Usenet format scoring reads a glued WEBFLAC token as FLAC", () => {
-  const context = {
-    artistName: "Example Artist",
-    trackName: "Signal Fire",
-    albumName: "Bright Static",
-    releaseYear: "2024",
-    albumTrackCount: 10,
-  };
+  // Format-score rows: a glued WEBFLAC token must score like WEB-FLAC. The
+  // 16-bit title scores 0 on main, so it pins the glued-token fix itself.
   const formatScoreOf = (title: string) =>
     rankUsenetReleases(
       [
@@ -844,12 +837,18 @@ test("Usenet format scoring reads a glued WEBFLAC token as FLAC", () => {
       ],
       context,
     )[0]?.scores.format;
-  assert.equal(
-    formatScoreOf("Example Artist-Bright Static-24BIT-WEBFLAC-GRP"),
-    formatScoreOf("Example Artist-Bright Static-24BIT-WEB-FLAC-GRP"),
-  );
-  assert.equal(formatScoreOf("Example Artist-Bright Static-24BIT-WEBFLAC-GRP"), 12);
-  assert.equal(formatScoreOf("Example Artist-Bright Static-WEB-GRP"), 0);
+  const formatRows: Array<[string, number]> = [
+    ["Example Artist-Bright Static-WEBFLAC-2024-GRP", 12],
+    ["Example Artist-Bright Static-WEB-FLAC-2024-GRP", 12],
+    ["Example Artist-Bright Static-16BIT-WEBFLAC-2024-GRP", 12],
+    ["Example Artist-Bright Static-24BIT-WEBFLAC-2024-GRP", 12],
+    ["Example Artist-Bright Static-24BIT-WEB-FLAC-2024-GRP", 12],
+    ["Example Artist-Bright Static-WEB-2024-GRP", 0],
+    ["Example Artist-Bright Static-WEBDL-2024-GRP", 0],
+  ];
+  for (const [title, expected] of formatRows) {
+    assert.equal(formatScoreOf(title), expected, title);
+  }
 });
 
 for (const albumGrab of [false, true]) {

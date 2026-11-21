@@ -168,9 +168,6 @@ export function getQualityTier(id: unknown) {
   return TIER_BY_ID.get(String(id || "")) || null;
 }
 
-// Scene names glue the source to the codec without a separator ("WEBFLAC",
-// "WEBMP3", "CDFLAC"), so no word boundary precedes the codec and a plain
-// `\bflac\b` misses it. Split those tokens so codec matching sees "web-flac".
 const GLUED_SOURCE_CODEC = /\b(web|cd|vinyl|sacd|bd|blu-?ray)(flac|alac|mp3|m4a|aac)\b/gi;
 
 export function splitGluedSourceCodec(text: string) {
