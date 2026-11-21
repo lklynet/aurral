@@ -382,38 +382,13 @@ export async function readAudioTags(filePath: string) {
   }
 }
 
-type WriteAudioTagsOptions = { fillOnly?: boolean; identity?: object | null };
-
-// Linux's ESTALE, which Node reports as an unknown system error.
-const STALE_FILE_HANDLE = -116;
-const STALE_RETRY_MS = [500, 2000];
-
-// A network mount can briefly report a file it just moved into place as
-// stale. Each attempt opens the file again by its path.
-export async function writeAudioTags(
-  filePath: string,
-  values: Record<string, TagFieldValue> = {},
-  options: WriteAudioTagsOptions = {},
-) {
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      return await writeAudioTagsOnce(filePath, values, options);
-    } catch (error) {
-      const waitMs = STALE_RETRY_MS[attempt];
-      const stale = error instanceof Error && "errno" in error && error.errno === STALE_FILE_HANDLE;
-      if (!stale || waitMs === undefined) throw error;
-      await new Promise((resolve) => setTimeout(resolve, waitMs));
-    }
-  }
-}
-
 // Writes to a copy beside the file and moves it into place, so a crash never
 // leaves half a file, and a hardlinked file gets its own copy while the other
 // link keeps its tags.
-async function writeAudioTagsOnce(
+export async function writeAudioTags(
   filePath: string,
-  values: Record<string, TagFieldValue>,
-  { fillOnly = false, identity = null }: WriteAudioTagsOptions,
+  values: Record<string, TagFieldValue> = {},
+  { fillOnly = false, identity = null }: { fillOnly?: boolean; identity?: object | null } = {},
 ) {
   const source = path.resolve(filePath);
   const preview = await openFile(source);
