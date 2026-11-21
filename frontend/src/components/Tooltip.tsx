@@ -6,6 +6,7 @@ import {
   useId,
   useRef,
   useState,
+  type AriaAttributes,
   type FocusEvent,
   type PointerEvent,
   type ReactNode,
@@ -22,6 +23,7 @@ interface TriggerProps {
   "aria-labelledby"?: string;
   "aria-describedby"?: string;
   "aria-expanded"?: boolean | "true" | "false";
+  "aria-haspopup"?: AriaAttributes["aria-haspopup"];
   "aria-hidden"?: boolean | "true" | "false";
   alt?: string;
   role?: string;
@@ -169,7 +171,10 @@ export default function Tooltip({
 
   if (!isValidElement<TriggerProps>(children) || content == null || content === "") return children;
 
-  const shown = isTooltipVisible && String(children.props["aria-expanded"]) !== "true";
+  const menuOpen =
+    String(children.props["aria-haspopup"] ?? false) !== "false" &&
+    String(children.props["aria-expanded"]) === "true";
+  const shown = isTooltipVisible && !menuOpen;
   const needsLabel = needsTooltipLabel(children);
   const tooltipProvidesLabel = needsLabel || children.props["aria-label"] === String(content);
   const triggerProps: TriggerProps = {

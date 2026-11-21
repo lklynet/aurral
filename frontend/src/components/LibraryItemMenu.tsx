@@ -452,7 +452,12 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
   }, [align, anchor]);
 
   useLayoutEffect(() => {
-    if (open) updatePosition();
+    const menu = menuRef.current;
+    if (!open || !menu) return;
+    updatePosition();
+    const observer = new ResizeObserver(updatePosition);
+    observer.observe(menu);
+    return () => observer.disconnect();
   }, [open, updatePosition]);
 
   const handleAction = async (event: ReactMouseEvent<HTMLElement>, item: LibraryMenuItem) => {
