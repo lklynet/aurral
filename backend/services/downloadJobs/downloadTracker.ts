@@ -301,7 +301,6 @@ function rowToJob(row: DownloadJobsRow) {
     qualityBitDepth: row.quality_bit_depth ?? null,
     qualityCheckedAt: row.quality_checked_at ?? null,
     qualityUpgradeCheckedAt: row.quality_upgrade_checked_at ?? null,
-    fileMissingAt: row.file_missing_at ?? null,
     upgradeForJobId: row.upgrade_for_job_id || null,
     manualReplacementSearch: row.manual_replacement_search === 1,
     retryCycle: false,
@@ -333,7 +332,6 @@ type RowOnlyJobKey =
   | "qualityBitDepth"
   | "qualityCheckedAt"
   | "qualityUpgradeCheckedAt"
-  | "fileMissingAt"
   | "upgradeForJobId"
   | "manualReplacementSearch";
 export type DownloadJob = Omit<RowJob, RowOnlyJobKey | keyof DownloadJobState> &
@@ -425,10 +423,6 @@ const updateStmt = db.prepare(`
       cause_playlist_id = ?
   WHERE id = ?
 `);
-
-const updateFileMissingStmt = db.prepare<[number | null, string]>(
-  `UPDATE ${JOBS_TABLE} SET file_missing_at = ? WHERE id = ?`,
-);
 
 const deleteStmt = db.prepare(`DELETE FROM ${JOBS_TABLE} WHERE id = ?`);
 const deleteJobRows = db.transaction((ids: string[]) => {
@@ -1632,27 +1626,6 @@ export class DownloadTracker {
     return true;
   }
 
-  // A done download whose file is gone, as when the track was replaced
-  // outside Aurral, keeps its place but has nothing to upgrade. Every job on
-  // the file reads the same until the file is back or the job moves to another.
-  markFileMissing(finalPath: string, missing: boolean) {
-    let changed = false;
-    for (const job of this.jobs.values()) {
-      if (job.status !== "done" || job.finalPath !== finalPath) continue;
-      if (Boolean(job.fileMissingAt) === missing) continue;
-      job.fileMissingAt = missing ? Date.now() : null;
-      updateFileMissingStmt.run(job.fileMissingAt, job.id);
-      changed = true;
-    }
-    if (changed) this._touchRevision();
-  }
-
-  _clearFileMissing(job: DownloadJob) {
-    if (!job.fileMissingAt) return;
-    job.fileMissingAt = null;
-    updateFileMissingStmt.run(null, job.id);
-  }
-
   markQualityUpgradeChecked(id: string, checkedAt = Date.now()) {
     const job = this.jobs.get(id);
     if (!job) return false;
@@ -1678,7 +1651,6 @@ export class DownloadTracker {
     for (const job of this.jobs.values()) {
       if (job.status !== "done" || job.finalPath !== sourcePath) continue;
       job.finalPath = finalPath;
-      this._clearFileMissing(job);
       job.externalPath = null;
       job.qualityTier = quality?.tier || null;
       job.qualityFormat = quality?.format || null;
@@ -1706,7 +1678,6 @@ export class DownloadTracker {
     const job = this.jobs.get(id);
     if (!job || job.status !== "done") return false;
     job.finalPath = finalPath;
-    this._clearFileMissing(job);
     this._update(job);
     return true;
   }
@@ -2013,7 +1984,6 @@ export class DownloadTracker {
     job.completedAt = Date.now();
     this._setAlbumGrabFailures(job, 0);
     job.finalPath = finalPath;
-    this._clearFileMissing(job);
     job.externalPath = externalPath ?? null;
     if (reusedLibraryFile !== undefined) job.reusedLibraryFile = reusedLibraryFile === true;
     const safeAlbum = String(albumName || "").trim();

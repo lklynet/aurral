@@ -51,7 +51,11 @@ const spellLetters = (value: unknown) =>
     .replace(/[æœßøđðłþ]/g, (letter) => LETTER_SPELLINGS[letter as keyof typeof LETTER_SPELLINGS]);
 
 const hasNonLatinLetters = (value: unknown) =>
-  /(?![a-z0-9])[\p{L}\p{N}]/u.test(spellLetters(value).normalize("NFKD").replace(/[̀-ͯ]/g, ""));
+  /(?![a-z0-9])[\p{L}\p{N}]/u.test(
+    spellLetters(value)
+      .normalize("NFKD")
+      .replace(/[̀-ͯ]/g, ""),
+  );
 
 const asciiKeyPart = (value: unknown) =>
   normalizeText(value)
@@ -2861,4 +2865,12 @@ export function getLibraryFileIds(path: string) {
 
 export function getLibraryMediaFile({ source, path }: { source: string; path: string }) {
   return getLibraryMediaFileStmt.get(normalizeText(source), normalizeText(path));
+}
+
+const getLibraryTrackTitleStmt = db
+  .prepare<[number], string>("SELECT title FROM library_tracks WHERE id = ?")
+  .pluck();
+
+export function getLibraryTrackTitle(trackId: number) {
+  return getLibraryTrackTitleStmt.get(trackId) ?? null;
 }

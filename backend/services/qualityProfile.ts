@@ -39,7 +39,6 @@ export type QualityJob = DownloadJobState &
     | "qualitySampleRate"
     | "qualityBitDepth"
     | "qualityCheckedAt"
-    | "fileMissingAt"
     | "qualityUpgradeCheckedAt"
   >;
 
@@ -66,14 +65,9 @@ function getJobQuality(job: QualityJob, profile: QualityProfile, readOnlyRoots: 
     sampleRate: job.qualitySampleRate ?? null,
     bitDepth: job.qualityBitDepth ?? null,
   };
-  const missing = Boolean(job.fileMissingAt);
-  const owned = !missing && isAurralOwnedPath(job.finalPath, readOnlyRoots);
+  const owned = isAurralOwnedPath(job.finalPath, readOnlyRoots);
   const qualityState: QualityState | null =
-    job.status === "done" && !missing
-      ? owned
-        ? getQualityState(quality, profile)
-        : "external"
-      : null;
+    job.status === "done" ? (owned ? getQualityState(quality, profile) : "external") : null;
   return {
     qualityOwned: owned,
     qualityState,

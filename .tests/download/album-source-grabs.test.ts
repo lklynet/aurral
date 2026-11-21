@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { basename, dirname, join } from "node:path";
-import { cp, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
+import { cp, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { parseFile } from "music-metadata";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
 import { brainzmashGroup, serveGroups } from "../helpers/releaseFixture.ts";
@@ -1518,69 +1518,6 @@ test("a track removed while its upgrade's release details are read gets no upgra
   assert.equal(removing.track, id);
   assert.equal(queued.mock.calls.length, 0);
   assert.deepEqual(downloadTracker.getAll(), []);
-});
-
-test("a track whose file was replaced outside Aurral gets no upgrade and leaves the cutoff list until its file is back", async (t) => {
-  for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
-  await serveGroups(t, []);
-  useSlskd();
-  const original = join(resolveDownloadRoot(), "The Band", "replaced-upgrade", "01 - First.mp3");
-  const aside = `${original}.aside`;
-  await mkdir(dirname(original), { recursive: true });
-  await execFileAsync("ffmpeg", [
-    "-hide_banner",
-    "-loglevel",
-    "error",
-    "-f",
-    "lavfi",
-    "-i",
-    "anullsrc",
-    "-t",
-    "1",
-    "-c:a",
-    "libmp3lame",
-    "-b:a",
-    "128k",
-    original,
-  ]);
-  const id = createTrackedJob(
-    downloadTracker,
-    {
-      artistName: "The Band",
-      albumName: "replaced-upgrade",
-      albumMbid: "replaced-upgrade",
-      trackName: "First",
-      trackNumber: 1,
-      durationMs: 1000,
-    },
-    "library",
-  );
-  assert.ok(id != null);
-  downloadTracker.setDone(id, original, "replaced-upgrade");
-  downloadTracker.updateQuality(id, { tier: "mp3-128" });
-  const { decorateJobQuality } = await import("../../backend/services/qualityProfile.ts");
-  const storedMissing = () =>
-    db
-      .prepare<[string], { file_missing_at: number | null }>(
-        "SELECT file_missing_at FROM download_jobs WHERE id = ?",
-      )
-      .get(id)?.file_missing_at ?? null;
-  const runWorker = await holdDownloadWorker();
-  t.onTestFinished(runWorker);
-  await rename(original, aside);
-
-  assert.equal(await runQualityUpgradeCheck({ force: true }), 0);
-  assert.equal(await queueQualityUpgrade(trackedJob(downloadTracker, id)), "missing-file");
-  assert.equal(downloadTracker.findActiveUpgradeJob(trackedJob(downloadTracker, id)), null);
-  const missing = decorateJobQuality(trackedJob(downloadTracker, id));
-  assert.equal(missing.qualityOwned, false);
-  assert.equal(missing.qualityState, null);
-  assert.ok(storedMissing());
-
-  await rename(aside, original);
-  assert.equal(await queueQualityUpgrade(trackedJob(downloadTracker, id)), "queued");
-  assert.equal(decorateJobQuality(trackedJob(downloadTracker, id)).qualityOwned, true);
-  assert.equal(storedMissing(), null);
 });
 
 test("a track unmonitored while its upgrade's release details are read gets no upgrade", async (t) => {
