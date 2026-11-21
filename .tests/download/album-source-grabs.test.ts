@@ -1194,6 +1194,13 @@ test("Search all starts the upgrades of one release's tracks from different requ
     requestGroupIds: [null, "playlist-request"],
     owners: ["library", playlist.id],
   });
+  for (const id of upgrades.sourceIds) {
+    downloadTracker.updateDownloadMetadata(requireFixture(id), {
+      downloadSource: "ytdlp",
+      downloadClient: "yt-dlp",
+      releaseTitle: "Old YT",
+    });
+  }
   const { append } = mockNzbget(t, upgrades.folder);
 
   const runWorker = await holdDownloadWorker();
@@ -1214,6 +1221,16 @@ test("Search all starts the upgrades of one release's tracks from different requ
     ["done", "01 - First.flac", "flac-standard"],
     ["done", "02 - Second.flac", "flac-standard"],
   ]);
+  assert.deepEqual(
+    upgrades.sourceIds.map((id) => {
+      const job = trackedJob(downloadTracker, id);
+      return [job.downloadSource, job.downloadClient, job.downloadClientId, job.releaseTitle];
+    }),
+    [
+      ["usenet", "usenet", null, "upgrade-all-release"],
+      ["usenet", "usenet", null, "upgrade-all-release"],
+    ],
+  );
   assert.equal(
     downloadTracker.getAll().some((job) => job.upgradeForJobId),
     false,

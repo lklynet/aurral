@@ -1225,6 +1225,7 @@ test("drops orphaned upgrade jobs on restart and updates every shared file refer
     "static-two",
   );
   for (const id of [firstId, secondId]) {
+    tracker.updateDownloadMetadata(id, { downloadSource: "ytdlp", downloadClient: "yt-dlp" });
     tracker.setDone(id, "/library/Song.mp3", "Album");
     tracker.updateQuality(id, { tier: "mp3-128", format: "mp3", bitrateKbps: 128 });
   }
@@ -1245,6 +1246,7 @@ test("drops orphaned upgrade jobs on restart and updates every shared file refer
   );
   assert.equal(changed.length, 2);
   assert.equal(reloaded.getJob(firstId)?.finalPath, "/library/Song.flac");
+  assert.equal(reloaded.getJob(firstId)?.downloadSource, "ytdlp");
   assert.equal(reloaded.getJob(secondId)?.qualityTier, "flac-standard");
 });
 
@@ -1332,13 +1334,26 @@ test("finalizes an upgrade when optional quality metadata is absent, giving the 
     );
     tracker.updateDownloadMetadata(sourceId, original);
     tracker.setDone(sourceId, oldPath, "Album");
+    const activityIds = [`aurral-track_download-${sourceId}`, `aurral-album_grab-${sourceId}`];
+    const previousCreatedAt = Date.now() - 60_000;
+    for (const id of activityIds) {
+      db.prepare("UPDATE aurral_history SET created_at = ? WHERE id = ?").run(
+        previousCreatedAt,
+        id,
+      );
+    }
+    const activity = activityIds.map((id) => dbOps.getAurralHistoryById(id));
+    assert.ok(activity.every(Boolean), name);
     tracker.updateQuality(sourceId, { tier: "mp3-128", format: "mp3" });
+    tracker.markQualityUpgradeChecked(sourceId);
+    assert.deepEqual(
+      activityIds.map((id) => dbOps.getAurralHistoryById(id)),
+      activity,
+      name,
+    );
     const upgradeId = tracker.addUpgradeJob(trackedJob(tracker, sourceId));
     assert.ok(upgradeId != null);
     tracker.updateDownloadMetadata(upgradeId, upgrade);
-    const activityIds = [`aurral-track_download-${sourceId}`, `aurral-album_grab-${sourceId}`];
-    const activity = activityIds.map((id) => dbOps.getAurralHistoryById(id));
-    assert.ok(activity.every(Boolean), name);
 
     await assert.doesNotReject(
       finalizeQualityUpgradeSuccess(trackedJob(tracker, upgradeId), finalPath, undefined),
