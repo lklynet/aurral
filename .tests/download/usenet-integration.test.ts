@@ -821,6 +821,37 @@ test("Usenet matcher prefers matching audio releases and keeps fallback candidat
   assert.equal(selected.length, 2);
 });
 
+test("Usenet format scoring reads a glued WEBFLAC token as FLAC", () => {
+  const context = {
+    artistName: "Example Artist",
+    trackName: "Signal Fire",
+    albumName: "Bright Static",
+    releaseYear: "2024",
+    albumTrackCount: 10,
+  };
+  const formatScoreOf = (title: string) =>
+    rankUsenetReleases(
+      [
+        {
+          title,
+          protocol: "usenet",
+          downloadUrl: "https://indexer/download/1",
+          indexerId: 1,
+          indexer: "Music",
+          categories: [3010],
+          size: 450 * 1024 * 1024,
+        },
+      ],
+      context,
+    )[0]?.scores.format;
+  assert.equal(
+    formatScoreOf("Example Artist-Bright Static-24BIT-WEBFLAC-GRP"),
+    formatScoreOf("Example Artist-Bright Static-24BIT-WEB-FLAC-GRP"),
+  );
+  assert.equal(formatScoreOf("Example Artist-Bright Static-24BIT-WEBFLAC-GRP"), 12);
+  assert.equal(formatScoreOf("Example Artist-Bright Static-WEB-GRP"), 0);
+});
+
 for (const albumGrab of [false, true]) {
   test(`Usenet continues past ${albumGrab ? "track-only album-grab" : "denied"} results`, async () => {
     vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => [
