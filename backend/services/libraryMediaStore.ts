@@ -2866,11 +2866,3 @@ export function getLibraryFileIds(path: string) {
 export function getLibraryMediaFile({ source, path }: { source: string; path: string }) {
   return getLibraryMediaFileStmt.get(normalizeText(source), normalizeText(path));
 }
-
-const getLibraryTrackTitleStmt = db
-  .prepare<[number], string>("SELECT title FROM library_tracks WHERE id = ?")
-  .pluck();
-
-export function getLibraryTrackTitle(trackId: number) {
-  return getLibraryTrackTitleStmt.get(trackId) ?? null;
-}

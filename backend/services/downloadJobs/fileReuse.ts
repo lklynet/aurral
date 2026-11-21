@@ -9,12 +9,8 @@ import {
   findLibraryArtist,
   findLibraryTracksForAlbum,
 } from "../libraryReadModel.ts";
-import { getLibraryForArtistReferences } from "../libraryQueryService.ts";
-import {
-  getLibraryFileIds,
-  getLibraryMediaFile,
-  getLibraryTrackTitle,
-} from "../libraryMediaStore.ts";
+import { getLibraryForArtistReferences, getLibraryTrackTitle } from "../libraryQueryService.ts";
+import { getLibraryFileIds, getLibraryMediaFile } from "../libraryMediaStore.ts";
 import { classifyLibraryFileQuality } from "../qualityProfile.ts";
 import { scheduleLibraryScan as scheduleLibraryScanJob } from "../libraryScanWorker.ts";
 import {
