@@ -287,7 +287,16 @@ export async function commitDownloadedFile(
       throw new Error("Imported file copy did not match source size");
     }
     await fs.rename(tempTarget, resolvedTarget);
-    await fs.rm(sourcePath, { force: true });
+    // The copy is already in place. Failing here would retry the import and
+    // add the same file again beside it, so a source Aurral may not delete,
+    // as in a download client's folder owned by another user, stays behind.
+    await fs.rm(sourcePath, { force: true }).catch((error: unknown) => {
+      logger.warn(
+        "downloads",
+        "Imported a download but could not remove the original from the download folder. Check that Aurral may delete files there.",
+        { sourcePath, reason: safeLogDiagnostic(error) },
+      );
+    });
   }
   return resolvedTarget;
 }
