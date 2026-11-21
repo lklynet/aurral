@@ -1143,6 +1143,18 @@ test("Usenet release titles match by their words, not by overall similarity", ()
     ["New Found Glory-New Found Glory-CD-FLAC-2000-FATHEAD"],
   );
 
+  const sceneGroup = admitted(
+    [
+      "Julien Baker-Little Oblivions-OLE1632CD-CD-FLAC-2021-HOUND",
+      "Julien Baker-Hound-WEB-FLAC-2026-ENRiCH",
+    ],
+    { artistName: "Julien Baker", albumName: "Hound", trackName: "Hound" },
+  );
+  assert.deepEqual(
+    sceneGroup.map(([title]) => title),
+    ["Julien Baker-Hound-WEB-FLAC-2026-ENRiCH"],
+  );
+
   const namedInAlbum = admitted(["Queen II (1974) FLAC"], {
     artistName: "Queen",
     albumName: "Queen II",
