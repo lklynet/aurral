@@ -105,7 +105,7 @@ A Soulseek folder named "CD2", "Disc Two", "LP 2", or "Disc 1 - Title" is a disc
 
 Several exact Soulseek folders are usually the same rip shared by several people, so Aurral ranks them by quality tier, fit, free upload slot, queue length, and speed instead of abstaining. A Soulseek listing without lengths can pair exact titles at their positions. The post-download check still compares the real durations.
 
-A Usenet release title cannot show its tracklist, so Aurral judges the downloaded files. A download that is not exact, or that holds an unreadable audio file, imports nothing and blocks the NZB for every wanted job.
+A Usenet release title cannot show its tracklist, so Aurral judges the downloaded files. An unreadable file or a rejected release blocks the NZB for every wanted job. For a single upgrade with an `extra-tracks` verdict, Aurral still checks the copies assigned to the requested track. A copy must pass recording verification and improve the current quality tier before Aurral imports it.
 
 Aurral assigns the files to the wanted jobs, places each at its track and disc number on the pinned release, and never uses one file twice. Each assigned file must pass its own post-download check before it moves into the Library. That check accepts the same pressing lengths and version names that the judge accepted.
 

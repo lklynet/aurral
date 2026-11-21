@@ -52,36 +52,58 @@ export async function assignDownloadedAlbumFiles({
   });
   const verdict = judgeRelease(manifest, { files: readable.map((entry) => entry.evidence) });
   if (!verified && unreadableCount) return failedRelease("The album contains unreadable audio");
-  if (!verified && verdict.kind !== "exact") return failedRelease(verdict.reason);
+  const singleUpgrade = jobs.length === 1 && Boolean(jobs[0]?.upgradeForJobId);
+  // A bonus track changes the edition, but a single upgrade can use a copy
+  // placed at the requested track if that file verifies on its own.
+  const releaseVerified = verified || verdict.kind === "exact";
+  if (
+    !verified &&
+    verdict.kind !== "exact" &&
+    !(singleUpgrade && verdict.reason === "extra-tracks")
+  )
+    return failedRelease(verdict.reason);
   const { wanted } = mapRequest(manifest, jobs);
   const accepted = [];
   const rejected = [];
   for (const pair of verdict.assignment.pairs) {
     const job = jobs.find((entry) => entry.id === wanted.get(pair.trackIndex));
     if (!job) continue;
-    const entry = readable[pair.fileIndex];
     const track = manifest.tracks[pair.trackIndex];
-    if (!entry || !track) continue;
-    const validation = await validateDownloadedTrackFile({
-      request: {
-        ...trackRequestFor(job, manifest, pair.trackIndex),
-        upgradeForJobId: job.upgradeForJobId,
-      },
-      filePath: entry.filePath,
-      source,
-      options: { parseFile: parseAudio, strict: true, release: manifest, albumImport: true },
-    });
-    if (validation.valid) {
-      accepted.push({
-        jobId: job.id,
+    if (!track) continue;
+    const copies = singleUpgrade ? verdict.copiesForTrack[pair.trackIndex] : [pair.fileIndex];
+    const request = {
+      ...trackRequestFor(job, manifest, pair.trackIndex),
+      upgradeForJobId: job.upgradeForJobId,
+    };
+    let rejection: string | null = "no match";
+    for (const index of copies || []) {
+      const entry = readable[index];
+      if (!entry) continue;
+      const validation = await validateDownloadedTrackFile({
+        request,
         filePath: entry.filePath,
-        trackNumber: track.trackNumber,
-        discNumber: track.discNumber,
-        validation,
+        source,
+        options: {
+          parseFile: parseAudio,
+          strict: true,
+          release: manifest,
+          albumImport: releaseVerified,
+        },
       });
-    } else {
-      rejected.push({ jobId: job.id, reason: validation.reason || "no match" });
+      if (validation.valid) {
+        accepted.push({
+          jobId: job.id,
+          filePath: entry.filePath,
+          trackNumber: track.trackNumber,
+          discNumber: track.discNumber,
+          validation,
+        });
+        rejection = null;
+        break;
+      }
+      rejection = validation.reason || "no match";
     }
+    if (rejection) rejected.push({ jobId: job.id, reason: rejection });
   }
   return { accepted, rejected, unreadableCount };
 }
