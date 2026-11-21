@@ -10,6 +10,8 @@ import { createIsolatedLibraryWatcher } from "./libraryWatchProcess.ts";
 import { logger, safeLogDiagnostic, type RuntimeLogger } from "./logger.ts";
 
 const DEFAULT_DEBOUNCE_MS = 2000;
+const RETRY_MIN_MS = 60_000;
+const RETRY_MAX_MS = 30 * 60_000;
 
 function isIgnoredChange(root: string, filename: string | null) {
   if (filename == null || filename === "") return false;
@@ -41,7 +43,8 @@ type LibraryFileWatcherOptions = {
     onChange: WatchChange,
   ) => LibraryWatcher;
   onChange?: (roots: string[], changedPaths: string[]) => void;
-  onError?: (error: unknown, root: string) => void;
+  onError?: (error: unknown, root: string, retryMs: number) => void;
+  onRecover?: (root: string) => void;
 };
 
 export function createLibraryFileWatcher({
@@ -50,8 +53,10 @@ export function createLibraryFileWatcher({
   watchImpl = createIsolatedLibraryWatcher,
   onChange = (_roots, changedPaths) => scheduleLibraryScan({ changedPaths }),
   onError = () => {},
+  onRecover = () => {},
 }: LibraryFileWatcherOptions = {}) {
   const watchers = new Set<LibraryWatcher>();
+  const retries = new Set<ReturnType<typeof setTimeout>>();
   const activeRoots = new Map<string | null, LibraryWatcher>();
   let closed = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -107,7 +112,20 @@ export function createLibraryFileWatcher({
     }
   };
 
-  for (const { root, pathMappings } of watchRoots.values()) {
+  // A watcher can stop long after it started, as when a network mount drops
+  // a file handle. It starts again on its own, waiting longer after each
+  // failure in a row, and scans its root once it is back.
+  const watchRoot = (root: string, pathMappings: PathMapping[], failures: number) => {
+    const retry = (error: unknown) => {
+      const retryMs = Math.min(RETRY_MAX_MS, RETRY_MIN_MS * 2 ** failures);
+      onError(error, root, retryMs);
+      const retryTimer = setTimeout(() => {
+        retries.delete(retryTimer);
+        if (!closed) watchRoot(root, pathMappings, failures + 1);
+      }, retryMs);
+      retryTimer.unref?.();
+      retries.add(retryTimer);
+    };
     try {
       let stopped = false;
       let duplicate = false;
@@ -140,6 +158,11 @@ export function createLibraryFileWatcher({
           stopWatcher();
         } else {
           activeRoots.set(resolvedKey, watcher);
+          if (failures > 0) {
+            failures = 0;
+            onRecover(root);
+            scheduleChange(resolvedRoot, null);
+          }
         }
       });
       watcher.on?.("close", releaseRoot);
@@ -147,12 +170,14 @@ export function createLibraryFileWatcher({
         if (closed || duplicate || failureReported) return;
         failureReported = true;
         stopWatcher();
-        onError(error, root);
+        retry(error);
       });
     } catch (error) {
-      onError(error, root);
+      retry(error);
     }
-  }
+  };
+
+  for (const { root, pathMappings } of watchRoots.values()) watchRoot(root, pathMappings, 0);
 
   return {
     close() {
@@ -160,6 +185,8 @@ export function createLibraryFileWatcher({
       closed = true;
       if (timer) clearTimeout(timer);
       timer = null;
+      for (const retryTimer of retries) clearTimeout(retryTimer);
+      retries.clear();
       changedRoots.clear();
       changedPaths.clear();
       for (const watcher of watchers) watcher.close();
@@ -189,12 +216,13 @@ export async function refreshLibraryFileWatcher({
         includeReadOnly: changedRoots.some((root) => path.resolve(root) !== playlistRoot),
         changedPaths,
       }),
-    onError: (error, root) => {
+    onError: (error, root, retryMs) => {
       logger.warn?.(
-        `[Library] Automatic file watching disabled for ${root}; manual library refresh is still available:`,
+        `[Library] Automatic file watching stopped for ${root}; retrying in ${Math.round(retryMs / 60_000)} min. Manual library refresh is still available:`,
         asAppError(error)?.message || error,
       );
     },
+    onRecover: (root) => logger.info?.(`[Library] Automatic file watching resumed for ${root}`),
   });
   return true;
 }

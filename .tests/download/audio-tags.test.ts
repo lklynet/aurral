@@ -1,13 +1,14 @@
-import { test, afterAll } from "vite-plus/test";
+import { test, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { link, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import fs, { link, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parseFile } from "music-metadata";
 import taglib from "node-taglib-sharp";
 
 import { readAurralIdentity, writeAudioMetadata } from "../../backend/services/downloadUtils.ts";
+import { writeAudioTags } from "../../backend/services/audioTags.ts";
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), "aurral-audio-tags-"));
 const job = {
@@ -189,4 +190,37 @@ test("tagging a fragmented M4A leaves the file as it was instead of breaking its
   await assert.rejects(writeAudioMetadata(filePath, job), { code: "TAGS_UNSUPPORTED" });
 
   assert.deepEqual(await readFile(filePath), bytes);
+});
+
+test("tagging retries a file a network mount briefly reports as stale, and stops on any other error", async (t: import("vite-plus/test").TestContext) => {
+  t.onTestFinished(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+  const filePath = makeAudio("stale.flac", []);
+  const copyFile = vi.spyOn(fs, "copyFile");
+  let failedOnce = () => {};
+  const firstAttempt = new Promise<void>((resolve) => (failedOnce = resolve));
+  copyFile.mockImplementationOnce(async () => {
+    failedOnce();
+    throw Object.assign(new Error("Unknown system error -116: Unknown system error -116, fstat"), {
+      errno: -116,
+      code: "Unknown system error -116",
+      syscall: "fstat",
+    });
+  });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+  const written = writeAudioTags(filePath, { title: "Retried" });
+  await firstAttempt;
+  await vi.advanceTimersByTimeAsync(500);
+  assert.deepEqual(await written, ["title"]);
+  vi.useRealTimers();
+  assert.equal((await parseFile(filePath)).common.title, "Retried");
+
+  copyFile.mockRejectedValueOnce(
+    Object.assign(new Error("Permission denied"), { errno: -13, code: "EACCES" }),
+  );
+  await assert.rejects(writeAudioTags(filePath, { title: "Denied" }), { code: "EACCES" });
+  assert.equal(copyFile.mock.calls.length, 3);
 });

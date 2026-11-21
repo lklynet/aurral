@@ -24,6 +24,10 @@ function fail(error: AppError) {
 }
 
 process.on("disconnect", stop);
+// Node's recursive watcher can throw outside its error event, as when a
+// network mount drops a folder's handle. The parent then learns why instead
+// of only an exit code.
+process.on("uncaughtException", (error) => fail(asAppError(error) ?? new Error(String(error))));
 
 try {
   const root = resolveLocalPath(

@@ -602,6 +602,43 @@ test("library watcher reports asynchronous errors and ignores callbacks after cl
   assert.equal(closed, 1);
 });
 
+test("a failed library watcher starts again, waiting longer after each failure in a row, and scans its root once back", () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const children: EventEmitter[] = [];
+  const retries: number[] = [];
+  const recovered: string[] = [];
+  const scanned: string[][] = [];
+  const localRoot = path.resolve("/library");
+  const watcher = createLibraryFileWatcher({
+    roots: ["/library"],
+    debounceMs: 1,
+    watchImpl: () => {
+      const child = Object.assign(new EventEmitter(), { close() {} });
+      children.push(child);
+      return child;
+    },
+    onError: (_error, _root, retryMs) => retries.push(retryMs),
+    onRecover: (root) => recovered.push(root),
+    onChange: (_roots, paths) => scanned.push(paths),
+  });
+  requireFixture(children[0]).emit("ready", localRoot);
+  requireFixture(children[0]).emit("error", new Error("Stale file handle"));
+  vi.advanceTimersByTime(59_999);
+  assert.equal(children.length, 1);
+  vi.advanceTimersByTime(1);
+  requireFixture(children[1]).emit("error", new Error("Stale file handle"));
+  vi.advanceTimersByTime(120_000);
+  requireFixture(children[2]).emit("ready", localRoot);
+  vi.runOnlyPendingTimers();
+  requireFixture(children[2]).emit("error", new Error("Stale file handle"));
+  watcher.close();
+  vi.runAllTimers();
+  assert.equal(children.length, 3);
+  assert.deepEqual(retries, [60_000, 120_000, 60_000]);
+  assert.deepEqual(recovered, ["/library"]);
+  assert.deepEqual(scanned, [[localRoot]]);
+});
+
 test("library watcher scans the resolved local root received from its child", () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   let changed: (eventType: string, filename: string | null, resolvedRoot?: string) => void = () =>
