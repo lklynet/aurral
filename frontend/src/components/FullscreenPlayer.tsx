@@ -414,10 +414,12 @@ export default function FullscreenPlayer({
           triggerIcon={<SlidersHorizontal aria-hidden="true" />}
           triggerClassName="btn btn-ghost btn-icon"
           contextMenu={false}
+          tooltipPlacement="top"
           items={settings}
         />
         <TooltipButton
           label="Exit full screen"
+          tooltipPlacement="top"
           className="btn btn-ghost btn-icon"
           onClick={onClose}
         >

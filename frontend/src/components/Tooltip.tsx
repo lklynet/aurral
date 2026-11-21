@@ -181,7 +181,10 @@ export default function Tooltip({
     onFocus: chainHandlers(children.props.onFocus, (event) => {
       if (event.target.matches(":focus-visible")) showTooltip(event.currentTarget, "focus");
     }),
-    onPointerDown: chainHandlers(children.props.onPointerDown, cancelPendingShow),
+    onPointerDown: chainHandlers(children.props.onPointerDown, () => {
+      cancelPendingShow();
+      dismissTooltip();
+    }),
     onPointerEnter: chainHandlers(children.props.onPointerEnter, (event) => {
       const trigger = event.currentTarget;
       cancelPendingShow();
