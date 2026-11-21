@@ -12,7 +12,6 @@ const mbid = "10101010-1010-4010-8010-101010101010";
 const photo = "https://cdn.deezer.test/recovered-artist.jpg";
 const missingArtist = { error: { type: "DataException", message: "no data", code: 800 } };
 let artistLinked = true;
-let wikidataLinked = false;
 let albumCount = 0;
 const providerRequests: string[] = [];
 const provider = await createMockHttpServer((req, res) => {
@@ -37,14 +36,9 @@ const provider = await createMockHttpServer((req, res) => {
               title: `Album ${index + 1}`,
               type: "Album",
             })),
-            links: [
-              ...(artistLinked
-                ? [{ type: "deezer", target: "https://www.deezer.com/artist/101" }]
-                : []),
-              ...(wikidataLinked
-                ? [{ type: "wikidata", target: "https://www.wikidata.org/wiki/Q101" }]
-                : []),
-            ],
+            links: artistLinked
+              ? [{ type: "deezer", target: "https://www.deezer.com/artist/101" }]
+              : [],
           }
         : [],
     ),
@@ -73,7 +67,6 @@ const [
 
 beforeEach(() => {
   artistLinked = true;
-  wikidataLinked = false;
   albumCount = 0;
   providerRequests.length = 0;
   resetDatabase(db);
@@ -116,49 +109,6 @@ test("an artist name search accepts only the same name, and the one with the mos
   assert.equal((await deezer.getDeezerArtist("sigur ros"))?.imageUrl, photo);
   assert.equal((await deezer.getDeezerArtist("Avatar"))?.id, 10);
 });
-
-test.each([
-  { deezerLink: "no linked Deezer artist", linked: false },
-  { deezerLink: "a linked Deezer artist without a photo", linked: true },
-])(
-  "an artist with no provider photo and $deezerLink uses its Wikidata photo",
-  async ({ linked }) => {
-    artistLinked = linked;
-    wikidataLinked = true;
-    const commonsPhoto =
-      "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a1/Provider.jpg/960px-Provider.jpg";
-    const realGet = http.get.bind(http);
-    const asked: string[] = [];
-    vi.spyOn(http, "get").mockImplementation(async (url, options) => {
-      if (String(url).startsWith(provider.url)) return realGet(url, options);
-      const host = new URL(url).hostname;
-      asked.push(host);
-      const data =
-        host === "api.deezer.com"
-          ? {
-              id: 101,
-              name: "Provider Artist",
-              picture: "https://api.deezer.com/artist/101/image",
-              picture_xl: "https://cdn-images.dzcdn.net/images/artist//1000x1000-000000-80-0-0.jpg",
-            }
-          : host === "www.wikidata.org"
-            ? { P18: [{ rank: "normal", value: { content: "Provider.jpg" } }] }
-            : {
-                query: {
-                  pages: [{ imageinfo: [{ thumburl: `${commonsPhoto}?utm_source=test` }] }],
-                },
-              };
-      return { status: 200, statusText: "OK", headers: {}, data };
-    });
-
-    assert.equal((await getArtistImage(mbid, { forceRefresh: true })).url, commonsPhoto);
-    assert.deepEqual(asked, [
-      ...(linked ? ["api.deezer.com"] : []),
-      "www.wikidata.org",
-      "commons.wikimedia.org",
-    ]);
-  },
-);
 
 test("a failed artist ID lookup can recover without clearing its cache", async (t) => {
   let failed = true;

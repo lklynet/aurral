@@ -6,7 +6,6 @@ import { getArtistImageKindRank, getImageUrl, type ImageList } from "./imageRank
 import type { NormalizedArtist } from "./providers/metadataMappers.ts";
 import { getArtistByMbid, listArtistAlbums } from "./providers/metadataProvider.ts";
 import { getLinkedDeezerArtistId } from "./providers/metadataMappers.ts";
-import { wikimediaGetArtistPhotoUrl } from "./apiClients/wikimedia.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import {
   fetchDeezerArtistImageUrl,
@@ -280,27 +279,15 @@ export const getArtistImage = async (
       let sawTransientError = false;
       const deezerArtistId =
         override?.deezerArtistId || getLinkedDeezerArtistId(metadataArtist?.links);
-      const photoSources = [
-        async () =>
-          deezerArtistId ? fetchDeezerArtistImageUrl({ deezerArtistId, throwOnError: true }) : null,
-        () => wikimediaGetArtistPhotoUrl(metadataArtist?.links),
-        async () =>
-          deezerArtistId
-            ? null
-            : fetchDeezerArtistImageUrl({
-                artistName: resolvedArtistName || "",
-                throwOnError: true,
-              }),
-      ];
-      let photo: string | null = null;
-      for (const source of photoSources) {
-        photo =
-          (await source().catch(() => {
-            sawTransientError = true;
-            return null;
-          })) ?? null;
-        if (photo) break;
-      }
+      const photo =
+        (await fetchDeezerArtistImageUrl({
+          deezerArtistId,
+          artistName: resolvedArtistName || "",
+          throwOnError: true,
+        }).catch(() => {
+          sawTransientError = true;
+          return null;
+        })) ?? null;
       if (photo) {
         const result = buildArtistCoverFromUrl(buildStableImageProxyUrl(photo), ["Artist"]);
         if (isCurrentRequest()) {
