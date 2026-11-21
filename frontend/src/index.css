@@ -2437,10 +2437,6 @@ textarea:disabled {
   fill: currentColor;
 }
 
-.sidebar-player__toggle.player-devices {
-  color: var(--aurral-text);
-}
-
 .sidebar-player__toggle.player-devices svg {
   fill: none;
 }
@@ -14584,8 +14580,7 @@ button.playlist-detail__cover {
     color: var(--aurral-text);
   }
 
-  .now-playing__actions .player-devices,
-  .global-player__mini-control.player-devices {
+  .now-playing__actions .player-devices {
     color: var(--aurral-text);
   }
 

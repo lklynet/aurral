@@ -370,7 +370,10 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
       closeMenu(false);
     };
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeMenu();
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeMenu();
     };
     const closeOnViewportChange = () => closeMenu(false);
     const handleScroll = (event: Event) => {
@@ -390,12 +393,12 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
         });
     };
     document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleEscape);
+    document.addEventListener("keydown", handleEscape, true);
     window.addEventListener("resize", closeOnViewportChange);
     window.addEventListener("scroll", handleScroll, true);
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("keydown", handleEscape, true);
       window.removeEventListener("resize", closeOnViewportChange);
       window.removeEventListener("scroll", handleScroll, true);
     };
@@ -472,12 +475,6 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
   };
 
   const handleMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      closeMenu();
-      return;
-    }
     const keys = ["ArrowDown", "ArrowUp", "Home", "End"];
     if (!keys.includes(event.key)) return;
     const buttons = [

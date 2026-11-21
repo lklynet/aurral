@@ -3,7 +3,7 @@ import { useAudioQueue } from "../contexts/audioQueueContext";
 import { formatRelativeTime } from "../utils/dateTime.ts";
 import { formatPlaybackTime } from "../utils/playbackTime.ts";
 import { LibraryItemMenu } from "./LibraryItemMenu";
-import { Play, Speaker } from "./icons";
+import { Devices, Play } from "./icons";
 
 export default function PlayerDevicesButton({
   className,
@@ -21,7 +21,7 @@ export default function PlayerDevicesButton({
       label={label}
       menuLabel="Devices"
       triggerLabel={label}
-      triggerIcon={<Speaker aria-hidden="true" />}
+      triggerIcon={<Devices aria-hidden="true" />}
       triggerClassName={`${className} player-devices`}
       contextMenu={false}
       tooltipPlacement={tooltipPlacement}
@@ -38,7 +38,17 @@ export default function PlayerDevicesButton({
             }),
           ].join(" · "),
           icon: Play,
-          onSelect: pickUpQueueElsewhere,
+          closeBeforeSelect: true,
+          onSelect: () => {
+            const next = document.activeElement?.closest(
+              ".native-library-item-menu",
+            )?.nextElementSibling;
+            const target = next?.matches("button") ? next : next?.querySelector("button");
+            pickUpQueueElsewhere();
+            if (target instanceof HTMLElement) {
+              requestAnimationFrame(() => target.focus({ preventScroll: true }));
+            }
+          },
         },
       ]}
     />

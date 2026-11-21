@@ -113,7 +113,6 @@ export const SkipBack = createIcon(icons.SkipBack);
 export const SkipForward = createIcon(icons.SkipForward);
 export const SlidersHorizontal = createIcon(icons.Sliders04);
 export const Sparkles = createIcon(icons.Stars01);
-export const Speaker = createIcon(icons.Speaker01);
 export const Square = createIcon(icons.Square);
 export const SquareCheck = createIcon(icons.CheckSquare);
 export const Star = createIcon(icons.Star01);
@@ -156,6 +155,15 @@ export function Repeat1(props: IconProps) {
     <IconSvg {...props}>
       <path d="m17 2 4 4m0 0-4 4m4-4H7.8c-1.68 0-2.52 0-3.162.327a3 3 0 0 0-1.311 1.311C3 8.28 3 9.12 3 10.8v.2m0 7h13.2c1.68 0 2.52 0 3.162-.327a3 3 0 0 0 1.311-1.311C21 15.72 21 14.88 21 13.2V13M3 18l4 4m-4-4 4-4" />
       <path d="m10 10 2-1v6m-2 0h4" />
+    </IconSvg>
+  );
+}
+
+export function Devices(props: IconProps) {
+  return (
+    <IconSvg {...props}>
+      <path d="M14 17H4.6c-.84 0-1.26 0-1.581-.163a1.5 1.5 0 0 1-.656-.656C2.2 15.861 2.2 15.441 2.2 14.6V6.4c0-.84 0-1.26.163-1.581a1.5 1.5 0 0 1 .656-.656C3.34 4 3.76 4 4.6 4h11.8c.84 0 1.26 0 1.581.163a1.5 1.5 0 0 1 .656.656c.163.321.163.741.163 1.581V8M1 20h13" />
+      <rect x="17" y="10" width="6" height="11" rx="1.6" />
     </IconSvg>
   );
 }
