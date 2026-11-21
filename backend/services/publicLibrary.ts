@@ -47,8 +47,10 @@ const summaryMetadata = <M extends Record<string, unknown>>(metadata: M | null) 
   return {
     ...rest,
     tags: {
-      ...("genre" in tags && { genre: tags.genre }),
-      ...("releasetype" in tags && { releasetype: tags.releasetype }),
+      ...("genres" in tags ? { genre: tags.genres } : "genre" in tags && { genre: tags.genre }),
+      ...("releaseType" in tags
+        ? { releasetype: tags.releaseType }
+        : "releasetype" in tags && { releasetype: tags.releasetype }),
     },
   };
 };

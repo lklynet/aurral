@@ -16,7 +16,7 @@ export async function readRecording(filePath: string, metadata: IAudioMetadata |
       durationMs: seconds > 0 ? Math.round(seconds * 1000) : null,
       lossless: parsed.format?.lossless === true,
       bitrate: Number(parsed.format?.bitrate) || 0,
-      trackNumber: Number(parsed.common?.track?.no) || null,
+      trackNumber: Number(parsed.common?.trackNumber) || null,
     };
   } catch {
     return { durationMs: null, lossless: false, bitrate: 0, trackNumber: null };

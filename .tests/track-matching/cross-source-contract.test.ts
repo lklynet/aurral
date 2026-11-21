@@ -1,3 +1,4 @@
+import { audioMetadata } from "../download/fixtures.ts";
 // The same canonical truth expressed through each provider's representation
 // must produce compatible identity decisions. Provider evidence may change
 // confidence (accept vs verify) and contradictions must reject everywhere.
@@ -203,27 +204,25 @@ test("post-download: the same truth through actual file tags converges with pre-
     filePath: "/staging/08 - Daft Punk - Get Lucky.flac",
     source: "soulseek",
     options: {
-      parseFile: async () => ({
-        native: {},
-        quality: { warnings: [] },
-        common: {
-          movementIndex: { no: null, of: null },
-          title: "Get Lucky",
-          artist: "Daft Punk",
-          album: "Random Access Memories",
-          track: { no: 8, of: null },
-          disk: { no: 1, of: null },
-        },
-        format: {
-          trackInfo: [],
-          tagTypes: [],
-          duration: 248.2,
-          lossless: true,
-          sampleRate: 44100,
-          bitsPerSample: 16,
-          bitrate: 900000,
-        },
-      }),
+      parseFile: async () =>
+        audioMetadata({
+          common: {
+            title: "Get Lucky",
+            artist: "Daft Punk",
+            album: "Random Access Memories",
+            trackNumber: 8,
+            discNumber: 1,
+          },
+          format: {
+            trackInfo: [],
+            tagTypes: [],
+            duration: 248.2,
+            lossless: true,
+            sampleRate: 44100,
+            bitsPerSample: 16,
+            bitrate: 900000,
+          },
+        }),
     },
   });
   assert.equal(verified.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
@@ -233,27 +232,23 @@ test("post-download: the same truth through actual file tags converges with pre-
     filePath: "/staging/Get Lucky (Karaoke Version).mp3",
     source: "ytdlp",
     options: {
-      parseFile: async () => ({
-        native: {},
-        quality: { warnings: [] },
-        common: {
-          movementIndex: { no: null, of: null },
-          track: { no: null, of: null },
-          disk: { no: null, of: null },
-          title: "Get Lucky (Karaoke Version)",
-          artist: "Daft Punk",
-        },
-        format: {
-          trackInfo: [],
-          tagTypes: [],
-          duration: 248,
-          lossless: false,
-          sampleRate: 44100,
-          bitrate: 128000,
-          container: "MPEG",
-          codec: "MPEG 1 Layer 3",
-        },
-      }),
+      parseFile: async () =>
+        audioMetadata({
+          common: {
+            title: "Get Lucky (Karaoke Version)",
+            artist: "Daft Punk",
+          },
+          format: {
+            trackInfo: [],
+            tagTypes: [],
+            duration: 248,
+            lossless: false,
+            sampleRate: 44100,
+            bitrate: 128000,
+            container: "MPEG",
+            codec: "MPEG 1 Layer 3",
+          },
+        }),
     },
   });
   assert.equal(karaoke.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);

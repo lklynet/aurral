@@ -1,39 +1,19 @@
-import { randomUUID } from "node:crypto";
+import {
+  parseFile,
+  updateFile,
+  type TagPatch,
+  UnsupportedFileTypeError,
+  UnsupportedFeatureError,
+  UnsupportedFormatError,
+  CouldNotDetermineFileTypeError,
+  type IAudioMetadata,
+} from "music-metadata/node";
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
-import fs from "node:fs/promises";
 import path from "node:path";
-import type * as TagLib from "node-taglib-sharp";
-import { asAppError } from "../../lib/errors.ts";
-
-let File: typeof TagLib.File;
-let Id3v2FrameClassType: typeof TagLib.Id3v2FrameClassType;
-let Id3v2UserTextInformationFrame: typeof TagLib.Id3v2UserTextInformationFrame;
-let TagTypes: typeof TagLib.TagTypes;
-let readStyle: TagLib.ReadStyle;
-let addedTagTypes: TagLib.TagTypes;
-let taglibReady: Promise<void> | undefined;
-
-function loadTaglib() {
-  return (taglibReady ||= import("node-taglib-sharp").then(({ default: taglib }) => {
-    ({ File, Id3v2FrameClassType, Id3v2UserTextInformationFrame, TagTypes } = taglib);
-    taglib.Id3v2Settings.useNumericGenres = false;
-    readStyle = taglib.ReadStyle.None | taglib.ReadStyle.PictureLazy;
-    addedTagTypes = TagTypes.Id3v1 | TagTypes.Ape | TagTypes.MovieId | TagTypes.DivX;
-  }));
-}
-
+import { isDeepStrictEqual } from "node:util";
 export const AURRAL_IDENTITY_TAG = "AURRAL_IDS";
 const AURRAL_IDENTITY_PREFIX = `${AURRAL_IDENTITY_TAG}=`;
-const ITUNES_MEAN = "com.apple.iTunes";
-const MUSICBRAINZ_UFID_OWNER = "http://musicbrainz.org";
-
 type TagFieldValue = string | number | string[] | null | undefined;
-
-interface TagFieldSpec {
-  read(tag: TagLib.Tag, file: TagLib.File): TagFieldValue;
-  write(tag: TagLib.Tag, value: TagFieldValue, file: TagLib.File): void;
-  normalize?(value: unknown): TagFieldValue;
-}
 
 const text = (value: unknown) => (value == null ? "" : String(value).trim());
 const first = (values: unknown) => text(Array.isArray(values) ? values[0] : values);
@@ -49,140 +29,23 @@ const list = (value: unknown) =>
 const texts = (value: unknown) =>
   (Array.isArray(value) ? value : [value]).map(text).filter(Boolean);
 
-function userTextFrames(id3: TagLib.Id3v2Tag, description: string) {
-  const wanted = description.toLowerCase();
-  return id3
-    .getFramesByClassType<TagLib.Id3v2UserTextInformationFrame>(
-      Id3v2FrameClassType.UserTextInformationFrame,
-    )
-    .filter((frame) => frame.description.toLowerCase() === wanted);
-}
-
-// A list tag taglib has no list property for, named as MusicBrainz Picard
-// writes it: a Vorbis comment, an ID3 TXXX frame, or an iTunes freeform atom.
-function textListField(xiphName: string, description: string) {
-  return {
-    read: (_tag: TagLib.Tag, file: TagLib.File) => {
-      const xiph = file.getTag(TagTypes.Xiph, false) as TagLib.XiphComment | undefined;
-      const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
-      const apple = file.getTag(TagTypes.Apple, false) as TagLib.Mpeg4AppleTag | undefined;
-      for (const values of [
-        xiph?.getField(xiphName),
-        id3 && userTextFrames(id3, description)[0]?.text,
-        apple?.getItunesStrings(ITUNES_MEAN, description),
-      ]) {
-        const found = texts(values);
-        if (found.length) return found;
-      }
-      return [];
-    },
-    write: (_tag: TagLib.Tag, value: string[], file: TagLib.File) => {
-      const xiph = file.getTag(TagTypes.Xiph, false) as TagLib.XiphComment | undefined;
-      if (xiph) xiph.setFieldAsStrings(xiphName, ...value);
-      const apple = file.getTag(TagTypes.Apple, false) as TagLib.Mpeg4AppleTag | undefined;
-      if (apple) apple.setItunesStrings(ITUNES_MEAN, description, ...value);
-      const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
-      if (id3) {
-        for (const frame of userTextFrames(id3, description)) id3.removeFrame(frame);
-        const frame = Id3v2UserTextInformationFrame.fromDescription(description);
-        frame.text = value;
-        id3.addFrame(frame);
-      }
-    },
-    normalize: texts,
-  };
-}
-
 const FIELDS = {
-  title: {
-    read: (tag) => text(tag.title),
-    write: (tag, value: string) => {
-      tag.title = value;
-    },
-  },
-  artist: {
-    read: (tag) => first(tag.performers),
-    write: (tag, value: string) => {
-      tag.performers = [value];
-    },
-  },
-  artists: textListField("ARTISTS", "ARTISTS"),
-  albumArtist: {
-    read: (tag) => first(tag.albumArtists),
-    write: (tag, value: string) => {
-      tag.albumArtists = [value];
-    },
-  },
-  album: {
-    read: (tag) => text(tag.album),
-    write: (tag, value: string) => {
-      tag.album = value;
-    },
-  },
-  year: {
-    read: (tag) => positive(tag.year),
-    write: (tag, value: number) => {
-      tag.year = value;
-    },
-    normalize: positive,
-  },
-  trackNumber: {
-    read: (tag) => positive(tag.track),
-    write: (tag, value: number) => {
-      tag.track = value;
-    },
-    normalize: positive,
-  },
-  discNumber: {
-    read: (tag) => positive(tag.disc),
-    write: (tag, value: number) => {
-      tag.disc = value;
-    },
-    normalize: positive,
-  },
-  genres: {
-    read: (tag) => list(tag.genres),
-    write: (tag, value: string[]) => {
-      tag.genres = value;
-    },
-    normalize: list,
-  },
-  artistMbid: textListField("MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id"),
-  albumArtistMbid: {
-    read: (tag) => text(tag.musicBrainzReleaseArtistId),
-    write: (tag, value: string) => {
-      tag.musicBrainzReleaseArtistId = value;
-    },
-  },
-  releaseGroupMbid: {
-    read: (tag) => text(tag.musicBrainzReleaseGroupId),
-    write: (tag, value: string) => {
-      tag.musicBrainzReleaseGroupId = value;
-    },
-  },
-  releaseMbid: {
-    read: (tag) => text(tag.musicBrainzReleaseId),
-    write: (tag, value: string) => {
-      tag.musicBrainzReleaseId = value;
-    },
-  },
-  recordingMbid: {
-    read: (tag) => text(tag.musicBrainzTrackId),
-    write: (tag, value: string, file) => {
-      const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
-      for (const frame of id3?.getFramesByClassType<TagLib.Id3v2UniqueFileIdentifierFrame>(
-        Id3v2FrameClassType.UniqueFileIdentifierFrame,
-      ) || []) {
-        if (frame.owner === MUSICBRAINZ_UFID_OWNER) id3!.removeFrame(frame);
-      }
-      tag.musicBrainzTrackId = value;
-    },
-  },
-} satisfies Record<string, TagFieldSpec>;
-
+  title: "title",
+  artist: "artist",
+  artists: "artists",
+  albumArtist: "albumArtist",
+  album: "album",
+  year: "year",
+  trackNumber: "trackNumber",
+  discNumber: "discNumber",
+  genres: "genres",
+  artistMbid: "mbArtistId",
+  albumArtistMbid: "mbAlbumArtistId",
+  releaseGroupMbid: "mbReleaseGroupId",
+  releaseMbid: "mbReleaseId",
+  recordingMbid: "mbRecordingId",
+} as const;
 type AudioTagField = keyof typeof FIELDS;
-const FIELD_SPECS: Record<AudioTagField, TagFieldSpec> = FIELDS;
-
 export const AUDIO_TAG_FIELDS = Object.keys(FIELDS) as AudioTagField[];
 
 const isAudioTagField = (field: string): field is AudioTagField =>
@@ -191,14 +54,15 @@ const isAudioTagField = (field: string): field is AudioTagField =>
 export class UnsupportedTagFormatError extends Error {
   declare code: string;
 
-  constructor(filePath: string, kind = "") {
-    super(`Aurral cannot write tags to ${kind}${path.extname(filePath) || "this kind of"} files`);
+  constructor(filePath: string, kind = "", cause?: Error) {
+    const format = kind + (path.extname(filePath) || "this kind of");
+    super(`Aurral cannot write tags to ${format} files${cause ? `: ${cause.message}` : ""}`, {
+      cause,
+    });
     this.code = "TAGS_UNSUPPORTED";
   }
 }
 
-// taglib grows the header of a fragmented MP4 without moving the data offsets
-// its fragments point at, which breaks the audio.
 function isFragmentedMp4(filePath: string) {
   const fd = openSync(filePath, "r");
   try {
@@ -221,36 +85,56 @@ function isFragmentedMp4(filePath: string) {
   }
 }
 
-async function openFile(filePath: string) {
-  await loadTaglib();
+async function readMetadata(filePath: string) {
   if (isFragmentedMp4(filePath)) throw new UnsupportedTagFormatError(filePath, "fragmented ");
   try {
-    return File.createFromPath(filePath, undefined, readStyle);
+    return await parseFile(filePath, { skipCovers: true });
   } catch (error) {
-    if (/unsupported format/i.test(String(asAppError(error)?.message)))
+    if (
+      error instanceof UnsupportedFileTypeError ||
+      error instanceof CouldNotDetermineFileTypeError
+    )
       throw new UnsupportedTagFormatError(filePath);
     throw error;
   }
 }
-
-const emptyValue = (field: AudioTagField) =>
-  field === "genres" ? [] : FIELD_SPECS[field].normalize === positive ? 0 : undefined;
+function normalize(field: AudioTagField, value: unknown) {
+  switch (field) {
+    case "trackNumber":
+    case "discNumber":
+    case "year":
+      return positive(value);
+    case "genres":
+      return list(value);
+    case "artists":
+    case "artistMbid":
+      return texts(value);
+    default:
+      return text(value);
+  }
+}
 const isEmpty = (value: unknown) => (Array.isArray(value) ? value.length === 0 : !value);
-const normalize = (field: AudioTagField, value: unknown) =>
-  (FIELD_SPECS[field].normalize || text)(value);
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
 
-type AudioTagValues = { [K in keyof typeof FIELDS]: ReturnType<(typeof FIELDS)[K]["read"]> };
-
-function readFields(file: TagLib.File) {
-  return Object.fromEntries(
-    AUDIO_TAG_FIELDS.map((field): [string, TagFieldValue] => [
-      field,
-      FIELD_SPECS[field].read(file.tag, file),
-    ]),
-  ) as AudioTagValues;
+function readFields(metadata: IAudioMetadata) {
+  const c = metadata.common;
+  return {
+    title: first(c.title),
+    artist: first(c.artist),
+    artists: texts(c.artists),
+    albumArtist: first(c.albumArtist),
+    album: first(c.album),
+    year: positive(c.year),
+    trackNumber: positive(c.trackNumber),
+    discNumber: positive(c.discNumber),
+    genres: list(c.genres),
+    artistMbid: texts(c.mbArtistId),
+    albumArtistMbid: first(c.mbAlbumArtistId),
+    releaseGroupMbid: first(c.mbReleaseGroupId),
+    releaseMbid: first(c.mbReleaseId),
+    recordingMbid: first(c.mbRecordingId),
+  };
 }
-
 function parseIdentity(value: unknown) {
   const raw = text(value);
   if (!raw) return null;
@@ -264,96 +148,18 @@ function parseIdentity(value: unknown) {
   }
 }
 
-function readIdentity(file: TagLib.File) {
-  const xiph = file.getTag(TagTypes.Xiph, false) as TagLib.XiphComment | undefined;
-  const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
-  const apple = file.getTag(TagTypes.Apple, false) as TagLib.Mpeg4AppleTag | undefined;
-  return (
-    parseIdentity(xiph?.getFieldFirstValue(AURRAL_IDENTITY_TAG)) ||
-    parseIdentity(id3 ? userTextFrames(id3, AURRAL_IDENTITY_TAG)[0]?.text?.[0] : null) ||
-    parseIdentity(apple?.getItunesStrings(ITUNES_MEAN, AURRAL_IDENTITY_TAG)?.[0])
-  );
-}
-
-function writeIdentity(file: TagLib.File, identity: object) {
-  const value = JSON.stringify(identity);
-  const xiph = file.getTag(TagTypes.Xiph, false) as TagLib.XiphComment | undefined;
-  if (xiph) xiph.setFieldAsStrings(AURRAL_IDENTITY_TAG, value);
-  const apple = file.getTag(TagTypes.Apple, false) as TagLib.Mpeg4AppleTag | undefined;
-  if (apple) apple.setItunesStrings(ITUNES_MEAN, AURRAL_IDENTITY_TAG, value);
-  const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
-  if (id3) {
-    for (const frame of userTextFrames(id3, AURRAL_IDENTITY_TAG)) id3.removeFrame(frame);
-    const frame = Id3v2UserTextInformationFrame.fromDescription(AURRAL_IDENTITY_TAG);
-    frame.text = [value];
-    id3.addFrame(frame);
-  }
-}
-
-// taglib reads some malformed frames, like an RVA2 without an identification or a
-// UFID without an identifier, then throws when it saves them, so drop those first.
-function dropUnsavableFrames(id3: TagLib.Id3v2Tag) {
-  for (const frame of [...id3.frames]) {
-    try {
-      frame.render(id3.version);
-    } catch {
-      id3.removeFrame(frame);
+function readIdentity(metadata: IAudioMetadata) {
+  for (const tags of Object.values(metadata.native)) {
+    for (const tag of tags) {
+      if (tag.id.split(":").at(-1)?.toUpperCase() === AURRAL_IDENTITY_TAG)
+        return parseIdentity(tag.value);
     }
   }
+  return null;
 }
-
-const isLegacyMarker = (value: unknown) => text(value).startsWith(AURRAL_IDENTITY_PREFIX);
-
-// ffmpeg wrote the old comment marker to Vorbis comments as DESCRIPTION, which
-// taglib does not read as the comment.
-const legacyDescription = (file: TagLib.File) =>
-  (
-    (file.getTag(TagTypes.Xiph, false) as TagLib.XiphComment | undefined)?.getField(
-      "DESCRIPTION",
-    ) || []
-  ).some(isLegacyMarker);
-
-function clearLegacyIdentity(file: TagLib.File) {
-  const tag: { grouping?: string; comment?: string } = file.tag;
-  if (isLegacyMarker(tag.grouping)) tag.grouping = undefined;
-  if (isLegacyMarker(tag.comment)) tag.comment = undefined;
-  if (legacyDescription(file)) {
-    const xiph = file.getTag(TagTypes.Xiph, false) as TagLib.XiphComment;
-    xiph.setFieldAsStrings(
-      "DESCRIPTION",
-      ...xiph.getField("DESCRIPTION").filter((value) => !isLegacyMarker(value)),
-    );
-  }
-  const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
-  for (const frame of id3?.getFramesByClassType<TagLib.Id3v2UserTextInformationFrame>(
-    Id3v2FrameClassType.UserTextInformationFrame,
-  ) || []) {
-    if (frame.description.toLowerCase() === "comment" && isLegacyMarker(frame.text?.[0]))
-      id3!.removeFrame(frame);
-  }
-}
-
-function hasLegacyIdentity(file: TagLib.File) {
-  const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
-  return (
-    isLegacyMarker(file.tag.grouping) ||
-    isLegacyMarker(file.tag.comment) ||
-    legacyDescription(file) ||
-    (
-      id3?.getFramesByClassType<TagLib.Id3v2UserTextInformationFrame>(
-        Id3v2FrameClassType.UserTextInformationFrame,
-      ) || []
-    ).some(
-      (frame) => frame.description.toLowerCase() === "comment" && isLegacyMarker(frame.text?.[0]),
-    )
-  );
-}
-
-// Changes only the tags Aurral has a value for. Every other tag, including
-// ratings, lyrics, ReplayGain, and cover art, stays as it was. The one
-// exception is the release pair: tracks from different uploaders name different
-// releases, and media servers split an album by them, so a file Aurral files
-// under an album carries that album's release and release group or none.
+// Changes only the fields Aurral has a value for. The exception is the release
+// pair: uploaders name different releases, and media servers split an album by
+// them. Files placed under an album carry its release and release group or none.
 function planChanges(
   current: Record<string, TagFieldValue>,
   values: Record<string, TagFieldValue>,
@@ -364,6 +170,13 @@ function planChanges(
     if (values[field] == null) continue;
     const wanted = normalize(field, values[field]);
     if (isEmpty(wanted) || same(wanted, current[field])) continue;
+    // Aurral can represent a solo credit without writing a redundant artist list.
+    if (
+      field === "artists" &&
+      isEmpty(current.artists) &&
+      same(wanted, [text(values.artist) || current.artist])
+    )
+      continue;
     if (fillOnly && !isEmpty(current[field])) continue;
     changes[field] = wanted;
   }
@@ -376,70 +189,94 @@ function planChanges(
   return changes;
 }
 
-export async function readAudioTags(filePath: string) {
-  const file = await openFile(filePath);
+async function updateTags(
+  filePath: string,
+  metadata: IAudioMetadata,
+  patch: TagPatch,
+  dryRun = false,
+) {
   try {
-    return { ...readFields(file), identity: readIdentity(file) };
-  } finally {
-    file.dispose();
+    if (metadata.native["ID3v2.3"]) {
+      // Replacement needs the full common model, including artwork skipped during planning.
+      // Unmapped/private frames are not represented by this conversion.
+      const full = await parseFile(filePath);
+      const identity = readIdentity(full);
+      const native = { ...patch.native };
+      const identityKey = `TXXX:${AURRAL_IDENTITY_TAG}`;
+      if (identity && !Object.hasOwn(native, identityKey))
+        native[identityKey] = JSON.stringify(identity);
+      await updateFile(
+        filePath,
+        { ...full.common, ...patch, native },
+        { replaceId3: true, dryRun },
+      );
+    } else {
+      await updateFile(filePath, patch, { dryRun });
+    }
+  } catch (error) {
+    if (error instanceof UnsupportedFormatError || error instanceof UnsupportedFeatureError)
+      throw new UnsupportedTagFormatError(filePath, "", error);
+    throw error;
   }
 }
 
-// Writes to a copy beside the file and moves it into place, so a crash never
-// leaves half a file, and a hardlinked file gets its own copy while the other
-// link keeps its tags.
+export async function readAudioTags(filePath: string) {
+  const metadata = await readMetadata(filePath);
+  // Parsing supports more formats and tag variants than the writer can edit.
+  await updateTags(filePath, metadata, {}, true);
+  return { ...readFields(metadata), identity: readIdentity(metadata) };
+}
 export async function writeAudioTags(
   filePath: string,
   values: Record<string, TagFieldValue> = {},
   { fillOnly = false, identity = null }: { fillOnly?: boolean; identity?: object | null } = {},
 ) {
-  const source = path.resolve(filePath);
-  const preview = await openFile(source);
-  let changes: Record<string, TagFieldValue>;
-  let identityChanged: boolean;
-  let legacyIdentity: boolean;
-  try {
-    changes = planChanges(readFields(preview), values, fillOnly);
-    identityChanged = Boolean(identity) && !same(readIdentity(preview), identity);
-    legacyIdentity = Boolean(identity) && hasLegacyIdentity(preview);
-  } finally {
-    preview.dispose();
-  }
+  const metadata = await readMetadata(filePath);
+  const current = readFields(metadata);
+  const changes = planChanges(current, values, fillOnly);
   const changed = Object.keys(changes).filter(isAudioTagField);
-  if (!changed.length && !identityChanged && !legacyIdentity) return [];
-
-  const extension = path.extname(source);
-  const working = path.join(
-    path.dirname(source),
-    `.${path.basename(source, extension)}.${randomUUID()}.tagging${extension}`,
-  );
-  await fs.copyFile(source, working, fs.constants.COPYFILE_FICLONE);
-  try {
-    const file = await openFile(working);
-    try {
-      file.removeTags(addedTagTypes & ~file.tagTypesOnDisk);
-      const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
-      if (id3 && !(file.tagTypesOnDisk & TagTypes.Id3v2)) id3.version = 4;
-      if (id3) dropUnsavableFrames(id3);
-      for (const field of changed) {
-        FIELD_SPECS[field].write(
-          file.tag,
-          changes[field] === null ? emptyValue(field) : changes[field],
-          file,
-        );
-      }
-      if (identity) {
-        writeIdentity(file, identity);
-        clearLegacyIdentity(file);
-      }
-      file.save();
-    } finally {
-      file.dispose();
-    }
-    await fs.rename(working, source);
-  } catch (error) {
-    await fs.rm(working, { force: true }).catch(() => {});
-    throw error;
+  const patch: TagPatch = {};
+  for (const field of changed) {
+    const value = changes[field];
+    if (field === "trackNumber" || field === "discNumber") patch[FIELDS[field]] = positive(value);
+    else if (field === "year") patch.date = String(value);
+    else if (field === "artists" || field === "artistMbid" || field === "genres")
+      patch[FIELDS[field]] = texts(value);
+    else patch[FIELDS[field]] = value === null ? null : text(value);
   }
+  if (identity) {
+    const container = metadata.format.container || "";
+    const isMp4 =
+      !container.startsWith("ADTS/") &&
+      (/MPEG-4|M4A|isom|mp4/i.test(container) || metadata.native.iTunes);
+    const prefix = isMp4
+      ? "----:com.apple.iTunes:"
+      : /MPEG|WAVE|ADTS/i.test(container)
+        ? "TXXX:"
+        : "";
+    const native: Record<string, string | string[] | null> = {};
+    const marker = (value: unknown) => text(value).startsWith(AURRAL_IDENTITY_PREFIX);
+
+    const serialized = JSON.stringify(identity);
+    if (!isDeepStrictEqual(JSON.parse(serialized), readIdentity(metadata)))
+      native[prefix + AURRAL_IDENTITY_TAG] = serialized;
+    if (marker(metadata.common.grouping)) patch.grouping = null;
+    // Vorbis combines COMMENT and DESCRIPTION in the common model. Edit each native field in place.
+    if (!metadata.native.vorbis && metadata.common.comments?.some((c) => marker(c.text)))
+      patch.comments = metadata.common.comments.filter((c) => !marker(c.text));
+    for (const [type, tags] of Object.entries(metadata.native)) {
+      const fields =
+        type === "vorbis" ? ["COMMENT", "DESCRIPTION"] : ["DESCRIPTION", "TXXX:comment"];
+      for (const id of fields) {
+        const matching = tags.filter((t) => t.id.toUpperCase() === id.toUpperCase());
+        if (matching.some((t) => marker(t.value)))
+          native[matching[0]!.id] = matching
+            .filter((t) => !marker(t.value))
+            .map((t) => String(t.value));
+      }
+    }
+    if (Object.keys(native).length) patch.native = native;
+  }
+  if (Object.keys(patch).length) await updateTags(filePath, metadata, patch);
   return changed;
 }

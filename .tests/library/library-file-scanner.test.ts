@@ -34,7 +34,7 @@ test("an untagged download files under its job's release group and release, neve
 
   const retagged = buildMetadataRecord(
     applyMetadataEnrichment(
-      { common: { musicbrainz_releasegroupid: OTHER_GROUP } },
+      { common: { mbReleaseGroupId: OTHER_GROUP } },
       { albumMbid: RELEASE_GROUP, releaseMbid: RELEASE },
     ),
     "/music/Artist/Album/01 Song.flac",
@@ -71,7 +71,7 @@ test("an untagged download files under its job's release group and release, neve
 test("a Various Artists album files under Various Artists when only its tracks carry artist IDs", () => {
   const identity = (tags: Record<string, string>) => {
     const { artistKey, artistMbid, artistMbids } = buildMetadataRecord(
-      { common: { albumartist: "Various Artists", artist: "Blue Swede", ...tags } },
+      { common: { albumArtist: "Various Artists", artist: "Blue Swede", ...tags } },
       "/music/Various Artists/Awesome Mix/01 Hooked on a Feeling.flac",
       "/music",
     );
@@ -79,15 +79,22 @@ test("a Various Artists album files under Various Artists when only its tracks c
   };
 
   assert.deepEqual(
-    identity({ musicbrainz_artistid: "33333333-3333-4333-8333-333333333333" }),
-    identity({ musicbrainz_albumartistid: VARIOUS_ARTISTS_MBID }),
+    identity({ mbArtistId: "33333333-3333-4333-8333-333333333333" }),
+    identity({ mbAlbumArtistId: VARIOUS_ARTISTS_MBID }),
   );
 });
 
 test("an album artist tag holding several NUL-separated values names the album for its first artist", () => {
-  const names = (albumartist: string) => {
+  const names = (taggedAlbumArtist: string) => {
     const { artistName, albumArtist } = buildMetadataRecord(
-      { common: { artist: "Proxy", artists: ["Proxy"], albumartist, albumartists: [albumartist] } },
+      {
+        common: {
+          artist: "Proxy",
+          artists: ["Proxy"],
+          albumArtist: taggedAlbumArtist,
+          albumArtists: [taggedAlbumArtist],
+        },
+      },
       "/music/Proxy/Bubble Bite EP/01 Bubble.mp3",
       "/music",
     );

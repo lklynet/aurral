@@ -9,6 +9,7 @@ import type { PipelinePayload } from "../../backend/services/downloadPipeline.ts
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import Database from "better-sqlite3";
 
@@ -1396,13 +1397,19 @@ test("classifies a file outside the Library folder without making it eligible fo
   const tracker = trackerModule.downloadTracker;
   const sharedPath = path.join(isolatedState.baseDir, "shared", "Song.mp3");
   await mkdir(path.dirname(sharedPath), { recursive: true });
-  await writeFile(
+  execFileSync("ffmpeg", [
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "anullsrc",
+    "-t",
+    "0.1",
+    "-b:a",
+    "128k",
     sharedPath,
-    Buffer.from(
-      "SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYxLjcuMTAzAAAAAAAAAAAAAAD/+5DAAAAAAAAAAAAAAAAAAAAAAABJbmZvAAAADwAAAAIAAATkAKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqr//////////////////////////////////////////////////////////////////wAAAABMYXZjNjEuMTkAAAAAAAAAAAAAAAAkBQcAAAAAAAAE5MAlg1kAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
-      "base64",
-    ),
-  );
+  ]);
   dbOps.updateSettings({
     ...dbOps.getSettings(),
     downloadFolderPath: path.join(isolatedState.baseDir, "managed"),

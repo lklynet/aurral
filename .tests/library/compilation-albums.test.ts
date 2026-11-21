@@ -179,7 +179,7 @@ test("a compilation keeps Various Artists on the album and matches each track by
               title: "Hooked on a Feeling",
               artist,
               album: "Guardians of the Galaxy: Awesome Mix, Vol. 1",
-              track: { no: 1, of: null },
+              trackNumber: 1,
             },
             format: {
               duration: 173,
@@ -217,7 +217,7 @@ test("a compilation keeps Various Artists on the album and matches each track by
   ]);
   await writeAudioMetadata(filePath, buildResolvedJobTrack(hooked));
   const { common } = await parseFile(filePath);
-  assert.deepEqual([common.artist, common.albumartist], ["Blue Swede", "Various Artists"]);
+  assert.deepEqual([common.artist, common.albumArtist], ["Blue Swede", "Various Artists"]);
   const hookedArtist = () =>
     getLibraryForAlbumIds({ ids: [albumId] })!.tracks.find(
       (track) => track.title === "Hooked on a Feeling",

@@ -223,15 +223,13 @@ test("a scan of several folders reconciles only those folders", async () => {
     ...metadata,
     common: {
       ...metadata.common,
-      albumartist: `Local Artist ${process.pid}`,
+      albumArtist: `Local Artist ${process.pid}`,
       artist: `Local Artist ${process.pid}`,
       album: `Local Album ${process.pid}`,
       title: `Local Track ${process.pid}`,
-      musicbrainz_albumartistid: [
-        `11111111-1111-4111-8111-${String(process.pid).padStart(12, "0")}`,
-      ],
-      musicbrainz_releasegroupid: `22222222-2222-4222-8222-${String(process.pid).padStart(12, "0")}`,
-      musicbrainz_recordingid: `33333333-3333-4333-8333-${String(process.pid).padStart(12, "0")}`,
+      mbAlbumArtistId: [`11111111-1111-4111-8111-${String(process.pid).padStart(12, "0")}`],
+      mbReleaseGroupId: `22222222-2222-4222-8222-${String(process.pid).padStart(12, "0")}`,
+      mbRecordingId: `33333333-3333-4333-8333-${String(process.pid).padStart(12, "0")}`,
     },
   };
   let trackId: number | undefined;
@@ -379,15 +377,17 @@ test("a scan of several roots drops songs whose files are gone from albums nobod
 
 const metadata = {
   common: {
-    albumartist: "Aurral Fixture",
+    albumArtist: "Aurral Fixture",
     artist: "Aurral Fixture",
     album: "Playback Roadmap",
     title: "First Step",
-    track: { no: 1, of: 4 },
-    disk: { no: 1, of: 1 },
-    musicbrainz_albumartistid: ["11111111-1111-4111-8111-111111111111"],
-    musicbrainz_releasegroupid: "22222222-2222-4222-8222-222222222222",
-    musicbrainz_recordingid: "33333333-3333-4333-8333-333333333333",
+    trackNumber: 1,
+    trackTotal: 4,
+    discNumber: 1,
+    discTotal: 1,
+    mbAlbumArtistId: ["11111111-1111-4111-8111-111111111111"],
+    mbReleaseGroupId: "22222222-2222-4222-8222-222222222222",
+    mbRecordingId: "33333333-3333-4333-8333-333333333333",
   },
   format: {
     duration: 123.4,
@@ -402,7 +402,7 @@ const songAt = (filePath: string) => ({
   common: {
     ...metadata.common,
     title: path.basename(filePath, path.extname(filePath)),
-    musicbrainz_recordingid: undefined,
+    mbRecordingId: undefined,
   },
 });
 
@@ -475,7 +475,7 @@ test("scanMusicRoot indexes tagged media, dated by the original release, and ign
       source,
       metadataReader: async () => ({
         ...metadata,
-        common: { ...metadata.common, date: "2016-02-12", originaldate: "2004-09-07" },
+        common: { ...metadata.common, date: "2016-02-12", originalDate: "2004-09-07" },
       }),
     });
     const snapshot = getLibrarySnapshot();
@@ -2238,11 +2238,13 @@ const artistAlbums = (artistName: string) =>
 const untagged = (artist: string, album: string, title: string, track: number = 1) => ({
   common: {
     artist,
-    albumartist: artist,
+    albumArtist: artist,
     album,
     title,
-    track: { no: track, of: 2 },
-    disk: { no: 1, of: 1 },
+    trackNumber: track,
+    trackTotal: 2,
+    discNumber: 1,
+    discTotal: 1,
   },
   format: { duration: 100 + track },
 });
@@ -2299,8 +2301,8 @@ test("a file that gains MusicBrainz IDs keeps its album and track, with their fa
 
     const tagged = untagged(artist, "22 Grand Job", "22 Grand Job");
     Object.assign(tagged.common, {
-      musicbrainz_releasegroupid: releaseGroup,
-      musicbrainz_recordingid: recording,
+      mbReleaseGroupId: releaseGroup,
+      mbRecordingId: recording,
     });
     await scanMusicRoot({
       rootPath: root,
@@ -2429,10 +2431,10 @@ test("MusicBrainz IDs tagged in capitals are the same IDs, other services' IDs a
       Number(path.basename(filePath).slice(0, 2)),
     );
     Object.assign(metadata.common, {
-      musicbrainz_albumartistid: [file.artist],
-      musicbrainz_releasegroupid: file.group,
-      musicbrainz_albumid: "1KLBdhphdiK82hYpAiw8DR",
-      musicbrainz_recordingid: file.recording,
+      mbAlbumArtistId: [file.artist],
+      mbReleaseGroupId: file.group,
+      mbReleaseId: "1KLBdhphdiK82hYpAiw8DR",
+      mbRecordingId: file.recording,
     });
     return metadata;
   };
@@ -2545,7 +2547,7 @@ test("an artist an older scan keyed by another service's ID becomes unlinked, ke
   const filePath = await createAudioFile(root, `${artist}/Violent Things/01 One.flac`);
   const metadataReader = async () => {
     const metadata = untagged(artist, "Violent Things", "One");
-    Object.assign(metadata.common, { musicbrainz_albumartistid: [spotify] });
+    Object.assign(metadata.common, { mbAlbumArtistId: [spotify] });
     return metadata;
   };
   try {
@@ -2766,8 +2768,8 @@ const tagged = (
 ) => {
   const metadata = untagged(artist, album, title, track);
   Object.assign(metadata.common, {
-    musicbrainz_releasegroupid: releaseGroup,
-    musicbrainz_recordingid: recording,
+    mbReleaseGroupId: releaseGroup,
+    mbRecordingId: recording,
   });
   return metadata;
 };
@@ -3515,7 +3517,7 @@ test("scanMusicRoot reads Aurral identity markers from portable comments", async
       source,
       metadataReader: async () => ({
         common: {
-          comment: [
+          comments: [
             {
               text: 'AURRAL_IDS={"artistMbid":"11111111-1111-4111-1111-111111111111","albumMbid":"22222222-2222-2222-2222-222222222222","trackMbid":"33333333-3333-3333-3333-333333333333"}',
             },
@@ -3561,7 +3563,7 @@ test("scan metadata keeps recording, release-track, release group, and edition I
   const edition = "22222222-2222-4222-8222-222222222222";
   const releaseTrack = "33333333-3333-4333-8333-333333333333";
   const recording = "44444444-4444-4444-8444-444444444444";
-  const metadata = { common: { musicbrainz_trackid: releaseTrack }, format: {} };
+  const metadata = { common: { mbReleaseTrackId: releaseTrack }, format: {} };
   const groupOnly = buildMetadataRecord(
     applyMetadataEnrichment(metadata, { albumMbid: group }),
     file,
@@ -3599,7 +3601,7 @@ test("scanMusicRoot reads Aurral identity markers from grouping tags", async () 
       metadataReader: async () => ({
         common: {
           grouping: 'AURRAL_IDS={"trackMbid":"33333333-3333-3333-3333-333333333333"}',
-          comment: [
+          comments: [
             {
               text: 'AURRAL_IDS={"artistMbid":"11111111-1111-4111-1111-111111111111","albumMbid":"22222222-2222-2222-2222-222222222222"}',
             },
@@ -3652,11 +3654,11 @@ test("scanMusicRoot reads Aurral identity markers from native ID3 comments", asy
       source,
       metadataReader: async () => ({
         common: {
-          albumartist: "Aurral Artist",
+          albumArtist: "Aurral Artist",
           artist: "Aurral Artist",
           album: "Aurral Album",
           title: "Track",
-          musicbrainz_trackid: "44444444-4444-4444-8444-444444444444",
+          mbReleaseTrackId: "44444444-4444-4444-8444-444444444444",
         },
         native: {
           "ID3v2.4": [
@@ -3980,13 +3982,13 @@ test("a forced rescan of an unchanged folder does not rewrite library rows", asy
     ...metadata,
     common: {
       ...metadata.common,
-      albumartist: "Stable Artist",
+      albumArtist: "Stable Artist",
       artist: "Stable Artist",
       album: "Stable Album",
       title: "Stable Track",
-      musicbrainz_albumartistid: [artistMbid],
-      musicbrainz_releasegroupid: albumMbid,
-      musicbrainz_recordingid: trackMbid,
+      mbAlbumArtistId: [artistMbid],
+      mbReleaseGroupId: albumMbid,
+      mbRecordingId: trackMbid,
     },
   };
   const scan = () =>
@@ -4099,13 +4101,13 @@ test("a read-only file joins only the album it is tagged with", async () => {
         ...metadata,
         common: {
           ...metadata.common,
-          albumartist: "Eve 6",
+          albumArtist: "Eve 6",
           artist: "Eve 6",
           album: "Eve 6",
           title: "Showerhead",
-          musicbrainz_albumartistid: [artistMbid],
-          musicbrainz_releasegroupid: firstAlbumMbid,
-          musicbrainz_recordingid: recordingMbid,
+          mbAlbumArtistId: [artistMbid],
+          mbReleaseGroupId: firstAlbumMbid,
+          mbRecordingId: recordingMbid,
         },
       }),
       syncSearch: false,

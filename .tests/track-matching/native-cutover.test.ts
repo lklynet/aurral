@@ -1,3 +1,4 @@
+import { audioMetadata } from "../download/fixtures.ts";
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { buildSourceCandidates } from "../../backend/services/trackMatching/sourceSearch.ts";
@@ -86,25 +87,21 @@ test("a provider artist claim cannot fill a missing original file tag", async ()
     source: "soulseek",
     filePath: "/tmp/First Song.flac",
     options: {
-      parseFile: async () => ({
-        native: {},
-        quality: { warnings: [] },
-        common: {
-          track: { no: null, of: null },
-          disk: { no: null, of: null },
-          movementIndex: { no: null, of: null },
-          title: "First Song",
-        },
-        format: {
-          trackInfo: [],
-          tagTypes: [],
-          duration: 180,
-          container: "FLAC",
-          lossless: true,
-          sampleRate: 44100,
-          bitsPerSample: 16,
-        },
-      }),
+      parseFile: async () =>
+        audioMetadata({
+          common: {
+            title: "First Song",
+          },
+          format: {
+            trackInfo: [],
+            tagTypes: [],
+            duration: 180,
+            container: "FLAC",
+            lossless: true,
+            sampleRate: 44100,
+            bitsPerSample: 16,
+          },
+        }),
     },
   });
   assert.equal(result.decision, "AMBIGUOUS");
@@ -116,26 +113,22 @@ test("a live file name cannot be laundered by plain original tags", async () => 
     source: "soulseek",
     filePath: "/tmp/First Song (Live).flac",
     options: {
-      parseFile: async () => ({
-        native: {},
-        quality: { warnings: [] },
-        common: {
-          track: { no: null, of: null },
-          disk: { no: null, of: null },
-          movementIndex: { no: null, of: null },
-          title: "First Song",
-          artist: "The Band",
-        },
-        format: {
-          trackInfo: [],
-          tagTypes: [],
-          duration: 180,
-          container: "FLAC",
-          lossless: true,
-          sampleRate: 44100,
-          bitsPerSample: 16,
-        },
-      }),
+      parseFile: async () =>
+        audioMetadata({
+          common: {
+            title: "First Song",
+            artist: "The Band",
+          },
+          format: {
+            trackInfo: [],
+            tagTypes: [],
+            duration: 180,
+            container: "FLAC",
+            lossless: true,
+            sampleRate: 44100,
+            bitsPerSample: 16,
+          },
+        }),
     },
   });
   assert.equal(result.decision, "CONFLICTED");

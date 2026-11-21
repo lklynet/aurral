@@ -277,7 +277,7 @@ test("file scans retain artist identity, artwork and added date while updating f
           artist: "Aurral Artist",
           album: "Album",
           title,
-          musicbrainz_artistid: [mbid],
+          mbArtistId: [mbid],
         },
       }),
     });

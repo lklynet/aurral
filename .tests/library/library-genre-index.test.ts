@@ -31,7 +31,7 @@ test("genre reads retain inheritance, metadata shapes, availability, and updates
   const track = store.upsertLibraryTrack({
     identityKey: "genre:track",
     title: "Genre Track",
-    metadata: { genres: ["Soul", " Soul "], tags: { genre: { first: " Ambient " } } },
+    metadata: { tags: { genres: ["Soul", " Soul "], genre: { first: " Ambient " } } },
   });
   store.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
   const file = {

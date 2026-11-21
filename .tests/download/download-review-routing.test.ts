@@ -1068,5 +1068,8 @@ test("a download is tagged after it reaches the Library, so a slow download fold
   const job = trackedJob(downloadTracker, slskdJobId);
   assert.equal(job.status, "done", job.error ?? "no error");
   const { common } = await parseFile(job.finalPath!);
-  assert.deepEqual([job.albumName, common.album, common.track.no], ["Album Name", "Album Name", 2]);
+  assert.deepEqual(
+    [job.albumName, common.album, common.trackNumber],
+    ["Album Name", "Album Name", 2],
+  );
 });

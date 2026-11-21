@@ -111,6 +111,7 @@ const resolveAlbumKey = (input: PlayEventInput) => {
 const trackTagsSchema = v.looseObject({
   tags: v.optional(
     v.looseObject({
+      mbArtistId: v.optional(v.unknown()),
       musicbrainz_artistid: v.optional(v.unknown()),
       artists: v.optional(v.unknown()),
     }),
@@ -131,7 +132,7 @@ const libraryListenIds = (albumKey: string | null, title: string) => {
   const [track] = matches;
   if (!track || matches.length > 1) return {};
   const tags = dbHelpers.readJSON(trackTagsSchema, track.metadata_json, "library track tags")?.tags;
-  const artistMbids = tagMbids(tags?.musicbrainz_artistid);
+  const artistMbids = tagMbids(tags?.mbArtistId ?? tags?.musicbrainz_artistid);
   const names = artistNames(tags?.artists);
   return {
     albumMbid: track.release_group_mbid,

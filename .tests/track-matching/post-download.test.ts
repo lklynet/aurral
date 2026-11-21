@@ -2,7 +2,8 @@
 // the metadata Aurral is about to write. Real-file cases use ffmpeg to
 // generate tagged audio; unit cases inject a parse function.
 
-import type { IAudioMetadata } from "music-metadata";
+import type { IAudioMetadata, ICommonTagsResult } from "music-metadata";
+import { audioMetadata } from "../download/fixtures.ts";
 import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFileSync } from "child_process";
@@ -17,7 +18,7 @@ import {
 
 type ValidationInput = NonNullable<Parameters<typeof validateDownloadedTrackFile>[0]>;
 type Tags = Partial<
-  Omit<IAudioMetadata["common"], "track" | "disk" | "title" | "artist" | "album">
+  Omit<ICommonTagsResult, "trackNumber" | "discNumber" | "title" | "artist" | "album">
 > & {
   title?: string | null;
   artist?: string | null;
@@ -50,19 +51,16 @@ function stubParsed(
   durationSec: number = 248,
   format: Partial<IAudioMetadata["format"]> = {},
 ): IAudioMetadata {
-  return {
-    native: {},
-    quality: { warnings: [] },
+  return audioMetadata({
     common: {
-      movementIndex: { no: null, of: null },
       title: tags.title ?? undefined,
       artist: tags.artist ?? undefined,
       artists: tags.artists,
       album: tags.album ?? undefined,
       year: tags.year,
-      track: { no: tags.track ?? null, of: null },
-      disk: { no: tags.disc ?? null, of: null },
-      musicbrainz_recordingid: tags.mbid,
+      trackNumber: tags.track ?? undefined,
+      discNumber: tags.disc ?? undefined,
+      mbRecordingId: tags.mbid,
     },
     format: {
       trackInfo: [],
@@ -75,7 +73,7 @@ function stubParsed(
       container: format.container,
       codec: format.codec,
     },
-  };
+  });
 }
 
 function stubParseFile(parsed: IAudioMetadata) {

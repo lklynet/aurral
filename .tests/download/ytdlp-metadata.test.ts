@@ -50,15 +50,15 @@ test("yt-dlp output receives Aurral's canonical Navidrome tags", async () => {
   const { common } = await parseFile(filePath);
   assert.equal(common.title, "Bonzo Goes to Bitburg");
   assert.equal(common.artist, "Ramones");
-  assert.equal(common.albumartist, "Ramones");
+  assert.equal(common.albumArtist, "Ramones");
   assert.equal(common.album, "Animal Boy");
   assert.equal(common.year, 1986);
-  assert.equal(common.track.no, 5);
-  assert.equal(common.musicbrainz_releasegroupid, "22222222-2222-4222-8222-222222222222");
-  assert.equal(common.musicbrainz_recordingid, "33333333-3333-4333-8333-333333333333");
-  assert.equal(common.musicbrainz_albumid, undefined);
+  assert.equal(common.trackNumber, 5);
+  assert.equal(common.mbReleaseGroupId, "22222222-2222-4222-8222-222222222222");
+  assert.equal(common.mbRecordingId, "33333333-3333-4333-8333-333333333333");
+  assert.equal(common.mbReleaseId, undefined);
   assert.equal(common.grouping, undefined);
-  assert.equal(common.comment, undefined);
+  assert.equal(common.comments, undefined);
   assert.deepEqual(readAurralIdentity(await parseFile(filePath)), {
     artistMbid: "11111111-1111-4111-8111-111111111111",
     albumMbid: "22222222-2222-4222-8222-222222222222",

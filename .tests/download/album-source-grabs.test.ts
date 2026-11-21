@@ -1782,7 +1782,7 @@ test("a Usenet download of a second-disc track takes the disc in its name", asyn
   assert.equal(job.status, "done");
   assert.equal(basename(job.finalPath!), "2-03 - Bomb.flac");
   const { common } = await parseFile(job.finalPath!);
-  assert.deepEqual([common.disk.no, common.track.no], [2, 3]);
+  assert.deepEqual([common.discNumber, common.trackNumber], [2, 3]);
 });
 
 test("a Usenet download of a whole two-disc album takes the copy of a repeated title from the requested disc", async (t) => {
@@ -1883,7 +1883,7 @@ test("a Usenet download of a whole two-disc album takes the copy of a repeated t
   assert.equal(job.status, "done");
   const { common } = await parseFile(job.finalPath!);
   assert.deepEqual(
-    common.comment?.map((entry) => entry.text ?? entry),
+    common.comments?.map((entry) => entry.text ?? entry),
     ["CD2"],
   );
 });

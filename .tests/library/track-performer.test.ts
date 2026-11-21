@@ -36,7 +36,7 @@ test("track performer stays distinct from the album owner without changing audio
   await mkdir(path.dirname(file), { recursive: true });
   await Promise.all([writeFile(file, "original audio"), writeFile(listedFile, "listed audio")]);
   const common = {
-    albumartist: "Owner",
+    albumArtist: "Owner",
     artist: "Guest & Owner",
     artists: ["Guest", "Owner"],
     album: "Album",
@@ -49,7 +49,7 @@ test("track performer stays distinct from the album owner without changing audio
       common:
         filePath === listedFile
           ? {
-              albumartist: "Owner",
+              albumArtist: "Owner",
               artist: "Owner",
               artists: ["Owner", "Featured Guest"],
               album: "Album",
@@ -168,11 +168,11 @@ test("rescanning updates a local title when its normalized identity stays the sa
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, "original audio");
   const common: Common = {
-    albumartist: "Title Artist",
+    albumArtist: "Title Artist",
     artist: "Title Artist",
     album: "Title Album",
     title: "Pret",
-    track: { no: 1, of: null },
+    trackNumber: 1,
   };
   const scan = () =>
     scanMusicRoot({ rootPath: root, force: true, metadataReader: async () => ({ common }) });
@@ -202,12 +202,12 @@ test("reused canonical tracks refresh performer tags without replacing identity"
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, "original audio");
   const common: Common = {
-    albumartist: "Canonical Owner",
+    albumArtist: "Canonical Owner",
     artist: "Original Guest",
     album: "Canonical Album",
     title: "Prêt",
-    track: { no: 1, of: null },
-    musicbrainz_recordingid: "11111111-1111-4111-8111-111111111111",
+    trackNumber: 1,
+    mbRecordingId: "11111111-1111-4111-8111-111111111111",
   };
   const scan = () =>
     scanMusicRoot({ rootPath: root, force: true, metadataReader: async () => ({ common }) });
@@ -225,7 +225,7 @@ test("reused canonical tracks refresh performer tags without replacing identity"
     artistName: before.artistName,
     metadata: { ...before.metadata, canonicalSource: "catalogue" },
   });
-  delete common.musicbrainz_recordingid;
+  delete common.mbRecordingId;
   common.artist = "Corrected Guest";
   common.title = "Pret";
 
@@ -271,11 +271,11 @@ test("a track whose files credit different performers keeps one credit whatever 
       force: true,
       metadataReader: async (filePath) => ({
         common: {
-          albumartist: "Order Owner",
+          albumArtist: "Order Owner",
           artist: credits.get(filePath),
           album: "Order Album",
           title: "Order Song",
-          track: { no: 1, of: null },
+          trackNumber: 1,
         },
       }),
     });
@@ -304,12 +304,12 @@ test("a recording keeps its performer when a rescan finds no artist tag", async 
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, "audio");
   const common: Common = {
-    albumartist: "Mbid Owner",
+    albumArtist: "Mbid Owner",
     artist: "Mbid Owner feat. Guest",
     album: "Mbid Album",
     title: "Mbid Song",
-    track: { no: 1, of: null },
-    musicbrainz_recordingid: "44444444-4444-4444-8444-444444444444",
+    trackNumber: 1,
+    mbRecordingId: "44444444-4444-4444-8444-444444444444",
   };
   const scan = () =>
     scanMusicRoot({ rootPath: root, force: true, metadataReader: async () => ({ common }) });
@@ -350,11 +350,11 @@ test("a tagged performer beats files without an artist tag whatever the scan ord
         force: true,
         metadataReader: async (filePath) => ({
           common: {
-            albumartist: "Untagged Owner",
+            albumArtist: "Untagged Owner",
             artist: credits[path.basename(filePath)],
             album: `Album ${index}`,
             title: "Song",
-            track: { no: 1, of: null },
+            trackNumber: 1,
           },
         }),
       });

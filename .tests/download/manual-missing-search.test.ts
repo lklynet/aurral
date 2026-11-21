@@ -364,14 +364,14 @@ test("manual Usenet releases choose the requested file without rejecting the sel
     [
       "01 Other Song.mp3",
       audioMetadata({
-        common: { title: "Other Song", track: { no: 1, of: null } },
+        common: { title: "Other Song", trackNumber: 1 },
         format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 180 },
       }),
     ],
     [
       "02 Expected Song.mp3",
       audioMetadata({
-        common: { title: "Expected Song", track: { no: 2, of: null } },
+        common: { title: "Expected Song", trackNumber: 2 },
         format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 200 },
       }),
     ],
@@ -395,14 +395,14 @@ test("manual Usenet file selection prefers title evidence over a coincidental tr
     [
       "02 Unrelated Song.mp3",
       audioMetadata({
-        common: { title: "Unrelated Song", track: { no: 2, of: null } },
+        common: { title: "Unrelated Song", trackNumber: 2 },
         format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 180 },
       }),
     ],
     [
       "Expected Song.mp3",
       audioMetadata({
-        common: { title: "Expected Song", track: { no: 7, of: null } },
+        common: { title: "Expected Song", trackNumber: 7 },
         format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 200 },
       }),
     ],
@@ -427,14 +427,14 @@ test("manual Usenet release fails when none of its files match the requested tit
     [
       "02 Unrelated Song.mp3",
       audioMetadata({
-        common: { title: "Unrelated Song", track: { no: 2, of: null } },
+        common: { title: "Unrelated Song", trackNumber: 2 },
         format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 180 },
       }),
     ],
     [
       "07 Another Track.mp3",
       audioMetadata({
-        common: { title: "Another Track", track: { no: 7, of: null } },
+        common: { title: "Another Track", trackNumber: 7 },
         format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 200 },
       }),
     ],

@@ -168,7 +168,7 @@ test("playlist jobs annotate tracks that are already in the library", async () =
     metadataReader: async () =>
       audioMetadata({
         common: {
-          albumartist: "Owned Artist",
+          albumArtist: "Owned Artist",
           artist: "Owned Artist feat. Guest",
           album: "Featured Album",
           title: "Featured Track",

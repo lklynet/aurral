@@ -1,3 +1,4 @@
+import { audioMetadata } from "./fixtures.ts";
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
@@ -101,28 +102,25 @@ const fileTags = (
   no: number,
   duration: number,
   extra: Partial<ICommonTagsResult> = {},
-): IAudioMetadata => ({
-  common: {
-    title,
-    artist: "The Band",
-    album: "Album",
-    track: { no, of: null },
-    disk: { no: null, of: null },
-    movementIndex: { no: null, of: null },
-    ...extra,
-  },
-  format: {
-    tagTypes: [],
-    trackInfo: [],
-    duration,
-    lossless: true,
-    sampleRate: 44100,
-    bitsPerSample: 16,
-    container: "FLAC",
-  },
-  native: {},
-  quality: { warnings: [] },
-});
+): IAudioMetadata =>
+  audioMetadata({
+    common: {
+      title,
+      artist: "The Band",
+      album: "Album",
+      trackNumber: no,
+      ...extra,
+    },
+    format: {
+      tagTypes: [],
+      trackInfo: [],
+      duration,
+      lossless: true,
+      sampleRate: 44100,
+      bitsPerSample: 16,
+      container: "FLAC",
+    },
+  });
 
 function pinned(
   releaseMbid: string,
@@ -588,7 +586,7 @@ test("album assignment accepts a file tagged with a recording ID MusicBrainz mer
     const second = "22222222-2222-4222-8222-222222222222";
     const mergedSecond = "33333333-3333-4333-8333-333333333333";
     const tags = (title: string, no: number, mbid: string) =>
-      fileTags(title, no, 200, { musicbrainz_recordingid: mbid });
+      fileTags(title, no, 200, { mbRecordingId: mbid });
     const parsed = new Map([
       [paths[0], tags("First", 1, first)],
       [paths[1], tags("Second", 2, mergedSecond)],
