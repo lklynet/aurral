@@ -143,6 +143,8 @@ function releaseKey(release: UsenetRelease) {
     .join("\0");
 }
 
+const SCENE_GROUP_AFTER_YEAR = /(-(?:19|20)\d{2})-[^\s-]+$/u;
+
 function titleWords(value: string) {
   return foldDiacritics(String(value || ""))
     .toLowerCase()
@@ -253,7 +255,7 @@ export function rankUsenetReleases<Release extends UsenetRelease>(
       indexer: release.indexer,
       guid: release.guid,
     };
-    const words = titleWords(title);
+    const words = titleWords(title.replace(SCENE_GROUP_AFTER_YEAR, "$1"));
 
     // Identity gate: the artist (any artist for a compilation) and the album
     // or track title appear in the release title.

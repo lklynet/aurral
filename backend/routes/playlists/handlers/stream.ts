@@ -5,22 +5,10 @@ import { requireStreamAuth } from "../../../middleware/guards.ts";
 import { noCache } from "../../../middleware/cacheHeaders.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { streamQuery, streamSubsonicAudio } from "../../../services/subsonicTranscodeService.ts";
-import { canAccessPlaylistType, requirePlaylistAccessIfSignedIn } from "./utils.ts";
+import { canAccessJob, requirePlaylistAccessIfSignedIn } from "./utils.ts";
 import { sendViaNode } from "../../shared/sendViaNode.ts";
-import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
-import type { DownloadJob } from "../../../services/downloadJobs/downloadTracker.ts";
-import type { AppEnv, RequestUser } from "../../../middleware/requestUser.ts";
+import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { deezerPreviewLinkFor } from "../../../services/apiClients/deezer.ts";
-
-const canAccessJob = (user: RequestUser | undefined, job: DownloadJob) =>
-  canAccessPlaylistType(user, job.playlistType) ||
-  flowPlaylistConfig
-    .getStaticPlaylistsForUser(user)
-    .some((playlist) =>
-      playlist.tracks?.some(
-        (track) => String(track?.canonicalJobId || "") === String(job.id || ""),
-      ),
-    );
 
 export default new Hono<AppEnv>()
   .basePath("/playlists")

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useMediaQuery } from "../hooks/useMediaQuery.ts";
 import { useThemeDocument } from "../hooks/useThemeDocument.ts";
 import { queryKeys } from "../queryClient";
+import { apiPathOf } from "../utils/api/core.ts";
 import { visualizerClient } from "../utils/api/clients/visualizer.ts";
 import { extractArtworkAccent } from "../utils/imageColors.ts";
 import { hexToOklch, oklchToHex, type HexColor } from "../utils/themeColor.ts";
@@ -209,34 +210,35 @@ function useArtworkAccent(src: string | null | undefined) {
   return artwork ? accent : null;
 }
 
-function useTrackPulse(track: PlayerTrack, enabled: boolean) {
+function pulseLookup(track: PlayerTrack) {
   const { libraryAlbumId, libraryTrackId } = track;
-  const library = libraryAlbumId != null && libraryTrackId != null;
+  if (libraryAlbumId != null && libraryTrackId != null) {
+    return { libraryAlbumId: String(libraryAlbumId), libraryTrackId: String(libraryTrackId) };
+  }
+  const streamPath = apiPathOf(track.src ?? "");
+  return streamPath ? { streamPath } : null;
+}
+
+function useTrackPulse(track: PlayerTrack, enabled: boolean) {
+  const lookup = enabled ? pulseLookup(track) : null;
   const { data } = useQuery({
-    queryKey: queryKeys.trackPulse(libraryAlbumId, libraryTrackId),
-    enabled: enabled && library,
-    staleTime: Infinity,
-    queryFn: async ({ signal }) => {
-      const { pulse } = await parseResponse(
-        visualizerClient.pulse.$get(
-          {
-            query: {
-              libraryAlbumId: String(libraryAlbumId),
-              libraryTrackId: String(libraryTrackId),
-            },
-          },
-          { init: { signal } },
-        ),
-      );
-      return (
-        pulse && {
-          fps: pulse.fps,
-          levels: Uint8Array.from(atob(pulse.levels), (char) => char.charCodeAt(0)),
+    queryKey: queryKeys.trackPulse(lookup),
+    queryFn: lookup
+      ? async ({ signal }) => {
+          const { pulse } = await parseResponse(
+            visualizerClient.pulse.$get({ query: lookup }, { init: { signal } }),
+          );
+          return (
+            pulse && {
+              fps: pulse.fps,
+              levels: Uint8Array.from(atob(pulse.levels), (char) => char.charCodeAt(0)),
+            }
+          );
         }
-      );
-    },
+      : skipToken,
+    staleTime: Infinity,
   });
-  return enabled && library ? (data ?? null) : null;
+  return lookup ? (data ?? null) : null;
 }
 
 export default function PlayerVisualizer({
