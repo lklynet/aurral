@@ -26,7 +26,12 @@ import {
   writeAudioMetadata,
 } from "../downloadUtils.ts";
 import { logger } from "../logger.ts";
-import { albumGrabJobs, deniedAlbumSources, finishAlbumGrab } from "../albumGrab.ts";
+import {
+  albumGrabJobs,
+  deniedAlbumSources,
+  fallbackAlbumGrabToTracks,
+  finishAlbumGrab,
+} from "../albumGrab.ts";
 import { selectSoulseekAlbumFolder } from "../albumReleaseSearch.ts";
 import { getQualityProfile } from "../qualityProfile.ts";
 import { isAudioFile } from "../downloadJobs/usenetReleaseSearch.ts";
@@ -259,7 +264,8 @@ async function handleAlbumSearch(
   if (!job || job.status === "failed" || job.status === "done") return null;
   startSearch(job, source);
   const release = await attemptRelease(payload, job);
-  const denied = deniedAlbumSources([job, ...albumGrabJobs(payload)], source.id);
+  const members = albumGrabJobs(payload);
+  const denied = deniedAlbumSources([job, ...members], source.id);
   let results: AlbumResult[];
   try {
     results = await albums.search(albumOf(release, job), {
@@ -276,8 +282,27 @@ async function handleAlbumSearch(
     .filter((result) => !denied.has(`album:${result.id}`.toLowerCase()))
     .slice(0, MAX_ALBUM_CANDIDATES)
     .map((result) => ({ raw: result, resolvedAlbumName: result.title, releaseVerified: false }));
-  if (candidates.length === 0)
-    return helpers.failOrTryNextSource(payload, job, "No matching album in the search results");
+  if (candidates.length === 0) {
+    const reason = "No matching album in the search results";
+    if (
+      payload.albumGrab &&
+      source.tracks &&
+      !payload.upgrade &&
+      !payload.manualSelection &&
+      job.requestKind === "track" &&
+      members.every((member) => member.requestKind === "track") &&
+      !job.quickSearchedSources.includes(source.id)
+    ) {
+      if (!isPipelinePayloadActive(payload)) return null;
+      const trackSearch = fallbackAlbumGrabToTracks<PipelinePayload>(payload, reason);
+      return {
+        ...trackSearch,
+        source: source.id,
+        triedSources: [...new Set([...(payload.triedSources || []), ...trackSearch.triedSources])],
+      };
+    }
+    return helpers.failOrTryNextSource(payload, job, reason);
+  }
   return { ...payload, phase: "download", source: source.id, candidates, candidateIndex: 0 };
 }
 

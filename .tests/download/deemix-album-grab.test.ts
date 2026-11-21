@@ -453,3 +453,44 @@ test("deemix searches a compilation by its album title alone", async (t) => {
   assert.equal(deemixCandidates(result)[0]?.raw.id, "mix");
   assert.ok(search.mock.calls.every((call) => !/Blue Swede|Raspberries/.test(call[0])));
 });
+
+test("an alternate edition can supply a requested track before the next source", async (t) => {
+  const { getDownloadClient } =
+    await import("../../backend/services/download/downloadClientSettings.ts");
+  const client = getDownloadClient("deemix");
+  vi.spyOn(client, "searchAlbums").mockResolvedValue([albumEntry("alternate", "Album")]);
+  vi.spyOn(client, "getAlbum").mockResolvedValue(
+    deezerAlbum([albumTrack("First", 0), albumTrack("Different song", 1)]),
+  );
+  const tracks = vi.spyOn(client, "search").mockResolvedValue([albumTrack("First", 0)]);
+  const releaseMbid = await serveStandard(t);
+  for (const requestKind of ["track", "album"] as const) {
+    const jobId = createTrackedJob(
+      downloadTracker,
+      {
+        artistName: "The Band",
+        trackName: "First",
+        albumName: "Album",
+        albumMbid: "deemix-standard-group",
+        releaseMbid,
+        trackNumber: 1,
+        durationMs: 180000,
+      },
+      "library",
+      { requestKind },
+    );
+    const search = searchWith([jobId], releaseMbid);
+    if (requestKind === "album") {
+      await assert.rejects(search, /unexpected source fallback: No matching album/);
+      continue;
+    }
+    const next = await search;
+    assert.ok(isStepFrom(next, "deemix"));
+    assert.equal(next.albumGrab, false);
+    const found = await runDeemix(next);
+    assert.equal(deemixCandidates(found)[0]?.raw.id, "0");
+
+    tracks.mockResolvedValue([albumTrack("First (Live)", 0)]);
+    await assert.rejects(runDeemix(next), /unexpected source fallback: No suitable search results/);
+  }
+});
