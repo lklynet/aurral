@@ -27,16 +27,16 @@
   <img src="web/screenshots/discover.webp" width="900" alt="Aurral Discover page" />
 </p>
 
-- **Discover** artists you'll actually like, with a real reason for every pick. Bootstrap straight from your Spotify history.
+- **Discover** artists you'll like, with a real reason for every pick. Bootstrap straight from your Spotify history.
 - **Flows** turn your taste into scheduled playlists that grab their own tracks and rotate on autopilot. Daily mixes build from what you play.
 - **Import** playlists from Spotify, YouTube Music, Last.fm, ListenBrainz, and M3U files.
 - **Library** managed for you, with real audio verification, automatic tagging, and read-only folder support for music you don't want touched.
 - **Listen** with synced lyrics and radio in the built-in player, from anywhere at [music.aurral.org](https://music.aurral.org), or in any Subsonic app. Already on Navidrome, Plex, or Jellyfin? Aurral writes M3U playlists and plays nice with all of them.
-- **Friends** see what people on your server are playing, and Blends mix your taste with theirs.
-- **Share** tracks, albums, and playlists as links, or let friends stream straight from your Library.
-- **Plugins** keep niche integrations out of core while letting you add download sources, imports, and actions when you want them.
+- **Friends** see what people on your server and your aurral.org friends are playing, and Blends mix your taste with theirs.
+- **Share** tracks, albums, and playlists as links, publish public playlists, or let friends play straight from your Library.
+- **Plugins** add download sources, imports, and actions when you want them.
 
-Works out of the box with built-in yt-dlp, or connect slskd, Usenet, qBittorrent, Tidarr, deemix, or plugins. Everything besides Aurral itself is optional. [Read the docs](https://docs.aurral.org/) for the full tour, or check the [FAQ](https://docs.aurral.org/faq/) if you're coming from Reddit.
+Connect slskd, Usenet, qBittorrent, Tidarr, deemix, or download plugins for lossless music, with built-in yt-dlp ready as a fallback out of the box. Every integration is optional. [Read the docs](https://docs.aurral.org/) for the full tour, or check the [FAQ](https://docs.aurral.org/faq/).
 
 ## Quick start
 
