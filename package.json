@@ -2,12 +2,13 @@
   "name": "aurral",
   "version": "2.0.0",
   "private": true,
-  "description": "Find new music, get it, and play it, all on your own server.",
+  "description": "Self-hosted music that doesn't feel like a chore. One container, zero API keys, and you own every file.",
   "keywords": [
-    "lidarr",
+    "discovery",
     "music",
     "musicbrainz",
-    "request"
+    "self-hosted",
+    "subsonic"
   ],
   "license": "MIT",
   "author": "",

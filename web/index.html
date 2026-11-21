@@ -429,6 +429,10 @@
         width: 100%;
       }
 
+      .shot.align-right img {
+        object-position: right top;
+      }
+
       .shot.cropped {
         aspect-ratio: 5 / 2;
       }
@@ -1130,7 +1134,7 @@
             </div>
             <div>
               <dt>Integrations</dt>
-              <dd data-integration-count>19</dd>
+              <dd data-integration-count>18</dd>
             </div>
           </dl>
         </div>
@@ -1141,7 +1145,7 @@
           <h2 id="discover-title">
             Discovery that shows its work.
             <span class="quiet"
-              >Built from what you actually listen to, with a real reason for every pick.</span
+              >Built from what you listen to, with a real reason for every pick.</span
             >
           </h2>
           <ul class="features">
@@ -1158,12 +1162,12 @@
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-trending" /></svg>
               <h3>Trends</h3>
-              <p>Global trends, tags, and fresh releases in one place.</p>
+              <p>Global and local charts, tags, and fresh releases in one place.</p>
             </li>
             <li>
-              <svg class="icon" aria-hidden="true"><use href="#i-pin" /></svg>
-              <h3>Concerts</h3>
-              <p>Nearby shows for the artists you already listen to.</p>
+              <svg class="icon" aria-hidden="true"><use href="#i-play" /></svg>
+              <h3>Preview before you grab</h3>
+              <p>Hear track previews, top songs, and music videos right on the artist page.</p>
             </li>
           </ul>
           <figure class="shot">
@@ -1237,32 +1241,32 @@
           <ul class="features">
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-inbox" /></svg>
-              <h3>One Inbox</h3>
-              <p>Releases, shows, news, and discoveries. Read, save, or dismiss each one.</p>
+              <h3>Your own feed</h3>
+              <p>Releases, shows, news, and friend requests. Read, save, or dismiss each one.</p>
             </li>
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-calendar" /></svg>
               <h3>Out now, out soon</h3>
-              <p>Albums from your artists from the last 30 days and the next 90.</p>
+              <p>Albums from your library artists from the last 30 days and the next 90.</p>
             </li>
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-news" /></svg>
               <h3>Artist news</h3>
-              <p>Stories from your feeds that mention the artists you love.</p>
+              <p>Stories from your RSS feeds that mention your library and recommended artists.</p>
             </li>
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-pin" /></svg>
               <h3>Shows nearby</h3>
-              <p>Concerts for your library, recommended, and trending artists.</p>
+              <p>Upcoming concerts for your library artists when you connect Ticketmaster.</p>
             </li>
           </ul>
-          <figure class="shot">
+          <figure class="shot align-right">
             <img
-              src="screenshots/news.webp"
+              src="screenshots/inbox.webp"
               width="3840"
               height="2160"
               loading="lazy"
-              alt="The Aurral artist news page with stories about the listener's artists"
+              alt="The Aurral Inbox popover showing new artist discoveries and upcoming releases"
             />
           </figure>
           <a class="link" href="https://docs.aurral.org/using/inbox/"
@@ -1281,7 +1285,7 @@
           <ul class="features">
             <li>
               <svg class="icon" aria-hidden="true"><use href="#i-palette" /></svg>
-              <h3>Themes</h3>
+              <h3>Built-in palettes</h3>
               <p>Catppuccin, Rosé Pine, Nord, Gruvbox, and more, light or dark.</p>
             </li>
             <li>
@@ -1309,7 +1313,7 @@
               alt="Aurral in the Catppuccin light theme, with the theme picker"
             />
           </figure>
-          <a class="link" href="https://docs.aurral.org/using/overview/#profile"
+          <a class="link" href="https://docs.aurral.org/using/overview/#settings"
             >Appearance settings <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg
           ></a>
         </div>
@@ -1376,7 +1380,7 @@
               </a>
             </li>
             <li>
-              <a href="https://docs.aurral.org/integrations/navidrome/">
+              <a href="https://docs.aurral.org/integrations/navidrome/#aurrals-subsonic-server">
                 <svg class="icon" aria-hidden="true"><use href="#i-server" /></svg>
                 <h3>Subsonic server</h3>
                 <p>Play your library in Feishin, Music Assistant, and other Subsonic apps.</p>
@@ -1421,9 +1425,6 @@
               <h3>Downloads</h3>
               <ul>
                 <li data-integration>
-                  <a href="https://docs.aurral.org/integrations/ytdlp/">yt-dlp</a>
-                </li>
-                <li data-integration>
                   <a href="https://docs.aurral.org/integrations/slskd/">slskd</a>
                 </li>
                 <li data-integration>
@@ -1441,6 +1442,9 @@
                 <li data-integration>
                   <a href="https://docs.aurral.org/integrations/deemix/">deemix</a>
                 </li>
+                <li data-integration>
+                  <a href="https://docs.aurral.org/integrations/ytdlp/">yt-dlp</a>
+                </li>
               </ul>
             </div>
             <div>
@@ -1456,7 +1460,9 @@
                   <a href="https://docs.aurral.org/integrations/jellyfin/">Jellyfin</a>
                 </li>
                 <li data-integration>
-                  <a href="https://docs.aurral.org/api/overview/">Subsonic clients</a>
+                  <a href="https://docs.aurral.org/integrations/navidrome/#aurrals-subsonic-server"
+                    >Subsonic clients</a
+                  >
                 </li>
               </ul>
             </div>
@@ -1505,9 +1511,9 @@
           <div class="copy">
             <h2 id="install-title">Up in 60 seconds.</h2>
             <p class="body">
-              One container, and built-in yt-dlp works out of the box. Run
-              <code>docker compose up -d</code>, open port 3001, and stop babysitting a five-app
-              music stack.
+              One container, with a built-in fallback downloader ready out of the box and lossless
+              clients whenever you connect them. Run <code>docker compose up -d</code>, open port
+              3001, and stop babysitting a five-app music stack.
             </p>
             <div class="links">
               <a class="link" href="https://docs.aurral.org/getting-started/docker/"
@@ -1548,7 +1554,7 @@
           <img src="favicon.svg" alt="" width="65" height="48" />
           <h2 id="closing-title">Free and open source.</h2>
           <p class="lede">
-            MIT licensed, no paywalled pro tier, and funded by the people who actually run it.
+            MIT licensed, no paywalled pro tier, and funded by the people who run it.
           </p>
           <div class="actions">
             <a class="button primary" href="https://docs.aurral.org/getting-started/docker/"
