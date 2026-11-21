@@ -56,7 +56,7 @@ function SidebarPlayer({ iconsOnly, onRestore, onTooltip }: SidebarPlayerProps) 
         )}
       </button>
       {currentTrack && !iconsOnly ? (
-        <PlayerDevicesButton className="sidebar-player__toggle" />
+        <PlayerDevicesButton className="sidebar-player__toggle" tooltipPlacement="top" />
       ) : null}
       {currentTrack && !iconsOnly ? (
         <button

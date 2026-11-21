@@ -2438,7 +2438,7 @@ textarea:disabled {
 }
 
 .sidebar-player__toggle.player-devices {
-  color: var(--aurral-accent);
+  color: var(--aurral-text);
 }
 
 .sidebar-player__toggle.player-devices svg {
@@ -3871,12 +3871,12 @@ textarea:disabled {
   gap: 0.125rem;
   overflow-wrap: anywhere;
   text-align: start;
+  text-wrap: balance;
 }
 
 .artist-menu-item__description {
   color: var(--aurral-text-muted);
   font-size: var(--aurral-font-xs);
-  text-wrap: balance;
 }
 
 .artist-menu-submenu {
@@ -13332,7 +13332,7 @@ button.playlist-detail__cover {
 }
 
 .global-player__side .player-devices {
-  color: var(--aurral-accent);
+  color: var(--aurral-text);
 }
 
 .global-player__volume {
@@ -14586,7 +14586,7 @@ button.playlist-detail__cover {
 
   .now-playing__actions .player-devices,
   .global-player__mini-control.player-devices {
-    color: var(--aurral-accent);
+    color: var(--aurral-text);
   }
 
   .global-player__mini-control.player-devices svg {

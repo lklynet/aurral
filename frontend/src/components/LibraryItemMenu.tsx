@@ -472,6 +472,12 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
   };
 
   const handleMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeMenu();
+      return;
+    }
     const keys = ["ArrowDown", "ArrowUp", "Home", "End"];
     if (!keys.includes(event.key)) return;
     const buttons = [
