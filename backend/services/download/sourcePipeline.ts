@@ -30,7 +30,7 @@ import { albumGrabJobs, deniedAlbumSources, finishAlbumGrab } from "../albumGrab
 import { selectSoulseekAlbumFolder } from "../albumReleaseSearch.ts";
 import { getQualityProfile } from "../qualityProfile.ts";
 import { isAudioFile } from "../downloadJobs/usenetReleaseSearch.ts";
-import { attemptRelease } from "../releaseResolver.ts";
+import { monitoredEditionAlbum, attemptRelease } from "../releaseResolver.ts";
 import type { ReleaseManifest } from "../releaseManifest.ts";
 import {
   buildNextCandidatePayload,
@@ -259,10 +259,13 @@ async function handleAlbumSearch(
   if (!job || job.status === "failed" || job.status === "done") return null;
   startSearch(job, source);
   const release = await attemptRelease(payload, job);
-  const denied = deniedAlbumSources([job, ...albumGrabJobs(payload)], source.id);
+  const members = albumGrabJobs(payload);
+  const denied = deniedAlbumSources([job, ...members], source.id);
   let results: AlbumResult[];
   try {
     results = await albums.search(albumOf(release, job), {
+      ...(source.id === "usenet" &&
+        monitoredEditionAlbum(members, release) != null && { allowLargerEdition: true }),
       upgrade: searchUpgrade(payload),
       track: fromAlbum(payload, source) ? resolveTrack(payload, job) : null,
       denied: new Set([...denied].map((key) => key.replace(/^album:/, ""))),

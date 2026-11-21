@@ -102,6 +102,7 @@ export type DownloadSource = {
         track: ResolvedTrack | null;
         denied: ReadonlySet<string>;
         release: ReleaseManifest | null;
+        allowLargerEdition?: boolean;
       },
     ) => Promise<AlbumResult[]>;
     manualSearch?: (album: AlbumQuery, track: ResolvedTrack) => Promise<AlbumResult[]>;

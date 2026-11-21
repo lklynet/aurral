@@ -275,6 +275,152 @@ test("one Usenet NZB fills two sibling jobs", async (t) => {
   );
 });
 
+test("a monitored album keeps a verified larger edition and its bonus recording from one NZB", async (t) => {
+  const group = "monitored-deluxe";
+  const titles = ["Intro", "Last"];
+  const deluxe = ["Intro", "Bonus", "Last"];
+  const tracks = (names: string[]) =>
+    names.map((title) => ({ title, recordingId: title.toLowerCase(), durationMs: 1000 }));
+  await serveGroups(t, [
+    brainzmashGroup({
+      id: group,
+      title: "Album",
+      artist: "The Band",
+      releases: [
+        { id: "monitored-standard", tracks: tracks(titles) },
+        { id: "monitored-deluxe-release", title: "Album (Deluxe Edition)", tracks: tracks(deluxe) },
+      ],
+    }),
+  ]);
+  const { setLibraryManagement } = await import("../../backend/services/libraryManagementStore.ts");
+  const artist = upsertLibraryArtist({ identityKey: "artist:deluxe-test", name: "The Band" });
+  const album = upsertLibraryAlbum({
+    identityKey: "release-group:" + group,
+    mbid: group,
+    releaseGroupMbid: group,
+    artistId: artist.id,
+    title: "Album",
+    metadata: {
+      monitored: true,
+      requestedRelease: "monitored-standard",
+      trackList: { release: "monitored-standard" },
+    },
+  });
+  setLibraryManagement({ entityKind: "album", entityId: album.id, monitorMode: "monitored" });
+  for (const [index, title] of titles.entries()) {
+    const track = upsertLibraryTrack({
+      identityKey: "recording:" + title.toLowerCase(),
+      mbid: title.toLowerCase(),
+      title,
+      artistName: "The Band",
+    });
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: index + 1 });
+  }
+  const ids = addAlbumJobs(group, titles);
+  for (const [i, id] of ids.entries()) {
+    downloadTracker.setRequestKind(id, "album");
+    downloadTracker.updateMetadata(id, {
+      trackMbid: titles[i]!.toLowerCase(),
+      releaseMbid: "monitored-standard",
+    });
+  }
+  const leader = ids[0]!;
+  const folder = join(state.baseDir, group);
+  const fullEdition = await writeTracks(folder, deluxe);
+  const { assignDownloadedAlbumFiles } =
+    await import("../../backend/services/albumReleaseAssignment.ts");
+  const { readReleaseManifest } = await import("../../backend/services/releaseResolver.ts");
+  const { manifest } = await readReleaseManifest(group, "monitored-standard");
+  assert.ok(manifest);
+  const options = {
+    source: "usenet",
+    manifest,
+    jobs: ids.map((id) => trackedJob(downloadTracker, id)),
+  };
+  const otherFiles = await writeTracks(
+    join(state.baseDir, group + "-unrelated"),
+    ["Unrelated"],
+    [3],
+  );
+  for (const [filePaths, allowLargerEdition] of [
+    [fullEdition, false],
+    [[...fullEdition.slice(0, 2), ...otherFiles], true],
+  ] satisfies [string[], boolean][]) {
+    const rejected = await assignDownloadedAlbumFiles({
+      ...options,
+      filePaths,
+      allowLargerEdition,
+    });
+    assert.equal(rejected.accepted.length, 0);
+    assert.equal(rejected.bonusFiles.length, 0);
+  }
+  const { append } = mockNzbget(t, folder);
+  vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockResolvedValue([
+    usenetIndexer(1, "Index"),
+  ]);
+  vi.spyOn(prowlarrClient, "search").mockResolvedValue(
+    ["deluxe", "another"].map((guid) => ({
+      ...usenetRelease({
+        guid,
+        title: "The Band - Album (Deluxe Edition) FLAC",
+        size: 100e6,
+        categories: [3040],
+        indexerId: 1,
+        downloadUrl: "https://indexer.test/" + guid,
+      }),
+      tracks: 3,
+    })),
+  );
+  const start = {
+    source: "usenet" as const,
+    phase: "search",
+    jobId: leader,
+    downloadAttemptId: getActiveDownloadAttemptId(leader),
+    playlistId: "library",
+    playlistGeneration: 0,
+    releaseMbid: "monitored-standard",
+    albumGrab: true,
+    albumGroupJobIds: ids,
+    candidateIndex: 0,
+  };
+  const download = await runUsenet(start);
+  assert.ok(isStepFrom(download, "usenet"));
+  assert.ok((download.candidates?.length ?? 0) > 1);
+  const poll = await runUsenet(download);
+  assert.ok(isStepFrom(poll, "usenet"));
+  const finish = await runUsenet(poll);
+  assert.ok(isStepFrom(finish, "usenet"));
+  assert.equal(await runUsenet(finish), null);
+  assert.equal(append.mock.calls.length, 1);
+  const files = ids.map((id) => trackedJob(downloadTracker, id).finalPath);
+  assert.deepEqual(
+    files.map((f) => basename(f!)),
+    ["01 - Intro.flac", "03 - Last.flac"],
+  );
+  const bonus = await parseFile(join(dirname(files[0]!), "02 - Bonus.flac"));
+  assert.equal(bonus.common.title, "Bonus");
+  const bonusJob = downloadTracker
+    .getByAlbumMbid((mbid) => mbid === group)
+    .find((job) => job.trackName === "Bonus");
+  assert.equal(bonusJob?.downloadSource, "usenet");
+  const metadata = db
+    .prepare<[number], { metadata_json: string }>(
+      "SELECT metadata_json FROM library_albums WHERE id=?",
+    )
+    .get(album.id)!;
+  assert.equal(JSON.parse(metadata.metadata_json).requestedRelease, "monitored-standard");
+  assert.equal(JSON.parse(metadata.metadata_json).trackList.release, "monitored-deluxe-release");
+  const positions = db
+    .prepare<[number], { title: string }>(
+      "SELECT t.title FROM library_album_tracks r JOIN library_tracks t ON t.id=r.track_id WHERE r.album_id=? ORDER BY r.disc_number,r.track_number",
+    )
+    .all(album.id);
+  assert.deepEqual(
+    positions.map((row) => row.title),
+    deluxe,
+  );
+});
+
 test("a Usenet NZB short of the pinned release imports nothing, blocks it for every track, and hands the album to the next album source", async (t: import("vite-plus/test").TestContext) => {
   const group = "usenet-short-release";
   const titles = ["First", "Second", "Third"];

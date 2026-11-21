@@ -24,12 +24,7 @@ import {
   toLegacyReleaseGroupSummary,
 } from "../../../services/providers/brainzmashMappers.ts";
 import { logger } from "../../../services/logger.ts";
-import {
-  albumEditions,
-  chooseAlbumEdition,
-  editionOf,
-  libraryRelease,
-} from "../../../services/releaseResolver.ts";
+import { chooseAlbumEdition, libraryAlbumEditions } from "../../../services/releaseResolver.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { queryText } from "../utils.ts";
 import { musicbrainzGetReleaseTrackCredits } from "../../../services/apiClients/musicbrainz.ts";
@@ -208,7 +203,7 @@ export default new Hono<AppEnv>()
     if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
     try {
       const group = await getAlbumByMbid(mbid, { withFallbackReleases: true });
-      const editions = albumEditions(group);
+      const { editions, library, fileEdition } = libraryAlbumEditions(group);
       return c.json(
         {
           editions: editions.map(({ id, name, date, trackCount }) => ({
@@ -217,7 +212,8 @@ export default new Hono<AppEnv>()
             date,
             trackCount,
           })),
-          library: editionOf(editions, libraryRelease(group))?.id ?? null,
+          library,
+          fileEdition,
         },
         200,
       );

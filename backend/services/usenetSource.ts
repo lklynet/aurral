@@ -143,7 +143,13 @@ function nzbSource(id: NzbSourceId) {
       upgrade,
       track,
       denied,
-    }: { upgrade: Upgrade; track: ResolvedTrack | null; denied: ReadonlySet<string> },
+      allowLargerEdition = false,
+    }: {
+      upgrade: Upgrade;
+      track: ResolvedTrack | null;
+      denied: ReadonlySet<string>;
+      allowLargerEdition?: boolean;
+    },
   ) {
     const albumGrab = !track;
     const context: UsenetSearchContext = track ?? {
@@ -169,11 +175,14 @@ function nzbSource(id: NzbSourceId) {
       upgrade: upgrade !== null,
       readName: (entry: { raw: { release: UsenetRelease } }) => entry.raw.release.title,
     };
-    // A release is the exact tracklist, so an album with another track count cannot fill it.
+    // A monitored album can verify a larger edition once its files arrive.
     const trackCount = albumGrab ? album.tracks.length : 0;
     const allowed = (release: UsenetRelease) =>
       !denied.has(releaseIdentity(release.guid)) &&
-      (!trackCount || release.tracks == null || release.tracks === trackCount);
+      (!trackCount ||
+        release.tracks == null ||
+        release.tracks === trackCount ||
+        (allowLargerEdition && release.tracks > trackCount));
     const found: UsenetRelease[] = [];
     const seen = new Set<string>();
     let lastError = "";

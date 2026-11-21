@@ -11,7 +11,14 @@ import {
   selectAlbumRelease,
 } from "./providers/brainzmashRanking.ts";
 import type { DownloadTrackFields } from "./downloadUtils.ts";
-import { manifestIndexFor, releasesHolding, toReleaseManifest } from "./releaseManifest.ts";
+import {
+  mapRequest,
+  manifestIndexFor,
+  releasesHolding,
+  toReleaseManifest,
+} from "./releaseManifest.ts";
+import { judgeRelease } from "./trackMatching/releaseJudge.ts";
+import { MONITORED_AURRAL_ALBUM_CONDITION } from "./monitoring.ts";
 
 interface ResolverJob extends DownloadTrackFields {
   playlistId?: string | null;
@@ -91,6 +98,69 @@ function releaseById(
   releaseMbid: string | null | undefined,
 ) {
   return (group?.releases || []).find((release) => id(release?.id) === id(releaseMbid)) || null;
+}
+
+const monitoredEdition = db.prepare<[string, string], { id: number }>(`
+  SELECT album.id FROM library_albums album
+  JOIN library_management management ON management.entity_id = album.id
+  WHERE album.release_group_mbid = ? AND ${MONITORED_AURRAL_ALBUM_CONDITION}
+    AND COALESCE(json_extract(album.metadata_json, '$.requestedRelease') = ?, 1)
+`);
+
+export function monitoredEditionAlbum(
+  jobs: ReadonlyArray<{
+    requestKind: string;
+    playlistId?: string | null;
+    playlistType?: string | null;
+    upgradeForJobId?: string | null;
+  }>,
+  requested: ReleaseManifest,
+) {
+  if (
+    !requested?.releaseGroupMbid ||
+    !jobs.length ||
+    !jobs.every(
+      (job) =>
+        job.requestKind === "album" &&
+        (job.playlistId || job.playlistType) === "library" &&
+        !job.upgradeForJobId,
+    )
+  )
+    return null;
+  return monitoredEdition.get(requested.releaseGroupMbid, requested.releaseMbid)?.id ?? null;
+}
+
+// Only a whole tracklist from this group can vouch for the additional recordings.
+export async function matchLargerEdition(
+  requested: NonNullable<ReleaseManifest>,
+  files: NonNullable<Parameters<typeof judgeRelease>[1]["files"]>,
+) {
+  if (!requested.releaseGroupMbid || files.length <= requested.tracks.length) return null;
+  const group = await loadGroup(id(requested.releaseGroupMbid));
+  if (!group) return null;
+  const recordings = requested.tracks.map((track, index) => ({
+    id: String(index),
+    trackName: track.title,
+    trackMbid: track.recordingMbid,
+    recordingMbidAliases: track.recordingMbidAliases,
+    discNumber: track.discNumber,
+    trackNumber: track.trackNumber,
+  }));
+  for (const release of group.releases) {
+    if (
+      release.tracks.length <= recordings.length ||
+      release.tracks.length > files.length ||
+      !listsEveryTrack(release)
+    )
+      continue;
+    const manifest = toReleaseManifest(group, release);
+    if (!manifest) continue;
+    const { wanted, offManifest } = mapRequest(manifest, recordings);
+    if (offManifest.length) continue;
+    const verdict = judgeRelease(manifest, { files });
+    if (verdict.kind === "exact") return { release, manifest, verdict, standardPlaces: wanted };
+  }
+  return null;
 }
 
 function remember(manifest: ReleaseManifest) {
@@ -205,6 +275,16 @@ export function libraryRelease(group: NormalizedAlbum) {
   return album ? albumEdition(group, album) : null;
 }
 
+export function libraryAlbumEditions(group: NormalizedAlbum) {
+  const album = libraryAlbum(id(group.id));
+  const requested = album && albumEdition(group, album);
+  const held = releaseById(group, album?.trackList?.release);
+  const editions = albumEditions(group, [requested, held]);
+  const library = editionOf(editions, requested)?.id ?? null;
+  const files = editionOf(editions, held)?.id;
+  return { editions, library, fileEdition: files && files !== library ? files : undefined };
+}
+
 // A release of the group that lists every track, else the Library's edition.
 export function chooseAlbumEdition(group: NormalizedAlbum, releaseMbid: string | null | undefined) {
   const release = releaseById(group, releaseMbid);
@@ -217,12 +297,18 @@ const isOfficial = (release: NormalizedRelease) =>
 // An album's editions are the tracklists its releases list in full, the
 // official ones when it has any: pressings with the same running order are
 // one edition. The standard edition comes first, then the rest by date.
-export function albumEditions(group: NormalizedAlbum) {
+export function albumEditions(
+  group: NormalizedAlbum,
+  libraryReleases: (NormalizedRelease | null)[] = [],
+) {
   const standard = selectAlbumRelease(group);
   const whole = group.releases.filter(listsEveryTrack);
   const official = whole.filter(isOfficial);
   const standardOrder = standard ? runningOrder(standard) : null;
-  const pressings = Map.groupBy(official.length ? official : whole, runningOrder);
+  const releases = official.length
+    ? whole.filter((entry) => isOfficial(entry) || libraryReleases.includes(entry))
+    : whole;
+  const pressings = Map.groupBy(releases, runningOrder);
   const editions = [...pressings].map(([order, releases]) => {
     const isStandard = order === standardOrder;
     const release =
