@@ -7,7 +7,8 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "Aurral",
-      description: "Aurral docs. Find new music, get it, and play it, all on your own server.",
+      description:
+        "Aurral docs. Self-hosted music that doesn't feel like a chore. One container, zero API keys, and you own every file.",
       logo: {
         alt: "Aurral",
         src: "./src/assets/logo.svg",
@@ -68,21 +69,21 @@ export default defineConfig({
           label: "Integrations",
           collapsed: true,
           items: [
-            { slug: "integrations/lidarr" },
-            { slug: "integrations/listenbrainz" },
-            { slug: "integrations/koito" },
             { slug: "integrations/slskd" },
             { slug: "integrations/ytdlp" },
+            { slug: "integrations/qbittorrent" },
+            { slug: "integrations/usenet" },
             { slug: "integrations/deemix" },
             { slug: "integrations/tidarr" },
-            { slug: "integrations/usenet" },
-            { slug: "integrations/qbittorrent" },
             { slug: "integrations/navidrome" },
             { slug: "integrations/plex" },
             { slug: "integrations/jellyfin" },
+            { slug: "integrations/listenbrainz" },
+            { slug: "integrations/koito" },
             { slug: "integrations/ticketmaster" },
             { slug: "integrations/metadata" },
             { slug: "integrations/notifications" },
+            { slug: "integrations/lidarr" },
           ],
         },
         {
@@ -117,6 +118,7 @@ export default defineConfig({
             { slug: "development/ui-design-system" },
           ],
         },
+        { label: "FAQ", slug: "faq" },
         { label: "Sponsorship", slug: "sponsorship" },
       ],
     }),

@@ -1,0 +1,128 @@
+---
+title: Our (slightly petty) FAQ
+description: Answers to the most asked questions and recurring concerns from Reddit.
+---
+
+This page answers some of the most asked questions and recurring concerns from our biggest fans on Reddit. Join the [Discord](https://discord.gg/cpPYfgVURJ) if you have any more.
+
+## General
+
+### "Stop calling it a self-hosted Spotify. Spotify streams music I don't own."
+
+If you're streaming music off somebody else's data center, it isn't self-hosted. That's just a streaming service.
+
+The entire point of self-hosting your music is owning the files on your own hardware. Aurral gives you the Spotify-style experience (discovery that explains _why_ it picked an artist, daily mixes, auto-refreshing playlists called Flows, synced lyrics, radio, friends and Blends, and a built-in player) backed by your own Library, while also handling the part where the music actually gets onto your disk.
+
+If you want to stream tracks on demand without ever storing a file on your server, Aurral isn't trying to be that. You want a streaming service (or a debrid/proxy setup), not a self-hosted music library.
+
+### "No thanks, I'll stick with Navidrome."
+
+Cool. Aurral works _with_ Navidrome. Saying "I'll stick with Navidrome" on an Aurral thread is like saying "I'll stick with Jellyfin" on a Seerr thread.
+
+Navidrome plays the music you already have. Aurral finds new music, builds scheduled Flows, imports playlists, downloads and verifies files, tags them, and manages your Library. Point [Navidrome](/integrations/navidrome/) (or [Plex](/integrations/plex/), or [Jellyfin](/integrations/jellyfin/)) at the same Library folder and Aurral's M3U playlist files, connect your Navidrome account to pull in your listening history and favorites, and keep using Navidrome if you want. Or don't: Aurral also has its own player and a Subsonic API if you'd rather run one container instead of four.
+
+### "Isn't this just Lidarr / doesn't it require Lidarr?"
+
+No. Since Aurral 3.0, [Lidarr](/integrations/lidarr/) is completely optional and most people don't need it.
+
+Aurral manages its own Library, handles single tracks as well as full albums (which Lidarr doesn't do), and talks directly to download sources. If you already have a Lidarr setup you love, you can add Lidarr's root folders as read-only folders so Aurral plays from them without touching a single file, and optionally install the official Lidarr plugin to hand album requests off to it.
+
+### "Isn't this just SoulSync?"
+
+No. SoulSync is a sync and download bridge for Soulseek. Aurral is a full music platform in one container: discovery, scheduled Flows, daily mixes, playlist imports (Spotify, YouTube Music, Last.fm, ListenBrainz, and M3U), multi-source downloads (`slskd`, Usenet, qBittorrent, Tidarr, deemix, `yt-dlp`, and plugins), quality verification and upgrades, tagging, multi-user accounts with friends and Blends, a built-in web player with synced lyrics, and a Subsonic API.
+
+### "Does it have [insert genre, e.g. gospel]?"
+
+Aurral's catalog is backed by MusicBrainz. If it's on MusicBrainz, Aurral has it.
+
+## Soulseek & r/Soulseek myths
+
+### "Aurral turns Soulseek into a streaming service!"
+
+No. That isn't even how Aurral or Soulseek works, and Aurral has never streamed audio from Soulseek.
+
+When you use Soulseek with Aurral, it downloads tracks through **your own `slskd` instance** into your local Library on disk, and Aurral plays your local files.
+
+### "Aurral reports fake shares to bypass anti-leech bans!"
+
+Completely made up.
+
+Aurral doesn't even connect to the Soulseek network directly. It sends search and download requests to **your own `slskd` server** over slskd's API. Aurral has zero code to report shares, spoof shares, or circumvent any peer's ban or anti-leech plugin. In fact, if a peer rejects a transfer or bans you, Aurral stops retrying that file from them and skips that peer in future searches.
+
+If you heard this on r/Soulseek, someone conflated Aurral with `slsk-batchdl` or repeated a rumor without checking.
+
+### "Aurral spawns `aurral_*` bot accounts that leech with 0 shared files!"
+
+You're arguing against a version of Aurral that no longer exists.
+
+Aurral does **not** ship a built-in Soulseek client and does **not** create Soulseek accounts or `aurral_*` usernames. It integrates with [**slskd**](/integrations/slskd/), where you bring your own Soulseek account and control your own sharing configuration.
+
+If you run `slskd` with Aurral, **share your music folder in `slskd`**. That's basic Soulseek etiquette, and sharing also keeps peers from banning your account. Blaming Aurral because a new `slskd` user forgot to configure a share directory in `slskd.yml` is like blaming Firefox because someone didn't seed a torrent.
+
+### "Aurral hammers Soulseek with looping searches and mass aborted transfers!"
+
+Aurral's [slskd integration](/integrations/slskd/) is explicitly built _not_ to do that:
+
+- **Search caching and deduplication:** Search results are cached for 15 minutes, and tracks from the same album share a single album search instead of firing one query per track.
+- **Rate limiting:** Aurral caps concurrent searches and starts at most one new search every 7 seconds to stay well below Soulseek's rate limits.
+- **Clean cancellation:** Active searches are stopped as soon as Aurral has enough valid candidates or a download is cancelled, and finished searches and transfers are cleaned up in `slskd`.
+- **Patient queues:** Aurral waits while your queue position is moving. It only cancels transfers that are genuinely dead (no bytes and no queue movement for 30 minutes, or 10 minutes of zero queue movement when another result is available).
+- **Ban and logout awareness:** Peers that reject or ban you are skipped rather than hammered in a loop, and if `slskd` disconnects or gets logged out, Aurral pauses instead of thrashing.
+
+### "Automation ruins the 'soul' of Soulseek. You're supposed to browse manually and chat with people."
+
+A 24/7 `slskd` server sharing a well-tagged library back to the network gives manual browsers _more_ music to find, not less. Nobody is stopping anyone from browsing folders by hand, making friends in chatrooms, or setting their shares to buddy-only if they only want to upload to people they talk to. Share your files, set whatever queue and slot limits fit your connection, and let people use P2P how they want.
+
+## Downloads, quality & seeding
+
+### "So it just rips 128kbps MP3s from YouTube with `yt-dlp`?"
+
+No. [yt-dlp](/integrations/ytdlp/) is enabled out of the box as the **lowest-priority fallback** so a fresh install actually works in two minutes without configuring three extra services first.
+
+Aurral natively supports [slskd (Soulseek)](/integrations/slskd/), [Usenet (Prowlarr + SABnzbd/NZBGet)](/integrations/usenet/), [qBittorrent (via Prowlarr)](/integrations/qbittorrent/), [Tidarr](/integrations/tidarr/), [deemix](/integrations/deemix/), [Lidarr (via plugin)](/integrations/lidarr/), and custom download plugins.
+
+- The default quality profile is **Lossless** (prefers FLAC, upgrades up to FLAC standard).
+- Aurral never trusts filenames or search-result bitrates. It inspects the actual downloaded audio file's format, bitrate, bit depth, and sample rate before accepting it.
+- You can optionally put `yt-dlp` first for instant single-track playback and let **Automatic upgrades** silently replace those tracks with FLAC (or 320kbps) from your other sources later. `yt-dlp` is never used for upgrades or full-album downloads.
+- Want a quality _ceiling_ (like 320kbps max instead of huge FLACs)? Switch to the **Smaller files** preset or configure custom tiers and cutoffs in **Settings > Downloads > Quality**. See [Quality](/using/playlists/#quality).
+
+### "Does it even seed torrents?"
+
+Yes. Aurral uses your own [qBittorrent](/integrations/qbittorrent/) instance and respects its seeding rules. When a torrent finishes, Aurral hardlinks (or copies, if across disks) the audio files into your Library and **leaves the torrent in qBittorrent to seed**. Aurral only cleans it up after qBittorrent itself stops the torrent at whatever ratio or time limit you configured.
+
+### "How is this not piracy / copyright infringement?"
+
+Aurral does not host, bundle, index, or distribute any copyrighted music. Just like Lidarr, Radarr, Sonarr, Navidrome, or Plex, it's open-source library and automation software that talks to whatever folders and clients _you_ choose to connect.
+
+You can run Aurral entirely on your own legally purchased or ripped files (even mounted read-only) with downloaders turned off. Where you get your music is between you and your local laws. (And if you want artists to actually get paid, buying albums on Bandcamp and dropping them into your own Library beats Spotify's fractions of a cent by a mile.)
+
+## AI & code quality
+
+### "You said you allow AI, so this must be unreviewed vibecoded slop!"
+
+"We don't gatekeep what tools contributors use" does not mean "we blindly merge whatever an LLM spits out."
+
+Aurral is open source, so you can inspect the repo yourself instead of guessing:
+
+- **Same bar for every PR:** Our [CONTRIBUTING.md](https://github.com/lklynet/aurral/blob/main/CONTRIBUTING.md) policy is plain: disclose when an agent helped, read your own diff, run it, and be ready to explain it. Every PR gets the same review regardless of how it was written.
+- **Strict static checks:** Strict TypeScript (`noUncheckedIndexedAccess`), zero `@ts-*` escape hatches, an enforced `no-unsafe-any` ratchet (`lint-any-baseline.json` can only go down, never up), schema-generated SQLite row types, Valibot input validation on routes, and custom UI token linting.
+- **Real testing, not vibes:** Unit tests, integration tests against real SQLite, and [Eden](/development/eden/), our full local test lab that runs end-to-end journeys against seeded libraries and local service stand-ins.
+- **Hard performance guardrails:** CI checks every PR against `.tests/perf/baseline.json` and fails if SQL query counts, full table scans, response sizes, outbound metadata calls, initial bundle size, or startup memory regress.
+
+If you refuse to run any software touched by AI on principle, that's completely your call. Just don't confuse your personal preference with an audit of the codebase.
+
+## Remote access & privacy
+
+### "Wait, I _have_ to install Tailscale on every device to use this?"
+
+No. Tailscale is just one easy way to get HTTPS if you don't own a domain.
+
+Aurral works over your local network directly, over any VPN, or behind any reverse proxy with a domain and SSL certificate (Caddy, Nginx Proxy Manager, Traefik, etc.). And if you use [music.aurral.org](/using/music-aurral-org/), it only serves the static frontend. Your music, artwork, and login stay strictly between your browser and your own server.
+
+### "What is the hosted metadata server collecting from my server?"
+
+Nothing personal. The hosted metadata server is a relay built on MusicBrainz data, run by the maintainers so Aurral works out of the box without requiring API keys or hammering MusicBrainz directly.
+
+All it ever sees are artist and album MusicBrainz IDs, catalog search queries, the `Aurral/<version>` User-Agent, and your server's IP. It never sees your accounts, listening history, playlists, or library contents. Aurral only fetches metadata for what you're looking at and caches it locally.
+
+If you'd rather not touch our server at all, self-host your own metadata server and point Aurral at it in **Settings > Metadata > Base URL** (or set `BRAINZMASH_BASE_URL`). See [Metadata and search](/integrations/metadata/).

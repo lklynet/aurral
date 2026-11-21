@@ -12,11 +12,12 @@
   <a href="https://github.com/sponsors/lklynet/"><img src="https://img.shields.io/github/sponsors/lklynet?label=Sponsor&logo=GitHub-Sponsors&logoColor=fe8a76" alt="Sponsor" /></a>
 </p>
 
-<p align="center">Find new music, get it, and play it, all on your own server.</p>
+<p align="center">Self-hosted music that doesn't feel like a chore. One container, zero API keys, and you own every file.</p>
 
 <p align="center">
   <a href="https://aurral.org">Website</a> ·
   <a href="https://docs.aurral.org/">Docs</a> ·
+  <a href="https://docs.aurral.org/faq/">FAQ</a> ·
   <a href="https://discord.gg/cpPYfgVURJ">Discord</a> ·
   <a href="https://github.com/sponsors/lklynet/">Sponsor</a> ·
   <a href="https://buymeacoffee.com/lkly">Buy me a coffee</a>
@@ -26,16 +27,16 @@
   <img src="web/screenshots/discover.webp" width="900" alt="Aurral Discover page" />
 </p>
 
-- **Discover** artists you'll love, with the reason for every pick. Start from your Spotify history.
-- **Flows** turn your taste into scheduled playlists that download themselves. Daily mixes build from what you play.
+- **Discover** artists you'll actually like, with a real reason for every pick. Bootstrap straight from your Spotify history.
+- **Flows** turn your taste into scheduled playlists that grab their own tracks and rotate on autopilot. Daily mixes build from what you play.
 - **Import** playlists from Spotify, YouTube Music, Last.fm, ListenBrainz, and M3U files.
-- **Library** that Aurral manages for you. Lidarr is optional.
-- **Listen** with lyrics and radio in the browser, from anywhere at [music.aurral.org](https://music.aurral.org), or in any Subsonic app. Navidrome, Plex, and Jellyfin pick up your playlists.
-- **Friends** see what you're playing, and Blends mix your taste with theirs.
-- **Share** anything as a link, publish public playlists, and let friends play from your Library.
-- **Plugins** add download sources, imports, and actions when you want more.
+- **Library** managed for you, with real audio verification, automatic tagging, and read-only folder support for music you don't want touched.
+- **Listen** with synced lyrics and radio in the built-in player, from anywhere at [music.aurral.org](https://music.aurral.org), or in any Subsonic app. Already on Navidrome, Plex, or Jellyfin? Aurral writes M3U playlists and plays nice with all of them.
+- **Friends** see what people on your server are playing, and Blends mix your taste with theirs.
+- **Share** tracks, albums, and playlists as links, or let friends stream straight from your Library.
+- **Plugins** keep niche integrations out of core while letting you add download sources, imports, and actions when you want them.
 
-Downloads through yt-dlp, slskd, Usenet, qBittorrent, Tidarr, and deemix. Everything is optional. [Read the docs](https://docs.aurral.org/) for the full tour.
+Works out of the box with built-in yt-dlp, or connect slskd, Usenet, qBittorrent, Tidarr, deemix, or plugins. Everything besides Aurral itself is optional. [Read the docs](https://docs.aurral.org/) for the full tour, or check the [FAQ](https://docs.aurral.org/faq/) if you're coming from Reddit.
 
 ## Quick start
 
@@ -54,15 +55,15 @@ services:
       - ./data:/data
 ```
 
-Run `docker compose up -d`, open `http://localhost:3001`, and create your admin account. Want the latest changes early? Use the [`nightly`](https://docs.aurral.org/getting-started/docker/#choose-an-image-tag) tag.
+Run `docker compose up -d`, open `http://localhost:3001`, and create your admin account. No companion containers required to start. Want the latest changes early? Use the [`nightly`](https://docs.aurral.org/getting-started/docker/#choose-an-image-tag) tag.
 
 ## Thanks
 
-Built on [BrainzMash](https://github.com/statichum/brainzmash-hearring-aid) and [MusicBrainz](https://musicbrainz.org). Chat on [Discord](https://discord.gg/cpPYfgVURJ), report bugs in [Issues](https://github.com/lklynet/aurral/issues).
+Built on [MusicBrainz](https://musicbrainz.org). Chat on [Discord](https://discord.gg/cpPYfgVURJ), report bugs in [Issues](https://github.com/lklynet/aurral/issues).
 
 ## Sponsors
 
-<p align="center">Aurral is free and open source. <a href="https://github.com/sponsors/lklynet/">Sponsors</a> and <a href="https://buymeacoffee.com/lkly">coffees</a> keep it that way.</p>
+<p align="center">Aurral is free, MIT licensed, and has no paywalled pro tier. <a href="https://github.com/sponsors/lklynet/">Sponsors</a> and <a href="https://buymeacoffee.com/lkly">coffees</a> pay for the hosted metadata server and keep it that way.</p>
 
 <p align="center">
   <a href="https://github.com/bmikaili"><img src="https://github.com/bmikaili.png?size=120" width="60" alt="@bmikaili" /></a>
