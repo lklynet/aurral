@@ -154,10 +154,7 @@ export const scenarios: Scenario[] = [
   { name: "discover album", requests: () => [`/api/artists/release-group/${DISCOVER_ALBUM}`] },
   {
     name: "discover album tracks",
-    requests: () => [
-      `/api/artists/release-group/${DISCOVER_ALBUM}/tracks`,
-      `/api/artists/release-group/${DISCOVER_ALBUM}/previews`,
-    ],
+    requests: () => [`/api/artists/release-group/${DISCOVER_ALBUM}/tracks`],
   },
   {
     name: "discover album editions",

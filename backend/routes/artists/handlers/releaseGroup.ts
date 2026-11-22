@@ -11,6 +11,7 @@ import {
   savedReleaseGroupCoverUrl,
 } from "../../../services/releaseGroupCoverService.ts";
 import { selectAlbumCover } from "../../../services/imageRanking.ts";
+import { deezerPreviewSearchPath } from "../../../services/apiClients/deezer.ts";
 import { enrichTracksWithDeezerPreviews } from "../../../services/apiClients/index.ts";
 import {
   getArtistByMbid,
@@ -212,23 +213,34 @@ export default new Hono<AppEnv>()
     if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
     const { release } = c.req.valid("query");
     try {
-      const tracks = await getAlbumTracksByAlbumMbid(mbid, {
-        chooseRelease: (group) => chooseAlbumEdition(group, release),
-      });
+      const [album, tracks] = await Promise.all([
+        getAlbumByMbid(mbid, { withFallbackReleases: true }).catch(() => null),
+        getAlbumTracksByAlbumMbid(mbid, {
+          chooseRelease: (group) => chooseAlbumEdition(group, release),
+        }),
+      ]);
+      const albumArtist = album?.artists[0]?.name?.trim() || "";
       return c.json(
-        tracks.map((track) => ({
-          id: track.recordingId || track.id,
-          mbid: track.recordingId || track.id,
-          title: track.title,
-          trackName: track.title,
-          trackNumber: track.trackPosition || track.trackNumber || 0,
-          discNumber: track.mediumNumber || 1,
-          discTitle: track.discTitle,
-          position: track.trackPosition || track.trackNumber || 0,
-          releaseMbid: track.releaseMbid || null,
-          length: track.durationMs || null,
-          ...(track.credits && { credits: track.credits }),
-        })),
+        tracks.map((track) => {
+          const previewArtist = track.credits?.[0]?.name?.trim() || albumArtist;
+          return {
+            id: track.recordingId || track.id,
+            mbid: track.recordingId || track.id,
+            title: track.title,
+            trackName: track.title,
+            trackNumber: track.trackPosition || track.trackNumber || 0,
+            discNumber: track.mediumNumber || 1,
+            discTitle: track.discTitle,
+            position: track.trackPosition || track.trackNumber || 0,
+            releaseMbid: track.releaseMbid || null,
+            length: track.durationMs || null,
+            preview_url:
+              previewArtist && track.title
+                ? deezerPreviewSearchPath(previewArtist, track.title)
+                : null,
+            ...(track.credits && { credits: track.credits }),
+          };
+        }),
         200,
       );
     } catch (error) {

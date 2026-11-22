@@ -12,7 +12,7 @@
       "cold": 127,
       "warm": 121
     },
-    "bytes": 180730,
+    "bytes": 181156,
     "scans": []
   },
   "library albums": {
@@ -185,10 +185,10 @@
   },
   "discover album tracks": {
     "queries": {
-      "cold": 9,
-      "warm": 8
+      "cold": 5,
+      "warm": 4
     },
-    "bytes": 17,
+    "bytes": 2,
     "scans": [
       "library_albums"
     ],
@@ -378,7 +378,7 @@
       "cold": 15,
       "warm": 15
     },
-    "bytes": 43924,
+    "bytes": 44045,
     "scans": []
   },
   "subsonic getGenres": {
@@ -466,7 +466,7 @@
       "cold": 24,
       "warm": 24
     },
-    "bytes": 44082,
+    "bytes": 43998,
     "scans": []
   }
 }
