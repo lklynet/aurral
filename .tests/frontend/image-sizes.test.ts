@@ -13,6 +13,8 @@ test("artwork from fanart, Deezer, the Lidarr image cache, AudioDB artist photos
   assert.deepEqual(
     urlsByWidth("https://cdn-images.dzcdn.net/images/artist/638e69b9/1000x1000-000000-80-0-0.jpg"),
     {
+      120: "https://cdn-images.dzcdn.net/images/artist/638e69b9/120x120-000000-80-0-0.jpg",
+      250: "https://cdn-images.dzcdn.net/images/artist/638e69b9/250x250-000000-80-0-0.jpg",
       500: "https://cdn-images.dzcdn.net/images/artist/638e69b9/500x500-000000-80-0-0.jpg",
       1000: "https://cdn-images.dzcdn.net/images/artist/638e69b9/1000x1000-000000-80-0-0.jpg",
     },

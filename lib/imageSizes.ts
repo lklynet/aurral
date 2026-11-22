@@ -10,7 +10,7 @@ const FANART_SQUARE =
   /^https?:\/\/assets\.fanart\.tv\/fanart\/music\/[^/?#]+\/(?:albumcover|artistthumb)\//i;
 const DEEZER =
   /^(https?:\/\/[\w-]+\.dzcdn\.net\/images\/[a-z]+\/[0-9a-f]+\/)\d+x\d+(-[^/?#]*\.(?:jpg|png))$/i;
-const DEEZER_WIDTHS = [500, 1000];
+const DEEZER_WIDTHS = [120, 250, 500, 1000];
 const CAA_COVER =
   /^(https?:\/\/coverartarchive\.org\/release\/[^/?#]+\/[^/?#]+)-(?:250|500|1200)(\.[a-z]+)$/i;
 const LIDARR_COVER =
