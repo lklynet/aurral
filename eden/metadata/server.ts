@@ -24,6 +24,22 @@ const catalogue = loadCatalogue();
 const music = indexMusic(catalogue);
 const fresh = new Map(music.fresh.map((album) => [album.id, album]));
 
+function linkedIds(key: string) {
+  const [kind, value = ""] = key.split(":");
+  if (kind === "isrc") {
+    const track = music.trackByNumber.get(Number.parseInt(value.slice(2), 36));
+    return track
+      ? [{ recordingId: track.id, albumId: track.album.id, artistId: track.artist.id }]
+      : [];
+  }
+  if (kind === "deezer-album") {
+    const album = music.albumByNumber.get(Number(value));
+    return album ? [{ recordingId: null, albumId: album.id, artistId: album.artist.id }] : [];
+  }
+  const artist = kind === "deezer-artist" ? music.artistByNumber.get(Number(value)) : null;
+  return artist ? [{ recordingId: null, albumId: null, artistId: artist.id }] : [];
+}
+
 const withFreshDate = (album: CatalogueAlbum) => {
   const entry = fresh.get(album.id);
   if (!entry) return album;
@@ -209,6 +225,26 @@ createServer((request, response) => {
   }
   if (url.pathname === "/v1/genres") {
     return send(response, 200, { genres: genres.index });
+  }
+  if (url.pathname === "/v1/ids") {
+    const keys = (url.searchParams.get("keys") ?? "").split(",");
+    return send(response, 200, {
+      ids: Object.fromEntries(keys.flatMap((key) => linkedIds(key).map((ids) => [key, ids]))),
+    });
+  }
+  if (url.pathname === "/v1/fresh-releases") {
+    return send(response, 200, {
+      releases: music.fresh.map((album) => ({
+        id: album.id,
+        title: album.title,
+        type: album.type,
+        secondaryTypes: [],
+        releaseDate: releaseDate(album),
+        cover: null,
+        artistIds: [album.artist.id],
+        artistName: album.artist.name,
+      })),
+    });
   }
   const [, rawSlug] = /^\/v1\/genre\/([^/]+)$/.exec(url.pathname) ?? [];
   if (rawSlug) {

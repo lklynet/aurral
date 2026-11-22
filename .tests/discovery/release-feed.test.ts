@@ -5,9 +5,11 @@ import { getReleaseFeed, getReleaseRail } from "../../backend/services/discovery
 import { refreshFreshReleases } from "../../backend/services/discovery/freshReleases.ts";
 import { upsertReleaseCalendarEntry } from "../../backend/services/releaseCalendarStore.ts";
 import { upsertLibraryArtist } from "../../backend/services/libraryMediaStore.ts";
+import { clearMetadataProviderCaches } from "../../backend/services/providers/metadataProvider.ts";
 
 const mbid = (index: number) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
 const RECOMMENDED = mbid(1);
+const RECOMMENDED_COVER = `https://coverartarchive.org/release/${mbid(30)}/77-1200.jpg`;
 
 vi.mock("../../backend/services/discovery/userDiscovery.ts", () => ({
   getUserDiscovery: () => ({ body: { recommendations: [{ id: RECOMMENDED }] } }),
@@ -49,22 +51,22 @@ test("the release feed merges Library and recommended albums and EPs into dated 
     statusText: "OK",
     headers: {},
     data: {
-      payload: {
-        releases: recommended.map(([index, title, releaseDate, type, secondaryType]) => ({
-          release_group_mbid: mbid(index),
-          release_name: title,
-          artist_credit_name: "Recommended Artist",
-          artist_mbids: [RECOMMENDED],
-          release_group_primary_type: type,
-          release_group_secondary_type: secondaryType,
-          release_date: releaseDate,
-          ...(index === 20 && { caa_id: 77, caa_release_mbid: mbid(30) }),
-        })),
-      },
+      releases: recommended.map(([index, title, releaseDate, type, secondaryType]) => ({
+        id: mbid(index),
+        title,
+        artistName: "Recommended Artist",
+        artistIds: [RECOMMENDED],
+        type,
+        secondaryTypes: secondaryType ? [secondaryType] : [],
+        releaseDate,
+        cover: index === 20 ? RECOMMENDED_COVER : null,
+      })),
     },
   });
-  await refreshFreshReleases();
   const now = Date.parse("2026-11-12T12:00:00Z");
+  vi.setSystemTime(now);
+  clearMetadataProviderCaches();
+  await refreshFreshReleases();
   const page = async (when: "released" | "upcoming", offset: number, limit: number) => {
     const feed = await getReleaseFeed({ userId: null, when, offset, limit, now });
     return [feed.releases.map((album) => album.title), feed.hasMore];
@@ -96,8 +98,5 @@ test("the release feed merges Library and recommended albums and EPs into dated 
   const recommendedRecent = (
     await getReleaseFeed({ userId: null, when: "released", limit: 10, now })
   ).releases.find((album) => album.title === "Recommended Recent");
-  assert.equal(
-    recommendedRecent?.coverUrl,
-    `https://coverartarchive.org/release/${mbid(30)}/77-500.jpg`,
-  );
+  assert.equal(recommendedRecent?.coverUrl, RECOMMENDED_COVER);
 });

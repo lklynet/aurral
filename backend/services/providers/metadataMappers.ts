@@ -138,6 +138,25 @@ export const genreSchema = v.looseObject({
   artists: v.nullish(v.array(genreArtistSchema)),
 });
 
+const freshReleaseSchema = v.looseObject({
+  id: v.string(),
+  title: text,
+  type: text,
+  secondaryTypes: texts,
+  releaseDate: v.string(),
+  cover: text,
+  artistIds: v.array(v.string()),
+  artistName: text,
+});
+
+export const freshReleasesSchema = v.looseObject({
+  releases: v.array(freshReleaseSchema),
+});
+
+export const idLookupSchema = v.looseObject({
+  ids: v.record(v.string(), v.looseObject({ recordingId: text, albumId: text, artistId: text })),
+});
+
 export const searchArtistItemSchema = v.looseObject({
   id: v.string(),
   name: text,
@@ -478,6 +497,19 @@ export function toNormalizedGenre(raw: v.InferOutput<typeof genreSchema>) {
       }))
       .filter((artist) => artist.id && artist.name),
   };
+}
+
+export function toNormalizedFreshReleases(raw: v.InferOutput<typeof freshReleasesSchema>) {
+  return raw.releases.map((release) => ({
+    releaseGroupMbid: release.id,
+    title: clean(release.title),
+    type: normalizeType(release.type),
+    secondaryTypes: cleanList(release.secondaryTypes),
+    releaseDate: release.releaseDate,
+    coverUrl: clean(release.cover) || null,
+    artistMbids: release.artistIds,
+    artistName: clean(release.artistName) || "Unknown Artist",
+  }));
 }
 
 export function toLegacyReleaseGroupSummary(

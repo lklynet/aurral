@@ -13,6 +13,7 @@ import { mapWithConcurrency } from "../discovery/helpers.ts";
 import createCache from "../apiClients/simpleCache.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { HttpError } from "../../../lib/http.ts";
+import { catalogueTrackIds, isrcKey, loadCatalogueIds, NO_CATALOGUE_IDS } from "./catalogueIds.ts";
 
 const REQUEST_TIMEOUT_MS = 10_000;
 const TRACK_PAGE_SIZE = 500;
@@ -202,7 +203,12 @@ const storedPlaylistsSchema: v.GenericSchema<unknown, PlaylistSummary[]> = v.arr
 
 type DeezerTrack = v.InferOutput<typeof deezerTrackSchema>;
 
-const normalizeTracks = (rows: DeezerTrack[]) => {
+const deezerIdKeys = (row: DeezerTrack) => [
+  isrcKey(row.isrc),
+  row.artist?.id ? `deezer-artist:${row.artist.id}` : null,
+];
+
+const normalizeTracks = (rows: DeezerTrack[], ids = NO_CATALOGUE_IDS) => {
   const stats = {
     sourceItems: rows.length,
     unavailable: 0,
@@ -230,6 +236,7 @@ const normalizeTracks = (rows: DeezerTrack[]) => {
       preview_url: deezerPreviewPath(row.id),
       artworkUrl: row?.album?.cover_medium || null,
       deezerAlbumId: row?.album?.id ? String(row.album.id) : null,
+      ...catalogueTrackIds(ids, deezerIdKeys(row)),
     });
     positions.push(position);
   }
@@ -265,7 +272,7 @@ const normalizeTracks = (rows: DeezerTrack[]) => {
   return { tracks, stats, excluded };
 };
 
-export async function getDeezerPlaylist(value: unknown) {
+export async function getDeezerPlaylist(value: unknown, { catalogueIds = false } = {}) {
   const id = validateDeezerPlaylistId(value);
   const playlist = await deezerRequest(deezerPlaylistSchema, `/playlist/${id}`);
   const summary = normalizePlaylistSummary(playlist);
@@ -283,10 +290,14 @@ export async function getDeezerPlaylist(value: unknown) {
     index += page.received;
     if (page.received === 0 || !page.next) break;
   }
+  const tracks = rows.slice(0, MAX_TRACKS);
+  const ids = catalogueIds
+    ? await loadCatalogueIds(tracks.flatMap(deezerIdKeys))
+    : NO_CATALOGUE_IDS;
   return {
     ...summary,
     artworkUrl: playlist.picture_xl || summary.artworkUrl,
-    ...normalizeTracks(rows.slice(0, MAX_TRACKS)),
+    ...normalizeTracks(tracks, ids),
   };
 }
 

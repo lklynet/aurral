@@ -453,6 +453,12 @@ const moveMetadataToDataAurral: Migration = (db) =>
 const forgetArtistCoverAlbums: Migration = (db) =>
   db.exec("DELETE FROM deezer_mbid_cache WHERE cache_key LIKE 'artist_rg:%'");
 
+const indexPlaysByArtistId: Migration = (db) =>
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_play_events_user_artist_mbid
+      ON play_events(user_id, artist_mbid);
+  `);
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -484,6 +490,7 @@ export const migrations: Migration[] = [
   forgetSavedRelayAddress,
   moveMetadataToDataAurral,
   forgetArtistCoverAlbums,
+  indexPlaysByArtistId,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {
