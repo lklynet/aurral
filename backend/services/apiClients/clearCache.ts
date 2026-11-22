@@ -1,10 +1,6 @@
 import { listenbrainzCache } from "./listenbrainz.ts";
 import { clearDeezerCaches } from "./deezer.ts";
-import {
-  musicbrainzArtistNameCache,
-  musicbrainzReleaseGroupsCache,
-  musicbrainzTagArtistsCache,
-} from "./musicbrainz.ts";
+import { musicbrainzArtistNameCache, musicbrainzTagArtistsCache } from "./musicbrainz.ts";
 import { youtubeVideoCache } from "./youtube.ts";
 import { lrclibCache } from "./lrclib.ts";
 import { clearMetadataProviderCaches } from "../providers/metadataProvider.ts";
@@ -17,7 +13,6 @@ export function clearApiCaches() {
   listenbrainzCache.flushAll();
   clearDeezerCaches();
   musicbrainzArtistNameCache.flushAll();
-  musicbrainzReleaseGroupsCache.flushAll();
   musicbrainzTagArtistsCache.flushAll();
   youtubeVideoCache.flushAll();
   lrclibCache.flushAll();

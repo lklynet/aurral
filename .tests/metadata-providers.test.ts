@@ -17,7 +17,7 @@ const [
   metadataProvider,
   { listMetadataCalls, reserveMetadataProviderRequest },
   { db },
-  { http },
+  { http, HttpError },
   { readAppSettings, saveAppSettings },
   { trackWork },
 ] = await setupIsolatedBackend(
@@ -571,7 +571,9 @@ test("missing artist and album MBIDs fill gaps straight from MusicBrainz", async
   const previousSettings = dbOps.getSettings();
   const missingArtistMbid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const missingAlbumMbid = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  let providerRequests = 0;
   const server = await createMockHttpServer((_request, response) => {
+    providerRequests += 1;
     response.statusCode = 404;
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify({ error: "Not found" }));
@@ -646,6 +648,10 @@ test("missing artist and album MBIDs fill gaps straight from MusicBrainz", async
     const album = await getAlbumByMbid(missingAlbumMbid);
     assert.equal(album.title, "Debut LP");
     assert.equal(album.artistId, missingArtistMbid);
+
+    assert.equal((await getArtistByMbid(missingArtistMbid)).name, "Brand New Artist");
+    assert.equal((await getAlbumByMbid(missingAlbumMbid)).title, "Debut LP");
+    assert.equal(providerRequests, 2);
     assert.deepEqual(mbPaths, [
       `/ws/2/artist/${missingArtistMbid}`,
       `/ws/2/release-group/${missingAlbumMbid}`,
@@ -891,6 +897,54 @@ test("search metadata coalesces concurrent misses and shares fresh cache entries
   }
 });
 
+test("search pages come out of one full answer", async () => {
+  const previousSettings = dbOps.getSettings();
+  const limits: string[] = [];
+  const row = (index: number) => ({
+    id: `id-${index}`,
+    name: `Name ${index}`,
+    title: `Name ${index}`,
+  });
+  const rows = Array.from({ length: 30 }, (_value, index) => row(index));
+  const server = await createMockHttpServer((request, response) => {
+    const url = new URL(request.url || "/", "http://provider.test");
+    limits.push(`${url.pathname} ${url.searchParams.get("limit")}`);
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ artists: rows, albums: rows }));
+  });
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: { ...(previousSettings.integrations?.metadata || {}), baseUrl: server.url },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    await trackWork(
+      () => "GET /api/search",
+      async () => {
+        for (const search of [
+          (offset: number) => searchArtists("name", { limit: 24, offset }),
+          (offset: number) => searchAlbums("name", { limit: 24, offset, sort: "titleAsc" }),
+        ]) {
+          const first = await search(0);
+          const second = await search(24);
+          assert.deepEqual([first.count, first.items.length, second.items.length], [30, 24, 6]);
+        }
+      },
+      undefined,
+      { request: true },
+    );
+    assert.deepEqual(limits, ["/v1/search/artist 50", "/v1/search/album 50"]);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
 test("album search shows no results when its MusicBrainz fallback is down", async () => {
   const previousSettings = dbOps.getSettings();
   const server = await createMockHttpServer((_request, response) => {
@@ -915,10 +969,60 @@ test("album search shows no results when its MusicBrainz fallback is down", asyn
     });
     clearMetadataProviderCaches();
 
-    assert.deepEqual((await searchAlbums("Missing Album")).items, []);
+    const result = await trackWork(
+      () => "GET /api/search",
+      () => searchAlbums("Missing Album"),
+      undefined,
+      { request: true },
+    );
+    assert.deepEqual(result.items, []);
   } finally {
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
     await server.close();
+  }
+});
+
+test("a rate limited search waits out Retry-After in the background and fails at once for a request", async () => {
+  const sentAt: number[] = [];
+  const get = vi.spyOn(http, "get").mockImplementation(async (url) => {
+    sentAt.push(Date.now());
+    if (sentAt.length > 2) {
+      return { status: 200, statusText: "OK", headers: {}, data: { artists: [] } };
+    }
+    throw new HttpError(
+      "Too many requests",
+      { method: "GET", url },
+      {
+        response: {
+          status: 429,
+          statusText: "Too Many Requests",
+          headers: { "retry-after": "30" },
+          data: {},
+        },
+      },
+    );
+  });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  vi.setTimerTickMode("nextTimerAsync");
+  try {
+    clearMetadataProviderCaches();
+    await assert.rejects(
+      trackWork(
+        () => "GET /api/search",
+        () => searchArtists("typed", { throwOnFailure: true }),
+        undefined,
+        { request: true },
+      ),
+    );
+    assert.equal(sentAt.length, 1);
+
+    assert.deepEqual((await searchArtists("scanned", { throwOnFailure: true })).items, []);
+    assert.equal(sentAt.length, 3);
+    assert.ok(sentAt[2]! - sentAt[1]! >= 30_000, `retried after ${sentAt[2]! - sentAt[1]!}ms`);
+  } finally {
+    vi.useRealTimers();
+    get.mockRestore();
+    clearMetadataProviderCaches();
   }
 });

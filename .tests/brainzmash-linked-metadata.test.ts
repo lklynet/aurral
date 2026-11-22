@@ -17,6 +17,7 @@ const linkedArtist = {
   genres: ["Rock", "Glam Rock"],
   images: [],
   links: [
+    { type: "deezer", target: "https://www.deezer.com/artist/14085093" },
     { type: "deezer", target: "https://www.deezer.com/en/artist/412" },
     { type: "discogs", target: "https://www.discogs.com/artist/81013-Queen" },
     { type: "wikidata", target: "https://www.wikidata.org/wiki/Q15862" },
@@ -91,7 +92,6 @@ const [
   isolatedState,
   { http },
   { getArtistByMbid },
-  { musicbrainzGetArtistIdentityByMbid },
   { getArtistTagPayload },
   { default: preview },
   { fetchReleaseGroupCoverUrl },
@@ -100,7 +100,6 @@ const [
   "brainzmash-linked-metadata",
   () => import("../lib/http.ts"),
   () => import("../backend/services/providers/metadataProvider.ts"),
-  () => import("../backend/services/apiClients/musicbrainz.ts"),
   () => import("../backend/routes/artists/shared/transform.ts"),
   () => import("../backend/routes/artists/handlers/preview.ts"),
   () => import("../backend/services/releaseGroupCoverService.ts"),
@@ -168,22 +167,6 @@ function recordExternalRequests() {
   return requests;
 }
 
-test("artist identity comes from BrainzMash names, aliases, and linked provider IDs", async () => {
-  const requests = recordExternalRequests();
-
-  assert.deepEqual(await musicbrainzGetArtistIdentityByMbid(linkedArtistMbid), {
-    mbid: linkedArtistMbid,
-    name: "Queen",
-    aliases: ["クイーン"],
-    providerIds: ["412@deezer", "81013@discogs"],
-  });
-  assert.equal(
-    await musicbrainzGetArtistIdentityByMbid("56565656-5656-4565-8565-565656565656"),
-    null,
-  );
-  assert.deepEqual([...requests], []);
-});
-
 test("artist genres come straight from v1 artist metadata without calling ListenBrainz", async () => {
   const requests = recordExternalRequests();
 
@@ -195,15 +178,25 @@ test("artist genres come straight from v1 artist metadata without calling Listen
   assert.deepEqual([...requests], []);
 });
 
-test("artist previews use the BrainzMash Deezer link instead of a name search", async () => {
+test("artist previews play the artist file's top tracks, then the linked Deezer artist's", async () => {
   const requests = recordExternalRequests();
-  const response = await preview.request(`/artists/${linkedArtistMbid}/preview?artistName=Queen`);
-  const { tracks }: { tracks: { title: string }[] } = await response.json();
+  const previewTracks = async (mbid: string, artistName: string) => {
+    const response = await preview.request(
+      `/artists/${mbid}/preview?${new URLSearchParams({ artistName })}`,
+    );
+    const { tracks }: { tracks: { title: string; preview_url: string | null }[] } =
+      await response.json();
+    return tracks.map((track) => [track.title, track.preview_url]);
+  };
 
-  assert.deepEqual(
-    tracks.map((track) => track.title),
-    ["Mustapha"],
-  );
+  assert.deepEqual(await previewTracks(topTrackArtistMbid, "Top Track Band"), [
+    ["Bohemian Rhapsody", "/api/deezer/preview?artist=Top+Track+Band&track=Bohemian+Rhapsody"],
+  ]);
+  assert.deepEqual(requests, []);
+
+  assert.deepEqual(await previewTracks(linkedArtistMbid, "Queen"), [
+    ["Mustapha", "/api/deezer/preview/7.mp3"],
+  ]);
   assert.deepEqual(requests, ["https://api.deezer.com/artist/412/top"]);
 });
 

@@ -722,8 +722,8 @@ test("a download takes the album of its title from the year it names, when the a
       return {
         ...band,
         albums: [
-          { id: "old-hits", title: "Greatest Hits", type: "Album" },
-          { id: "new-hits", title: "Greatest Hits", type: "Album" },
+          { id: "old-hits", title: "Greatest Hits", type: "Album", firstReleaseDate: "1999-05-01" },
+          { id: "new-hits", title: "Greatest Hits", type: "Album", firstReleaseDate: "2005-05-01" },
           { id: "other-album", title: "Another Record", type: "Album" },
         ],
       };
@@ -742,7 +742,7 @@ test("a download takes the album of its title from the year it names, when the a
     releaseYear: "2005",
   });
   assert.equal(resolved.albumMbid, "new-hits");
-  assert.deepEqual(fetched.toSorted(), ["/v1/album/new-hits", "/v1/album/old-hits"]);
+  assert.deepEqual(fetched, ["/v1/album/new-hits"]);
 });
 
 const editionAlbum = () => {

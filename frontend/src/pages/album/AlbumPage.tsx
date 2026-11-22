@@ -330,6 +330,7 @@ function AlbumPage() {
   const rows: TrackListRow[] = entries.map((entry, index) => {
     const { releaseIndex } = entry;
     const section = sections[index];
+    const popular = entry.releaseTrack?.popular ?? false;
     if (!entry.libraryTrack) {
       return {
         ...releaseRows.buildReleaseTrackRow(entry.releaseTrack!, releaseIndex, {
@@ -337,6 +338,7 @@ function AlbumPage() {
           number: entry.number,
         }),
         section,
+        popular,
       };
     }
     const track = entry.libraryTrack;
@@ -355,6 +357,7 @@ function AlbumPage() {
     return {
       ...row,
       section,
+      popular,
       key: entry.key,
       number: entry.releaseTrack || !splitEditions ? entry.number : null,
       subtitle:

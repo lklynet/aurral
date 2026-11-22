@@ -19,21 +19,14 @@ vi.mock("node:zlib", async (importOriginal) => {
   };
 });
 
-const [
-  state,
-  { dbOps },
-  { getArtistImage },
-  { clearMetadataProviderCaches },
-  { default: details },
-  { default: artistCover },
-] = await setupIsolatedBackend(
-  "artist-image-race",
-  () => import("../backend/db/helpers/index.ts"),
-  () => import("../backend/services/imageService.ts"),
-  () => import("../backend/services/providers/metadataProvider.ts"),
-  () => import("../backend/routes/artists/handlers/details.ts"),
-  () => import("../backend/routes/artists/handlers/cover.ts"),
-);
+const [state, { dbOps }, { getArtistImage }, { default: details }, { default: artistCover }] =
+  await setupIsolatedBackend(
+    "artist-image-race",
+    () => import("../backend/db/helpers/index.ts"),
+    () => import("../backend/services/imageService.ts"),
+    () => import("../backend/routes/artists/handlers/details.ts"),
+    () => import("../backend/routes/artists/handlers/cover.ts"),
+  );
 
 useFakeClock();
 
@@ -151,17 +144,13 @@ for (const [index, source, lookup] of [
     const albumId = artistId(index + 200);
     artist(mbid, {
       images: source === "direct image" ? [image(oldImage)] : [],
-      albums: source === "album image" ? [{ id: albumId, title: "Old Album", type: "Album" }] : [],
+      albums:
+        source === "album image"
+          ? [{ id: albumId, title: "Old Album", type: "Album", cover: oldImage }]
+          : [],
       before: () => oldGate.wait(),
     });
     artist(replacement, { images: [image(newImage)] });
-    fixtures.set(`metadata.invalid/v1/album/${albumId}`, async () => ({
-      id: albumId,
-      title: "Old Album",
-      images: [{ kind: "Cover", url: oldImage }],
-      artists: [],
-      releases: [],
-    }));
 
     const oldLookup = lookup(mbid);
     await oldGate.started;
@@ -188,40 +177,6 @@ for (const [index, source, lookup] of [
     assert.equal(dbOps.getArtistOverride(mbid)?.musicbrainzId, replacement);
   });
 }
-
-test("cached album recovery cannot overwrite an image selected after an override", async () => {
-  const mbid = artistId(7);
-  const replacement = artistId(107);
-  const albumId = artistId(207);
-  const oldGate = gate();
-  artist(mbid, {
-    albums: [{ id: albumId, title: "Old Album", type: "Album" }],
-    before: () => oldGate.wait(),
-  });
-  artist(replacement, { images: [image(newImage)] });
-  dbOps.setImage(mbid, "NOT_FOUND");
-  dbOps.setImage(`rg:${albumId}`, oldImage);
-  const oldLookup = getArtistImage(mbid);
-  await oldGate.started;
-  let latest:
-    | Promise<{
-        url: string | null;
-        images: CachedArtistImage[];
-        notFound?: boolean;
-        transientError?: boolean;
-      }>
-    | undefined;
-  try {
-    await putOverride(mbid, { musicbrainzId: replacement });
-    latest = getArtistImage(mbid);
-    assert.equal((await latest).url, newImage);
-  } finally {
-    oldGate.release();
-    await Promise.allSettled([oldLookup, latest]);
-  }
-  assert.equal((await oldLookup).url, oldImage);
-  assert.equal(dbOps.getImage(mbid)?.imageUrl, newImage);
-});
 
 test("setting an override clears a previous in-memory not-found result", async () => {
   const mbid = artistId(8);
@@ -346,84 +301,33 @@ test("finishing an old lookup leaves the replacement lookup registered", async (
   }
 });
 
-for (const [index, recoveredUrl] of [
-  [14, oldImage],
-  [15, null],
-] as const) {
-  const recoveryResult = recoveredUrl ? "a cached cover" : "no cached cover";
-  test(`forced refresh supersedes negative-cache recovery returning ${recoveryResult}`, async () => {
-    const mbid = artistId(index);
-    const albumId = artistId(index + 200);
-    const recoveryGate = gate();
-    const providerGate = gate();
-    let providerRequests = 0;
-    let calls = 0;
-    fixtures.set(`metadata.invalid/v1/artist/${mbid}`, async () => {
-      calls += 1;
-      if (calls === 1) {
-        await recoveryGate.wait();
-        return {
-          id: mbid,
-          name: `Artist ${mbid}`,
-          sortName: `Artist ${mbid}`,
-          type: "Person",
-          status: "Ended",
-          images: [],
-          albums: [{ id: albumId, title: "Old Album", type: "Album" }],
-          links: [],
-          genres: [],
-          aliases: [],
-          overview: "",
-        };
-      }
+test("a forced refresh looks again after a not-found result, and lookups share its request", async () => {
+  const mbid = artistId(14);
+  const providerGate = gate();
+  let providerRequests = 0;
+  artist(mbid, {
+    images: [image(newImage)],
+    before: async () => {
       providerRequests += 1;
       await providerGate.wait();
-      return {
-        id: mbid,
-        name: `Artist ${mbid}`,
-        sortName: `Artist ${mbid}`,
-        type: "Person",
-        status: "Ended",
-        images: [image(newImage)],
-        albums: [{ id: albumId, title: "Old Album", type: "Album" }],
-        links: [],
-        genres: [],
-        aliases: [],
-        overview: "",
-      };
-    });
-    dbOps.setImage(mbid, "NOT_FOUND");
-    if (recoveredUrl) dbOps.setImage(`rg:${albumId}`, recoveredUrl);
-
-    const recovery = getArtistImage(mbid);
-    await recoveryGate.started;
-    clearMetadataProviderCaches();
-    const refreshed = getArtistImage(mbid, { forceRefresh: true });
-    const repeatedRefresh = getArtistImage(mbid, true);
-    const later: ReturnType<typeof getArtistImage>[] = [];
-    try {
-      recoveryGate.release();
-      const original = await recovery;
-      assert.equal(original.url, recoveredUrl);
-      assert.equal(!!original.notFound, !recoveredUrl);
-      assert.equal(dbOps.getImage(mbid)?.imageUrl, "NOT_FOUND");
-
-      await providerGate.started;
-      later.push(getArtistImage(mbid, { forceRefresh: true }), getArtistImage(mbid));
-      providerGate.release();
-      const current = await refreshed;
-      assert.equal(current.url, newImage);
-      assert.equal(await repeatedRefresh, current);
-      for (const lookup of later) assert.equal(await lookup, current);
-      assert.equal(providerRequests, 1);
-      assert.equal(dbOps.getImage(mbid)?.imageUrl, newImage);
-    } finally {
-      recoveryGate.release();
-      providerGate.release();
-      await Promise.allSettled([recovery, refreshed, repeatedRefresh, ...later]);
-    }
+    },
   });
-}
+  dbOps.setImage(mbid, "NOT_FOUND");
+  assert.equal((await getArtistImage(mbid)).notFound, true);
+  assert.equal(providerRequests, 0);
+
+  const lookups = [getArtistImage(mbid, { forceRefresh: true })];
+  try {
+    await providerGate.started;
+    lookups.push(getArtistImage(mbid, { forceRefresh: true }), getArtistImage(mbid));
+  } finally {
+    providerGate.release();
+  }
+
+  for (const result of await Promise.all(lookups)) assert.equal(result.url, newImage);
+  assert.equal(providerRequests, 1);
+  assert.equal(dbOps.getImage(mbid)?.imageUrl, newImage);
+});
 
 test("every concurrent lookup saves its result however many are pending", async () => {
   const shared = artistId(118);
@@ -444,47 +348,4 @@ test("every concurrent lookup saves its result however many are pending", async 
     mbids.filter((mbid) => dbOps.getImage(mbid)?.imageUrl !== newImage),
     [],
   );
-});
-
-test("a forced refresh searches albums that a pending lookup skips", async () => {
-  const mbid = artistId(19);
-  const albumId = artistId(219);
-  const lookupGate = gate();
-  artist(mbid, {
-    albums: [{ id: albumId, title: "Current Album", type: "Album" }],
-    before: () => lookupGate.wait(),
-  });
-  fixtures.set(`metadata.invalid/v1/album/${albumId}`, async () => ({
-    id: albumId,
-    title: "Current Album",
-    images: [{ kind: "Cover", url: newImage }],
-    artists: [],
-    releases: [],
-  }));
-  dbOps.setDeezerMbidCache(`artist_rg:${mbid}`, "NOT_FOUND");
-
-  const lookup = getArtistImage(mbid);
-  await lookupGate.started;
-  const refreshed = getArtistImage(mbid, { forceRefresh: true });
-  lookupGate.release();
-
-  assert.equal((await refreshed).url, newImage);
-  assert.equal((await lookup).notFound, true);
-  assert.equal(dbOps.getImage(mbid)?.imageUrl, newImage);
-});
-
-test("inline album covers bypass stale NOT_FOUND artist_rg entries and clearImages resets them", async () => {
-  const mbid = artistId(20);
-  const albumId = artistId(220);
-  artist(mbid, {
-    albums: [{ id: albumId, title: "Good Deal", type: "EP", cover: newImage }],
-  });
-  dbOps.setDeezerMbidCache(`artist_rg:${mbid}`, "NOT_FOUND");
-
-  const result = await getArtistImage(mbid);
-  assert.equal(result.url, newImage);
-  assert.equal(dbOps.getDeezerMbidCache(`artist_rg:${mbid}`), albumId);
-
-  dbOps.clearImages();
-  assert.equal(dbOps.getDeezerMbidCache(`artist_rg:${mbid}`), null);
 });

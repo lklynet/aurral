@@ -98,7 +98,7 @@ function stubDeezer(
     requests.push(`${url.pathname}${url.search}`);
     const route = routes[url.pathname];
     if (!route) {
-      return new Response(JSON.stringify({ error: { type: "DataException", code: 800 } }));
+      return Response.json({ error: { type: "DataException", code: 800 } });
     }
     const { status = 200, body } = typeof route === "function" ? route(url) : route;
     return Response.json(body, { status });
@@ -571,6 +571,19 @@ test("a song on another artist's soundtrack opens the soundtrack", async () => {
     if (url.pathname === "/v1/search/artist") {
       return Response.json({ artists: [{ id: artistMbid, name: "Tove Lo", genres: [] }] });
     }
+    if (url.pathname === "/v1/search/track" && url.searchParams.get("q") === "Indexed Song") {
+      assert.equal(url.searchParams.get("artist"), "Tove Lo");
+      return Response.json({
+        tracks: [ownSingle, soundtrack].map((albumId) => ({
+          recordingId: "00000000-0000-4000-8000-000000000005",
+          title: "Indexed Song",
+          artistId: artistMbid,
+          artistName: "Tove Lo",
+          albumId,
+          albumTitle: albumId === soundtrack ? "Grand Theft Auto VI: The Album" : "Indexed Song",
+        })),
+      });
+    }
     if (url.pathname !== "/ws/2/recording") return Response.json([]);
     searches.push(url.searchParams.get("query") ?? "");
     return Response.json({
@@ -596,6 +609,17 @@ test("a song on another artist's soundtrack opens the soundtrack", async () => {
     { artistMbid, albumMbid: soundtrack },
   );
   assert.deepEqual(searches, [`recording:"Blood In Your Eyes" AND arid:${artistMbid}`]);
+
+  assert.deepEqual(
+    await resolveEditorialTrackLinks({
+      artistName: "Tove Lo",
+      albumName: "Grand Theft Auto VI: The Album",
+      deezerAlbumId: "1119883012",
+      trackName: "Indexed Song",
+    }),
+    { artistMbid, albumMbid: soundtrack },
+  );
+  assert.equal(searches.length, 1);
 });
 
 test("flow templates keep their recipe and need history for Listening History", () => {

@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import * as v from "valibot";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { logger } from "../../../services/logger.ts";
-import { musicbrainzGetArtistNameByMbid } from "../../../services/apiClients/index.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { cacheFor } from "../../../middleware/cacheHeaders.ts";
 import { requireAuth } from "../../../middleware/guards.ts";
@@ -23,6 +22,7 @@ import {
 import { withCoverUrls } from "../../../services/releaseGroupCoverService.ts";
 import {
   getArtistTagPayload,
+  listedReleaseGroup,
   buildArtistBase,
   toAppearsOnReleaseGroup,
   toArtistReleaseGroup,
@@ -60,11 +60,7 @@ async function loadArtistDetails(
   },
 ) {
   const metadataArtist = await getArtistByMbid(mbid).catch(() => null);
-  const name =
-    artistName ||
-    metadataArtist?.name ||
-    (await musicbrainzGetArtistNameByMbid(mbid)) ||
-    "Unknown Artist";
+  const name = artistName || metadataArtist?.name || "Unknown Artist";
   const releaseGroups = metadataArtist
     ? filterByReleaseTypes(metadataArtist.albums, selectedReleaseTypes).map((album) =>
         toArtistReleaseGroup(album, { id: metadataArtist.id, name: metadataArtist.name || name }),
@@ -79,10 +75,10 @@ async function loadArtistDetails(
     tags: tagPayload.tags,
     genres: tagPayload.genres,
     images: getDirectOrCachedArtistImages(cacheMbid, metadataArtist?.images),
-    similar: toDirectSimilarArtists(metadataArtist, 10),
-    topTracks: toArtistTopTracks(metadataArtist, name, 10),
-    "release-groups": withCoverUrls(releaseGroups),
-    "appears-on-release-groups": withCoverUrls(appearsOnReleaseGroups),
+    similar: toDirectSimilarArtists(metadataArtist),
+    topTracks: toArtistTopTracks(metadataArtist, name),
+    "release-groups": withCoverUrls(releaseGroups, listedReleaseGroup),
+    "appears-on-release-groups": withCoverUrls(appearsOnReleaseGroups, listedReleaseGroup),
     "appears-on-has-more": !coreOnly && totalAppearsOn.length > appearsOnSlice.length,
     "release-group-count": releaseGroups.length,
     "release-count": releaseGroups.length,

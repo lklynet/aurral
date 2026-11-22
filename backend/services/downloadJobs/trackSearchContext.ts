@@ -200,12 +200,6 @@ async function resolveReleaseGroup(track: DownloadTrackFields): Promise<ReleaseG
       const candidates = albums.filter(
         (album) => album.id && matchesAlbumTitle(album.title, safeAlbum),
       );
-      if (track.releaseYear && candidates.length > 1) {
-        for (const candidate of candidates) {
-          const album = await getAlbumByMbid(candidate.id).catch(() => null);
-          candidate.firstReleaseDate = album?.releaseDate || null;
-        }
-      }
       for (const best of rankCandidates(candidates, safeAlbum, track.releaseYear)) {
         if (!(await holds(best.id))) continue;
         return {

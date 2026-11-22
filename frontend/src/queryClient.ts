@@ -201,11 +201,6 @@ export const queryKeys = {
     id,
     hints,
   ],
-  releaseGroupRatings: (ids: string[]): QueryKey => [
-    "artists",
-    "release-group-ratings",
-    [...ids].sort(),
-  ],
   artistDetails: (
     mbid: MaybeText,
     options: {

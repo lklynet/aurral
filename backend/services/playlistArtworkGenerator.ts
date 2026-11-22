@@ -64,7 +64,7 @@ async function loadArtistImage(artist: PlaylistArtworkArtist) {
   try {
     const mbid = artist.artistMbid || (await guessArtistMbid(artist.artistName));
     if (!mbid) return null;
-    const image = await getArtistImage(mbid, { artistName: artist.artistName });
+    const image = await getArtistImage(mbid);
     const url =
       image.images.find((entry) => !entry.types?.some((type) => /front|album|cover/i.test(type)))
         ?.image || null;

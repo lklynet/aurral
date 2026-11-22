@@ -4,6 +4,7 @@ import {
   type Catalogue,
   type CatalogueAlbum,
   type CatalogueArtist,
+  shownListeners,
 } from "../catalogue/catalogue.ts";
 
 export const searchKey = (value: string | null | undefined) =>
@@ -94,7 +95,7 @@ export function searchV1Artists(catalogue: Catalogue, query: string, limit: numb
     genres: artist.genres ?? [],
     aliases: artist.artistaliases ?? [],
     image: selectBestArtistImage(toV1Images(artist.images))?.url ?? null,
-    listeners: (artist.rating?.Count ?? 0) * 300,
+    listeners: shownListeners(artist.rating),
   }));
 }
 
@@ -117,13 +118,14 @@ export function searchV1Albums(
       secondaryTypes: album.secondarytypes ?? [],
       releaseDate: album.releasedate ?? null,
       cover: selectAlbumCover(toV1Images(album.images))?.url ?? null,
-      listeners: (album.rating?.Count ?? 0) * 300,
+      listeners: shownListeners(album.rating),
     };
   });
 }
 
-export function searchV1Tracks(catalogue: Catalogue, query: string, limit: number) {
+export function searchV1Tracks(catalogue: Catalogue, query: string, artist: string, limit: number) {
   const key = searchKey(query);
+  const artistKey = searchKey(artist);
   if (!key) return [];
   const hits: {
     score: number;
@@ -145,6 +147,7 @@ export function searchV1Tracks(catalogue: Catalogue, query: string, limit: numbe
     const owner = album.artistid ? catalogue.artists.get(album.artistid) : undefined;
     const artistName = album.artists?.[0]?.artistname ?? owner?.artistname ?? "";
     const artistId = album.artistid ?? album.artists?.[0]?.id ?? null;
+    if (artistKey && !searchKey(artistName).includes(artistKey)) continue;
     const cover = selectAlbumCover(toV1Images(album.images))?.url ?? null;
     const listeners = (album.rating?.Count ?? 0) * 300;
     for (const track of album.releases?.[0]?.tracks ?? []) {
