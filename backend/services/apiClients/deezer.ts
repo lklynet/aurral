@@ -4,6 +4,7 @@ import { readMany, readOne } from "../integrationData.ts";
 import createCache from "./simpleCache.ts";
 import createRateLimiter from "./rateLimiter.ts";
 import { createOutagePause } from "./outagePause.ts";
+import { DEEZER_BLANK_ARTIST_IMAGE_PATTERN } from "../imageProxyService.ts";
 
 const DEEZER_API_URL = "https://api.deezer.com";
 const DEEZER_NO_DATA_CODE = 800;
@@ -113,15 +114,9 @@ function createDeezerCache<Value>(ttlSeconds: number, maxEntries?: number) {
   return { ...cache, load };
 }
 
-const DEEZER_BLANK_ARTIST_HASH = "d41d8cd98f00b204e9800998ecf8427e";
-
 const deezerArtistPhoto = (artist: DeezerArtist) => {
   const url = artist.picture_xl || artist.picture_big || artist.picture_medium;
-  return url &&
-    !url.includes("/images/artist//") &&
-    !url.includes(`/images/artist/${DEEZER_BLANK_ARTIST_HASH}/`)
-    ? url
-    : null;
+  return url && !DEEZER_BLANK_ARTIST_IMAGE_PATTERN.test(url) ? url : null;
 };
 
 const toArtist = (artist: DeezerArtist) => ({

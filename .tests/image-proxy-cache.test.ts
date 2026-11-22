@@ -362,6 +362,11 @@ test("Cover Art Archive thumbnails that 404 fall back to the original image and 
       "https://cdn-images.dzcdn.net/images/artist/e1591dcf/1000x1000-000000-80-0-0.jpg";
     assert.equal(await isDeezerPlaceholderArtistImage(deezerBlankUrl), true);
     await assert.rejects(() => fetchRemoteImage(deezerBlankUrl), /Deezer blank placeholder/);
+
+    const deezerLegacyBlankUrl =
+      "https://cdn-images.dzcdn.net/images/artist/ebcf22e5c3a0eb3178b8a6f6bc1a5a6c/1000x1000-000000-80-0-0.jpg";
+    assert.equal(await isDeezerPlaceholderArtistImage(deezerLegacyBlankUrl), true);
+    await assert.rejects(() => fetchRemoteImage(deezerLegacyBlankUrl), /Deezer blank placeholder/);
   } finally {
     global.fetch = originalFetch;
     if (previousDataDir === undefined) delete process.env.AURRAL_DATA_DIR;

@@ -1,7 +1,10 @@
 import type { CachedArtistImage } from "../db/helpers/cache.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import type { ArtistOverride } from "../db/helpers/overrides.ts";
-import { buildStableImageProxyUrl } from "./imageProxyService.ts";
+import {
+  buildStableImageProxyUrl,
+  DEEZER_BLANK_ARTIST_IMAGE_PATTERN,
+} from "./imageProxyService.ts";
 import { getArtistImageKindRank, getImageUrl, type ImageList } from "./imageRanking.ts";
 import type { NormalizedArtist } from "./providers/metadataMappers.ts";
 import { getArtistByMbid, listArtistAlbums } from "./providers/metadataProvider.ts";
@@ -105,7 +108,8 @@ export const getDirectOrCachedArtistImages = (
   if (
     cached?.imageUrl &&
     cached.imageUrl !== "NOT_FOUND" &&
-    !LEGACY_COVER_HOST_PATTERN.test(cached.imageUrl)
+    !LEGACY_COVER_HOST_PATTERN.test(cached.imageUrl) &&
+    !DEEZER_BLANK_ARTIST_IMAGE_PATTERN.test(cached.imageUrl)
   ) {
     return buildCachedArtistImagePayload(buildStableImageProxyUrl(cached.imageUrl), cached.images);
   }
@@ -234,7 +238,8 @@ export const getArtistImage = async (
     cachedImage &&
     cachedImage.imageUrl &&
     cachedImage.imageUrl !== "NOT_FOUND" &&
-    !LEGACY_COVER_HOST_PATTERN.test(cachedImage.imageUrl)
+    !LEGACY_COVER_HOST_PATTERN.test(cachedImage.imageUrl) &&
+    !DEEZER_BLANK_ARTIST_IMAGE_PATTERN.test(cachedImage.imageUrl)
   ) {
     const cachedUrl = buildStableImageProxyUrl(cachedImage.imageUrl);
     const images = buildCachedArtistImagePayload(cachedUrl, cachedImage.images);

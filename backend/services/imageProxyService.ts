@@ -523,8 +523,8 @@ const readBoundedResponse = async (response: Response | UndiciResponse) => {
   return Buffer.concat(chunks, totalBytes);
 };
 
-const DEEZER_BLANK_ARTIST_IMAGE_PATTERN =
-  /\/images\/artist\/(?:d41d8cd98f00b204e9800998ecf8427e\/|\/)/i;
+export const DEEZER_BLANK_ARTIST_IMAGE_PATTERN =
+  /\/images\/artist\/(?:(?:d41d8cd98f00b204e9800998ecf8427e|ebcf22e5c3a0eb3178b8a6f6bc1a5a6c)\/|\/)/i;
 
 const isDeezerCdnArtistImage = (value: string) => {
   try {
