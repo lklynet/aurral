@@ -94,7 +94,6 @@ const [
   { musicbrainzGetArtistIdentityByMbid },
   { getArtistTagPayload },
   { default: preview },
-  { getArtistImage },
   { fetchReleaseGroupCoverUrl },
   { getArtistTopTracks },
 ] = await setupIsolatedBackend(
@@ -104,7 +103,6 @@ const [
   () => import("../backend/services/apiClients/musicbrainz.ts"),
   () => import("../backend/routes/artists/shared/transform.ts"),
   () => import("../backend/routes/artists/handlers/preview.ts"),
-  () => import("../backend/services/imageService.ts"),
   () => import("../backend/services/releaseGroupCoverService.ts"),
   () => import("../backend/services/musicDataSource/index.ts"),
 );
@@ -249,15 +247,6 @@ test("top tracks come from v1 artist data first, then fall back to the linked De
     "https://api.deezer.com/search/artist",
   ]);
   assert.deepEqual(providerPaths, ["/v1/artist/78787878-7878-4787-8787-787878787878"]);
-});
-
-test("artist images fall back to the BrainzMash-linked Deezer artist", async () => {
-  const requests = recordExternalRequests();
-
-  const result = await getArtistImage(linkedArtistMbid, { forceRefresh: true });
-
-  assert.ok(result.url);
-  assert.deepEqual(requests, ["https://api.deezer.com/artist/412"]);
 });
 
 test("album covers fall back to the Deezer artist linked on the BrainzMash album", async () => {

@@ -19,14 +19,21 @@ vi.mock("node:zlib", async (importOriginal) => {
   };
 });
 
-const [state, { dbOps }, { getArtistImage }, { default: details }, { default: artistCover }] =
-  await setupIsolatedBackend(
-    "artist-image-race",
-    () => import("../backend/db/helpers/index.ts"),
-    () => import("../backend/services/imageService.ts"),
-    () => import("../backend/routes/artists/handlers/details.ts"),
-    () => import("../backend/routes/artists/handlers/cover.ts"),
-  );
+const [
+  state,
+  { dbOps },
+  { getArtistImage },
+  { clearMetadataProviderCaches },
+  { default: details },
+  { default: artistCover },
+] = await setupIsolatedBackend(
+  "artist-image-race",
+  () => import("../backend/db/helpers/index.ts"),
+  () => import("../backend/services/imageService.ts"),
+  () => import("../backend/services/providers/metadataProvider.ts"),
+  () => import("../backend/routes/artists/handlers/details.ts"),
+  () => import("../backend/routes/artists/handlers/cover.ts"),
+);
 
 useFakeClock();
 
@@ -131,7 +138,6 @@ async function cover(mbid: string) {
 
 for (const [index, source, lookup] of [
   [1, "direct image", getArtistImage],
-  [2, "Deezer image", getArtistImage],
   [3, "album image", getArtistImage],
   [4, "not-found result", getArtistImage],
   [5, "direct image", cover],
@@ -156,16 +162,6 @@ for (const [index, source, lookup] of [
       artists: [],
       releases: [],
     }));
-    if (source === "Deezer image") {
-      dbOps.setArtistOverride(mbid, { deezerArtistId: "4321" });
-      fixtures.set("api.deezer.com/artist/4321", async () => ({
-        id: 4321,
-        name: "Old Artist",
-        picture: oldImage,
-        picture_medium: oldImage,
-        picture_big: oldImage,
-      }));
-    }
 
     const oldLookup = lookup(mbid);
     await oldGate.started;
@@ -293,19 +289,8 @@ test("an old cover not-found result cannot overwrite the current image", async (
   const mbid = artistId(12);
   const replacement = artistId(112);
   const oldGate = gate();
-  artist(mbid);
+  artist(mbid, { before: () => oldGate.wait() });
   artist(replacement, { images: [image(newImage)] });
-  dbOps.setArtistOverride(mbid, { deezerArtistId: "5432" });
-  fixtures.set("api.deezer.com/artist/5432", async () => {
-    await oldGate.wait();
-    return {
-      id: 5432,
-      name: "Missing Image",
-      picture: null,
-      picture_medium: null,
-      picture_big: null,
-    };
-  });
   const oldCover = cover(mbid);
   await oldGate.started;
   let latest:
@@ -369,31 +354,50 @@ for (const [index, recoveredUrl] of [
   test(`forced refresh supersedes negative-cache recovery returning ${recoveryResult}`, async () => {
     const mbid = artistId(index);
     const albumId = artistId(index + 200);
-    const deezerArtistId = String(6000 + index);
     const recoveryGate = gate();
     const providerGate = gate();
     let providerRequests = 0;
-    artist(mbid, {
-      albums: [{ id: albumId, title: "Old Album", type: "Album" }],
-      before: () => recoveryGate.wait(),
-    });
-    fixtures.set(`api.deezer.com/artist/${deezerArtistId}`, async () => {
+    let calls = 0;
+    fixtures.set(`metadata.invalid/v1/artist/${mbid}`, async () => {
+      calls += 1;
+      if (calls === 1) {
+        await recoveryGate.wait();
+        return {
+          id: mbid,
+          name: `Artist ${mbid}`,
+          sortName: `Artist ${mbid}`,
+          type: "Person",
+          status: "Ended",
+          images: [],
+          albums: [{ id: albumId, title: "Old Album", type: "Album" }],
+          links: [],
+          genres: [],
+          aliases: [],
+          overview: "",
+        };
+      }
       providerRequests += 1;
       await providerGate.wait();
       return {
-        id: Number(deezerArtistId),
-        name: "Current Artist",
-        picture: newImage,
-        picture_medium: newImage,
-        picture_big: newImage,
+        id: mbid,
+        name: `Artist ${mbid}`,
+        sortName: `Artist ${mbid}`,
+        type: "Person",
+        status: "Ended",
+        images: [image(newImage)],
+        albums: [{ id: albumId, title: "Old Album", type: "Album" }],
+        links: [],
+        genres: [],
+        aliases: [],
+        overview: "",
       };
     });
-    dbOps.setArtistOverride(mbid, { deezerArtistId });
     dbOps.setImage(mbid, "NOT_FOUND");
     if (recoveredUrl) dbOps.setImage(`rg:${albumId}`, recoveredUrl);
 
     const recovery = getArtistImage(mbid);
     await recoveryGate.started;
+    clearMetadataProviderCaches();
     const refreshed = getArtistImage(mbid, { forceRefresh: true });
     const repeatedRefresh = getArtistImage(mbid, true);
     const later: ReturnType<typeof getArtistImage>[] = [];
