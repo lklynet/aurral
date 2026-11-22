@@ -113,7 +113,7 @@ export const listenbrainzSource = {
     artist: MusicArtistRef,
     { limit = 50, health }: { limit?: number; health?: SourceHealth } = {},
   ) {
-    const mbid = normalizeMbid(artist?.mbid);
+    const mbid = normalizeMbid(artist?.mbid) ?? cachedArtistGuess(text(artist?.name));
     let known: NormalizedArtist | null | undefined;
     if (mbid) {
       known = await getArtistByMbid(mbid).catch(() => null);
