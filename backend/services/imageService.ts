@@ -312,7 +312,8 @@ export const getArtistImage = async (
         : (metadataArtist?.albums ??
           (sawTransientError ? [] : await listArtistAlbums(resolvedMbid)));
 
-      const directAlbumCover = albums.find((rg) => rg.cover);
+      const directAlbumCover =
+        metadataArtist?.albums?.find((rg) => rg.cover) ?? albums.find((rg) => rg.cover);
       if (directAlbumCover?.cover) {
         const artistImageUrl = buildStableImageProxyUrl(directAlbumCover.cover);
         if (artistImageUrl) {
@@ -321,7 +322,7 @@ export const getArtistImage = async (
             negativeImageCache.delete(mbid);
             dbOps.setImage(mbid, artistImageUrl, result.images);
           }
-          if (!cachedRg || forceRefresh) {
+          if (!cachedRg || cachedRg === "NOT_FOUND" || forceRefresh) {
             dbOps.setDeezerMbidCache(rgCacheKey, directAlbumCover.id);
           }
           return result;

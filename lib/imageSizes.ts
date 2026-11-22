@@ -17,6 +17,9 @@ const LIDARR_COVER =
   /^(https?:\/\/imagecache\.lidarr\.audio\/v1\/caa\/[^/?#]+\/[^/?#]+)-(?:250|500|1200)(\.[a-z]+)$/i;
 const COVER_ARCHIVE_WIDTHS = [250, 500, 1200];
 const ARTIST_PHOTO = /^https?:\/\/r2\.theaudiodb\.com\/images\/media\/artist\/thumb\/[^/?#]+$/i;
+const WIKIMEDIA_COMMONS =
+  /^(https:\/\/upload\.wikimedia\.org\/wikipedia\/commons)\/([0-9a-f]\/[0-9a-f]{2}\/([^/?#]+\.(?:jpe?g|png)))$/i;
+const WIKIMEDIA_WIDTHS = [250, 500, 960];
 const AURRAL_COVER =
   /\/api\/(?:playlists\/(?:artwork\/[^/?#]+|flow-templates\/[^/?#]+\/cover)|discover\/playlists\/[^/?#]+\/[^/?#]+\/cover)(?:\?|$)/;
 const AURRAL_COVER_WIDTH = 1000;
@@ -52,6 +55,13 @@ export function imageSizes(url: string): ImageSize[] {
       { url: `${url}/medium`, width: 360 },
       { url, width: 700 },
     ];
+  }
+  const wikimedia = url.match(WIKIMEDIA_COMMONS);
+  if (wikimedia) {
+    return WIKIMEDIA_WIDTHS.map((width) => ({
+      url: `${wikimedia[1]}/thumb/${wikimedia[2]}/${width}px-${wikimedia[3]}`,
+      width,
+    }));
   }
   if (AURRAL_COVER.test(url)) {
     return [

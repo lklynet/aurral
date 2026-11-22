@@ -472,3 +472,19 @@ test("a forced refresh searches albums that a pending lookup skips", async () =>
   assert.equal((await lookup).notFound, true);
   assert.equal(dbOps.getImage(mbid)?.imageUrl, newImage);
 });
+
+test("inline album covers bypass stale NOT_FOUND artist_rg entries and clearImages resets them", async () => {
+  const mbid = artistId(20);
+  const albumId = artistId(220);
+  artist(mbid, {
+    albums: [{ id: albumId, title: "Good Deal", type: "EP", cover: newImage }],
+  });
+  dbOps.setDeezerMbidCache(`artist_rg:${mbid}`, "NOT_FOUND");
+
+  const result = await getArtistImage(mbid);
+  assert.equal(result.url, newImage);
+  assert.equal(dbOps.getDeezerMbidCache(`artist_rg:${mbid}`), albumId);
+
+  dbOps.clearImages();
+  assert.equal(dbOps.getDeezerMbidCache(`artist_rg:${mbid}`), null);
+});

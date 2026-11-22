@@ -19,7 +19,7 @@ const staleLocalUrl = `/api/image-proxy/${"a".repeat(64)}.webp`;
 const resolvedCoverUrls = new Map([
   [
     missingReleaseBytesMbid,
-    "https://imagecache.lidarr.audio/v1/caa/release-id/missing-bytes-1200.jpg",
+    "https://coverartarchive.org/release/release-id/missing-bytes-1200.jpg",
   ],
 ]);
 const imageLinks = [
