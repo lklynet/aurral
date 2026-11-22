@@ -41,7 +41,7 @@ test("parseSpotifyPlaylistItems maps spotify playlist entries to aurral tracks",
   assert.equal(tracks[0]?.durationMs, 215000);
   assert.equal(tracks[0]?.trackMbid, "recording");
   assert.equal(tracks[0]?.artistMbid, "artist");
-  assert.equal(tracks[0]?.albumMbid, null);
+  assert.equal(tracks[0]?.albumMbid, "album");
 });
 
 test("parseSpotifyPlaylistItems keeps tracks when spotify fields omit type", () => {
