@@ -658,6 +658,8 @@ test("jobs follow the Library files a scan changed", async () => {
   const replacedPath = path.join(album, "01 - Feiticeira.mp3");
   const overwrittenPath = path.join(album, "02 - Digital Bath.mp3");
   const offlinePath = path.join(album, "03 - Elite.mp3");
+  const deletedPath = path.join(album, "04 - Rx Queen.mp3");
+  const importedPath = path.join(album, "04 - Rx Queen.flac");
   const flacPath = path.join(album, "Feiticeira [manual].flac");
   await fs.mkdir(album, { recursive: true });
   await fs.writeFile(flacPath, "audio");
@@ -716,11 +718,12 @@ test("jobs follow the Library files a scan changed", async () => {
   const replaced = doneJob("Feiticeira", "feiticeira", replacedPath);
   const overwritten = doneJob("Digital Bath", "digital-bath", overwrittenPath);
   const offline = doneJob("Elite", "elite", offlinePath);
+  const deleted = doneJob("Rx Queen", "rx-queen", deletedPath);
   const playlistSync = vi
     .spyOn(playlistManager, "requestPlaylistSync")
     .mockImplementation(() => null);
 
-  await followChangedLibraryFiles([replacedPath, overwrittenPath, offlinePath]);
+  await followChangedLibraryFiles([replacedPath, overwrittenPath, offlinePath, deletedPath]);
 
   const replacedJob = trackedJob(downloadTracker, replaced);
   assert.equal(replacedJob.finalPath, flacPath);
@@ -729,5 +732,15 @@ test("jobs follow the Library files a scan changed", async () => {
   const offlineJob = trackedJob(downloadTracker, offline);
   assert.equal(offlineJob.finalPath, offlinePath);
   assert.equal(offlineJob.qualityTier, "mp3-128");
+  assert.equal(trackedJob(downloadTracker, deleted).finalPath, deletedPath);
   assert.deepEqual(playlistSync.mock.calls, [[["library"]]]);
+
+  await fs.writeFile(importedPath, "audio");
+  addTrack("rx-queen", "Rx Queen", importedPath, lossless);
+  await followChangedLibraryFiles([importedPath]);
+
+  const deletedJob = trackedJob(downloadTracker, deleted);
+  assert.equal(deletedJob.finalPath, importedPath);
+  assert.equal(deletedJob.qualityTier, "flac-standard");
+  assert.deepEqual(playlistSync.mock.calls, [[["library"]], [["library"]]]);
 });

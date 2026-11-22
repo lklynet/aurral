@@ -51,7 +51,11 @@ const spellLetters = (value: unknown) =>
     .replace(/[æœßøđðłþ]/g, (letter) => LETTER_SPELLINGS[letter as keyof typeof LETTER_SPELLINGS]);
 
 const hasNonLatinLetters = (value: unknown) =>
-  /(?![a-z0-9])[\p{L}\p{N}]/u.test(spellLetters(value).normalize("NFKD").replace(/[̀-ͯ]/g, ""));
+  /(?![a-z0-9])[\p{L}\p{N}]/u.test(
+    spellLetters(value)
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, ""),
+  );
 
 const asciiKeyPart = (value: unknown) =>
   normalizeText(value)

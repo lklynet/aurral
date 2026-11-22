@@ -1016,6 +1016,14 @@ export function getLibraryIndexLastModified() {
   return Number(row?.last_modified) || null;
 }
 
+const libraryTrackTitleStmt = db
+  .prepare<[number], string>("SELECT title FROM library_tracks WHERE id = ?")
+  .pluck();
+
+export function getLibraryTrackTitle(trackId: number) {
+  return libraryTrackTitleStmt.get(trackId) ?? null;
+}
+
 export function getLibraryTrackPath(
   albumReference: string | null | undefined,
   trackReference: string | null | undefined,
