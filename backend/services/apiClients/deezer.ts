@@ -39,7 +39,7 @@ export const deezerTrackSchema = v.looseObject({
   rank: v.optional(v.number()),
   track_position: v.optional(v.number()),
   disk_number: v.optional(v.number()),
-  artist: v.optional(v.looseObject({ name: v.optional(v.string()) })),
+  artist: v.optional(v.looseObject({ id: v.optional(v.number()), name: v.optional(v.string()) })),
   album: v.optional(
     v.looseObject({
       id: v.optional(v.number()),

@@ -773,23 +773,21 @@ test("daily reconciliation queues new releases once, saves upcoming ones for rel
   metadataState.otherReleases = [upcoming, olderRelease];
   const providerGet = http.get.bind(http);
   vi.spyOn(http, "get").mockImplementation(async (url, options) =>
-    url.includes("/1/explore/fresh-releases/")
+    url.endsWith("/v1/fresh-releases")
       ? {
           status: 200,
           statusText: "OK",
           headers: {},
           data: {
-            payload: {
-              releases: [{ ...newRelease, artistMbid }, { ...newSingle, artistMbid }, upcoming].map(
-                (release) => ({
-                  artist_mbids: [release.artistMbid],
-                  release_date: release.date,
-                  release_group_mbid: release.id,
-                  release_group_primary_type: release.type,
-                  release_name: release.title,
-                }),
-              ),
-            },
+            releases: [{ ...newRelease, artistMbid }, { ...newSingle, artistMbid }, upcoming].map(
+              (release) => ({
+                id: release.id,
+                title: release.title,
+                type: release.type,
+                releaseDate: release.date,
+                artistIds: [release.artistMbid],
+              }),
+            ),
           },
         }
       : providerGet(url, options),

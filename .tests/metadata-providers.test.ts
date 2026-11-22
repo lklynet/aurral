@@ -20,6 +20,7 @@ const [
   { http, HttpError },
   { readAppSettings, saveAppSettings },
   { trackWork },
+  { resolveDeezerAlbumToMbid },
 ] = await setupIsolatedBackend(
   "metadata-providers",
   () => import("../backend/db/helpers/index.ts"),
@@ -29,6 +30,7 @@ const [
   () => import("../lib/http.ts"),
   () => import("../backend/services/appSettings.ts"),
   () => import("../backend/services/eventLoopWatch.ts"),
+  () => import("../backend/services/apiClients/crossProvider.ts"),
 );
 
 const {
@@ -976,6 +978,105 @@ test("album search shows no results when its MusicBrainz fallback is down", asyn
       { request: true },
     );
     assert.deepEqual(result.items, []);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("an album search AurralBrainz answers empty asks MusicBrainz once, unless MusicBrainz failed", async () => {
+  const previousSettings = dbOps.getSettings();
+  const server = await createMockHttpServer((_request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ albums: [] }));
+  });
+  const providerGet = http.get.bind(http);
+  let asked = 0;
+  vi.spyOn(http, "get").mockImplementation(async (url, options) => {
+    if (!url.startsWith("https://musicbrainz.org/")) return providerGet(url, options);
+    asked += 1;
+    if (asked === 1) throw new Error("MusicBrainz unavailable");
+    return {
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      data: { "release-groups": [{ id: "fallback-album", title: "Missing Album" }] },
+    };
+  });
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: { ...(previousSettings.integrations?.metadata || {}), baseUrl: server.url },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    const titles = [];
+    for (let search = 0; search < 3; search += 1) {
+      const result = await trackWork(
+        () => "GET /api/search",
+        () => searchAlbums("Missing Album"),
+        undefined,
+        { request: true },
+      );
+      titles.push(result.items.map((item) => item.title));
+    }
+    assert.deepEqual(titles, [[], ["Missing Album"], ["Missing Album"]]);
+    assert.equal(asked, 2);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("an ID lookup asks for 100 keys at a time, and a Deezer album resolves by its ID alone", async () => {
+  const previousSettings = dbOps.getSettings();
+  const linked = { recordingId: null, albumId: "linked-album", artistId: "linked-artist" };
+  const asked: string[][] = [];
+  const server = await createMockHttpServer((request, response) => {
+    const keys = new URL(request.url ?? "", "http://metadata").searchParams.get("keys")!.split(",");
+    asked.push(keys);
+    response.setHeader("content-type", "application/json");
+    response.end(
+      JSON.stringify({
+        ids: Object.fromEntries(
+          keys.filter((key) => key.startsWith("deezer-album:")).map((key) => [key, linked]),
+        ),
+      }),
+    );
+  });
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: { ...(previousSettings.integrations?.metadata || {}), baseUrl: server.url },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    const isrcs = Array.from({ length: 150 }, (_, index) => `isrc:GBAYE06${10000 + index}`);
+    const found = await metadataProvider.lookupIds([...isrcs, "deezer-album:1", ...isrcs]);
+    assert.deepEqual(
+      asked.map((keys) => keys.length),
+      [100, 51],
+    );
+    assert.deepEqual(
+      [...found],
+      [
+        [
+          "deezer-album:1",
+          { trackMbid: null, albumMbid: "linked-album", artistMbid: "linked-artist" },
+        ],
+      ],
+    );
+
+    assert.equal(await resolveDeezerAlbumToMbid("", "", 302127), "linked-album");
+    assert.deepEqual(asked.at(-1), ["deezer-album:302127"]);
   } finally {
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);

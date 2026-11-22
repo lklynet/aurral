@@ -45,6 +45,9 @@ const UNLINKED_ARTIST_BASE = 10_000_000_000;
 const FRESH_RELEASE_EVERY = 16;
 const DAY_MS = 86_400_000;
 
+export const isrcOf = (track: Track) =>
+  `ED${track.number.toString(36).toUpperCase().padStart(10, "0")}`;
+
 // A fresh album came out a few days ago, whatever its recorded date.
 export const releaseDate = (album: Album, now = Date.now()) =>
   album.freshDays === null

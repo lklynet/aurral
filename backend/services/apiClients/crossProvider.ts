@@ -1,5 +1,9 @@
 import { dbOps } from "../../db/helpers/index.ts";
-import { resolveAlbumByArtistAndTitle, searchTracks } from "../providers/metadataProvider.ts";
+import {
+  lookupIds,
+  resolveAlbumByArtistAndTitle,
+  searchTracks,
+} from "../providers/metadataProvider.ts";
 import { scoreTextMatch } from "../providers/metadataRanking.ts";
 import { guessArtistMbid } from "../artistMatch.ts";
 import { musicbrainzFindTrackReleaseGroup } from "./musicbrainz.ts";
@@ -30,6 +34,15 @@ export async function resolveDeezerAlbumToMbid(
   const aaKey = normalizeArtistAlbumKey(artistName, albumName);
   const cached = (dzKey && dbOps.getDeezerMbidCache(dzKey)) || dbOps.getDeezerMbidCache(aaKey);
   if (cached) return cached;
+
+  if (dzKey) {
+    const key = `deezer-album:${deezerId}`;
+    const linked = (await lookupIds([key]).catch(() => null))?.get(key)?.albumMbid;
+    if (linked) {
+      dbOps.setDeezerMbidCache(dzKey, linked);
+      return linked;
+    }
+  }
 
   const artist = String(artistName || "").trim();
   const album = String(albumName || "").trim();

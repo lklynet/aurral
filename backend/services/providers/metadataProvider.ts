@@ -19,12 +19,15 @@ import {
   albumSearchResponseSchema,
   artistDetailSchema,
   artistSearchResponseSchema,
+  freshReleasesSchema,
   genreSchema,
+  idLookupSchema,
   searchAlbumItemSchema,
   searchArtistItemSchema,
   searchTrackItemSchema,
   toNormalizedAlbum,
   toNormalizedArtist,
+  toNormalizedFreshReleases,
   toNormalizedGenre,
   toNormalizedSearchArtist,
   toNormalizedSearchTrack,
@@ -177,6 +180,10 @@ const METADATA_ENTITY_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
 const INCOMPLETE_ALBUM_CACHE_TTL_SECONDS = 60 * 60;
 const METADATA_ENTITY_STALE_TTL_SECONDS = 30 * 24 * 60 * 60;
 const METADATA_SEARCH_CACHE_TTL_SECONDS = 24 * 60 * 60;
+const FRESH_RELEASES_PATH = "/v1/fresh-releases";
+const FRESH_RELEASES_CACHE_TTL_SECONDS = 60 * 60;
+const ID_LOOKUP_PATH = "/v1/ids";
+const ID_LOOKUP_KEYS = 100;
 const METADATA_NOT_FOUND_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const METADATA_CACHE_MAX_ENTRIES = 20_000;
 const METADATA_HOT_CACHE_TTL_SECONDS = 60;
@@ -213,6 +220,10 @@ const musicbrainzAlbumReleasesCache = createCache<NormalizedRelease[]>(
   MUSICBRAINZ_FALLBACK_CACHE_TTL_SECONDS,
   500,
 );
+const musicbrainzAlbumSearchCache = createCache<v.InferOutput<typeof releaseGroupHitSchema>[]>(
+  MUSICBRAINZ_FALLBACK_CACHE_TTL_SECONDS,
+  500,
+);
 const providerInflightRequests: InflightRequests = new Map();
 const METADATA_MAX_RETRIES = 1;
 // The search service allows each address 60 uncached searches a minute. Work
@@ -235,6 +246,7 @@ export function clearMetadataProviderCaches() {
   musicbrainzArtistFallbackCache.flushAll();
   musicbrainzAlbumFallbackCache.flushAll();
   musicbrainzAlbumReleasesCache.flushAll();
+  musicbrainzAlbumSearchCache.flushAll();
   providerInflightRequests.clear();
 }
 
@@ -292,7 +304,7 @@ function isAlbumMetadataPath(path: string) {
 }
 
 function isSearchPath(path: string) {
-  return path === "/v1/search" || path.startsWith("/v1/search/");
+  return path === "/v1/search" || path.startsWith("/v1/search/") || path === ID_LOOKUP_PATH;
 }
 
 function retryAfterMs(failure: ReturnType<typeof asAppError>) {
@@ -361,7 +373,10 @@ function getMetadataCachePolicy(path: string, value?: unknown) {
     };
   }
   return {
-    freshTtlSeconds: METADATA_SEARCH_CACHE_TTL_SECONDS,
+    freshTtlSeconds:
+      path === FRESH_RELEASES_PATH
+        ? FRESH_RELEASES_CACHE_TTL_SECONDS
+        : METADATA_SEARCH_CACHE_TTL_SECONDS,
     staleTtlSeconds: 0,
   };
 }
@@ -992,6 +1007,39 @@ export async function getGenreBySlug(slug: string, { signal }: MetadataRequestOp
   }
 }
 
+export async function getFreshReleases({ signal }: MetadataRequestOptions = {}) {
+  return toNormalizedFreshReleases(
+    await request(freshReleasesSchema, FRESH_RELEASES_PATH, {}, { signal }),
+  );
+}
+
+// Keys name a recording by ISRC, or an album or artist by its Deezer ID, such
+// as `isrc:GBAYE0601498` and `deezer-album:302127`. A key AurralBrainz does not
+// know is left out of the answer.
+export async function lookupIds(keys: string[], { signal }: MetadataRequestOptions = {}) {
+  const wanted = [...new Set(keys)].toSorted();
+  const found = new Map<
+    string,
+    { trackMbid: string | null; albumMbid: string | null; artistMbid: string | null }
+  >();
+  for (let start = 0; start < wanted.length; start += ID_LOOKUP_KEYS) {
+    const { ids } = await request(
+      idLookupSchema,
+      ID_LOOKUP_PATH,
+      { keys: wanted.slice(start, start + ID_LOOKUP_KEYS).join(",") },
+      { signal },
+    );
+    for (const [key, entry] of Object.entries(ids)) {
+      found.set(key, {
+        trackMbid: entry.recordingId ?? null,
+        albumMbid: entry.albumId ?? null,
+        artistMbid: entry.artistId ?? null,
+      });
+    }
+  }
+  return found;
+}
+
 export async function getAlbumTracksByAlbumMbid(
   albumMbid: string,
   {
@@ -1170,22 +1218,27 @@ export async function searchAlbums(
     const mbQuery = artistName
       ? `artist:"${escapeLucenePhrase(artistName)}" AND releasegroup:"${escapeLucenePhrase(query)}"`
       : String(query || "").trim();
-    const data = await musicbrainzGet(
-      releaseGroupSearchSchema,
-      "/release-group",
-      { query: mbQuery, limit: SEARCH_WINDOW },
-      { signal },
-    ).catch((error) => {
-      signal?.throwIfAborted();
-      failure = error;
-      return null;
-    });
-    const hits = data
-      ? readMany(releaseGroupHitSchema, data["release-groups"], {
-          service: "MusicBrainz",
-          endpoint: "/release-group",
+    const hits =
+      musicbrainzAlbumSearchCache.get(mbQuery) ??
+      (await musicbrainzGet(
+        releaseGroupSearchSchema,
+        "/release-group",
+        { query: mbQuery, limit: SEARCH_WINDOW },
+        { signal },
+      )
+        .then((data) => {
+          const found = readMany(releaseGroupHitSchema, data["release-groups"], {
+            service: "MusicBrainz",
+            endpoint: "/release-group",
+          });
+          musicbrainzAlbumSearchCache.set(mbQuery, found);
+          return found;
         })
-      : [];
+        .catch((error) => {
+          signal?.throwIfAborted();
+          failure = error;
+          return [];
+        }));
     items = hits.map((entry, index) => {
       const primaryCredit = entry["artist-credit"]?.[0];
       return {
