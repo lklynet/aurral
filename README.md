@@ -77,6 +77,7 @@ Built on open music data from [MetaBrainz](https://metabrainz.org) ([MusicBrainz
   <a href="https://github.com/erleijen"><img src="https://github.com/erleijen.png?size=120" width="60" alt="@erleijen" /></a>
   <a href="https://github.com/bahraoui"><img src="https://github.com/bahraoui.png?size=120" width="60" alt="@bahraoui" /></a>
   <a href="https://github.com/nosooqua"><img src="https://github.com/nosooqua.png?size=120" width="60" alt="@nosooqua" /></a>
+  <a href="https://github.com/nichols89ben"><img src="https://github.com/nichols89ben.png?size=120" width="60" alt="@nichols89ben" /></a>
 </p>
 
 <p align="center">
