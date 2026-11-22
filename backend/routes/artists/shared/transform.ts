@@ -1,5 +1,5 @@
 import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
-import { deezerPreviewSearchPath } from "../../../services/apiClients/deezer.ts";
+import { deezerPreviewSearchPath } from "../../../../lib/deezerPreview.ts";
 import { getSimilarArtists } from "../../../services/musicDataSource/index.ts";
 import { guessArtistMbid } from "../../../services/artistMatch.ts";
 import { mapWithConcurrency } from "../../../services/discovery/helpers.ts";

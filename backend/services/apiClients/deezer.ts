@@ -255,9 +255,6 @@ async function deezerList<Schema extends v.GenericSchema>(
 
 export const deezerPreviewPath = (trackId: string | number) => `/api/deezer/preview/${trackId}.mp3`;
 
-export const deezerPreviewSearchPath = (artist: string, track: string) =>
-  `/api/deezer/preview?${new URLSearchParams({ artist, track })}`;
-
 export function getDeezerPreviewLink(trackId: string) {
   return previewLinkCache.load(trackId, async () => {
     const track = await deezerGet(deezerTrackSchema, `/track/${trackId}`, { timeoutMs: 3000 });

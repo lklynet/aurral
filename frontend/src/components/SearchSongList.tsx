@@ -11,7 +11,8 @@ import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { useQueueTrackActions } from "../hooks/useQueueTrackActions";
 import { useAddTrackToLibrary } from "../hooks/useAddTrackToLibrary";
-import { normalizeStreamQueueTrack } from "../utils/audioQueue";
+import { normalizePreviewTrack, normalizeStreamQueueTrack } from "../utils/audioQueue";
+import { deezerPreviewSearchPath } from "../../../lib/deezerPreview.ts";
 import {
   getSearchResultKey,
   getSearchResultLink,
@@ -38,32 +39,50 @@ const coverPlaceholder = (
 );
 
 function songQueueTrack(song: SearchItem) {
-  const streamPath = song.streamPath;
-  if (!streamPath) return null;
-  return normalizeStreamQueueTrack({
+  const track = {
     id: song.id,
     title: song.title,
-    artistName: song.artistName,
-    albumName: song.albumTitle,
     artistMbid: song.artistMbid,
     albumMbid: song.albumMbid,
     trackMbid: song.trackMbid,
     durationMs: song.durationMs,
-    libraryTrackId: song.id,
-    libraryAlbumId: song.libraryAlbumId,
-    streamPath,
+    albumName: song.albumTitle,
     artworkUrl: song.coverUrl,
-  });
+  };
+  if (song.streamPath) {
+    return normalizeStreamQueueTrack({
+      ...track,
+      artistName: song.artistName,
+      libraryTrackId: song.id,
+      libraryAlbumId: song.libraryAlbumId,
+      streamPath: song.streamPath,
+    });
+  }
+  const artistName = song.artistName?.trim();
+  const title = song.title?.trim();
+  if (song.inLibrary || !artistName || !title) return null;
+  return normalizePreviewTrack(
+    {
+      ...track,
+      id: track.id || `search:${JSON.stringify([artistName, title])}`,
+      preview_url: deezerPreviewSearchPath(artistName, title),
+    },
+    artistName,
+  );
 }
 
 export function useSongPlayback(song: SearchItem) {
-  const { currentTrack, isPlaying, playTrack, togglePlayPause } = useAudioQueue();
+  const { currentTrack, isPlaying, isStarting, isLoading, playTrack, togglePlayPause } =
+    useAudioQueue();
   const track = songQueueTrack(song);
   if (!track) return null;
-  const current = currentTrack?.id === String(song.id);
+  const current = currentTrack?.id === track.id;
+  const playing = current && (isPlaying || isStarting);
   return {
     track,
-    playing: current && isPlaying,
+    playing,
+    loading: current && isLoading,
+    verb: playing ? "Pause" : track.isPreview ? "Preview" : "Play",
     toggle: () => (current ? togglePlayPause() : playTrack(track)),
   };
 }
@@ -75,13 +94,14 @@ function SongCover({ song, playback }: { song: SearchItem; playback: SongPlaybac
     <ReleaseCoverImage src={song.coverUrl} alt="" sizes="3rem" placeholder={coverPlaceholder} />
   );
   if (!playback) return <span className="search-song__cover">{cover}</span>;
-  const label = `${playback.playing ? "Pause" : "Play"} ${song.title}`;
+  const label = `${playback.verb} ${song.title}`;
   return (
     <Tooltip content={label}>
       <button
         type="button"
         className={`search-song__cover search-song__play${playback.playing ? " is-playing" : ""}`}
         aria-label={label}
+        aria-busy={playback.loading || undefined}
         onClick={playback.toggle}
       >
         {cover}
@@ -111,7 +131,7 @@ export function SongDownload({
   const add = () => void addTrackToLibrary(searchTrackPayload(song), savingKey);
   if (showLabel) {
     return (
-      <AddActionButton label={label} className="btn-primary" disabled={busy} onAdd={add}>
+      <AddActionButton label={label} className="btn-secondary" disabled={busy} onAdd={add}>
         {busy ? <DotLoader size="sm" label={null} /> : <Download aria-hidden="true" />}
         {busy ? label : "Download"}
       </AddActionButton>
@@ -155,7 +175,7 @@ function SongRow({
     ? [
         {
           id: "play",
-          label: playback.playing ? "Pause" : "Play",
+          label: playback.verb,
           icon: playback.playing ? Pause : Play,
           disabled: false,
           onSelect: playback.toggle,
