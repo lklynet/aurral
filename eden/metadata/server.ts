@@ -9,6 +9,7 @@ import {
   toV1Rating,
   type CatalogueAlbum,
   type CatalogueArtist,
+  shownListeners,
 } from "../catalogue/catalogue.ts";
 import { indexMusic, releaseDate, type Music } from "../outside/music.ts";
 import {
@@ -74,7 +75,7 @@ function buildAppearsOn(catalogueData: typeof catalogue, indexed: Music) {
           rating: toV1Rating(album.rating),
           cover: selectAlbumCover(images)?.url ?? null,
           trackCount: indexedAlbum?.tracks.length ?? album.releases?.[0]?.track_count ?? null,
-          listeners: (album.rating?.Count ?? 0) * 300,
+          listeners: shownListeners(album.rating),
           artistId: owner?.id ?? album.artistid ?? null,
           artistName: owner?.artistname ?? "",
         };
@@ -108,7 +109,7 @@ function buildV1Artist(artist: CatalogueArtist) {
       rating: toV1Rating(album?.rating),
       cover: selectAlbumCover(images)?.url ?? null,
       trackCount: indexedAlbum?.tracks.length ?? album?.releases?.[0]?.track_count ?? null,
-      listeners: (album?.rating?.Count ?? 0) * 300,
+      listeners: shownListeners(album?.rating),
     };
   });
   const topTracks = (indexed?.albums ?? [])
@@ -127,6 +128,7 @@ function buildV1Artist(artist: CatalogueArtist) {
     name: entry.name,
     score: Number((1.5 - index * 0.12).toFixed(4)),
     image: artistBestImage(catalogue.artists.get(entry.id)),
+    genres: catalogue.artists.get(entry.id)?.genres ?? [],
   }));
   return {
     id: artist.id,
@@ -141,7 +143,7 @@ function buildV1Artist(artist: CatalogueArtist) {
     images: toV1Images(artist.images),
     links: toV1Links(artist.links),
     rating: toV1Rating(artist.rating),
-    listeners: (artist.rating?.Count ?? 0) * 300,
+    listeners: shownListeners(artist.rating),
     albums,
     appearsOn: appearsOnByArtist.get(artist.id) ?? [],
     topTracks,
@@ -230,7 +232,7 @@ createServer((request, response) => {
     return send(response, 200, {
       artists: searchV1Artists(catalogue, query, limit),
       albums: searchV1Albums(catalogue, query, "", limit),
-      tracks: searchV1Tracks(catalogue, query, limit),
+      tracks: searchV1Tracks(catalogue, query, "", limit),
     });
   }
   if (url.pathname === "/v1/search/artist") {
@@ -245,8 +247,9 @@ createServer((request, response) => {
     });
   }
   if (url.pathname === "/v1/search/track") {
+    const artist = url.searchParams.get("artist") ?? "";
     return send(response, 200, {
-      tracks: searchV1Tracks(catalogue, query, limitOf(url.searchParams, 24)),
+      tracks: searchV1Tracks(catalogue, query, artist, limitOf(url.searchParams, 24)),
     });
   }
   if (url.pathname.endsWith("/search/artist")) {

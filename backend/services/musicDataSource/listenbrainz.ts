@@ -3,6 +3,7 @@ import {
   getDeezerArtist,
   musicbrainzSearchArtistsByTag,
 } from "../apiClients/index.ts";
+import createCache from "../apiClients/simpleCache.ts";
 import { cachedArtistGuess, guessArtistMbid } from "../artistMatch.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import {
@@ -23,6 +24,12 @@ import { normalizeMbid, recordHealth, text } from "./common.ts";
 const TAG_SEARCH_PAGE_SIZE = 100;
 const RESOLVE_CONCURRENCY = 4;
 const METADATA_GENRE_ARTISTS_CAP = 200;
+const LISTED_GENRES_TTL_SECONDS = 60 * 60;
+const LISTED_GENRES_MAX = 5000;
+
+// A similar list names each artist's genres. Recommendations ask for the tags
+// of artists a similar list just named, so those answers need no file of their own.
+const listedGenres = createCache<string[]>(LISTED_GENRES_TTL_SECONDS, LISTED_GENRES_MAX);
 
 type TagSearchArtist = Awaited<ReturnType<typeof musicbrainzSearchArtistsByTag>>["artists"][number];
 
@@ -112,6 +119,7 @@ export const listenbrainzSource = {
       known = await getArtistByMbid(mbid).catch(() => null);
       if (known?.similar.length) {
         recordHealth(health, true);
+        for (const { id, genres } of known.similar) if (genres) listedGenres.set(id, genres);
         return known.similar.slice(0, limit).map((entry) => ({
           mbid: normalizeMbid(entry.id),
           name: entry.name,
@@ -131,11 +139,11 @@ export const listenbrainzSource = {
     const fetched = new Map<string, { name: string; count: number }[]>();
     await mapWithConcurrency(unique, RESOLVE_CONCURRENCY, async (mbid) => {
       try {
-        const artist = await getArtistByMbid(mbid);
+        const genres = listedGenres.get(mbid) ?? (await getArtistByMbid(mbid)).genres;
         recordHealth(health, true);
         fetched.set(
           mbid,
-          artist.genres.map((name) => ({ name: name.toLowerCase(), count: 100 })),
+          genres.map((name) => ({ name: name.toLowerCase(), count: 100 })),
         );
       } catch {
         recordHealth(health, false);

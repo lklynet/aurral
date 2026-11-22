@@ -10,7 +10,7 @@ const GUEST = "22222222-2222-4222-8222-222222222222";
 const STARS = "33333333-3333-4333-8333-333333333333";
 const BLACK_PANTHER = "44444444-4444-4444-8444-444444444444";
 
-test("release-group tracks include each track's artist credits straight from v1 album metadata", async (t) => {
+test("release-group tracks include each track's artist credits and popular flag straight from v1 album metadata", async (t) => {
   const albumMbid = "a0a0a0a0-a0a0-4a0a-8a0a-a0a0a0a0a0a0";
   const releaseMbid = "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1";
   let mbCalls = 0;
@@ -40,6 +40,7 @@ test("release-group tracks include each track's artist credits straight from v1 
                 trackPosition: 1,
                 mediumNumber: 1,
                 artistId: LEAD,
+                popular: true,
                 credits: [
                   { id: LEAD, name: "Kendrick Lamar", joinPhrase: " & " },
                   { id: GUEST, name: "SZA", joinPhrase: "" },
@@ -70,7 +71,7 @@ test("release-group tracks include each track's artist credits straight from v1 
   assert.ok(Array.isArray(tracks));
   assert.equal(mbCalls, 0);
   assert.deepEqual(
-    tracks.map((track) => [track.mbid, track.credits]),
+    tracks.map((track) => [track.mbid, track.credits, track.popular]),
     [
       [
         STARS,
@@ -78,8 +79,9 @@ test("release-group tracks include each track's artist credits straight from v1 
           { name: "Kendrick Lamar", mbid: LEAD, joinPhrase: " & " },
           { name: "SZA", mbid: GUEST, joinPhrase: "" },
         ],
+        true,
       ],
-      [BLACK_PANTHER, [{ name: "Kendrick Lamar", mbid: LEAD, joinPhrase: "" }]],
+      [BLACK_PANTHER, [{ name: "Kendrick Lamar", mbid: LEAD, joinPhrase: "" }], false],
     ],
   );
 });

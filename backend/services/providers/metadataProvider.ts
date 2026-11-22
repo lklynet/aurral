@@ -5,6 +5,7 @@ import { UUID_REGEX } from "../../../lib/uuid.ts";
 import { http, isTransientNetworkError } from "../../../lib/http.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import createCache from "../apiClients/simpleCache.ts";
+import createRateLimiter from "../apiClients/rateLimiter.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { APP_NAME, APP_VERSION, DEFAULT_METADATA_BASE_URL } from "../../config/constants.ts";
 import {
@@ -19,7 +20,6 @@ import {
   artistDetailSchema,
   artistSearchResponseSchema,
   genreSchema,
-  genresIndexSchema,
   searchAlbumItemSchema,
   searchArtistItemSchema,
   searchTrackItemSchema,
@@ -28,12 +28,14 @@ import {
   toNormalizedGenre,
   toNormalizedSearchArtist,
   toNormalizedSearchTrack,
+  trackSearchResponseSchema,
   unifiedSearchResponseSchema,
   type MetadataImage,
   type NormalizedAlbum,
   type NormalizedArtist,
   type NormalizedArtistAlbum,
   type NormalizedRelease,
+  type NormalizedTrack,
   type NormalizedSearchTrack,
 } from "./metadataMappers.ts";
 import {
@@ -50,7 +52,7 @@ import { readMany, readOne } from "../integrationData.ts";
 import { albumSearchTexts, parseSearchQuery, rankByMatch } from "../searchText.ts";
 import { runSharedInflight, type InflightRequests } from "../sharedInflight.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
-import { describeCurrentWork } from "../eventLoopWatch.ts";
+import { describeCurrentWork, isServingRequest } from "../eventLoopWatch.ts";
 import { recordMetadataCall } from "../metadataProviderBudget.ts";
 
 type CachedMetadata<T> = { value: T; freshUntil: number; staleUntil: number };
@@ -168,7 +170,6 @@ type MetadataParams = Record<string, string | number>;
 
 interface MetadataError extends Error {
   code?: string;
-  retryAfterMs?: number;
   response?: { status?: number; headers?: Record<string, string> };
 }
 
@@ -184,7 +185,11 @@ const METADATA_STORE_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const MUSICBRAINZ_FALLBACK_ENTITY_TTL_SECONDS = 60 * 60;
 const MUSICBRAINZ_FALLBACK_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const MUSICBRAINZ_FALLBACK_RETRY_SECONDS = 5 * 60;
-const MIN_ALBUM_SEARCH_WINDOW = 25;
+const SEARCH_WINDOW = 50;
+const SEARCH_BACKGROUND_INTERVAL_MS = 2000;
+const REVALIDATION_BACKGROUND_INTERVAL_MS = 1000;
+const SEARCH_RATE_LIMIT_PAUSE_MS = 60_000;
+const SEARCH_RATE_LIMIT_MAX_PAUSE_MS = 5 * 60_000;
 const METADATA_REQUEST_TIMEOUT_MS = 8000;
 const METADATA_RESPONSE_BODY_TIMEOUT_MS = 90_000;
 const metadataHotCache = createCache<CachedMetadata<unknown>>(
@@ -210,6 +215,18 @@ const musicbrainzAlbumReleasesCache = createCache<NormalizedRelease[]>(
 );
 const providerInflightRequests: InflightRequests = new Map();
 const METADATA_MAX_RETRIES = 1;
+// The search service allows each address 60 uncached searches a minute. Work
+// that no request is waiting on, such as scans, imports and downloads, takes
+// turns that add up to half of that across every process. The rest is left for
+// searches sent while serving a request, which are never held back.
+const backgroundSearchLimiter = createRateLimiter(SEARCH_BACKGROUND_INTERVAL_MS, {
+  shared: "metadata-search",
+});
+// A job that reads many files at once finds them all stale on the same day.
+// Nothing waits on those refreshes, so they go out one at a time.
+const backgroundRevalidationLimiter = createRateLimiter(REVALIDATION_BACKGROUND_INTERVAL_MS, {
+  shared: "metadata-revalidation",
+});
 
 export function clearMetadataProviderCaches() {
   metadataHotCache.flushAll();
@@ -224,7 +241,6 @@ export function clearMetadataProviderCaches() {
 const healthState: {
   configuredProvider: string;
   activeBaseUrl: string | null;
-  failoverActive: boolean;
   lastCheckedAt: string | null;
   lastSuccessAt: string | null;
   lastFailureAt: string | null;
@@ -232,7 +248,6 @@ const healthState: {
 } = {
   configuredProvider: "aurral-data",
   activeBaseUrl: null,
-  failoverActive: false,
   lastCheckedAt: null,
   lastSuccessAt: null,
   lastFailureAt: null,
@@ -269,11 +284,22 @@ function getUserAgent() {
 }
 
 function isEntityMetadataPath(path: string) {
-  return /^\/v1\/(?:album|artist|genre)\/[^/]+$/.test(path) || path === "/v1/genres";
+  return /^\/v1\/(?:album|artist|genre)\/[^/]+$/.test(path);
 }
 
 function isAlbumMetadataPath(path: string) {
   return /^\/v1\/album\/[^/]+$/.test(path);
+}
+
+function isSearchPath(path: string) {
+  return path === "/v1/search" || path.startsWith("/v1/search/");
+}
+
+function retryAfterMs(failure: ReturnType<typeof asAppError>) {
+  const seconds = Number(failure?.response?.headers?.["retry-after"]);
+  return Number.isFinite(seconds) && seconds > 0
+    ? Math.min(seconds * 1000, SEARCH_RATE_LIMIT_MAX_PAUSE_MS)
+    : SEARCH_RATE_LIMIT_PAUSE_MS;
 }
 
 export function isMetadataNotFoundError(error: unknown) {
@@ -289,7 +315,6 @@ function createMetadataNotFoundError() {
 }
 
 function endpointName(path: string) {
-  if (path === "/v1/genres") return "genres";
   if (path === "/v1/search") return "search";
   const searchMatch = /^\/v1\/search\/(artist|album|track)$/.exec(path);
   if (searchMatch) return `search/${searchMatch[1]!}`;
@@ -442,26 +467,38 @@ function refreshMetadata<Schema extends v.GenericSchema>(
     signal,
     fallbackValue,
     cacheNotFound = true,
+    revalidating = false,
   }: MetadataRequestOptions & {
     fallbackValue?: v.InferOutput<Schema>;
     cacheNotFound?: boolean;
+    revalidating?: boolean;
   } = {},
 ): Promise<v.InferOutput<Schema>> {
   const baseUrl = getMetadataBaseUrl();
   healthState.activeBaseUrl = baseUrl;
   healthState.lastCheckedAt = nowIso();
+  const serving = isServingRequest();
+  const limiter = serving
+    ? null
+    : isSearchPath(path)
+      ? backgroundSearchLimiter
+      : revalidating
+        ? backgroundRevalidationLimiter
+        : null;
 
+  // A background send may be waiting its turn, so a request shares a send only
+  // with other requests and never joins one that is standing in that line.
   return runSharedInflight(
     providerInflightRequests,
-    cacheKey,
+    serving ? `request:${cacheKey}` : cacheKey,
     async (sharedSignal: AbortSignal) => {
       for (let attempt = 0; attempt <= METADATA_MAX_RETRIES; attempt += 1) {
         if (sharedSignal.aborted) {
           throw sharedSignal.reason || new Error("The operation was aborted");
         }
-        const sentAt = Date.now();
-        try {
-          const response = await http
+        const send = () => {
+          const sentAt = Date.now();
+          return http
             .get(`${baseUrl}${path}`, {
               query: params,
               timeoutMs: METADATA_REQUEST_TIMEOUT_MS,
@@ -487,6 +524,11 @@ function refreshMetadata<Schema extends v.GenericSchema>(
                 throw error;
               },
             );
+        };
+        try {
+          const response = await (limiter
+            ? limiter.schedule(send, { signal: sharedSignal })
+            : send());
           const value = readOne(schema, response.data, { service: "Metadata", endpoint: path });
           await storeMetadata(cacheKey, value, getMetadataCachePolicy(path, value));
           metadataNotFoundCache.delete(cacheKey);
@@ -508,10 +550,17 @@ function refreshMetadata<Schema extends v.GenericSchema>(
             forgetMetadata(cacheKey);
             if (cacheNotFound) metadataNotFoundCache.set(cacheKey, true);
           }
-          if (attempt === METADATA_MAX_RETRIES || !isRetryable(error)) {
+          const rateLimited = status === 429 && isSearchPath(path);
+          if (rateLimited) limiter?.pauseFor(retryAfterMs(failure));
+          if (
+            attempt === METADATA_MAX_RETRIES ||
+            !isRetryable(error) ||
+            (rateLimited && !limiter)
+          ) {
             if (fallbackValue !== undefined && isRetryable(error)) return fallbackValue;
             throw error;
           }
+          if (rateLimited) continue;
           await new Promise<void>((resolve, reject) => {
             const onAbort = () => {
               clearTimeout(timer);
@@ -539,12 +588,8 @@ async function request<Schema extends v.GenericSchema>(
   {
     signal,
     forceRefresh = false,
-    keepStale,
     cacheNotFound = true,
-  }: MetadataRequestOptions & {
-    keepStale?: (value: v.InferOutput<Schema>) => boolean;
-    cacheNotFound?: boolean;
-  } = {},
+  }: MetadataRequestOptions & { cacheNotFound?: boolean } = {},
 ): Promise<v.InferOutput<Schema>> {
   const baseUrl = getMetadataBaseUrl();
   const cacheKey = `${baseUrl}${path}:${JSON.stringify(params)}`;
@@ -553,10 +598,11 @@ async function request<Schema extends v.GenericSchema>(
   }
   const cached = await readCachedMetadata(cacheKey, schema);
   if (cached && !forceRefresh) {
-    if (cached.stale && !keepStale?.(cached.value)) {
-      void refreshMetadata(schema, cacheKey, path, params, { fallbackValue: cached.value }).catch(
-        () => {},
-      );
+    if (cached.stale) {
+      void refreshMetadata(schema, cacheKey, path, params, {
+        fallbackValue: cached.value,
+        revalidating: true,
+      }).catch(() => {});
     }
     return cached.value;
   }
@@ -691,6 +737,8 @@ export async function getArtistByMbid(
   mbid: string,
   { signal, forceRefresh = false }: MetadataRequestOptions = {},
 ) {
+  const filled = forceRefresh ? null : musicbrainzArtistFallbackCache.get(mbid);
+  if (filled) return filled;
   const cacheKey = `${getMetadataBaseUrl()}/v1/artist/${mbid}:{}`;
   try {
     const data = await request(
@@ -744,7 +792,7 @@ function toNormalizedMusicbrainzRelease(raw: v.InferOutput<typeof musicbrainzRel
       0,
     ),
     tracks: media.flatMap((medium, mediumIndex) =>
-      (medium.tracks ?? []).map((track, trackIndex) => {
+      (medium.tracks ?? []).map((track, trackIndex): NormalizedTrack => {
         const credit = track["artist-credit"] ?? track.recording?.["artist-credit"];
         return {
           id: String(track.id || "").trim(),
@@ -886,25 +934,30 @@ export async function getAlbumByMbid(
   { signal, forceRefresh = false, withFallbackReleases = false }: MetadataRequestOptions = {},
 ) {
   const cacheKey = `${getMetadataBaseUrl()}/v1/album/${albumMbid}:{}`;
+  const filled = forceRefresh ? null : musicbrainzAlbumFallbackCache.get(albumMbid);
   let album: NormalizedAlbum;
-  try {
-    const data = await request(
-      albumSchema,
-      `/v1/album/${albumMbid}`,
-      {},
-      { signal, forceRefresh, cacheNotFound: !UUID_REGEX.test(albumMbid) },
-    );
-    album = toNormalizedAlbum(data);
-  } catch (error) {
-    if (!isMetadataNotFoundError(error) || !UUID_REGEX.test(albumMbid)) throw error;
-    const fallback = await getMusicbrainzAlbumFallback(albumMbid, { signal });
-    if (!fallback) {
-      if (musicbrainzAlbumFallbackCache.get(albumMbid) === null) {
-        metadataNotFoundCache.set(cacheKey, true, MUSICBRAINZ_FALLBACK_RETRY_SECONDS);
+  if (filled) {
+    album = filled;
+  } else {
+    try {
+      const data = await request(
+        albumSchema,
+        `/v1/album/${albumMbid}`,
+        {},
+        { signal, forceRefresh, cacheNotFound: !UUID_REGEX.test(albumMbid) },
+      );
+      album = toNormalizedAlbum(data);
+    } catch (error) {
+      if (!isMetadataNotFoundError(error) || !UUID_REGEX.test(albumMbid)) throw error;
+      const fallback = await getMusicbrainzAlbumFallback(albumMbid, { signal });
+      if (!fallback) {
+        if (musicbrainzAlbumFallbackCache.get(albumMbid) === null) {
+          metadataNotFoundCache.set(cacheKey, true, MUSICBRAINZ_FALLBACK_RETRY_SECONDS);
+        }
+        throw error;
       }
-      throw error;
+      album = fallback;
     }
-    album = fallback;
   }
   if (!withFallbackReleases || album.releases.length > 0 || !UUID_REGEX.test(albumMbid))
     return album;
@@ -937,15 +990,6 @@ export async function getGenreBySlug(slug: string, { signal }: MetadataRequestOp
     if (isMetadataNotFoundError(error)) return null;
     throw error;
   }
-}
-
-export async function getGenresIndex({ signal }: MetadataRequestOptions = {}) {
-  const data = await request(genresIndexSchema, "/v1/genres", {}, { signal });
-  return (data.genres ?? []).map((genre) => ({
-    key: genre.key,
-    name: String(genre.name || "").trim() || genre.key,
-    artists: genre.artists ?? 0,
-  }));
 }
 
 export async function getAlbumTracksByAlbumMbid(
@@ -1005,6 +1049,10 @@ function toAlbumSearchItem(
   };
 }
 
+// The search service caches each answer by its query and limit, so every search
+// asks for the same full window and pages come out of that one answer.
+const searchText = (query: string) => query.trim().replace(/\s+/g, " ");
+
 export async function searchUnifiedCatalog(
   query: string,
   { limit = 30, signal }: { limit?: number; signal?: AbortSignal } = {},
@@ -1048,7 +1096,7 @@ export async function searchArtists(
     const data = await request(
       artistSearchResponseSchema,
       "/v1/search/artist",
-      { q: query, limit },
+      { q: searchText(query), limit: SEARCH_WINDOW },
       { signal },
     );
     items = readMany(searchArtistItemSchema, data.artists ?? [], {
@@ -1089,10 +1137,6 @@ export async function searchAlbums(
     musicbrainzFallback?: boolean;
   } = {},
 ) {
-  // Relevance ranking reorders what the provider returns, so a short list
-  // still looks at enough results to find the album. One more than the page
-  // shows whether another page exists.
-  const requestedLimit = Math.max(limit + offset + 1, MIN_ALBUM_SEARCH_WINDOW);
   let items: AlbumSearchItem[] = [];
   let failure: unknown = null;
 
@@ -1101,9 +1145,9 @@ export async function searchAlbums(
       albumSearchResponseSchema,
       "/v1/search/album",
       {
-        q: query,
-        limit: requestedLimit,
-        ...(artistName && { artist: artistName }),
+        q: searchText(query),
+        limit: SEARCH_WINDOW,
+        ...(artistName && { artist: searchText(artistName) }),
       },
       { signal },
     );
@@ -1129,7 +1173,7 @@ export async function searchAlbums(
     const data = await musicbrainzGet(
       releaseGroupSearchSchema,
       "/release-group",
-      { query: mbQuery, limit: requestedLimit },
+      { query: mbQuery, limit: SEARCH_WINDOW },
       { signal },
     ).catch((error) => {
       signal?.throwIfAborted();
@@ -1202,6 +1246,26 @@ export async function searchAlbums(
   };
 }
 
+export async function searchTracks(
+  query: string,
+  { artistName = "", signal }: { artistName?: string; signal?: AbortSignal } = {},
+) {
+  const data = await request(
+    trackSearchResponseSchema,
+    "/v1/search/track",
+    {
+      q: searchText(query),
+      limit: SEARCH_WINDOW,
+      ...(artistName && { artist: searchText(artistName) }),
+    },
+    { signal },
+  );
+  return readMany(searchTrackItemSchema, data.tracks ?? [], {
+    service: "Metadata",
+    endpoint: "/v1/search/track",
+  }).map(toNormalizedSearchTrack);
+}
+
 type ArtistLike = { id?: string | null; name?: string; aliases?: string[] } | null | undefined;
 
 function artistNameForms(name: unknown) {
@@ -1229,11 +1293,15 @@ export function isCreditedArtist(credit: string | null | undefined, artist: Arti
   return hasArtistName(credit, artist) || hasArtistName(withoutFeaturedArtists(credit), artist);
 }
 
-// A search the provider could not answer throws, so a caller can tell an
+// A lookup the provider could not answer throws, so a caller can tell an
 // outage from an album MusicBrainz does not have. A match has the title and
-// credits the artist by ID or by name. The search without the artist finds an
+// credits the artist by ID or by name. A known artist's own file answers first:
+// it lists every album and the albums the artist appears on, and it is already
+// cached. Search covers the rest, and an artist file that could not be read
+// only throws once search has found nothing. The search without the artist finds an
 // artist written another way, such as in another script, and also other
-// artists' albums with the same title. A title that names an edition, such as
+// artists' albums with the same title. MusicBrainz is asked once, after every
+// search came back with no match. A title that names an edition, such as
 // "Nevermind (Remastered)", also matches the album without it. `holds` checks
 // a match further, such as that it lists the song being downloaded.
 export async function resolveAlbumByArtistAndTitle({
@@ -1261,25 +1329,50 @@ export async function resolveAlbumByArtistAndTitle({
   const core = coreAlbumTitle(albumTitle);
   const titled = (title: string) =>
     scoreTextMatch(title, albumTitle) >= 85 || scoreTextMatch(coreAlbumTitle(title), core) >= 85;
-  const tried = new Set();
-  for (const searchTitle of new Set([albumTitle, core])) {
-    for (const searchArtist of new Set([artistName, ""])) {
-      const result = await searchAlbums(searchTitle, {
-        artistName: searchArtist,
-        limit: 10,
-        offset: 0,
-        sort: "match",
-        throwOnFailure: true,
-      });
-      const ranked = rankAlbumCandidates(albumTitle, result.items, { artistName, releaseYear });
-      for (const candidate of ranked) {
-        if (!candidate?.id || tried.has(candidate.id) || !titled(candidate.title)) continue;
-        tried.add(candidate.id);
-        if ((artistName || artistMbid) && !byArtist(await albumOrNone(candidate.id))) continue;
-        if (!holds || (await holds(candidate.id))) return candidate.id;
-      }
+  const tried = new Set<string>();
+  let artistFailure: unknown = null;
+  const artist = artistMbid
+    ? await getArtistByMbid(artistMbid).catch((error: unknown) => {
+        if (!isMetadataNotFoundError(error)) artistFailure = error;
+        return null;
+      })
+    : null;
+  for (const albums of [artist?.albums ?? [], artist?.appearsOn ?? []]) {
+    const titledAlbums = albums
+      .filter((album) => titled(album.title))
+      .map((album) => ({ ...album, releaseDate: album.firstReleaseDate }));
+    for (const candidate of rankAlbumCandidates(albumTitle, titledAlbums, { releaseYear })) {
+      if (tried.has(candidate.id)) continue;
+      tried.add(candidate.id);
+      if (!holds || (await holds(candidate.id))) return candidate.id;
     }
   }
+  const searches = [...new Set([albumTitle, core])].flatMap((searchTitle) =>
+    [...new Set([artistName, ""])].map((searchArtist) => ({
+      searchTitle,
+      searchArtist,
+      musicbrainzFallback: false,
+    })),
+  );
+  searches.push({ searchTitle: albumTitle, searchArtist: artistName, musicbrainzFallback: true });
+  for (const { searchTitle, searchArtist, musicbrainzFallback } of searches) {
+    const result = await searchAlbums(searchTitle, {
+      artistName: searchArtist,
+      limit: 10,
+      offset: 0,
+      sort: "match",
+      throwOnFailure: true,
+      musicbrainzFallback,
+    });
+    const ranked = rankAlbumCandidates(albumTitle, result.items, { artistName, releaseYear });
+    for (const candidate of ranked) {
+      if (!candidate?.id || tried.has(candidate.id) || !titled(candidate.title)) continue;
+      tried.add(candidate.id);
+      if ((artistName || artistMbid) && !byArtist(await albumOrNone(candidate.id))) continue;
+      if (!holds || (await holds(candidate.id))) return candidate.id;
+    }
+  }
+  if (artistFailure) throw artistFailure;
   return null;
 }
 
@@ -1331,7 +1424,6 @@ export function getMetadataProviderHealthSnapshot() {
     metadata: {
       configuredProvider: healthState.configuredProvider,
       activeBaseUrl: getMetadataBaseUrl(),
-      failoverActive: healthState.failoverActive,
       lastCheckedAt: healthState.lastCheckedAt,
       lastSuccessAt: healthState.lastSuccessAt,
       lastFailureAt: healthState.lastFailureAt,

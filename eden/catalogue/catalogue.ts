@@ -134,9 +134,17 @@ export const toV1Links = (links: CatalogueArtist["links"]) =>
 export const toV1Rating = (rating: CatalogueArtist["rating"]) =>
   rating?.Value != null ? { count: rating.Count ?? 0, value: rating.Value } : null;
 
+export function shownListeners(rating: CatalogueArtist["rating"]) {
+  const listeners = (rating?.Count ?? 0) * 300;
+  if (listeners < 10) return listeners;
+  const magnitude = 10 ** Math.floor(Math.log10(listeners));
+  return Math.floor(listeners / magnitude) * magnitude;
+}
+
 export function toV1Album(album: CatalogueAlbum, catalogue?: Catalogue) {
   const images = toV1Images(album.images);
   const albumArtistId = album.artistid ?? album.artists?.[0]?.id ?? null;
+  const listeners = shownListeners(album.rating);
   return {
     id: album.id,
     title: album.title,
@@ -186,6 +194,9 @@ export function toV1Album(album: CatalogueAlbum, catalogue?: Catalogue) {
           mediumNumber: track.mediumnumber ?? null,
           durationMs: track.durationms ?? null,
           artistId: track.artistid ?? null,
+          ...(listeners > 0 &&
+            (track.mediumnumber ?? 1) === 1 &&
+            (track.trackposition === 5 || track.trackposition === 10) && { popular: true }),
           ...(credited && {
             credits: [{ id: credited.id, name: credited.artistname, joinPhrase: "" }],
           }),
@@ -195,7 +206,7 @@ export function toV1Album(album: CatalogueAlbum, catalogue?: Catalogue) {
       disambiguation: release.disambiguation ?? "",
     })),
     rating: toV1Rating(album.rating),
-    listeners: (album.rating?.Count ?? 0) * 300,
+    listeners,
   };
 }
 

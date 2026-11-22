@@ -10,19 +10,22 @@ type Work = { describe: () => string };
 const running = new Set<Work>();
 const finishedDuringStall: Work[] = [];
 let lastCheck: number | null = null;
-const currentWork = new AsyncLocalStorage<() => string>();
+const currentWork = new AsyncLocalStorage<{ kind: () => string; request: boolean }>();
 
-export const describeCurrentWork = () => currentWork.getStore()?.() ?? null;
+export const describeCurrentWork = () => currentWork.getStore()?.kind() ?? null;
+
+export const isServingRequest = () => currentWork.getStore()?.request === true;
 
 export async function trackWork<T>(
   describe: () => string,
   run: () => Promise<T>,
   kind: () => string = describe,
+  { request = false }: { request?: boolean } = {},
 ) {
   const entry = { describe };
   running.add(entry);
   try {
-    return await currentWork.run(kind, run);
+    return await currentWork.run({ kind, request }, run);
   } finally {
     running.delete(entry);
     if (lastCheck !== null && performance.now() - lastCheck >= CHECK_MS + STALL_MS) {

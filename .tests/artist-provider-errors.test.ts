@@ -323,11 +323,14 @@ test("a catalog error in HTTP 200 remains retryable instead of caching an empty 
   assert.equal((await deezer.getDeezerAlbumsForArtist({ id: 101 }))[0]?.title, "Recovered Album");
 });
 
-test("a failed metadata artist image lookup remains transient until recovery", async () => {
-  artistStatus = 503;
-  const first = await getArtistImage(mbid, { forceRefresh: true });
-  assert.equal(first.transientError, true);
-  assert.notEqual(dbOps.getImage(mbid)?.imageUrl, "NOT_FOUND");
+test("an artist file that fails, or is missing with MusicBrainz unreachable, stays transient until recovery", async () => {
+  for (const status of [503, 404]) {
+    artistStatus = status;
+    clearMetadataProviderCaches();
+    const failed = await getArtistImage(mbid, { forceRefresh: true });
+    assert.equal(failed.transientError, true);
+    assert.equal(dbOps.getImage(mbid), null);
+  }
   artistStatus = 200;
   artistImages = [{ kind: "Artist", url: "https://images.example/artist.jpg" }];
   clearMetadataProviderCaches();
@@ -343,26 +346,9 @@ test("cached Deezer artist photos are replaced by metadata or Cover Art Archive 
   assert.equal((await getArtistImage(mbid)).url, "https://images.example/wikimedia-artist.jpg");
 });
 
-test("an artist with no photo takes an album cover without loading every album or calling Deezer", async (t) => {
+test("an artist with no photo and no listed album cover caches NOT_FOUND from its own file alone", async (t) => {
   artistLinked = false;
   albumCount = 8;
-  responses(t, () => {
-    throw new Error("Deezer should not be called for artist images");
-  });
-
-  const image = await getArtistImage(mbid, { forceRefresh: true });
-
-  assert.match(String(image.url), /^https:\/\/images\.example\/album-[1-4]\.jpg$/);
-  assert.deepEqual(providerRequests.toSorted(), [
-    "/v1/album/album-1",
-    "/v1/album/album-2",
-    "/v1/album/album-3",
-    "/v1/album/album-4",
-    `/v1/artist/${mbid}`,
-  ]);
-});
-
-test("an artist with no metadata photo or albums caches NOT_FOUND without calling Deezer", async (t) => {
   responses(t, () => {
     throw new Error("Deezer should not be called for artist images");
   });
@@ -371,8 +357,8 @@ test("an artist with no metadata photo or albums caches NOT_FOUND without callin
     images: [],
     notFound: true,
   });
+  assert.deepEqual(providerRequests, [`/v1/artist/${mbid}`]);
   assert.equal(dbOps.getImage(mbid)?.imageUrl, "NOT_FOUND");
-  assert.equal(dbOps.getDeezerMbidCache(`artist_rg:${mbid}`), "NOT_FOUND");
   assert.deepEqual(await getArtistImage(mbid), { url: null, images: [], notFound: true });
 });
 

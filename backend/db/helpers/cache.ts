@@ -77,9 +77,6 @@ const countImagesStmt = db.prepare<[], { count: number }>(
 );
 const deleteImageStmt = db.prepare<[string]>("DELETE FROM images_cache WHERE mbid = ?");
 const clearImagesStmt = db.prepare<[]>("DELETE FROM images_cache");
-const clearArtistRgCacheStmt = db.prepare<[]>(
-  "DELETE FROM deezer_mbid_cache WHERE cache_key LIKE 'artist_rg:%'",
-);
 const cleanOldImagesStmt = db.prepare<[number]>("DELETE FROM images_cache WHERE cache_age < ?");
 
 const NOT_FOUND_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -191,7 +188,6 @@ export default function register(dbOps: CacheOps) {
   };
 
   dbOps.clearImages = function () {
-    clearArtistRgCacheStmt.run();
     return clearImagesStmt.run();
   };
 

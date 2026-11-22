@@ -4,6 +4,7 @@ import { buildArtistTags, getCoverImage, getArtistType, type ArtistCoverImage } 
 import type { ArtistDetailsResponse } from "../../../utils/api/endpoints/artists.ts";
 import { withImageCacheBust } from "../../../utils/normalizeMediaUrl";
 import { useSharedArtworkStyle } from "../../../navigation/viewTransitions.ts";
+import { formatCompactNumber } from "../../../utils/numberFormat.ts";
 
 const HERO_GENRE_LIMIT = 3;
 
@@ -13,9 +14,11 @@ const buildFacts = (artist: Partial<ArtistDetailsResponse>) => {
     .map((tag) => tag.name.toLowerCase())
     .join(", ");
   return {
-    lead: [getArtistType(artist.type), artist.disambiguation].filter(
-      (fact): fact is string => !!fact,
-    ),
+    lead: [
+      getArtistType(artist.type),
+      artist.disambiguation,
+      artist.listeners ? `${formatCompactNumber(artist.listeners)} listeners` : null,
+    ].filter((fact): fact is string => !!fact),
     genres: genres ? genres.charAt(0).toUpperCase() + genres.slice(1) : "",
   };
 };

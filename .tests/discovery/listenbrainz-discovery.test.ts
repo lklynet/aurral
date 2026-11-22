@@ -18,7 +18,7 @@ const [
   { default: search },
   { default: similar },
   { FlowTrackSource },
-  { getArtistTagLists },
+  { getArtistTagLists, getSimilarArtists },
 ] = await setupIsolatedBackend(
   "listenbrainz-discovery",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -94,7 +94,13 @@ const respond = (url: URL) => {
         links: [],
         albums: [],
         similar: [
-          { id: SIMILAR_PICK.mbid, name: SIMILAR_PICK.name, score: 1.4, image: SIMILAR_PICK.image },
+          {
+            id: SIMILAR_PICK.mbid,
+            name: SIMILAR_PICK.name,
+            score: 1.4,
+            image: SIMILAR_PICK.image,
+            genres: ["Slowcore"],
+          },
         ],
       });
     }
@@ -320,6 +326,17 @@ test("artist tags come from cached v1 artist metadata and refresh in the backgro
   assert.deepEqual(await loadTags(), expected);
   await vi.runAllTimersAsync();
   assert.equal(lookups(), 2);
+
+  await getSimilarArtists(SIMILAR_SEED);
+  requests = [];
+  assert.deepEqual(await getArtistTagLists([{ mbid: SIMILAR_PICK.mbid }, { mbid: mbid(43) }]), [
+    [{ name: "slowcore", count: 100 }],
+    ["seen live", "shoegaze", "dream pop"].map((name) => ({ name, count: 100 })),
+  ]);
+  assert.deepEqual(
+    requests.map((url) => url.pathname),
+    [`/v1/artist/${mbid(43)}`],
+  );
 });
 
 test("artist pages list Deezer's related artists that MusicBrainz knows", async () => {

@@ -1,11 +1,10 @@
 import * as v from "valibot";
 import { buildPlaylistTrackIdentity, dedupePlaylistTracks } from "../playlists/playlistTracks.ts";
 import {
-  DEEZER_HEADERS,
   deezerErrorSchema,
-  deezerLimiter,
   deezerPageSchema,
   deezerPreviewPath,
+  deezerSend,
   deezerTrackSchema,
 } from "../apiClients/deezer.ts";
 import { readMany, readOne } from "../integrationData.ts";
@@ -13,8 +12,8 @@ import { dbOps } from "../../db/helpers/index.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import createCache from "../apiClients/simpleCache.ts";
 import { asAppError } from "../../../lib/errors.ts";
+import { HttpError } from "../../../lib/http.ts";
 
-const DEEZER_API_URL = "https://api.deezer.com";
 const REQUEST_TIMEOUT_MS = 10_000;
 const TRACK_PAGE_SIZE = 500;
 const MAX_TRACKS = 2_000;
@@ -125,30 +124,21 @@ export async function deezerRequest<Schema extends v.GenericSchema>(
   path: string,
   params: Record<string, string | number> = {},
 ) {
-  const url = new URL(`${DEEZER_API_URL}${path}`);
-  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, String(value));
-  let response;
-  try {
-    response = await deezerLimiter.schedule(() =>
-      fetch(url, {
-        headers: { Accept: "application/json", ...DEEZER_HEADERS },
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      }),
-    );
-  } catch {
-    throw providerError("Deezer could not be reached", 502, "DEEZER_UNAVAILABLE");
-  }
-  if (response.status === 429) {
-    throw providerError(
-      "Deezer is rate limiting requests; try again later",
-      429,
-      "DEEZER_RATE_LIMITED",
-    );
-  }
-  if (!response.ok) {
-    throw providerError(`Deezer request failed (${response.status})`, 502, "DEEZER_UNAVAILABLE");
-  }
-  const body: unknown = await response.json().catch(() => null);
+  const body = await deezerSend(path, { query: params, timeoutMs: REQUEST_TIMEOUT_MS }).catch(
+    (error: unknown) => {
+      const status = error instanceof HttpError ? error.response?.status : undefined;
+      if (status === 429) {
+        throw providerError(
+          "Deezer is rate limiting requests; try again later",
+          429,
+          "DEEZER_RATE_LIMITED",
+        );
+      }
+      throw status
+        ? providerError(`Deezer request failed (${status})`, 502, "DEEZER_UNAVAILABLE")
+        : providerError("Deezer could not be reached", 502, "DEEZER_UNAVAILABLE");
+    },
+  );
   if (!body || typeof body !== "object") {
     throw providerError("Deezer returned an unreadable response", 502, "DEEZER_UNAVAILABLE");
   }

@@ -87,10 +87,15 @@ export function refreshFreshReleases() {
   return refreshing;
 }
 
+const isStale = () => !snapshot || Date.now() - snapshot.fetchedAt >= FRESH_RELEASES_TTL_MS;
+
+export async function loadFreshReleasesByArtists(artistMbids: Iterable<string | null | undefined>) {
+  if (isStale()) await refreshFreshReleases();
+  return getFreshReleasesByArtists(artistMbids);
+}
+
 export function getFreshReleasesByArtists(artistMbids: Iterable<string | null | undefined>) {
-  if (!snapshot || Date.now() - snapshot.fetchedAt >= FRESH_RELEASES_TTL_MS) {
-    void refreshFreshReleases();
-  }
+  if (isStale()) void refreshFreshReleases();
   const wanted = new Set([...artistMbids].filter(Boolean));
   return (snapshot?.releases || []).flatMap((release) => {
     const artistMbid = release.artistMbids.find((mbid) => wanted.has(mbid));
