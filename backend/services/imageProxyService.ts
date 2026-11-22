@@ -523,7 +523,15 @@ const readBoundedResponse = async (response: Response | UndiciResponse) => {
   return Buffer.concat(chunks, totalBytes);
 };
 
-export const fetchRemoteImage = async (sourceUrl: string) => {
+const coverArtArchiveOriginalUrl = (value: string) => {
+  const match =
+    /^(https?:\/\/coverartarchive\.org\/release\/[0-9a-f-]+\/\d+)-(?:250|500|1200)(\.[a-z0-9]+)(?=[?#]|$)/i.exec(
+      value,
+    );
+  return match ? `${match[1]}${match[2]}` : null;
+};
+
+const fetchRemoteImageOnce = async (sourceUrl: string) => {
   let currentUrl = parseSafeRemoteUrl(sourceUrl);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -553,7 +561,10 @@ export const fetchRemoteImage = async (sourceUrl: string) => {
       }
       if (!response.ok) {
         await response.body?.cancel();
-        throw new Error(`Upstream image request failed with status ${response.status}`);
+        throw Object.assign(
+          new Error(`Upstream image request failed with status ${response.status}`),
+          { status: response.status },
+        );
       }
 
       const [mediaType = ""] = String(response.headers.get("content-type") || "").split(";");
@@ -572,6 +583,20 @@ export const fetchRemoteImage = async (sourceUrl: string) => {
   }
 
   throw new Error("Too many upstream image redirects");
+};
+
+export const fetchRemoteImage = async (sourceUrl: string) => {
+  try {
+    return await fetchRemoteImageOnce(sourceUrl);
+  } catch (error) {
+    const status =
+      error && typeof error === "object" && "status" in error
+        ? Number((error as { status?: unknown }).status)
+        : 0;
+    const fallbackUrl = status === 404 ? coverArtArchiveOriginalUrl(sourceUrl) : null;
+    if (!fallbackUrl) throw error;
+    return fetchRemoteImageOnce(fallbackUrl);
+  }
 };
 
 export const fetchOptimizedImage = (sourceUrl: string) =>

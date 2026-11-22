@@ -9,8 +9,6 @@ export {
 
 export {
   musicbrainzGetArtistReleaseGroups,
-  musicbrainzGetArtistAppearsOnReleaseGroups,
-  getMusicbrainzAppearsOnScanState,
   musicbrainzGetArtistNameByMbid,
   musicbrainzGetArtistIdentityByMbid,
   musicbrainzSearchArtistsByTag,

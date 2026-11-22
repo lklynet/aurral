@@ -1,5 +1,5 @@
 import { getPathParts } from "./candidateNormalizer.ts";
-import { foldDiacritics } from "../providers/brainzmashRanking.ts";
+import { foldDiacritics } from "../providers/metadataRanking.ts";
 import { coreAlbumTitle, discFolderNumber, isReleaseNoiseWord } from "./titleText.ts";
 
 // Aurral-owned semantic variant policy.

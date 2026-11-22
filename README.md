@@ -59,11 +59,11 @@ Run `docker compose up -d`, open `http://localhost:3001`, and create your admin 
 
 ## Thanks
 
-Built on [MusicBrainz](https://musicbrainz.org). Chat on [Discord](https://discord.gg/cpPYfgVURJ), report bugs in [Issues](https://github.com/lklynet/aurral/issues).
+Built on open music data from [MetaBrainz](https://metabrainz.org) ([MusicBrainz](https://musicbrainz.org), [ListenBrainz](https://listenbrainz.org), and the [Cover Art Archive](https://coverartarchive.org)) via [AurralBrainz](https://docs.aurral.org/integrations/metadata/). Chat on [Discord](https://discord.gg/cpPYfgVURJ), report bugs in [Issues](https://github.com/lklynet/aurral/issues).
 
 ## Sponsors
 
-<p align="center">Aurral is free, MIT licensed, and has no paywalled pro tier. <a href="https://github.com/sponsors/lklynet/">Sponsors</a> and <a href="https://buymeacoffee.com/lkly">coffees</a> pay for the hosted metadata server and keep it that way.</p>
+<p align="center">Aurral is free, MIT licensed, and has no paywalled pro tier. <a href="https://github.com/sponsors/lklynet/">Sponsors</a> and <a href="https://buymeacoffee.com/lkly">coffees</a> pay for AurralBrainz, the hosted metadata server, and keep it that way.</p>
 
 <p align="center">
   <a href="https://github.com/bmikaili"><img src="https://github.com/bmikaili.png?size=120" width="60" alt="@bmikaili" /></a>

@@ -17,7 +17,8 @@ const [
   { flowPlaylistConfig, invalidateFlowPlaylistConfigCache },
   { PlaylistManager },
   artworkState,
-  imageSource,
+  artistMatch,
+  imageService,
   imageProxy,
   { downloadTracker },
 ] = await setupIsolatedBackend(
@@ -27,13 +28,15 @@ const [
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
   () => import("../../backend/services/playlistArtworkState.ts"),
-  () => import("../../backend/services/releaseGroupCoverService.ts"),
+  () => import("../../backend/services/artistMatch.ts"),
+  () => import("../../backend/services/imageService.ts"),
   () => import("../../backend/services/imageProxyService.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
 );
 
 beforeEach(() => {
-  vi.spyOn(imageSource, "fetchDeezerArtistImageUrl").mockResolvedValue(null);
+  vi.spyOn(artistMatch, "guessArtistMbid").mockResolvedValue(null);
+  vi.spyOn(imageService, "getArtistImage").mockResolvedValue({ url: null, images: [] });
   resetDatabase(db);
   invalidateFlowPlaylistConfigCache();
   dbOps.updateSettings({
@@ -370,9 +373,11 @@ test("an empty flow gains an artist cover after its tracklist is generated", asy
   })
     .png()
     .toBuffer();
-  vi.mocked(imageSource.fetchDeezerArtistImageUrl).mockResolvedValue(
-    "https://images.example.test/artist.jpg",
-  );
+  vi.mocked(artistMatch.guessArtistMbid).mockResolvedValue("flow-artist-mbid");
+  vi.mocked(imageService.getArtistImage).mockResolvedValue({
+    url: "https://images.example.test/artist.jpg",
+    images: [{ image: "https://images.example.test/artist.jpg", front: true, types: ["Artist"] }],
+  });
   vi.spyOn(imageProxy, "fetchRemoteImage").mockResolvedValue({
     buffer: source,
     contentType: "image/png",
@@ -390,9 +395,13 @@ async function useArtistPhotos() {
   })
     .png()
     .toBuffer();
-  vi.mocked(imageSource.fetchDeezerArtistImageUrl).mockImplementation(
-    async (input) => `https://images.example.test/${input?.artistName}.jpg`,
+  vi.mocked(artistMatch.guessArtistMbid).mockImplementation(async (name) =>
+    name ? `mbid-${name.toLowerCase()}` : null,
   );
+  vi.mocked(imageService.getArtistImage).mockImplementation(async (mbid) => {
+    const url = `https://images.example.test/${mbid}.jpg`;
+    return { url, images: [{ image: url, front: true, types: ["Artist"] }] };
+  });
   return vi.spyOn(imageProxy, "fetchRemoteImage").mockResolvedValue({
     buffer: source,
     contentType: "image/png",

@@ -411,7 +411,7 @@ test("the calendar lists library artists' albums and EPs from one ListenBrainz r
       ]),
       [
         ["Together", null],
-        ["Out Now", `https://imagecache.lidarr.audio/v1/caa/${coverRelease}/42-500.jpg`],
+        ["Out Now", `https://coverartarchive.org/release/${coverRelease}/42-500.jpg`],
       ],
     );
     assert.deepEqual(titles(await getRecentMissingReleases(10, { artists, when: "upcoming" })), [

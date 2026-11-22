@@ -74,11 +74,11 @@ function mixCovers(mixes: Mix[]) {
 }
 
 const discoveryCover = (playlist: { id: string; name: string; tracks: CatalogTrack[] }) => {
-  const lead = playlist.tracks[0]?.artistName;
+  const lead = playlist.tracks[0];
   return {
     title: playlist.name,
     template: browseCoverTemplate("discovery", playlist.id),
-    artist: lead ? { artistName: lead, artistMbid: null } : null,
+    artist: lead ? { artistName: lead.artistName, artistMbid: lead.artistMbid ?? null } : null,
   } satisfies BrowseCover;
 };
 

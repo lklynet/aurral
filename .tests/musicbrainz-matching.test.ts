@@ -23,37 +23,27 @@ vi.mock("../backend/services/metadataProviderBudget.ts", async (importOriginal) 
   reserveMetadataProviderRequest: () => 0,
 }));
 
-const [
-  isolatedState,
-  { db },
-  { dbOps },
-  libraryStore,
-  provider,
-  indexService,
-  artistMatch,
-  { logger },
-] = await setupIsolatedBackend(
-  "musicbrainz-matching",
-  () => import("../backend/config/db-sqlite.ts"),
-  () => import("../backend/db/helpers/index.ts"),
-  () => import("../backend/services/libraryMediaStore.ts"),
-  () => import("../backend/services/providers/brainzmashProvider.ts"),
-  () => import("../backend/services/libraryIndexService.ts"),
-  () => import("../backend/services/artistMatch.ts"),
-  () => import("../backend/services/logger.ts"),
-);
+const [isolatedState, { db }, { dbOps }, libraryStore, provider, indexService, artistMatch] =
+  await setupIsolatedBackend(
+    "musicbrainz-matching",
+    () => import("../backend/config/db-sqlite.ts"),
+    () => import("../backend/db/helpers/index.ts"),
+    () => import("../backend/services/libraryMediaStore.ts"),
+    () => import("../backend/services/providers/metadataProvider.ts"),
+    () => import("../backend/services/libraryIndexService.ts"),
+    () => import("../backend/services/artistMatch.ts"),
+  );
 
 const GRUNGE = "66666666-6666-4666-8666-666666666601";
 const SIXTIES = "66666666-6666-4666-8666-666666666602";
 const NEVERMIND = "66666666-6666-4666-8666-666666666611";
-const BLEACH = "66666666-6666-4666-8666-666666666612";
 
-const grunge = { id: GRUNGE, artistname: "Nirvana", albums: ["Nevermind", "In Utero"] };
+const grunge = { id: GRUNGE, name: "Nirvana", albums: ["Nevermind", "In Utero"] };
 const sixties = {
   id: SIXTIES,
-  artistname: "Nirvana",
+  name: "Nirvana",
   disambiguation: "60s band from the UK",
-  images: [{ CoverType: "Poster", Url: "https://images.test/nirvana-uk.jpg" }],
+  images: [{ kind: "Poster", url: "https://images.test/nirvana-uk.jpg" }],
   albums: ["The Story of Simon Simopath", "Local Anaesthetic"],
 };
 const artists = new Map([grunge, sixties].map((artist) => [artist.id, artist]));
@@ -67,54 +57,51 @@ const server = await createMockHttpServer((request, response) => {
     response.writeHead(status, { "content-type": "application/json" });
     response.end(body === undefined ? undefined : JSON.stringify(body));
   };
-  if (url.pathname === "/search/artist") {
+  if (url.pathname === "/v1/search/artist") {
     if (!searchAvailable) return reply(400);
-    return reply(200, url.searchParams.get("query") === "Nirvana" ? [grunge, sixties] : []);
+    return reply(200, {
+      artists: url.searchParams.get("q") === "Nirvana" ? [grunge, sixties] : [],
+    });
   }
-  if (url.pathname === "/search/album") {
+  if (url.pathname === "/v1/search/album") {
     albumSearches += 1;
-    const query = url.searchParams.get("query") || "";
-    if (query.startsWith("Bleach")) {
-      return reply(200, [{ id: BLEACH, title: "Bleach", artistid: GRUNGE, artists: [grunge] }]);
-    }
-    return reply(
-      200,
-      query.startsWith("Nevermind")
-        ? [{ id: NEVERMIND, title: "Nevermind", artistid: GRUNGE, artists: [grunge] }]
+    const query = url.searchParams.get("q") || "";
+    return reply(200, {
+      albums: query.startsWith("Nevermind")
+        ? [{ id: NEVERMIND, title: "Nevermind", artistId: GRUNGE, artistName: grunge.name }]
         : [],
-    );
+    });
   }
-  if (url.pathname === `/album/${BLEACH}`) return reply(503);
-  if (url.pathname === `/album/${NEVERMIND}`) {
+  if (url.pathname === `/v1/album/${NEVERMIND}`) {
     return reply(200, {
       id: NEVERMIND,
       title: "Nevermind",
-      artistid: GRUNGE,
+      artistId: GRUNGE,
       artists: [grunge],
       releases: [
         {
           id: `${NEVERMIND}-release`,
           status: "Official",
-          tracks: nevermindSongs.map((trackname, index) => ({
+          tracks: nevermindSongs.map((title, index) => ({
             id: `nevermind-track-${index + 1}`,
-            recordingid: `66666666-6666-4666-8666-6666666667${String(index + 1).padStart(2, "0")}`,
-            trackname,
-            trackposition: index + 1,
-            mediumnumber: 1,
-            artistid: GRUNGE,
+            recordingId: `66666666-6666-4666-8666-6666666667${String(index + 1).padStart(2, "0")}`,
+            title,
+            trackPosition: index + 1,
+            mediumNumber: 1,
+            artistId: GRUNGE,
           })),
         },
       ],
     });
   }
-  const artist = artists.get(url.pathname.replace(/^\/artist\//, ""));
+  const artist = artists.get(url.pathname.replace(/^\/v1\/artist\//, ""));
   if (!artist) return reply(404);
   return reply(200, {
     ...artist,
-    Albums: artist.albums.map((title, index) => ({
-      Id: `${artist.id}-album-${index}`,
-      Title: title,
-      Type: "Album",
+    albums: artist.albums.map((title, index) => ({
+      id: `${artist.id}-album-${index}`,
+      title,
+      type: "Album",
     })),
   });
 });
@@ -351,21 +338,4 @@ test("an untagged album no release group holds is looked up again when asked or 
   await scan();
 
   assert.equal(albumRow(albumId)?.release_group_mbid, NEVERMIND);
-});
-
-test("an untagged album whose lookup is cooling down does not hold up the others", async () => {
-  const cooling = untaggedAlbum("Bleach", ["Blew"]);
-  const matched = untaggedAlbum("Nevermind", ["Smells Like Teen Spirit", "In Bloom"]);
-  const info = vi.spyOn(logger, "info");
-  const warn = vi.spyOn(logger, "warn");
-  const stopped = (spy: typeof info) =>
-    spy.mock.calls.filter(([, message]) => String(message).startsWith("Stopped matching"));
-
-  await scan();
-  await scan();
-
-  assert.equal(albumRow(cooling)?.release_group_mbid, null);
-  assert.equal(albumRow(matched)?.release_group_mbid, NEVERMIND);
-  assert.equal(stopped(info).length, 1);
-  assert.equal(stopped(warn).length, 0);
 });

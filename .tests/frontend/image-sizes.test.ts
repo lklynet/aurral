@@ -5,7 +5,7 @@ import { imageSizes, originalImage, resizedImageWidth } from "../../lib/imageSiz
 const urlsByWidth = (url: string) =>
   Object.fromEntries(imageSizes(url).map((size) => [size.width, size.url]));
 
-test("artwork from fanart, Deezer, the Lidarr image cache, BrainzMash artist photos, and Aurral covers offers every size its host serves", () => {
+test("artwork from fanart, Deezer, the Lidarr image cache, AudioDB artist photos, and Aurral covers offers every size its host serves", () => {
   assert.deepEqual(urlsByWidth("https://assets.fanart.tv/fanart/plaid-4fe86e55a9e8e.jpg"), {
     200: "https://assets.fanart.tv/preview/plaid-4fe86e55a9e8e.jpg",
     400: "https://assets.fanart.tv/bigpreview/plaid-4fe86e55a9e8e.jpg",
@@ -19,17 +19,22 @@ test("artwork from fanart, Deezer, the Lidarr image cache, BrainzMash artist pho
       1000: "https://cdn-images.dzcdn.net/images/artist/638e69b9/1000x1000-000000-80-0-0.jpg",
     },
   );
+  assert.deepEqual(urlsByWidth("https://coverartarchive.org/release/r/1-1200.jpg"), {
+    250: "https://coverartarchive.org/release/r/1-250.jpg",
+    500: "https://coverartarchive.org/release/r/1-500.jpg",
+    1200: "https://coverartarchive.org/release/r/1-1200.jpg",
+  });
   assert.deepEqual(urlsByWidth("https://imagecache.lidarr.audio/v1/caa/r/1-1200.jpg"), {
     250: "https://imagecache.lidarr.audio/v1/caa/r/1-250.jpg",
     500: "https://imagecache.lidarr.audio/v1/caa/r/1-500.jpg",
     1200: "https://imagecache.lidarr.audio/v1/caa/r/1-1200.jpg",
   });
   assert.deepEqual(
-    urlsByWidth("https://tadb.brainzmash.cc/images/media/artist/thumb/byev521700402620.jpg"),
+    urlsByWidth("https://r2.theaudiodb.com/images/media/artist/thumb/byev521700402620.jpg"),
     {
-      240: "https://tadb.brainzmash.cc/images/media/artist/thumb/byev521700402620.jpg/small",
-      360: "https://tadb.brainzmash.cc/images/media/artist/thumb/byev521700402620.jpg/medium",
-      700: "https://tadb.brainzmash.cc/images/media/artist/thumb/byev521700402620.jpg",
+      240: "https://r2.theaudiodb.com/images/media/artist/thumb/byev521700402620.jpg/small",
+      360: "https://r2.theaudiodb.com/images/media/artist/thumb/byev521700402620.jpg/medium",
+      700: "https://r2.theaudiodb.com/images/media/artist/thumb/byev521700402620.jpg",
     },
   );
   assert.deepEqual(urlsByWidth("/api/playlists/artwork/p1?v=7:0"), {
@@ -53,6 +58,10 @@ test("artwork from fanart, Deezer, the Lidarr image cache, BrainzMash artist pho
   );
   assert.deepEqual(imageSizes("https://imagecache.lidarr.audio/v1/caa/r/1.jpg"), []);
   assert.equal(
+    originalImage("https://coverartarchive.org/release/r/1-500.jpg"),
+    "https://coverartarchive.org/release/r/1.jpg",
+  );
+  assert.equal(
     originalImage("https://imagecache.lidarr.audio/v1/caa/r/1-500.jpg"),
     "https://imagecache.lidarr.audio/v1/caa/r/1.jpg",
   );
@@ -61,11 +70,7 @@ test("artwork from fanart, Deezer, the Lidarr image cache, BrainzMash artist pho
     "https://assets.fanart.tv/fanart/plaid-4fe86e55a9e8e.jpg",
   );
   assert.deepEqual(
-    imageSizes("https://tadb.brainzmash.cc/deezer/images/artist/0bd2c0/500x500-000000-80-0-0.jpg"),
-    [],
-  );
-  assert.deepEqual(
-    imageSizes("https://tadb.brainzmash.cc/images/media/artist/thumb/byev521700402620.jpg/small"),
+    imageSizes("https://r2.theaudiodb.com/images/media/artist/thumb/byev521700402620.jpg/small"),
     [],
   );
 });

@@ -4,23 +4,15 @@ import {
   fetchRemoteImage,
   warmPublicImageUrl,
 } from "./imageProxyService.ts";
-import {
-  getDeezerArtist,
-  getDeezerArtistById,
-  resolveDeezerAlbumForPreview,
-} from "./apiClients/deezer.ts";
-import {
-  getAlbumByMbid,
-  isMetadataCircuitError,
-  isMetadataNotFoundError,
-} from "./providers/brainzmashProvider.ts";
-import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.ts";
+import { resolveDeezerAlbumForPreview } from "./apiClients/deezer.ts";
+import { getAlbumByMbid, isMetadataNotFoundError } from "./providers/metadataProvider.ts";
+import { getLinkedDeezerArtistId } from "./providers/metadataMappers.ts";
 import { selectAlbumCover } from "./imageRanking.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 
 export const LEGACY_COVER_HOST_PATTERN = /https?:\/\/(?:archive\.org|[\w-]+\.ca\.archive\.org)\//i;
 
-type DeezerArtistId = Parameters<typeof getDeezerArtistById>[0];
+type DeezerArtistId = string | number | null;
 type ReleaseGroupCoverOptions = {
   artistName?: string;
   albumTitle?: string;
@@ -97,29 +89,6 @@ const fetchDeezerAlbumCover = async ({
   }
 };
 
-export const fetchDeezerArtistImageUrl = async ({
-  artistName = "",
-  deezerArtistId = null,
-  throwOnError = false,
-}: {
-  artistName?: string;
-  deezerArtistId?: DeezerArtistId;
-  throwOnError?: boolean;
-} = {}) => {
-  try {
-    const artist = deezerArtistId
-      ? await getDeezerArtistById(deezerArtistId, { throwOnError })
-      : artistName
-        ? await getDeezerArtist(artistName, { throwOnError })
-        : null;
-    if (!artist?.imageUrl) return null;
-    return toPublicCoverUrl(artist.imageUrl);
-  } catch (error) {
-    if (throwOnError) throw error;
-    return null;
-  }
-};
-
 const fetchReleaseGroupCoverUncached = async (
   releaseGroupMbid: string,
   { artistName = "", albumTitle = "", bypassCache = false }: ReleaseGroupCoverOptions = {},
@@ -143,7 +112,7 @@ const fetchReleaseGroupCoverUncached = async (
     deezerArtistId = getLinkedDeezerArtistId(album.artists[0]?.links);
     deezerArtistName ||= album.artists[0]?.name || "";
     deezerAlbumTitle ||= album.title;
-    const cover = foundCover(selectAlbumCover(album.images)?.url);
+    const cover = foundCover(album.cover || selectAlbumCover(album.images)?.url);
     if (cover && bypassCache && (await isDeadLink(cover.imageUrl))) {
       deadCover = cover;
     } else if (cover) {
@@ -153,11 +122,10 @@ const fetchReleaseGroupCoverUncached = async (
   } catch (error) {
     if (!isMetadataNotFoundError(error)) {
       sawTransientError = true;
-      if (!isMetadataCircuitError(error))
-        logger.warn("images", "Release-group cover metadata lookup failed", {
-          releaseGroupMbid,
-          reason: safeLogDiagnostic(error),
-        });
+      logger.warn("images", "Release-group cover metadata lookup failed", {
+        releaseGroupMbid,
+        reason: safeLogDiagnostic(error),
+      });
     }
   }
   const deezerCover = await fetchDeezerAlbumCover({

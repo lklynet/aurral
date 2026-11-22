@@ -98,7 +98,7 @@ import {
   getNormalizedText,
   listsEveryTrack,
   selectAlbumRelease,
-} from "./providers/brainzmashRanking.ts";
+} from "./providers/metadataRanking.ts";
 import { enqueueSystemTask } from "./jobs/systemTasks.ts";
 import { scheduleReleaseMetadataRefresh } from "./releaseMetadataSync.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
@@ -106,7 +106,7 @@ import { logger } from "./logger.ts";
 import {
   getAlbumByMbid as getMetadataAlbumByMbid,
   getArtistByMbid as getMetadataArtistByMbid,
-} from "./providers/brainzmashProvider.ts";
+} from "./providers/metadataProvider.ts";
 import {
   isSilenceTrack,
   isUnknownTitle,

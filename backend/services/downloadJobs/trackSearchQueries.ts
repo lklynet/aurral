@@ -5,7 +5,7 @@
 // into release folders. Identity scoring lives in the shared trackMatching
 // engine.
 
-import { getYear } from "../providers/brainzmashRanking.ts";
+import { getYear } from "../providers/metadataRanking.ts";
 import { getPathParts } from "../trackMatching/candidateNormalizer.ts";
 import { coreAlbumTitle, isVariousArtistsCredit } from "../trackMatching/titleText.ts";
 

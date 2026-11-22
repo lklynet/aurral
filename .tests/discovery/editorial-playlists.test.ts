@@ -568,8 +568,8 @@ test("a song on another artist's soundtrack opens the soundtrack", async () => {
   const searches: string[] = [];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = new URL(String(input));
-    if (url.pathname === "/search/artist") {
-      return Response.json([{ id: artistMbid, artistname: "Tove Lo", genres: [], images: [] }]);
+    if (url.pathname === "/v1/search/artist") {
+      return Response.json({ artists: [{ id: artistMbid, name: "Tove Lo", genres: [] }] });
     }
     if (url.pathname !== "/ws/2/recording") return Response.json([]);
     searches.push(url.searchParams.get("query") ?? "");

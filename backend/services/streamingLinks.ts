@@ -5,7 +5,7 @@ import { HttpError } from "../../lib/http.ts";
 import { DEEZER_HEADERS, deezerErrorSchema, deezerLimiter } from "./apiClients/deezer.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import { resolveArtistAndAlbumMbids } from "./apiClients/index.ts";
-import { getAlbumTracksByAlbumMbid } from "./providers/brainzmashProvider.ts";
+import { getAlbumTracksByAlbumMbid } from "./providers/metadataProvider.ts";
 import { matchTrackByTitle } from "./downloadJobs/trackSearchContext.ts";
 import { lenient, lenientText, readOne } from "./integrationData.ts";
 

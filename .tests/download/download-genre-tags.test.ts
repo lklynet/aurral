@@ -16,7 +16,7 @@ const [isolatedState, { dbOps }, { writeAudioMetadata }, { clearMetadataProvider
     "download-genre-tags",
     () => import("../../backend/db/helpers/index.ts"),
     () => import("../../backend/services/downloadUtils.ts"),
-    () => import("../../backend/services/providers/brainzmashProvider.ts"),
+    () => import("../../backend/services/providers/metadataProvider.ts"),
   );
 
 const job = {

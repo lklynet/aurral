@@ -45,6 +45,26 @@ function ThumbnailImage({ src, variants, sizes, loading, onError, ...props }: Th
   );
 }
 
+function DirectImage({ src, onError, ...props }: ImageProps & { src: string }) {
+  const [fallbackUsed, setFallbackUsed] = useState(false);
+  const original = originalImage(src);
+  const currentSrc = fallbackUsed ? original : src;
+
+  return (
+    <img
+      {...props}
+      src={currentSrc}
+      onError={(event) => {
+        if (!fallbackUsed && original !== src) {
+          setFallbackUsed(true);
+          return;
+        }
+        onError?.(event);
+      }}
+    />
+  );
+}
+
 export default function ArtworkImage({
   src,
   thumbnail = true,
@@ -69,7 +89,8 @@ export default function ArtworkImage({
   }
 
   return (
-    <img
+    <DirectImage
+      key={src}
       {...props}
       src={src}
       sizes={props.srcSet ? sizes : undefined}

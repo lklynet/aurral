@@ -5,6 +5,7 @@ import type {
   PlaylistTrackIdentity,
 } from "../../../components/TrackPlaylistMenu";
 import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
+import { resolveAuthenticatedApiAssetUrl } from "../../../utils/api/core.ts";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
 import type { ArtistPreviewTrack } from "../hooks/usePreviewPlayer";
 import type { useStaticPlaylists } from "../../../hooks/useStaticPlaylists";
@@ -78,7 +79,7 @@ export function ArtistDetailsPreviewTracks({
                 number={index + 1}
                 title={track.title}
                 subtitle={track.album || null}
-                artwork={track.artworkUrl || null}
+                artwork={resolveAuthenticatedApiAssetUrl(track.artworkUrl) || null}
                 duration={formatTrackDuration(track.duration_ms)}
                 active={active}
                 playing={active && isArtistPlaybackActive}

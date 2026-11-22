@@ -4,8 +4,8 @@ import {
   isMetadataNotFoundError,
   listArtistAlbums,
   searchArtists,
-} from "./providers/brainzmashProvider.ts";
-import { normalizeTitle } from "./providers/brainzmashRanking.ts";
+} from "./providers/metadataProvider.ts";
+import { normalizeTitle } from "./providers/metadataRanking.ts";
 import { coreAlbumTitle, withoutFeaturedArtists } from "./trackMatching/titleText.ts";
 
 type NamedArtist = Awaited<ReturnType<typeof searchArtists>>["items"][number];
@@ -34,7 +34,7 @@ const albumKeys = (titles: string[]) =>
   );
 
 async function heldAlbumCount(artist: NamedArtist, wanted: Set<string>) {
-  const albums = await listArtistAlbums(artist.id, { hydrateLimit: 0 }).catch((error) => {
+  const albums = await listArtistAlbums(artist.id).catch((error) => {
     if (isMetadataNotFoundError(error)) return [];
     throw error;
   });

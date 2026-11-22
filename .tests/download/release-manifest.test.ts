@@ -40,7 +40,7 @@ const [
   "release-manifest",
   () => import("../../backend/services/releaseManifest.ts"),
   () => import("../../backend/services/releaseResolver.ts"),
-  () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../../backend/services/providers/metadataProvider.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/trackMatching/trackIdentity.ts"),
   () => import("../../backend/services/trackMatching/sourceSearch.ts"),
@@ -55,25 +55,25 @@ afterAll(async () => {
 
 const GROUP = "a1a1a1a1-0000-4000-8000-000000000001";
 const track = (
-  trackname: string,
-  recordingid: string,
-  trackposition: number,
-  durationms: number,
-  extra: { oldrecordingids?: string[]; artistid?: string; mediumnumber?: number } = {},
+  title: string,
+  recordingId: string,
+  trackPosition: number,
+  durationMs: number,
+  extra: { oldRecordingIds?: string[]; artistId?: string; mediumNumber?: number } = {},
 ) => ({
-  id: `${recordingid}-track`,
-  trackname,
-  recordingid,
-  trackposition,
-  mediumnumber: 1,
-  durationms,
-  artistid: "band",
-  oldrecordingids: [],
+  id: `${recordingId}-track`,
+  title,
+  recordingId,
+  trackPosition,
+  mediumNumber: 1,
+  durationMs,
+  artistId: "band",
+  oldRecordingIds: [],
   ...extra,
 });
 const releases = {
   "std-a": [
-    track("Opener", "rec-1", 1, 200000, { oldrecordingids: ["rec-1-old"] }),
+    track("Opener", "rec-1", 1, 200000, { oldRecordingIds: ["rec-1-old"] }),
     track("Middle", "rec-2", 2, 210000),
     track("Closer", "rec-3", 3, 220000),
   ],
@@ -87,17 +87,17 @@ const releases = {
     track("Middle", "rec-2", 2, 211000),
     track("Closer", "rec-3", 3, 221000),
     track("Middle (Acoustic)", "rec-2a", 4, 190000),
-    track("Bonus", "rec-b", 5, 180000, { artistid: "guest" }),
+    track("Bonus", "rec-b", 5, 180000, { artistId: "guest" }),
   ],
 };
 const group = {
   id: GROUP,
   title: "The Album",
-  secondarytypes: ["Live"],
-  artistid: "band",
+  secondaryTypes: ["Live"],
+  artistId: "band",
   artists: [
-    { id: "band", artistname: "The Band", artistaliases: ["Band"] },
-    { id: "guest", artistname: "Guest Singer" },
+    { id: "band", name: "The Band", aliases: ["Band"] },
+    { id: "guest", name: "Guest Singer" },
   ],
   releases: [
     ...Object.entries(releases).map(([id, tracks]) => ({
@@ -110,7 +110,7 @@ const group = {
       id: "truncated",
       title: "The Album",
       status: "Bootleg",
-      track_count: 12,
+      trackCount: 12,
       tracks: releases["std-a"],
     },
   ],
@@ -282,8 +282,8 @@ test("a pressing without a length takes the midpoint of its pressings' lengths",
     {
       id: pressed,
       title: "Pressed",
-      artistid: "band",
-      artists: [{ id: "band", artistname: "The Band" }],
+      artistId: "band",
+      artists: [{ id: "band", name: "The Band" }],
       releases: [
         pressing("original", [200000, 210000, 220000]),
         pressing("remaster", [206000, 216000, 226000]),
@@ -326,7 +326,7 @@ test("a rip of another official pressing of the same recordings in the same runn
         `${recording}-${names.indexOf(name) + 1}`,
         index + 1,
         requireFixture(lengths[index]),
-        merged ? { oldrecordingids: [`old-${names.indexOf(name) + 1}`] } : {},
+        merged ? { oldRecordingIds: [`old-${names.indexOf(name) + 1}`] } : {},
       ),
     ),
   });
@@ -338,8 +338,8 @@ test("a rip of another official pressing of the same recordings in the same runn
     {
       id: pressed,
       title: "Old Album",
-      artistid: "band",
-      artists: [{ id: "band", artistname: "The Band" }],
+      artistId: "band",
+      artists: [{ id: "band", name: "The Band" }],
       releases: [
         pressing("vinyl", sleeve),
         pressing("cd", cd),
@@ -445,18 +445,18 @@ test("a pinned edition with a live disc imports from a folder naming that disc, 
   const expanded = "a1a1a1a1-0000-4000-8000-000000000004";
   const studio = ["First Song", "Second Song"];
   const live = studio.map((name) => `${name} (Live at the Paramount)`);
-  const disc = (names: string[], mediumnumber: number, from: number) =>
+  const disc = (names: string[], mediumNumber: number, from: number) =>
     names.map((name, index) =>
       track(name, `big-${from + index}`, index + 1, 200000 + (from + index) * 10000, {
-        mediumnumber,
+        mediumNumber,
       }),
     );
   await serveGroups(t, [
     {
       id: expanded,
       title: "Big Album",
-      artistid: "band",
-      artists: [{ id: "band", artistname: "The Band" }],
+      artistId: "band",
+      artists: [{ id: "band", name: "The Band" }],
       releases: [
         { id: "standard", title: "Big Album", status: "Official", tracks: disc(studio, 1, 1) },
         {
@@ -575,7 +575,7 @@ test("an edition that lists only part of its tracks is never the one an album as
           id: "cut",
           title: "The Album",
           status: "Official",
-          track_count: 4,
+          trackCount: 4,
           tracks: releases["std-a"],
         },
         { id: "std-b", title: "The Album", status: "Official", tracks: releases["std-b"] },
@@ -617,7 +617,7 @@ test("an album's editions are its whole tracklists, the standard first, named by
     id,
     title,
     status: "Official",
-    releasedate: date,
+    releaseDate: date,
     tracks,
   });
   await stubMetadata(t, [
@@ -628,7 +628,7 @@ test("an album's editions are its whole tracklists, the standard first, named by
         pressing("std-b", "The Album", "2009-01-01", releases["std-b"]),
         pressing("std-a", "The Album", "2008-01-01", releases["std-a"]),
         pressing("reissue", "The Album", "2012-01-01", releases.deluxe.slice(0, 4)),
-        { ...pressing("truncated", "The Album", "", releases.deluxe), track_count: 9 },
+        { ...pressing("truncated", "The Album", "", releases.deluxe), trackCount: 9 },
       ],
     },
   ]);

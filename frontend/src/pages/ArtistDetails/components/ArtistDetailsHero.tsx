@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import ArtworkImage from "../../../components/ArtworkImage";
 import { buildArtistTags, getCoverImage, getArtistType, type ArtistCoverImage } from "../utils";
 import type { ArtistDetailsResponse } from "../../../utils/api/endpoints/artists.ts";
 import { withImageCacheBust } from "../../../utils/normalizeMediaUrl";
@@ -46,8 +47,9 @@ export function ArtistDetailsHero({
       <div className="artist-hero__inner" style={artworkStyle}>
         {showImage ? (
           <>
-            <img
+            <ArtworkImage
               src={displayedImage}
+              thumbnail={false}
               alt=""
               className="artist-hero__image"
               loading="eager"

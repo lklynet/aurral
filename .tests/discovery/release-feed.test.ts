@@ -98,6 +98,6 @@ test("the release feed merges Library and recommended albums and EPs into dated 
   ).releases.find((album) => album.title === "Recommended Recent");
   assert.equal(
     recommendedRecent?.coverUrl,
-    `https://imagecache.lidarr.audio/v1/caa/${mbid(30)}/77-500.jpg`,
+    `https://coverartarchive.org/release/${mbid(30)}/77-500.jpg`,
   );
 });

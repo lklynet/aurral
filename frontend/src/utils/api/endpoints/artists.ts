@@ -11,15 +11,10 @@ import { artistsClient } from "../clients/artists.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 
 export type ArtistDetailsResponse = InferResponseType<(typeof artistsClient)[":mbid"]["$get"], 200>;
-type ReleaseGroupPreview = InferResponseType<
-  (typeof artistsClient)["release-group"][":mbid"]["previews"]["$get"],
-  200
->["previews"][string];
 export type ReleaseGroupTrack = InferResponseType<
   (typeof artistsClient)["release-group"][":mbid"]["tracks"]["$get"],
   200
->[number] &
-  Partial<ReleaseGroupPreview>;
+>[number];
 export type SimilarArtistsResponse = InferResponseType<
   (typeof artistsClient)[":mbid"]["similar"]["$get"],
   200
@@ -37,14 +32,6 @@ type ArtistVideo = NonNullable<
 > & { trackTitle: string };
 
 const coverFetch = apiFetchWithin(4000);
-
-export const getReleaseTrackCredits = (mbid: string, { signal }: { signal?: AbortSignal } = {}) =>
-  parseResponse(
-    artistsClient.release[":mbid"].credits.$get(
-      { param: { mbid: encodeURIComponent(mbid) } },
-      { init: { signal } },
-    ),
-  );
 
 export const getReleaseGroupTracks = (
   mbid: string,

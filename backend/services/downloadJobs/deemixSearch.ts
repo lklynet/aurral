@@ -4,7 +4,7 @@
 // trackMatching engine, so this module only owns how Aurral asks Deezer for
 // candidates.
 
-import { normalizeReleaseText } from "../providers/brainzmashRanking.ts";
+import { normalizeReleaseText } from "../providers/metadataRanking.ts";
 import { normalizeMatchText } from "../trackMatching/nativeMatcher.ts";
 import { stripReleaseTypeSuffix } from "./trackSearchQueries.ts";
 import { coreAlbumTitle } from "../trackMatching/titleText.ts";

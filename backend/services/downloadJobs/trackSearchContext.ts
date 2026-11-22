@@ -6,18 +6,18 @@ import {
   isMetadataNotFoundError,
   listArtistAlbums,
   resolveAlbumByArtistAndTitle,
-} from "../providers/brainzmashProvider.ts";
+} from "../providers/metadataProvider.ts";
 import {
   scoreTextMatch as scoreTextMatchBase,
   getYear,
   pickResolvedDurationMs,
   selectAlbumRelease,
-} from "../providers/brainzmashRanking.ts";
+} from "../providers/metadataRanking.ts";
 import createCache from "../apiClients/simpleCache.ts";
 import { sameVersion, trackRequestFor } from "../releaseManifest.ts";
 import { resolveReleaseManifest } from "../releaseResolver.ts";
 import type { DownloadTrackFields } from "../downloadUtils.ts";
-import type { NormalizedAlbum, NormalizedRelease } from "../providers/brainzmashMappers.ts";
+import type { NormalizedAlbum, NormalizedRelease } from "../providers/metadataMappers.ts";
 
 type ResolvedTrack = DownloadTrackFields & {
   artistName: string;
@@ -196,7 +196,7 @@ async function resolveReleaseGroup(track: DownloadTrackFields): Promise<ReleaseG
       noteFailure(error);
     }
     try {
-      const albums = safeMbid ? await listArtistAlbums(safeMbid, { hydrateLimit: 0 }) : [];
+      const albums = safeMbid ? await listArtistAlbums(safeMbid) : [];
       const candidates = albums.filter(
         (album) => album.id && matchesAlbumTitle(album.title, safeAlbum),
       );

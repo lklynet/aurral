@@ -1,5 +1,5 @@
-import type { toNormalizedArtistAlbum } from "./providers/brainzmashMappers.ts";
-import { listArtistAlbums } from "./providers/brainzmashProvider.ts";
+import type { toNormalizedArtistAlbum } from "./providers/metadataMappers.ts";
+import { listArtistAlbums } from "./providers/metadataProvider.ts";
 
 export const RELEASE_TYPES = ["album", "ep", "single"];
 export const EXTRA_RELEASE_TYPES = [
@@ -272,7 +272,6 @@ export function legacyMonitorMode(effective: { rules: MonitorRules } | null | un
 
 export async function listArtistReleases(artistMbid: string, rules: MonitorRules) {
   return listArtistAlbums(artistMbid, {
-    hydrateLimit: 100,
     only: (release) => releaseMatchesRules(release, rules),
   });
 }

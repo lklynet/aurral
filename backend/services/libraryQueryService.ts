@@ -1158,30 +1158,27 @@ type LibraryTrackOwnershipInput = {
   trackName?: string | null;
 };
 
-type LibraryTrackOwnershipReference =
-  | { kind: "mbid"; value: string }
-  | { kind: "names"; artistName: string; trackName: string; key: string };
+type LibraryTrackOwnershipReference = {
+  trackMbid: string | null;
+  trackName: string | null;
+  nameKey: string | null;
+};
 
 function normalizeTrackOwnershipReference(
   track: LibraryTrackOwnershipInput | null | undefined,
 ): LibraryTrackOwnershipReference | null {
-  const trackMbid = String(track?.trackMbid || "").trim();
-  if (trackMbid) return { kind: "mbid", value: trackMbid };
-
+  const trackMbid = String(track?.trackMbid || "").trim() || null;
   const artistName = String(track?.artistName || "").trim();
   const trackName = String(track?.trackName || "").trim();
-  if (!artistName || !trackName) return null;
-  return {
-    kind: "names",
-    artistName,
-    trackName,
-    key: `${artistName.toLowerCase()}\u0000${trackName.toLowerCase()}`,
-  };
+  const nameKey =
+    artistName && trackName ? `${artistName.toLowerCase()}\u0000${trackName.toLowerCase()}` : null;
+  if (!trackMbid && !nameKey) return null;
+  return { trackMbid, trackName: nameKey ? trackName : null, nameKey };
 }
 
 function getTrackOwnershipReferenceKey(reference: LibraryTrackOwnershipReference | null) {
   if (!reference) return "";
-  return `${reference.kind}:${reference.kind === "mbid" ? reference.value : reference.key}`;
+  return `${reference.trackMbid ?? ""}\u0001${reference.nameKey ?? ""}`;
 }
 
 export function getLibraryTrackOwnershipBatch(
@@ -1198,6 +1195,7 @@ export function getLibraryTrackOwnershipBatch(
 
   const ownedMbids = new Set<string>();
   const ownedNames = new Set<string>();
+  const ownedUntaggedNames = new Set<string>();
   const values = [...uniqueReferences.values()];
   for (let index = 0; index < values.length; index += TRACK_OWNERSHIP_BATCH_SIZE) {
     const batch = values.slice(index, index + TRACK_OWNERSHIP_BATCH_SIZE);
@@ -1207,12 +1205,12 @@ export function getLibraryTrackOwnershipBatch(
       conditions.push("media.source = ?");
       parameters.push(sourceFilter);
     }
-    const mbids = batch
-      .filter((reference) => reference.kind === "mbid")
-      .map((reference) => reference.value);
-    const titles = batch
-      .filter((reference) => reference.kind === "names")
-      .map((reference) => reference.trackName);
+    const mbids = [
+      ...new Set(batch.flatMap((reference) => (reference.trackMbid ? [reference.trackMbid] : []))),
+    ];
+    const titles = [
+      ...new Set(batch.flatMap((reference) => (reference.trackName ? [reference.trackName] : []))),
+    ];
     const referenceConditions: string[] = [];
     if (mbids.length) {
       referenceConditions.push(`track.mbid IN (${mbids.map(() => "?").join(",")})`);
@@ -1250,7 +1248,9 @@ export function getLibraryTrackOwnershipBatch(
       for (const credit of [row.track_artist_name, row.artist_name]) {
         const artistName = String(credit || "").trim();
         if (artistName && trackName) {
-          ownedNames.add(`${artistName.toLowerCase()}\u0000${trackName.toLowerCase()}`);
+          const nameKey = `${artistName.toLowerCase()}\u0000${trackName.toLowerCase()}`;
+          ownedNames.add(nameKey);
+          if (!trackMbid) ownedUntaggedNames.add(nameKey);
         }
       }
     }
@@ -1258,9 +1258,13 @@ export function getLibraryTrackOwnershipBatch(
 
   return references.map((reference) => {
     if (!reference) return false;
-    return reference.kind === "mbid"
-      ? ownedMbids.has(reference.value)
-      : ownedNames.has(reference.key);
+    if (reference.trackMbid) {
+      return Boolean(
+        ownedMbids.has(reference.trackMbid) ||
+        (reference.nameKey && ownedUntaggedNames.has(reference.nameKey)),
+      );
+    }
+    return Boolean(reference.nameKey && ownedNames.has(reference.nameKey));
   });
 }
 

@@ -1,23 +1,27 @@
 ---
-title: Metadata and search
+title: Metadata and search (AurralBrainz)
 description: Where Aurral gets artist and album data, and how to point it at another metadata server.
 ---
 
-Aurral gets artist pages, album details, release dates, genres, and catalog search from `brainzmash.kell.ly`, a BrainzMash server built on MusicBrainz data and run by the Aurral maintainers. Most installations need no setup.
+Aurral gets artist pages, album details, release dates, artwork links, similar artists, top tracks, and genre lists from **AurralBrainz** (`data.aurral.org`), static JSON files built daily by the Aurral maintainers. Catalog search goes through the same host. Most installations need no setup.
 
-When BrainzMash has no data for an item, Aurral asks other services. For example, it uses Deezer for artist images and previews, and ListenBrainz for tags. It uses the Deezer ID from the BrainzMash links when one exists, so it does not have to search Deezer by name.
+When an artist or album is too new to have a file on AurralBrainz yet, Aurral fills the gap straight from MusicBrainz. Artist artwork comes from AurralBrainz and falls back to album covers from the Cover Art Archive. Deezer is used for track previews and as an optional fallback for top tracks or related artists when an artist file does not have them yet.
 
-On artist pages, Aurral ranks popular releases by how many people played each one on ListenBrainz. It also takes a release date from ListenBrainz when BrainzMash has none.
+## Data sources and attribution
+
+AurralBrainz is built from open data published by the [MetaBrainz Foundation](https://metabrainz.org/) ([MusicBrainz](https://musicbrainz.org/), [ListenBrainz](https://listenbrainz.org/), and the [Cover Art Archive](https://coverartarchive.org/)), enriched with artist artwork from Wikimedia Commons, Fanart.tv, and TheAudioDB.
+
+MetaBrainz keeps the open music database that makes projects like Aurral possible. If you get value out of it, please consider [supporting MetaBrainz](https://metabrainz.org/donate).
 
 ## Use another metadata server
 
-To use your own BrainzMash server:
+To point Aurral at your own copy of the AurralBrainz metadata files:
 
 1. Open Settings and search for **Metadata**. This section is not in the Settings navigation.
 2. Enter the server address in **Base URL**.
 
-Leave **Base URL** empty to use the hosted service. You can also set the address with the `BRAINZMASH_BASE_URL` environment variable. A value in Settings takes precedence.
+Leave **Base URL** empty to use `https://data.aurral.org`. You can also set the address with the `METADATA_BASE_URL` environment variable. A value in Settings takes precedence.
 
 ## Sponsorship
 
-The hosted metadata service runs on the maintainer's own infrastructure and can be unavailable at times. [Sponsor Aurral](/sponsorship/) to help keep it reliable.
+AurralBrainz runs on the maintainer's own infrastructure and Cloudflare. [Sponsor Aurral](/sponsorship/) to help keep it fast and reliable.

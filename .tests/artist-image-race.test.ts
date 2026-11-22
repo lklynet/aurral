@@ -19,27 +19,34 @@ vi.mock("node:zlib", async (importOriginal) => {
   };
 });
 
-const [state, { dbOps }, { getArtistImage }, { default: details }, { default: artistCover }] =
-  await setupIsolatedBackend(
-    "artist-image-race",
-    () => import("../backend/db/helpers/index.ts"),
-    () => import("../backend/services/imageService.ts"),
-    () => import("../backend/routes/artists/handlers/details.ts"),
-    () => import("../backend/routes/artists/handlers/cover.ts"),
-  );
+const [
+  state,
+  { dbOps },
+  { getArtistImage },
+  { clearMetadataProviderCaches },
+  { default: details },
+  { default: artistCover },
+] = await setupIsolatedBackend(
+  "artist-image-race",
+  () => import("../backend/db/helpers/index.ts"),
+  () => import("../backend/services/imageService.ts"),
+  () => import("../backend/services/providers/metadataProvider.ts"),
+  () => import("../backend/routes/artists/handlers/details.ts"),
+  () => import("../backend/routes/artists/handlers/cover.ts"),
+);
 
 useFakeClock();
 
 const originalFetch = globalThis.fetch;
-const previousMetadataUrl = process.env.BRAINZMASH_BASE_URL;
-process.env.BRAINZMASH_BASE_URL = "http://metadata.invalid";
+const previousMetadataUrl = process.env.METADATA_BASE_URL;
+process.env.METADATA_BASE_URL = "http://metadata.invalid";
 const fixtures = new Map();
 globalThis.fetch = async (input) => {
   const url = new URL(String(input));
   const fixture = fixtures.get(`${url.hostname}${url.pathname}`);
   if (fixture) return Response.json(await fixture(url));
-  if (url.hostname === "metadata.invalid" && url.pathname === "/search/artist") {
-    return Response.json([]);
+  if (url.hostname === "metadata.invalid" && url.pathname === "/v1/search/artist") {
+    return Response.json({ artists: [] });
   }
   if (url.hostname === "api.deezer.com" && url.pathname === "/search/artist") {
     return Response.json({ data: [], total: 0 });
@@ -57,15 +64,15 @@ const app = signedInAs(testUser(1, { role: "admin" }))
 
 afterAll(async () => {
   globalThis.fetch = originalFetch;
-  if (previousMetadataUrl === undefined) delete process.env.BRAINZMASH_BASE_URL;
-  else process.env.BRAINZMASH_BASE_URL = previousMetadataUrl;
+  if (previousMetadataUrl === undefined) delete process.env.METADATA_BASE_URL;
+  else process.env.METADATA_BASE_URL = previousMetadataUrl;
   await cleanupIsolatedState(state);
 });
 
 const artistId = (number: number) => `11111111-1111-4111-8111-${String(number).padStart(12, "0")}`;
 const oldImage = "https://images.example/old-artist.jpg";
 const newImage = "https://images.example/current-artist.jpg";
-const image = (url: string) => ({ CoverType: "Artist", Url: url });
+const image = (url: string) => ({ kind: "Artist", url });
 
 function gate() {
   const started = Promise.withResolvers<void>();
@@ -87,24 +94,24 @@ function artist(
     albums = [],
     before = async () => {},
   }: {
-    images?: { CoverType: string; Url: string }[];
-    albums?: { Id: string; Title: string; Type: string }[];
+    images?: { kind: string; url: string }[];
+    albums?: { id: string; title: string; type: string; cover?: string | null }[];
     before?: () => Promise<void>;
   } = {},
 ) {
-  fixtures.set(`metadata.invalid/artist/${mbid}`, async () => {
+  fixtures.set(`metadata.invalid/v1/artist/${mbid}`, async () => {
     await before();
     return {
       id: mbid,
-      artistname: `Artist ${mbid}`,
-      sortname: `Artist ${mbid}`,
+      name: `Artist ${mbid}`,
+      sortName: `Artist ${mbid}`,
       type: "Person",
       status: "Ended",
       images,
-      Albums: albums,
+      albums,
       links: [],
       genres: [],
-      artistaliases: [],
+      aliases: [],
       overview: "",
     };
   });
@@ -131,7 +138,6 @@ async function cover(mbid: string) {
 
 for (const [index, source, lookup] of [
   [1, "direct image", getArtistImage],
-  [2, "Deezer image", getArtistImage],
   [3, "album image", getArtistImage],
   [4, "not-found result", getArtistImage],
   [5, "direct image", cover],
@@ -145,27 +151,17 @@ for (const [index, source, lookup] of [
     const albumId = artistId(index + 200);
     artist(mbid, {
       images: source === "direct image" ? [image(oldImage)] : [],
-      albums: source === "album image" ? [{ Id: albumId, Title: "Old Album", Type: "Album" }] : [],
+      albums: source === "album image" ? [{ id: albumId, title: "Old Album", type: "Album" }] : [],
       before: () => oldGate.wait(),
     });
     artist(replacement, { images: [image(newImage)] });
-    fixtures.set(`metadata.invalid/album/${albumId}`, async () => ({
+    fixtures.set(`metadata.invalid/v1/album/${albumId}`, async () => ({
       id: albumId,
       title: "Old Album",
-      images: [{ CoverType: "Cover", Url: oldImage }],
+      images: [{ kind: "Cover", url: oldImage }],
       artists: [],
       releases: [],
     }));
-    if (source === "Deezer image") {
-      dbOps.setArtistOverride(mbid, { deezerArtistId: "4321" });
-      fixtures.set("api.deezer.com/artist/4321", async () => ({
-        id: 4321,
-        name: "Old Artist",
-        picture: oldImage,
-        picture_medium: oldImage,
-        picture_big: oldImage,
-      }));
-    }
 
     const oldLookup = lookup(mbid);
     await oldGate.started;
@@ -199,7 +195,7 @@ test("cached album recovery cannot overwrite an image selected after an override
   const albumId = artistId(207);
   const oldGate = gate();
   artist(mbid, {
-    albums: [{ Id: albumId, Title: "Old Album", Type: "Album" }],
+    albums: [{ id: albumId, title: "Old Album", type: "Album" }],
     before: () => oldGate.wait(),
   });
   artist(replacement, { images: [image(newImage)] });
@@ -278,14 +274,14 @@ test("an artist without an image never takes a namesake's image or page", async 
   const namesake = artistId(211);
   artist(mbid);
   artist(namesake, { images: [image(oldImage)] });
-  fixtures.set("metadata.invalid/search/artist", async () => [
-    { id: namesake, artistname: `Artist ${mbid}`, images: [image(oldImage)] },
-  ]);
+  fixtures.set("metadata.invalid/v1/search/artist", async () => ({
+    artists: [{ id: namesake, name: `Artist ${mbid}`, image: oldImage }],
+  }));
   try {
     assert.equal((await getArtistImage(mbid)).url, null);
     assert.equal(dbOps.getArtistOverride(mbid), null);
   } finally {
-    fixtures.delete("metadata.invalid/search/artist");
+    fixtures.delete("metadata.invalid/v1/search/artist");
   }
 });
 
@@ -293,19 +289,8 @@ test("an old cover not-found result cannot overwrite the current image", async (
   const mbid = artistId(12);
   const replacement = artistId(112);
   const oldGate = gate();
-  artist(mbid);
+  artist(mbid, { before: () => oldGate.wait() });
   artist(replacement, { images: [image(newImage)] });
-  dbOps.setArtistOverride(mbid, { deezerArtistId: "5432" });
-  fixtures.set("api.deezer.com/artist/5432", async () => {
-    await oldGate.wait();
-    return {
-      id: 5432,
-      name: "Missing Image",
-      picture: null,
-      picture_medium: null,
-      picture_big: null,
-    };
-  });
   const oldCover = cover(mbid);
   await oldGate.started;
   let latest:
@@ -369,31 +354,50 @@ for (const [index, recoveredUrl] of [
   test(`forced refresh supersedes negative-cache recovery returning ${recoveryResult}`, async () => {
     const mbid = artistId(index);
     const albumId = artistId(index + 200);
-    const deezerArtistId = String(6000 + index);
     const recoveryGate = gate();
     const providerGate = gate();
     let providerRequests = 0;
-    artist(mbid, {
-      albums: [{ Id: albumId, Title: "Old Album", Type: "Album" }],
-      before: () => recoveryGate.wait(),
-    });
-    fixtures.set(`api.deezer.com/artist/${deezerArtistId}`, async () => {
+    let calls = 0;
+    fixtures.set(`metadata.invalid/v1/artist/${mbid}`, async () => {
+      calls += 1;
+      if (calls === 1) {
+        await recoveryGate.wait();
+        return {
+          id: mbid,
+          name: `Artist ${mbid}`,
+          sortName: `Artist ${mbid}`,
+          type: "Person",
+          status: "Ended",
+          images: [],
+          albums: [{ id: albumId, title: "Old Album", type: "Album" }],
+          links: [],
+          genres: [],
+          aliases: [],
+          overview: "",
+        };
+      }
       providerRequests += 1;
       await providerGate.wait();
       return {
-        id: Number(deezerArtistId),
-        name: "Current Artist",
-        picture: newImage,
-        picture_medium: newImage,
-        picture_big: newImage,
+        id: mbid,
+        name: `Artist ${mbid}`,
+        sortName: `Artist ${mbid}`,
+        type: "Person",
+        status: "Ended",
+        images: [image(newImage)],
+        albums: [{ id: albumId, title: "Old Album", type: "Album" }],
+        links: [],
+        genres: [],
+        aliases: [],
+        overview: "",
       };
     });
-    dbOps.setArtistOverride(mbid, { deezerArtistId });
     dbOps.setImage(mbid, "NOT_FOUND");
     if (recoveredUrl) dbOps.setImage(`rg:${albumId}`, recoveredUrl);
 
     const recovery = getArtistImage(mbid);
     await recoveryGate.started;
+    clearMetadataProviderCaches();
     const refreshed = getArtistImage(mbid, { forceRefresh: true });
     const repeatedRefresh = getArtistImage(mbid, true);
     const later: ReturnType<typeof getArtistImage>[] = [];
@@ -447,13 +451,13 @@ test("a forced refresh searches albums that a pending lookup skips", async () =>
   const albumId = artistId(219);
   const lookupGate = gate();
   artist(mbid, {
-    albums: [{ Id: albumId, Title: "Current Album", Type: "Album" }],
+    albums: [{ id: albumId, title: "Current Album", type: "Album" }],
     before: () => lookupGate.wait(),
   });
-  fixtures.set(`metadata.invalid/album/${albumId}`, async () => ({
+  fixtures.set(`metadata.invalid/v1/album/${albumId}`, async () => ({
     id: albumId,
     title: "Current Album",
-    images: [{ CoverType: "Cover", Url: newImage }],
+    images: [{ kind: "Cover", url: newImage }],
     artists: [],
     releases: [],
   }));

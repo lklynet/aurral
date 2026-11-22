@@ -235,7 +235,7 @@ function trackSignature(
 }
 
 const isMissing = (src: string) =>
-  fetch(src, { method: "HEAD", credentials: "same-origin" })
+  fetch(src, { method: "HEAD", credentials: "same-origin", redirect: "manual" })
     .then((response) => response.status === 404)
     .catch(() => false);
 

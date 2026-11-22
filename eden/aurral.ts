@@ -15,7 +15,7 @@ export const aurralEnv = (ports: Ports) => ({
   AURRAL_DEV_API_PORT: String(ports.aurralApi),
   AURRAL_DEV_WEB_PORT: String(ports.aurralWeb),
   LIBRARY_FOLDER: paths.library,
-  BRAINZMASH_BASE_URL: `http://127.0.0.1:${ports.metadata}`,
+  METADATA_BASE_URL: `http://127.0.0.1:${ports.metadata}`,
   NODE_USE_ENV_PROXY: "1",
   HTTP_PROXY: `http://127.0.0.1:${ports.outside}`,
   HTTPS_PROXY: `http://127.0.0.1:${ports.outside}`,

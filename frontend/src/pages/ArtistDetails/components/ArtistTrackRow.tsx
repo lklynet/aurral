@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import ArtworkImage from "../../../components/ArtworkImage";
 import { Pause, Play } from "../../../components/icons";
 import PreviewChip from "../../../components/PreviewChip";
 import { PlayingIndicator } from "../../../components/TrackList";
@@ -61,7 +62,9 @@ export function ArtistTrackRow({
       </span>
       {artwork !== undefined ? (
         <span className="artist-track__art">
-          {artwork ? <img src={artwork} alt="" loading="lazy" decoding="async" /> : null}
+          {artwork ? (
+            <ArtworkImage src={artwork} alt="" sizes="48px" loading="lazy" decoding="async" />
+          ) : null}
           {indicator ? <span className="artist-track__art-indicator">{indicator}</span> : null}
         </span>
       ) : null}
