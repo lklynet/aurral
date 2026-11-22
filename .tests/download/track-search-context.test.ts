@@ -991,3 +991,39 @@ test("a song's other version never stands in for it on the album", async (t) => 
   assert.equal(resolved.trackNumber, 4);
   assert.equal(resolved.releaseMbid, "edition-deluxe");
 });
+
+test("an album that lists the track's recording is the track's album whatever the source calls it, and the job takes its title", async (t) => {
+  const band = artistEntry("reissue-band", "Reissue Band");
+  const studio = {
+    ...albumEntry("studio", "Clear Computer", band, ["Opening", "Karma"]),
+    releaseDate: "1997-05-21",
+  };
+  const hits = albumEntry("hits", "Greatest Hits", band, ["Karma"]);
+  stubMetadata(t, (path) => {
+    if (path === "/v1/search/album") return { albums: [albumEntry("hits", "Greatest Hits", band)] };
+    if (path === "/v1/album/studio") return studio;
+    if (path === "/v1/album/hits") return hits;
+    return null;
+  });
+  const track = {
+    artistName: "Reissue Band",
+    artistMbid: "reissue-band",
+    trackName: "Karma",
+    albumName: "Greatest Hits",
+    albumMbid: "studio",
+    trackMbid: "studio-2",
+    releaseYear: "2017",
+  };
+
+  const listed = await resolveTrackSearchContext(track);
+  assert.equal(listed.albumMbid, "studio");
+  assert.equal(listed.albumName, "Clear Computer");
+  assert.equal(listed.releaseYear, "1997");
+  assert.equal(listed.trackMbid, "studio-2");
+  assert.equal(listed.trackNumber, 2);
+  assert.deepEqual(listed.albumTrackTitles, ["Opening", "Karma"]);
+
+  const unlisted = await resolveTrackSearchContext({ ...track, trackMbid: "hits-1" });
+  assert.equal(unlisted.albumMbid, "hits");
+  assert.equal(unlisted.albumName, "Greatest Hits");
+});
