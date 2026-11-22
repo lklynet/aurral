@@ -2,6 +2,7 @@ import * as v from "valibot";
 import { db } from "../config/db-sqlite.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { findDeezerAlbumCover, getDeezerArtist } from "./apiClients/deezer.ts";
+import { isDeezerPlaceholderArtistImage } from "./imageProxyService.ts";
 import { getLibraryArtwork } from "./libraryArtwork.ts";
 import { wrappedKey } from "./wrapped/metrics.ts";
 
@@ -21,9 +22,10 @@ const lookups = new Map<string, Promise<string | null>>();
 
 async function deezerArt(key: string, artist: string, album: string | undefined) {
   try {
-    const found = album
+    let found = album
       ? await findDeezerAlbumCover(artist, album)
       : ((await getDeezerArtist(artist, { throwOnError: true }))?.imageUrl ?? null);
+    if (!album && found && (await isDeezerPlaceholderArtistImage(found))) found = null;
     dbOps.setImage(key, found ?? NOT_FOUND);
     return found;
   } catch {

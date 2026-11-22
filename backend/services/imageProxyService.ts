@@ -554,7 +554,7 @@ export const isDeezerPlaceholderArtistImage = async (sourceUrl: string) => {
   try {
     const requestFetch = usesNativeFetch() ? undiciFetch : globalThis.fetch;
     const response = await requestFetch(parseSafeRemoteUrl(sourceUrl), {
-      method: "HEAD",
+      method: "GET",
       redirect: "manual",
       signal: controller.signal,
       dispatcher: imageProxyDispatcher,
