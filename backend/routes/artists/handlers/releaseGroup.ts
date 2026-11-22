@@ -11,7 +11,7 @@ import {
   savedReleaseGroupCoverUrl,
 } from "../../../services/releaseGroupCoverService.ts";
 import { selectAlbumCover } from "../../../services/imageRanking.ts";
-import { deezerPreviewSearchPath } from "../../../services/apiClients/deezer.ts";
+import { deezerPreviewSearchPath } from "../../../../lib/deezerPreview.ts";
 import { enrichTracksWithDeezerPreviews } from "../../../services/apiClients/index.ts";
 import {
   getArtistByMbid,

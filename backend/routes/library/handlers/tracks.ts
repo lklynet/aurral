@@ -10,7 +10,7 @@ import { validate } from "../../../middleware/validate.ts";
 import { getAlbumTracksByAlbumMbid } from "../../../services/providers/metadataProvider.ts";
 import { chooseLibraryRelease } from "../../../services/releaseResolver.ts";
 import { deezerGetAlbumTracks } from "../../../services/apiClients/index.ts";
-import { deezerPreviewSearchPath } from "../../../services/apiClients/deezer.ts";
+import { deezerPreviewSearchPath } from "../../../../lib/deezerPreview.ts";
 import fsp from "fs/promises";
 import path from "path";
 import { logger } from "../../../services/logger.ts";

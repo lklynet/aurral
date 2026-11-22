@@ -336,7 +336,11 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
           if (missing) {
             resumeAtRef.current = null;
             dispatch({ type: "REMOVE_MISSING", entryId: track.entryId, autoplay });
-            showInfo(`Removed ${track.title} from the queue because its file is missing`);
+            showInfo(
+              track.isPreview
+                ? `No preview found for ${track.title}`
+                : `Removed ${track.title} from the queue because its file is missing`,
+            );
             return;
           }
           if (formatAttemptIndex + 1 >= formatAttempts.length) {

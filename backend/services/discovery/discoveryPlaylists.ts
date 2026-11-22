@@ -1,6 +1,6 @@
 import * as v from "valibot";
 import { db } from "../../config/db-sqlite.ts";
-import { deezerPreviewSearchPath } from "../apiClients/deezer.ts";
+import { deezerPreviewSearchPath } from "../../../lib/deezerPreview.ts";
 import { cachedArtistGuess } from "../artistMatch.ts";
 import { listOf } from "../../db/helpers/storedSchemas.ts";
 import { getTopPlayedArtists } from "../playEventService.ts";

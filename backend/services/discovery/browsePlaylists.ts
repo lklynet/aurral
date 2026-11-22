@@ -30,7 +30,7 @@ import type { LibraryArtistsRow } from "../../db/rows.ts";
 import { communityPlaylist, communityProfile, communityShelf } from "../publicPlaylists.ts";
 import { requireImportList } from "../importLists/importPlaylist.ts";
 import type { ShareManifest } from "../../../lib/shareManifest.ts";
-import { deezerPreviewSearchPath } from "../apiClients/deezer.ts";
+import { deezerPreviewSearchPath } from "../../../lib/deezerPreview.ts";
 import { releaseGroupCoverImageUrl } from "../releaseGroupCoverService.ts";
 
 export const browseProviderSchema = v.picklist(BROWSE_PROVIDERS);
