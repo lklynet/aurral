@@ -2,14 +2,9 @@ import { dbOps } from "../db/helpers/index.ts";
 import {
   buildStableImageProxyUrl,
   fetchRemoteImage,
-  isDeezerPlaceholderArtistImage,
   warmPublicImageUrl,
 } from "./imageProxyService.ts";
-import {
-  getDeezerArtist,
-  getDeezerArtistById,
-  resolveDeezerAlbumForPreview,
-} from "./apiClients/deezer.ts";
+import { resolveDeezerAlbumForPreview } from "./apiClients/deezer.ts";
 import { getAlbumByMbid, isMetadataNotFoundError } from "./providers/metadataProvider.ts";
 import { getLinkedDeezerArtistId } from "./providers/metadataMappers.ts";
 import { selectAlbumCover } from "./imageRanking.ts";
@@ -17,7 +12,7 @@ import { logger, safeLogDiagnostic } from "./logger.ts";
 
 export const LEGACY_COVER_HOST_PATTERN = /https?:\/\/(?:archive\.org|[\w-]+\.ca\.archive\.org)\//i;
 
-type DeezerArtistId = Parameters<typeof getDeezerArtistById>[0];
+type DeezerArtistId = string | number | null;
 type ReleaseGroupCoverOptions = {
   artistName?: string;
   albumTitle?: string;
@@ -90,30 +85,6 @@ const fetchDeezerAlbumCover = async ({
     });
     return foundCover(album?._coverUrl);
   } catch {
-    return null;
-  }
-};
-
-export const fetchDeezerArtistImageUrl = async ({
-  artistName = "",
-  deezerArtistId = null,
-  throwOnError = false,
-}: {
-  artistName?: string;
-  deezerArtistId?: DeezerArtistId;
-  throwOnError?: boolean;
-} = {}) => {
-  try {
-    const artist = deezerArtistId
-      ? await getDeezerArtistById(deezerArtistId, { throwOnError })
-      : artistName
-        ? await getDeezerArtist(artistName, { throwOnError })
-        : null;
-    if (!artist?.imageUrl) return null;
-    if (await isDeezerPlaceholderArtistImage(artist.imageUrl)) return null;
-    return toPublicCoverUrl(artist.imageUrl);
-  } catch (error) {
-    if (throwOnError) throw error;
     return null;
   }
 };

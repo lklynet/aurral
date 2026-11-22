@@ -4,7 +4,8 @@ import { readMany, readOne } from "../integrationData.ts";
 import createCache from "./simpleCache.ts";
 import createRateLimiter from "./rateLimiter.ts";
 import { createOutagePause } from "./outagePause.ts";
-import { DEEZER_BLANK_ARTIST_IMAGE_PATTERN } from "../imageProxyService.ts";
+const DEEZER_BLANK_ARTIST_IMAGE_PATTERN =
+  /\/images\/artist\/(?:(?:d41d8cd98f00b204e9800998ecf8427e|ebcf22e5c3a0eb3178b8a6f6bc1a5a6c)\/|\/)/i;
 
 const DEEZER_API_URL = "https://api.deezer.com";
 const DEEZER_NO_DATA_CODE = 800;

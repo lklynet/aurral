@@ -1,20 +1,21 @@
 import type { CachedArtistImage } from "../db/helpers/cache.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import type { ArtistOverride } from "../db/helpers/overrides.ts";
-import {
-  buildStableImageProxyUrl,
-  DEEZER_BLANK_ARTIST_IMAGE_PATTERN,
-} from "./imageProxyService.ts";
+import { buildStableImageProxyUrl } from "./imageProxyService.ts";
 import { getArtistImageKindRank, getImageUrl, type ImageList } from "./imageRanking.ts";
 import type { NormalizedArtist } from "./providers/metadataMappers.ts";
-import { getArtistByMbid, listArtistAlbums } from "./providers/metadataProvider.ts";
-import { getLinkedDeezerArtistId } from "./providers/metadataMappers.ts";
+import {
+  getArtistByMbid,
+  isMetadataNotFoundError,
+  listArtistAlbums,
+} from "./providers/metadataProvider.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import {
-  fetchDeezerArtistImageUrl,
   fetchReleaseGroupCoverUrl,
   LEGACY_COVER_HOST_PATTERN,
 } from "./releaseGroupCoverService.ts";
+
+const DEEZER_ARTIST_IMAGE_PATTERN = /https?:\/\/(?:[\w-]+\.)?dzcdn\.net\/images\/artist\//i;
 
 type ReleaseGroupSummary = Awaited<ReturnType<typeof listArtistAlbums>>[number];
 type ArtistReleaseGroup = Pick<ReleaseGroupSummary, "id"> & {
@@ -109,7 +110,7 @@ export const getDirectOrCachedArtistImages = (
     cached?.imageUrl &&
     cached.imageUrl !== "NOT_FOUND" &&
     !LEGACY_COVER_HOST_PATTERN.test(cached.imageUrl) &&
-    !DEEZER_BLANK_ARTIST_IMAGE_PATTERN.test(cached.imageUrl)
+    !DEEZER_ARTIST_IMAGE_PATTERN.test(cached.imageUrl)
   ) {
     return buildCachedArtistImagePayload(buildStableImageProxyUrl(cached.imageUrl), cached.images);
   }
@@ -239,7 +240,7 @@ export const getArtistImage = async (
     cachedImage.imageUrl &&
     cachedImage.imageUrl !== "NOT_FOUND" &&
     !LEGACY_COVER_HOST_PATTERN.test(cachedImage.imageUrl) &&
-    !DEEZER_BLANK_ARTIST_IMAGE_PATTERN.test(cachedImage.imageUrl)
+    !DEEZER_ARTIST_IMAGE_PATTERN.test(cachedImage.imageUrl)
   ) {
     const cachedUrl = buildStableImageProxyUrl(cachedImage.imageUrl);
     const images = buildCachedArtistImagePayload(cachedUrl, cachedImage.images);
@@ -282,7 +283,11 @@ export const getArtistImage = async (
     try {
       override = dbOps.getArtistOverride(mbid);
       resolvedMbid = override?.musicbrainzId || mbid;
-      metadataArtist = await getArtistByMbid(resolvedMbid).catch(() => null);
+      let sawTransientError = false;
+      metadataArtist = await getArtistByMbid(resolvedMbid).catch((error) => {
+        if (!isMetadataNotFoundError(error)) sawTransientError = true;
+        return null;
+      });
       const directArtistImages = sortArtistImages(metadataArtist?.images);
       const images = buildDirectArtistImagePayload(directArtistImages);
       const primaryImage = images.find((image) => image.front) || images[0];
@@ -298,34 +303,14 @@ export const getArtistImage = async (
       }
 
       const resolvedArtistName = metadataArtist?.name || artistName || null;
-      let sawTransientError = false;
-      const deezerArtistId =
-        override?.deezerArtistId || getLinkedDeezerArtistId(metadataArtist?.links);
-      const photo =
-        (await fetchDeezerArtistImageUrl({
-          deezerArtistId,
-          artistName: resolvedArtistName || "",
-          throwOnError: true,
-        }).catch(() => {
-          sawTransientError = true;
-          return null;
-        })) ?? null;
-      if (photo) {
-        const result = buildArtistCoverFromUrl(buildStableImageProxyUrl(photo), ["Artist"]);
-        if (isCurrentRequest()) {
-          negativeImageCache.delete(mbid);
-          dbOps.setImage(mbid, result.url, result.images);
-        }
-        return result;
-      }
-
       const rgCacheKey = `artist_rg:${resolvedMbid}`;
       const cachedRg = forceRefresh ? null : dbOps.getDeezerMbidCache(rgCacheKey);
       const albums: ArtistReleaseGroup[] = cachedRg
         ? cachedRg === "NOT_FOUND"
           ? []
           : [{ id: cachedRg }]
-        : await listArtistAlbums(resolvedMbid);
+        : (metadataArtist?.albums ??
+          (sawTransientError ? [] : await listArtistAlbums(resolvedMbid)));
 
       const directAlbumCover = albums.find((rg) => rg.cover);
       if (directAlbumCover?.cover) {

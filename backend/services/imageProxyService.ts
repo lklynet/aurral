@@ -523,21 +523,6 @@ const readBoundedResponse = async (response: Response | UndiciResponse) => {
   return Buffer.concat(chunks, totalBytes);
 };
 
-export const DEEZER_BLANK_ARTIST_IMAGE_PATTERN =
-  /\/images\/artist\/(?:(?:d41d8cd98f00b204e9800998ecf8427e|ebcf22e5c3a0eb3178b8a6f6bc1a5a6c)\/|\/)/i;
-
-const isDeezerCdnArtistImage = (value: string) => {
-  try {
-    const parsed = new URL(value);
-    return (
-      /(?:^|\.)dzcdn\.net$/i.test(parsed.hostname) &&
-      parsed.pathname.toLowerCase().startsWith("/images/artist/")
-    );
-  } catch {
-    return false;
-  }
-};
-
 const coverArtArchiveOriginalUrl = (value: string) => {
   const match =
     /^(https?:\/\/coverartarchive\.org\/release\/[0-9a-f-]+\/\d+)-(?:250|500|1200)(\.[a-z0-9]+)(?=[?#]|$)/i.exec(
@@ -546,39 +531,8 @@ const coverArtArchiveOriginalUrl = (value: string) => {
   return match ? `${match[1]}${match[2]}` : null;
 };
 
-export const isDeezerPlaceholderArtistImage = async (sourceUrl: string) => {
-  if (DEEZER_BLANK_ARTIST_IMAGE_PATTERN.test(sourceUrl)) return true;
-  if (!isDeezerCdnArtistImage(sourceUrl)) return false;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 3000);
-  try {
-    const requestFetch = usesNativeFetch() ? undiciFetch : globalThis.fetch;
-    const response = await requestFetch(parseSafeRemoteUrl(sourceUrl), {
-      method: "GET",
-      redirect: "manual",
-      signal: controller.signal,
-      dispatcher: imageProxyDispatcher,
-      headers: { "User-Agent": "Aurral Local Image Cache" },
-    });
-    await response.body?.cancel();
-    if (response.status === 404) return true;
-    if ([301, 302, 303, 307, 308].includes(response.status)) {
-      const location = response.headers.get("location") || "";
-      return DEEZER_BLANK_ARTIST_IMAGE_PATTERN.test(location);
-    }
-    return false;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
-};
-
 const fetchRemoteImageOnce = async (sourceUrl: string) => {
   let currentUrl = parseSafeRemoteUrl(sourceUrl);
-  if (DEEZER_BLANK_ARTIST_IMAGE_PATTERN.test(currentUrl.href)) {
-    throw new Error("Upstream image is a Deezer blank placeholder");
-  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
@@ -603,9 +557,6 @@ const fetchRemoteImageOnce = async (sourceUrl: string) => {
           throw new Error("Too many upstream image redirects");
         }
         currentUrl = parseSafeRemoteUrl(location, currentUrl);
-        if (DEEZER_BLANK_ARTIST_IMAGE_PATTERN.test(currentUrl.href)) {
-          throw new Error("Upstream image is a Deezer blank placeholder");
-        }
         continue;
       }
       if (!response.ok) {

@@ -315,7 +315,7 @@ test("a cached image whose saved extension points outside the cache is never ser
   }
 });
 
-test("Cover Art Archive thumbnails that 404 fall back to the original image and Deezer blank redirects are rejected", async () => {
+test("Cover Art Archive thumbnails that 404 fall back to the original image", async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-image-fallbacks-"));
   const previousDataDir = process.env.AURRAL_DATA_DIR;
   const originalFetch = global.fetch;
@@ -326,8 +326,7 @@ test("Cover Art Archive thumbnails that 404 fall back to the original image and 
   );
   try {
     vi.resetModules();
-    const { fetchRemoteImage, isDeezerPlaceholderArtistImage } =
-      await import("../backend/services/imageProxyService.ts");
+    const { fetchRemoteImage } = await import("../backend/services/imageProxyService.ts");
     const requested: string[] = [];
     global.fetch = async (url, init) => {
       const target = String(url);
@@ -337,14 +336,6 @@ test("Cover Art Archive thumbnails that 404 fall back to the original image and 
       }
       if (target.endsWith("/46721848595.jpg")) {
         return new Response(png, { status: 200, headers: { "content-type": "image/png" } });
-      }
-      if (target.includes("cdn-images.dzcdn.net/images/artist/e1591dcf/")) {
-        return new Response(null, {
-          status: 302,
-          headers: {
-            location: "/images/artist/d41d8cd98f00b204e9800998ecf8427e/1000x1000-000000-80-0-0.jpg",
-          },
-        });
       }
       return new Response("unexpected", { status: 500 });
     };
@@ -357,16 +348,6 @@ test("Cover Art Archive thumbnails that 404 fall back to the original image and 
       "GET https://coverartarchive.org/release/740528de-181a-4b07-985b-34284afc1504/46721848595-1200.jpg",
       "GET https://coverartarchive.org/release/740528de-181a-4b07-985b-34284afc1504/46721848595.jpg",
     ]);
-
-    const deezerBlankUrl =
-      "https://cdn-images.dzcdn.net/images/artist/e1591dcf/1000x1000-000000-80-0-0.jpg";
-    assert.equal(await isDeezerPlaceholderArtistImage(deezerBlankUrl), true);
-    await assert.rejects(() => fetchRemoteImage(deezerBlankUrl), /Deezer blank placeholder/);
-
-    const deezerLegacyBlankUrl =
-      "https://cdn-images.dzcdn.net/images/artist/ebcf22e5c3a0eb3178b8a6f6bc1a5a6c/1000x1000-000000-80-0-0.jpg";
-    assert.equal(await isDeezerPlaceholderArtistImage(deezerLegacyBlankUrl), true);
-    await assert.rejects(() => fetchRemoteImage(deezerLegacyBlankUrl), /Deezer blank placeholder/);
   } finally {
     global.fetch = originalFetch;
     if (previousDataDir === undefined) delete process.env.AURRAL_DATA_DIR;
