@@ -237,21 +237,44 @@ const normalizeImageProfile: (profile?: unknown) => "library" = () => "library";
 const buildImageCacheKey = (sourceUrl: string, profile = "library") =>
   hashValue(`${normalizeImageProfile(profile)}:${sourceUrl}`);
 
+const WIKIMEDIA_FILEPATH_PATTERN =
+  /^https?:\/\/commons\.wikimedia\.org\/wiki\/Special:FilePath\/([^?#]+)/i;
+
+const rewriteWikimediaFilePath = (url: string) => {
+  const match = url.match(WIKIMEDIA_FILEPATH_PATTERN);
+  if (!match?.[1]) return url;
+  try {
+    const decoded = decodeURIComponent(match[1]).trim().replace(/ /g, "_");
+    if (!decoded) return url;
+    const canon = decoded.charAt(0).toUpperCase() + decoded.slice(1);
+    const digest = crypto.createHash("md5").update(canon, "utf8").digest("hex");
+    return `https://upload.wikimedia.org/wikipedia/commons/${digest[0]}/${digest.slice(0, 2)}/${encodeURIComponent(canon)}`;
+  } catch {
+    return url;
+  }
+};
+
 const normalizeKnownImageUrl = (value: string | null | undefined) =>
-  String(value || "")
-    .trim()
-    .replace(
-      /^(https?:\/\/coverartarchive\.org\/release-group\/[0-9a-f-]+)\/front-250(?=[/?#]|$)/i,
-      "$1/front",
-    )
-    .replace(
-      /^(https?:\/\/(?:[\w-]+\.)?ca\.archive\.org\/.*?)-thumb250(\.[a-z0-9]+)(?=[?#]|$)/i,
-      "$1$2",
-    )
-    .replace(
-      /^(https?:\/\/archive\.org\/download\/[^?#]+?)_thumb250(\.[a-z0-9]+)(?=[?#]|$)/i,
-      "$1$2",
-    );
+  rewriteWikimediaFilePath(
+    String(value || "")
+      .trim()
+      .replace(
+        /^https?:\/\/imagecache\.lidarr\.audio\/v1\/caa\//i,
+        "https://coverartarchive.org/release/",
+      )
+      .replace(
+        /^(https?:\/\/coverartarchive\.org\/release-group\/[0-9a-f-]+)\/front-250(?=[/?#]|$)/i,
+        "$1/front",
+      )
+      .replace(
+        /^(https?:\/\/(?:[\w-]+\.)?ca\.archive\.org\/.*?)-thumb250(\.[a-z0-9]+)(?=[?#]|$)/i,
+        "$1$2",
+      )
+      .replace(
+        /^(https?:\/\/archive\.org\/download\/[^?#]+?)_thumb250(\.[a-z0-9]+)(?=[?#]|$)/i,
+        "$1$2",
+      ),
+  );
 
 const getCachePaths = (cacheKey: string) => ({
   metaPath: path.join(IMAGE_PROXY_DIR, `${cacheKey}.json`),

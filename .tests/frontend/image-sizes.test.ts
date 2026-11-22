@@ -37,6 +37,15 @@ test("artwork from fanart, Deezer, the Lidarr image cache, AudioDB artist photos
       700: "https://r2.theaudiodb.com/images/media/artist/thumb/byev521700402620.jpg",
     },
   );
+  assert.deepEqual(
+    urlsByWidth("https://upload.wikimedia.org/wikipedia/commons/4/4d/Four_Letter_Lie.jpg"),
+    {
+      250: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Four_Letter_Lie.jpg/250px-Four_Letter_Lie.jpg",
+      500: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Four_Letter_Lie.jpg/500px-Four_Letter_Lie.jpg",
+      960: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Four_Letter_Lie.jpg/960px-Four_Letter_Lie.jpg",
+    },
+  );
+  assert.deepEqual(imageSizes("https://upload.wikimedia.org/wikipedia/commons/4/4d/Band.webp"), []);
   assert.deepEqual(urlsByWidth("/api/playlists/artwork/p1?v=7:0"), {
     128: "/api/playlists/artwork/p1?v=7:0&w=128",
     256: "/api/playlists/artwork/p1?v=7:0&w=256",
