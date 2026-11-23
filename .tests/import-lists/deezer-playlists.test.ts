@@ -100,6 +100,13 @@ test("Deezer playlist imports resolve album MBIDs from deezer-album keys without
               artist: { id: 2001, name: "Band" },
               album: { id: 1002, title: "Mismatched Album" },
             },
+            {
+              id: 3,
+              title: "Compilation Track",
+              duration: 190,
+              artist: { id: 2001, name: "Band" },
+              album: { id: 1002, title: "Mismatched Album" },
+            },
           ],
         },
       };
@@ -116,4 +123,6 @@ test("Deezer playlist imports resolve album MBIDs from deezer-album keys without
   assert.equal(imported.tracks[1]?.trackMbid, recordingMbid);
   assert.equal(imported.tracks[1]?.artistMbid, artistMbid);
   assert.equal(imported.tracks[1]?.albumMbid, null);
+  assert.equal(imported.tracks[2]?.artistMbid, artistMbid);
+  assert.equal(imported.tracks[2]?.albumMbid, null);
 });
