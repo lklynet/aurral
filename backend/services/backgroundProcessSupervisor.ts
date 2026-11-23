@@ -22,6 +22,7 @@ export type WorkerMessage =
     }
   | { type: "idle" }
   | { type: "busy" }
+  | { type: "crashed"; reason: string }
   | { type: "job-started"; queue: string; jobId: number; payload: string | null }
   | { type: "job-finished"; queue: string; jobId: number }
   | { type: "queue-wake"; queue: string }
@@ -209,6 +210,10 @@ export function createBackgroundProcessSupervisor({
       lastSeen.set(group, Date.now());
       if (message?.type === "idle") {
         retire(group, child);
+        return;
+      }
+      if (message?.type === "crashed") {
+        exitReasons.set(group, message.reason);
         return;
       }
       if (message?.type === "busy") {

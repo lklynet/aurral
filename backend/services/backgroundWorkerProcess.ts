@@ -9,6 +9,17 @@ if (!group || !process.send) {
   throw new Error("Background worker process requires a supervised queue group");
 }
 
+function exitAfterReporting(label: string) {
+  return (error: unknown) => {
+    logger.error("system", label, error ?? undefined);
+    if (!process.connected) process.exit(1);
+    const reason = `Worker crashed: ${asAppError(error)?.message || String(error)}`;
+    process.send!({ type: "crashed", reason }, () => process.exit(1));
+  };
+}
+process.on("uncaughtException", exitAfterReporting("Uncaught Exception:"));
+process.on("unhandledRejection", exitAfterReporting("Unhandled Rejection:"));
+
 (await import("./logs.ts")).startWorkerLogging();
 
 const { startGroupWorkers, wakeQueuedBackgroundWork, hasQueuedBackgroundWork } =
@@ -20,14 +31,15 @@ const IDLE_STOP_MS = (() => {
   return configured <= 0 ? 0 : Math.max(5000, Math.floor(configured));
 })();
 async function loadDownloadOwner() {
-  const { DownloadWorker, downloadWorker } = await import("./downloadJobs/downloadWorker.ts");
-  if (!(downloadWorker instanceof DownloadWorker)) {
+  const owner = await import("./downloadJobs/downloadWorker.ts");
+  if (!(owner.downloadWorker instanceof owner.DownloadWorker)) {
     throw new Error("Download worker process requires the download owner");
   }
-  return downloadWorker;
+  return { worker: owner.downloadWorker, startIfPending: owner.startWorkerIfPending };
 }
 
-const downloadWorker = group === "downloads" ? await loadDownloadOwner() : null;
+const downloadOwner = group === "downloads" ? await loadDownloadOwner() : null;
+const downloadWorker = downloadOwner?.worker ?? null;
 const playlistOperationStatus =
   group === "downloads"
     ? (await import("./playlists/playlistOperationWorker.ts")).getPlaylistOperationWorkerStatus
@@ -135,6 +147,7 @@ process.once("disconnect", () => {
   void stop();
 });
 
+await downloadOwner?.startIfPending();
 startGroupWorkers();
 process.send({ type: "ready", group });
 const heartbeat = setInterval(() => {

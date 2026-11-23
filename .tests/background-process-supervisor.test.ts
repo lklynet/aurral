@@ -244,16 +244,20 @@ test("a worker that is busy again keeps running and receives waiting requests", 
   }
 });
 
-test("supervisor restarts an unexpectedly exited worker", async () => {
+test("supervisor restarts a crashed worker and recovers its jobs with the crash reason", async () => {
   vi.useFakeTimers({
     toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
     now: 0,
   });
   const children: ReturnType<typeof fakeChild>[] = [];
+  const exitReasons: (string | null)[] = [];
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["library"],
     findGroupsWithWork: () => ["library"],
     logger: quietLogger,
+    onExit: (_group, _code, _signal, _pid, reason) => {
+      exitReasons.push(reason);
+    },
     forkProcess: () => {
       const child = fakeChild();
       child.exitCode = null;
@@ -269,9 +273,14 @@ test("supervisor restarts an unexpectedly exited worker", async () => {
   });
   try {
     supervisor.start();
+    requireFixture(children[0]).emit("message", {
+      type: "crashed",
+      reason: "Worker crashed: database is locked",
+    });
     requireFixture(children[0]).exitCode = 1;
     requireFixture(children[0]).emit("close", 1, null);
     await flush();
+    assert.deepEqual(exitReasons, ["Worker crashed: database is locked"]);
     await vi.advanceTimersByTimeAsync(999);
     assert.equal(children.length, 1);
     await vi.advanceTimersByTimeAsync(1);
