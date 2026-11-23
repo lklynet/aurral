@@ -8,10 +8,11 @@ const [, store, { toQueueTracks }] = await setupIsolatedBackend(
   () => import("../../backend/services/queueTracks.ts"),
 );
 
-test("queue tracks link to the library artist only when the track is credited to them", () => {
+test("queue tracks link to the library artist and its MBID only when the track is credited to them", () => {
   const artist = store.upsertLibraryArtist({
     identityKey: "artist:Massive Attack",
     name: "Massive Attack",
+    mbid: "10adbe5e-a2c0-4bf3-8249-2b4cbf6e6ca8",
   });
   const album = store.upsertLibraryAlbum({
     identityKey: "album:Mezzanine",
@@ -38,7 +39,10 @@ test("queue tracks link to the library artist only when the track is credited to
   const tracks = toQueueTracks([own!.id, guest!.id]);
 
   assert.deepEqual(
-    tracks.map((track) => track.libraryArtistId),
-    [artist.id, null],
+    tracks.map((track) => [track.libraryArtistId, track.artistMbid]),
+    [
+      [artist.id, artist.mbid],
+      [null, null],
+    ],
   );
 });

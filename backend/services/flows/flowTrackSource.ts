@@ -993,21 +993,23 @@ export class FlowTrackSource {
         artists: await this._getTagArtists(tag, perGroup).catch(() => []),
       })),
     ]);
-    const pool = new Map<string, HarvestArtist>();
+    const pool: HarvestArtist[] = [];
+    const pooledKeys = new Set<string>();
     const deepest = Math.max(0, ...groups.map((group) => group.artists.length));
     for (let rank = 0; rank < deepest; rank += 1) {
       for (const { reason, artists } of groups) {
         const name = String(artists[rank]?.name || "").trim();
-        const key = this._artistKey(name);
-        if (!key || pool.has(key)) continue;
-        pool.set(key, {
+        const artist = {
           name,
           artistMbid: String(artists[rank]?.mbid || "").trim() || null,
           reason,
-        });
+        };
+        if (!this._artistKey(name) || matchesArtistKeys(artist, pooledKeys)) continue;
+        artistMatchKeys(artist).forEach((key) => pooledKeys.add(key));
+        pool.push(artist);
       }
     }
-    return [...pool.values()];
+    return pool;
   }
 
   async getFocusTracks(limit: number, flow: FlowRunSpec, context: Partial<SourceContext> = {}) {

@@ -119,6 +119,7 @@ test("mergeResolvedRecommendations collapses name and mbid variants of the same 
       id: `${digit.repeat(8)}-${digit.repeat(4)}-${digit.repeat(4)}-${digit.repeat(4)}-${digit.repeat(12)}`,
       name: "Slowdive",
     })),
+    { foreignArtistId: "77777777-7777-7777-7777-777777777777", name: "Slowdive" },
   ]);
 
   assert.deepEqual(
@@ -127,6 +128,7 @@ test("mergeResolvedRecommendations collapses name and mbid variants of the same 
       "44444444-4444-4444-4444-444444444444",
       "55555555-5555-5555-5555-555555555555",
       "66666666-6666-6666-6666-666666666666",
+      "77777777-7777-7777-7777-777777777777",
     ],
   );
   assert.equal(merged[0]?.sourceType, "blended");

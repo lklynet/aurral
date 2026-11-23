@@ -102,7 +102,7 @@ function resolveSeed(seed: RadioSeed) {
   const mbids = uniqueText(artistRefs.map((artist) => artist.mbid));
   const names = uniqueText(artistRefs.map((artist) => artist.name));
   const refMatches = (ref: RadioArtistRef, artist: ArtistRow & { identityKey: string }) =>
-    Boolean(ref.id && (String(artist.id) === ref.id || artist.identityKey === ref.id)) ||
+    Boolean(ref.id?.trim() && [String(artist.id), artist.identityKey].includes(ref.id.trim())) ||
     isSameArtist({ mbid: ref.mbid, name: ref.name }, { mbid: artist.mbid, name: artist.name });
   const candidateArtists =
     ids.length || mbids.length || names.length

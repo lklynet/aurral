@@ -555,12 +555,36 @@ function closestPartners(userId: number, partners: Partner[], now: number) {
     .map(({ partner }) => partner);
 }
 
+const libraryArtistNamesStmt = db.prepare<[string], { mbid: string; name: string }>(
+  "SELECT mbid, name FROM library_artists WHERE mbid IN (SELECT value FROM json_each(?))",
+);
+
+function withoutBlockedPlays(plays: TrackPlays[], blocked: ReadonlySet<string>) {
+  if (blocked.size === 0) return plays;
+  const mbids = [...new Set(plays.flatMap(({ artistMbid }) => (artistMbid ? [artistMbid] : [])))];
+  const libraryNames = new Map(
+    libraryArtistNamesStmt
+      .all(JSON.stringify(mbids))
+      .map(({ mbid, name }) => [mbid, name.trim().toLowerCase()]),
+  );
+  return plays.filter((play) => {
+    const known = play.artistMbid ? libraryNames.get(play.artistMbid) : undefined;
+    const artistMbid =
+      known === undefined || known === play.artist.trim().toLowerCase() ? play.artistMbid : null;
+    return !matchesArtistKeys({ name: play.artist, artistMbid }, blocked);
+  });
+}
+
 function blendFavorites(userId: number, now: number, blocked: Set<string>): Favorite[] {
-  return playsStmt
-    .all(now - ON_REPEAT_MS, now - REWIND_MS, now - ON_REPEAT_MS, now - TOP_ARTIST_MS, userId, now)
-    .filter(
-      (play) => !matchesArtistKeys({ name: play.artist, artistMbid: play.artistMbid }, blocked),
-    )
+  const plays = playsStmt.all(
+    now - ON_REPEAT_MS,
+    now - REWIND_MS,
+    now - ON_REPEAT_MS,
+    now - TOP_ARTIST_MS,
+    userId,
+    now,
+  );
+  return withoutBlockedPlays(plays, blocked)
     .map((play) => ({ play, weight: 2 * Math.log1p(play.season) + Math.log1p(play.total) }))
     .sort((left, right) => right.weight - left.weight)
     .slice(0, BLEND_WINDOW);
@@ -743,11 +767,10 @@ const recentPlaysStmt = db.prepare<[number, number, number], TrackPlays>(`
 
 function listensOf(userId: number, person: BlendPartner, now: number): Mix | null {
   const blocked = getBlockedArtistKeys(userId);
-  const plays = recentPlaysStmt
-    .all(person.id, now - ON_REPEAT_MS, now)
-    .filter(
-      (play) => !matchesArtistKeys({ name: play.artist, artistMbid: play.artistMbid }, blocked),
-    );
+  const plays = withoutBlockedPlays(
+    recentPlaysStmt.all(person.id, now - ON_REPEAT_MS, now),
+    blocked,
+  );
   const trackIds = ranked(
     plays,
     resolvePlays(plays),

@@ -1157,7 +1157,10 @@ export const mergeResolvedRecommendations = (
   for (const recommendation of Array.isArray(recommendations) ? recommendations : []) {
     if (matchesArtistKeys(recommendation, existingArtistKeys)) continue;
     const recommendationMbid =
-      normalizeMbid(recommendation?.id) || normalizeMbid(recommendation?.navigateTo);
+      normalizeMbid(recommendation?.id) ||
+      normalizeMbid(recommendation?.navigateTo) ||
+      normalizeMbid(recommendation?.mbid) ||
+      normalizeMbid(recommendation?.foreignArtistId);
 
     const nameKey = `name:${normalizeText(recommendation?.name)}`;
     const identity = recommendationMbid
