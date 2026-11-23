@@ -1805,8 +1805,9 @@ export class LibraryManager {
   }
 
   async searchAlbumMissingTracks(albumId: string | number) {
-    return serializeMonitoringUpdate(_albumMonitoringUpdates, Number(albumId), () =>
-      this._finishAlbum(Number(albumId), {
+    const id = Number(albumId);
+    return serializeMonitoringUpdate(_albumMonitoringUpdates, id, () =>
+      this._finishAlbum(id, {
         skipCancelledTracks: true,
         cause: { kind: "missing", playlistId: null },
       }),
