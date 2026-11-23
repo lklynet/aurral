@@ -2298,7 +2298,7 @@ test("a Usenet album needs every track of the pinned release, imports only the w
   ]);
 });
 
-test("one playlist track outside any album request tries the next Usenet release after one short of its release", async (t) => {
+test("one playlist track outside any album request tries the next Usenet release after one that failed and one short of its release", async (t) => {
   const group = "usenet-single-track";
   const titles = ["First", "Second", "Third"];
   const folders = {
@@ -2316,17 +2316,23 @@ test("one playlist track outside any album request tries the next Usenet release
   vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async (url) =>
     Buffer.from(String(url)),
   );
+  const nzbIds = new Map([
+    ["broken", 3],
+    ["short", 1],
+    ["whole", 2],
+  ]);
   const append = vi.spyOn(client, "appendNzb").mockImplementation(async ({ content }) => ({
-    nzbId: content!.toString().includes("partial") || content!.toString().endsWith("short") ? 1 : 2,
+    nzbId: requireFixture(nzbIds.get(content!.toString().split("/").at(-1)!)),
     nzbName: "Album",
   }));
-  vi.spyOn(client, "getHistoryItem").mockImplementation(async (nzbId) => ({
-    Status: "SUCCESS",
-    FinalDir: Number(nzbId) === 1 ? folders.short : folders.whole,
-  }));
+  vi.spyOn(client, "getHistoryItem").mockImplementation(async (nzbId) =>
+    Number(nzbId) === 3
+      ? { Status: "FAILURE/PAR" }
+      : { Status: "SUCCESS", FinalDir: Number(nzbId) === 1 ? folders.short : folders.whole },
+  );
   vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
   vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
-  const candidates = ["short", "whole"].map((name) =>
+  const candidates = ["broken", "short", "whole"].map((name) =>
     usenetCandidate({
       guid: `guid-${name}`,
       title: `The Band - Album ${name}`,
@@ -2354,12 +2360,15 @@ test("one playlist track outside any album request tries the next Usenet release
     candidateIndex: 0,
   };
   await runToEnd(payload, helpers);
-  assert.equal(append.mock.calls.length, 2);
+  assert.equal(append.mock.calls.length, 3);
   const job = downloadTracker.getJob(jobId);
   assert.ok(job != null);
   assert.equal(job.status, "done");
   assert.match(basename(job.finalPath!), /^02 - Second\b/);
-  assert.deepEqual(job.deniedRemoteSources, [["usenet", "album:guid-short"]]);
+  assert.deepEqual(job.deniedRemoteSources, [
+    ["usenet", "album:guid-broken"],
+    ["usenet", "album:guid-short"],
+  ]);
 });
 
 test("a Soulseek album gives up on files left queued or crawling and keeps the ones that finished", async (t) => {
