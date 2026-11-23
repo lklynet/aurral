@@ -1360,3 +1360,45 @@ test("albums report the disc titles their files agree on", () => {
     { disc: 1, title: "Tone Poems" },
   ]);
 });
+
+test("albums report their release types, preferring MusicBrainz over the file's tag", () => {
+  const artist = upsertLibraryArtist({ identityKey: "release-types:artist", name: "Types Artist" });
+  const releaseTypes = (key: string, metadata: Record<string, unknown> | null) => {
+    const album = upsertLibraryAlbum({
+      identityKey: `release-types:${key}`,
+      artistId: artist.id,
+      title: key,
+      albumArtist: artist.name,
+      metadata,
+    });
+    const track = upsertLibraryTrack({
+      identityKey: `release-types:${key}:track`,
+      title: `${key} Song`,
+      artistName: artist.name,
+    });
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+    upsertLibraryMediaFile({
+      trackId: track.id,
+      source: "lidarr",
+      path: `/test/release-types/${key}.flac`,
+      format: "flac",
+      available: true,
+    });
+    return getAlbum(idFor("album", `release-types:${key}`))?.releaseTypes;
+  };
+
+  assert.deepEqual(
+    releaseTypes("downloaded", {
+      albumType: "Album",
+      secondaryTypes: ["Compilation", "DJ-mix"],
+      tags: { releasetype: ["single"] },
+    }),
+    ["album", "compilation", "dj-mix"],
+  );
+  assert.deepEqual(releaseTypes("tagged", { tags: { releasetype: ["EP", "live; remix", "ep"] } }), [
+    "ep",
+    "live",
+    "remix",
+  ]);
+  assert.equal(releaseTypes("untyped", null), undefined);
+});
