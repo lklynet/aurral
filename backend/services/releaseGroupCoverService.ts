@@ -87,16 +87,13 @@ const fetchDeezerAlbumCover = async ({
   albumTitle = "",
 }: { artistName?: string; deezerArtistId?: DeezerArtistId; albumTitle?: string } = {}) => {
   if (!albumTitle) return null;
-  try {
-    const album = await resolveDeezerAlbumForPreview({
-      artistName,
-      deezerArtistId,
-      albumTitle,
-    });
-    return foundCover(album?._coverUrl);
-  } catch {
-    return null;
-  }
+  const album = await resolveDeezerAlbumForPreview({
+    artistName,
+    deezerArtistId,
+    albumTitle,
+    throwOnError: true,
+  });
+  return foundCover(album?._coverUrl);
 };
 
 const fetchReleaseGroupCoverUncached = async (
@@ -118,12 +115,17 @@ const fetchReleaseGroupCoverUncached = async (
     };
   }
   let sawTransientError = false;
+  const findDeezerCover = (options: Parameters<typeof fetchDeezerAlbumCover>[0]) =>
+    fetchDeezerAlbumCover(options).catch(() => {
+      sawTransientError = true;
+      return null;
+    });
   let deadCover: ReturnType<typeof foundCover> = null;
   let deezerArtistId = null;
   let deezerArtistName = artistName.trim();
   let deezerAlbumTitle = albumTitle.trim();
   if (listedWithoutCover) {
-    const listedCover = await fetchDeezerAlbumCover({
+    const listedCover = await findDeezerCover({
       artistName: deezerArtistName,
       albumTitle: deezerAlbumTitle,
     });
@@ -151,7 +153,7 @@ const fetchReleaseGroupCoverUncached = async (
       return cover;
     }
   }
-  const deezerCover = await fetchDeezerAlbumCover({
+  const deezerCover = await findDeezerCover({
     artistName: deezerArtistName,
     deezerArtistId,
     albumTitle: deezerAlbumTitle,
