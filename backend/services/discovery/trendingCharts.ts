@@ -560,7 +560,12 @@ export function getChartTracks(limit: number) {
   const songs = readChart(selectChartStmt.get("songs"), songsChartSchema)?.items ?? [];
   return uniqueByKey([...songs, ...interleaveLists(...readGenreCharts())])
     .slice(0, limit)
-    .map(({ artistName, trackName, albumName }) => ({ artistName, trackName, albumName }));
+    .map(({ artistName, trackName, albumName, durationMs }) => ({
+      artistName,
+      trackName,
+      albumName,
+      durationMs,
+    }));
 }
 
 export function getTrendingGenreChart(genreId: number) {

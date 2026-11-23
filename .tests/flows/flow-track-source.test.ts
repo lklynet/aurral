@@ -245,6 +245,7 @@ test("tags filter trending artists and match spelling variants", async () => {
     artistName,
     trackName: `${artistName} Song`,
     albumName: null,
+    durationMs: null,
   });
   source._getTrendingChart = async () => [chartTrack("Pop Star"), chartTrack("Rapper")];
   source._getArtistTopTagLists = async (artists) =>
@@ -257,6 +258,24 @@ test("tags filter trending artists and match spelling variants", async () => {
   assert.deepEqual(
     tracks.map((track) => [track.artistName, track.reason]),
     [["Rapper", "Trending this week"]],
+  );
+});
+
+test("trending picks keep the chart's track length, with and without a year range", async () => {
+  const source = new FlowTrackSource();
+  source._getTrendingChart = async () => [
+    { artistName: "Chart Act", trackName: "Hit", albumName: "Debut", durationMs: 201000 },
+  ];
+  source._releasesInYears = async () => [
+    { albumMbid: null, deezerId: null, title: "Debut", year: 2026 },
+  ];
+
+  const plain = await source.getTrendingTracks(1);
+  const inYears = await source.getTrendingTracks(1, { filters: years(source, 2025, 2026) });
+
+  assert.deepEqual(
+    [...plain, ...inYears].map((track) => track.durationMs),
+    [201000, 201000],
   );
 });
 
