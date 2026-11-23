@@ -211,6 +211,7 @@ test("top tracks come from v1 artist data first, then fall back to the linked De
     {
       name: "Bohemian Rhapsody",
       albumName: "Greatest Hits",
+      albumMbid: topTrackAlbumMbid,
       mbid: "12345678-1234-4123-8123-1234567890ab",
       durationMs: 354000,
       popularity: 90000,

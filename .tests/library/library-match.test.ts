@@ -1,4 +1,5 @@
 import { signedInAs } from "../helpers/honoApp.ts";
+import { stubMissingMusicbrainz } from "../helpers/stubFetch.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
@@ -140,7 +141,8 @@ beforeAll(async () => {
   musicRoot = await mkdtemp(path.join(tmpdir(), "aurral-mbid-override-"));
 });
 
-beforeEach(() => {
+beforeEach((t) => {
+  stubMissingMusicbrainz(t);
   providerAvailable = true;
   provider.clearMetadataProviderCaches();
 });

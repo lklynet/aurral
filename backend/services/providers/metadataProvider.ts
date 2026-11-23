@@ -166,7 +166,7 @@ interface AlbumSearchItem {
 interface MetadataRequestOptions {
   signal?: AbortSignal;
   forceRefresh?: boolean;
-  withFallbackReleases?: boolean;
+  withFallbackReleases?: boolean | "required";
 }
 
 type MetadataParams = Record<string, string | number>;
@@ -216,6 +216,10 @@ const musicbrainzAlbumFallbackCache = createCache<NormalizedAlbum | null>(
   MUSICBRAINZ_FALLBACK_ENTITY_TTL_SECONDS,
   500,
 );
+const musicbrainzFallbackErrors = createCache<{ error: unknown }>(
+  MUSICBRAINZ_FALLBACK_RETRY_SECONDS,
+  1000,
+);
 const musicbrainzAlbumReleasesCache = createCache<NormalizedRelease[]>(
   MUSICBRAINZ_FALLBACK_CACHE_TTL_SECONDS,
   500,
@@ -245,6 +249,7 @@ export function clearMetadataProviderCaches() {
   metadataNotFoundCache.flushAll();
   musicbrainzArtistFallbackCache.flushAll();
   musicbrainzAlbumFallbackCache.flushAll();
+  musicbrainzFallbackErrors.flushAll();
   musicbrainzAlbumReleasesCache.flushAll();
   musicbrainzAlbumSearchCache.flushAll();
   providerInflightRequests.clear();
@@ -621,6 +626,8 @@ async function request<Schema extends v.GenericSchema>(
     }
     return cached.value;
   }
+  const failure = forceRefresh ? null : musicbrainzFallbackErrors.get(cacheKey);
+  if (failure) throw failure.error;
   return refreshMetadata(schema, cacheKey, path, params, {
     signal,
     cacheNotFound,
@@ -712,6 +719,7 @@ function toMusicbrainzArtist(
 
 async function getMusicbrainzArtistFallback(
   mbid: string,
+  cacheKey: string,
   { signal }: { signal?: AbortSignal } = {},
 ) {
   const cached = musicbrainzArtistFallbackCache.get(mbid);
@@ -731,11 +739,13 @@ async function getMusicbrainzArtistFallback(
       },
       { signal },
     );
+    musicbrainzFallbackErrors.delete(cacheKey);
     musicbrainzArtistFallbackCache.set(mbid, artist);
     return artist;
   } catch (error) {
     signal?.throwIfAborted();
     if (asAppError(error)?.response?.status === 404) {
+      musicbrainzFallbackErrors.delete(cacheKey);
       musicbrainzArtistFallbackCache.set(mbid, null, METADATA_NOT_FOUND_CACHE_TTL_SECONDS);
       return null;
     }
@@ -743,8 +753,8 @@ async function getMusicbrainzArtistFallback(
       mbid,
       reason: safeLogDiagnostic(error),
     });
-    musicbrainzArtistFallbackCache.set(mbid, null, MUSICBRAINZ_FALLBACK_RETRY_SECONDS);
-    return null;
+    musicbrainzFallbackErrors.set(cacheKey, { error });
+    throw error;
   }
 }
 
@@ -762,10 +772,11 @@ export async function getArtistByMbid(
       {},
       { signal, forceRefresh, cacheNotFound: !UUID_REGEX.test(mbid) },
     );
+    if (forceRefresh) musicbrainzFallbackErrors.delete(cacheKey);
     return toNormalizedArtist(data);
   } catch (error) {
     if (!isMetadataNotFoundError(error) || !UUID_REGEX.test(mbid)) throw error;
-    const fallback = await getMusicbrainzArtistFallback(mbid, { signal });
+    const fallback = await getMusicbrainzArtistFallback(mbid, cacheKey, { signal });
     if (fallback) return fallback;
     if (musicbrainzArtistFallbackCache.get(mbid) === null) {
       metadataNotFoundCache.set(cacheKey, true, MUSICBRAINZ_FALLBACK_RETRY_SECONDS);
@@ -835,10 +846,13 @@ function toNormalizedMusicbrainzRelease(raw: v.InferOutput<typeof musicbrainzRel
 
 async function getMusicbrainzAlbumReleases(
   albumMbid: string,
+  errorKey: string,
   { signal }: { signal?: AbortSignal } = {},
 ) {
   const cached = musicbrainzAlbumReleasesCache.get(albumMbid);
   if (cached !== undefined) return cached;
+  const failed = musicbrainzFallbackErrors.get(errorKey);
+  if (failed) throw failed.error;
   try {
     const releases = await runSharedInflight(
       providerInflightRequests,
@@ -869,13 +883,15 @@ async function getMusicbrainzAlbumReleases(
       albumMbid,
       reason: safeLogDiagnostic(error),
     });
-    musicbrainzAlbumReleasesCache.set(albumMbid, [], MUSICBRAINZ_FALLBACK_RETRY_SECONDS);
-    return [];
+    const unavailable = new Error("MusicBrainz could not load album editions", { cause: error });
+    musicbrainzFallbackErrors.set(errorKey, { error: unavailable });
+    throw unavailable;
   }
 }
 
 async function getMusicbrainzAlbumFallback(
   albumMbid: string,
+  cacheKey: string,
   { signal }: { signal?: AbortSignal } = {},
 ) {
   const cached = musicbrainzAlbumFallbackCache.get(albumMbid);
@@ -927,11 +943,13 @@ async function getMusicbrainzAlbumFallback(
       },
       { signal },
     );
+    musicbrainzFallbackErrors.delete(cacheKey);
     musicbrainzAlbumFallbackCache.set(albumMbid, album);
     return album;
   } catch (error) {
     signal?.throwIfAborted();
     if (asAppError(error)?.response?.status === 404) {
+      musicbrainzFallbackErrors.delete(cacheKey);
       musicbrainzAlbumFallbackCache.set(albumMbid, null, METADATA_NOT_FOUND_CACHE_TTL_SECONDS);
       return null;
     }
@@ -939,8 +957,8 @@ async function getMusicbrainzAlbumFallback(
       albumMbid,
       reason: safeLogDiagnostic(error),
     });
-    musicbrainzAlbumFallbackCache.set(albumMbid, null, MUSICBRAINZ_FALLBACK_RETRY_SECONDS);
-    return null;
+    musicbrainzFallbackErrors.set(cacheKey, { error });
+    throw error;
   }
 }
 
@@ -961,10 +979,11 @@ export async function getAlbumByMbid(
         {},
         { signal, forceRefresh, cacheNotFound: !UUID_REGEX.test(albumMbid) },
       );
+      if (forceRefresh) musicbrainzFallbackErrors.delete(cacheKey);
       album = toNormalizedAlbum(data);
     } catch (error) {
       if (!isMetadataNotFoundError(error) || !UUID_REGEX.test(albumMbid)) throw error;
-      const fallback = await getMusicbrainzAlbumFallback(albumMbid, { signal });
+      const fallback = await getMusicbrainzAlbumFallback(albumMbid, cacheKey, { signal });
       if (!fallback) {
         if (musicbrainzAlbumFallbackCache.get(albumMbid) === null) {
           metadataNotFoundCache.set(cacheKey, true, MUSICBRAINZ_FALLBACK_RETRY_SECONDS);
@@ -976,7 +995,13 @@ export async function getAlbumByMbid(
   }
   if (!withFallbackReleases || album.releases.length > 0 || !UUID_REGEX.test(albumMbid))
     return album;
-  const releases = await getMusicbrainzAlbumReleases(albumMbid, { signal });
+  const releases = await getMusicbrainzAlbumReleases(albumMbid, `${cacheKey}:releases`, {
+    signal,
+  }).catch((error: unknown) => {
+    signal?.throwIfAborted();
+    if (withFallbackReleases === "required") throw error;
+    return [];
+  });
   return releases.length ? { ...album, releases } : album;
 }
 
@@ -1023,18 +1048,27 @@ export async function lookupIds(keys: string[], { signal }: MetadataRequestOptio
     { trackMbid: string | null; albumMbid: string | null; artistMbid: string | null }
   >();
   for (let start = 0; start < wanted.length; start += ID_LOOKUP_KEYS) {
-    const { ids } = await request(
-      idLookupSchema,
-      ID_LOOKUP_PATH,
-      { keys: wanted.slice(start, start + ID_LOOKUP_KEYS).join(",") },
-      { signal },
-    );
-    for (const [key, entry] of Object.entries(ids)) {
-      found.set(key, {
-        trackMbid: entry.recordingId ?? null,
-        albumMbid: entry.albumId ?? null,
-        artistMbid: entry.artistId ?? null,
+    try {
+      const { ids } = await request(
+        idLookupSchema,
+        ID_LOOKUP_PATH,
+        { keys: wanted.slice(start, start + ID_LOOKUP_KEYS).join(",") },
+        { signal },
+      );
+      for (const [key, entry] of Object.entries(ids)) {
+        found.set(key, {
+          trackMbid: entry.recordingId ?? null,
+          albumMbid: entry.albumId ?? null,
+          artistMbid: entry.artistId ?? null,
+        });
+      }
+    } catch (error) {
+      signal?.throwIfAborted();
+      if (start === 0) throw error;
+      logger.info("metadata", "Kept catalogue IDs from completed batches", {
+        reason: safeLogDiagnostic(error),
       });
+      break;
     }
   }
   return found;

@@ -1,4 +1,6 @@
 import { requireFixture } from "../playlists/fixtures.ts";
+import { resumePausedServices } from "../../backend/services/apiClients/outagePause.ts";
+import { stubMissingMusicbrainz } from "../helpers/stubFetch.ts";
 import type * as Rows from "../../backend/db/rows.ts";
 import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
@@ -2055,7 +2057,9 @@ test("an album someone asked for keeps the release it lists after its files are 
   });
 });
 
-test("an album the metadata provider does not know keeps its songs and does not stop the others being listed", async () => {
+test("an album the metadata provider does not know keeps its songs and does not stop the others being listed", async (t) => {
+  stubMissingMusicbrainz(t);
+  resumePausedServices();
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-unknown-"));
   const artist = `Unknown List ${process.pid}`;
   const artistMbid = uuid("dddddddd", 2);

@@ -21,6 +21,7 @@ export const getArtistTopTracks = async (
     return known.topTracks.slice(0, limit).map((track) => ({
       name: track.title,
       albumName: (track.albumId && albumsById.get(track.albumId)) || null,
+      albumMbid: track.albumId || null,
       mbid: track.recordingId || null,
       durationMs: track.durationMs,
       popularity: track.listeners,

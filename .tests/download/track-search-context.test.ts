@@ -4,7 +4,10 @@ import assert from "node:assert/strict";
 import { http } from "../../lib/http.ts";
 
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
-import { clearMetadataProviderCaches } from "../../backend/services/providers/metadataProvider.ts";
+import {
+  clearMetadataProviderCaches,
+  getAlbumByMbid,
+} from "../../backend/services/providers/metadataProvider.ts";
 import { clearReleaseManifests } from "../../backend/services/releaseResolver.ts";
 import { pickResolvedDurationMs } from "../../backend/services/providers/metadataRanking.ts";
 import { toNormalizedTrack } from "../../backend/services/providers/metadataMappers.ts";
@@ -924,6 +927,82 @@ test("an album ID is kept while the metadata provider is down, and its release i
   const after = await resolveTrackSearchContext(track);
   assert.equal(after.releaseMbid, "edition-deluxe");
   assert.equal(after.trackMbid, "middle");
+});
+
+test("a fallback outage keeps known album and edition IDs without trusting an unverified recording", async (t) => {
+  const albumMbid = "11111111-1111-4111-8111-111111111111";
+  const publishedMbid = "99999999-9999-4999-8999-999999999999";
+  const releaseMbid = "22222222-2222-4222-8222-222222222222";
+  const trackMbid = "33333333-3333-4333-8333-333333333333";
+  const paths: string[] = [];
+  let mirrorAvailable = false;
+  stubMetadata(t, (path) => {
+    paths.push(path);
+    if (mirrorAvailable && path === `/v1/album/${albumMbid}`) {
+      return { ...editionAlbum(), id: albumMbid };
+    }
+    if (path === `/v1/album/${publishedMbid}`) {
+      return {
+        id: publishedMbid,
+        title: "Edition Album",
+        artists: [{ id: "edition-band", name: "Edition Band" }],
+      };
+    }
+    const status = path === `/v1/album/${albumMbid}` ? 404 : 502;
+    throw Object.assign(new Error("Metadata request failed"), { response: { status } });
+  });
+  const track = {
+    artistName: "Edition Band",
+    artistMbid: "edition-band",
+    artistAliases: ["Edition Band"],
+    trackName: "Middle",
+    albumName: "Edition Album",
+    albumMbid,
+    releaseMbid,
+    trackMbid,
+    durationMs: 211000,
+    trackNumber: 3,
+    albumTrackTitles: ["Bonus Intro", "Opener", "Middle"],
+  };
+
+  for (const candidate of [track, { ...track, albumTrackTitles: [] }]) {
+    const resolved = await resolveTrackSearchContext(candidate);
+    assert.equal(resolved.metadataUnreachable, true);
+    assert.deepEqual(
+      [resolved.albumMbid, resolved.releaseMbid, resolved.trackMbid],
+      [albumMbid, releaseMbid, null],
+    );
+  }
+  assert.deepEqual(paths, [`/v1/album/${albumMbid}`, `/ws/2/release-group/${albumMbid}`]);
+  const browseOutage = await resolveTrackSearchContext({ ...track, albumMbid: publishedMbid });
+  assert.equal(browseOutage.metadataUnreachable, true);
+  assert.equal(browseOutage.albumMbid, publishedMbid);
+  assert.equal(browseOutage.releaseMbid, releaseMbid);
+  assert.equal(paths.at(-1), "/ws/2/release");
+
+  const now = Date.now();
+  const previousRequestCount = paths.length;
+  await dbOps.setMetadataResponseAsync(`https://brainzmash.example.test/v1/album/${albumMbid}:{}`, {
+    value: { ...editionAlbum(), id: albumMbid },
+    freshUntil: now + 60_000,
+    staleUntil: now + 60_000,
+  });
+  assert.equal((await getAlbumByMbid(albumMbid)).id, albumMbid);
+  assert.equal(paths.length, previousRequestCount);
+
+  mirrorAvailable = true;
+  const settings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...settings,
+    integrations: {
+      ...settings.integrations,
+      metadata: { ...settings.integrations.metadata, baseUrl: "https://other-mirror.example.test" },
+    },
+  });
+  const recovered = await resolveTrackSearchContext(track);
+  assert.equal(recovered.metadataUnreachable, undefined);
+  assert.equal(recovered.albumMbid, albumMbid);
+  assert.equal(paths.at(-1), `/v1/album/${albumMbid}`);
 });
 
 test("a merged recording ID is repaired to the current recording and kept as its alias", async (t) => {
