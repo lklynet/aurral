@@ -710,18 +710,28 @@ export function getAlbum(value: string, user?: SubsonicUser) {
   return album?.identityKey ? toAlbum(library, album) : null;
 }
 
-export function getSong(value: string, user?: SubsonicUser) {
+export function resolveSong(value: string, user?: SubsonicUser) {
   const playlistEntry = playlistJobFromId(user, value);
   if (playlistEntry) {
-    const customArtwork = getCustomArtworkMap("playlist-track", [playlistEntry.job.id]);
-    return toPlaylistSong(
-      playlistEntry.playlist,
-      playlistEntry.kind,
-      playlistEntry.job,
+    const { playlist, kind, job } = playlistEntry;
+    const owned = findAvailableLibraryTrack(trackFromJob(job));
+    const customArtwork = getCustomArtworkMap("playlist-track", [job.id]);
+    const song = toPlaylistSong(
+      playlist,
+      kind,
+      job,
       viewerFor(user),
-      undefined,
-      customArtwork.get(String(playlistEntry.job.id)) || null,
+      owned,
+      customArtwork.get(String(job.id)) || null,
     );
+    return {
+      song,
+      entry: owned ? { trackId: owned.track.id } : { jobId: job.id },
+      albumMbid: owned
+        ? findAlbumForTrack(owned.library, owned.track)?.releaseGroupMbid
+        : job.albumMbid,
+      artistMbid: owned ? song.artists[0]?.musicBrainzId : job.artistMbid,
+    };
   }
 
   const parsed = parseId(value);
@@ -735,7 +745,19 @@ export function getSong(value: string, user?: SubsonicUser) {
     viewerFor(user),
   );
   const track = findLibraryEntry(library, parsed);
-  return track?.identityKey ? toSong(library, track) : null;
+  if (!track?.identityKey) return null;
+  const album = findAlbumForTrack(library, track);
+  const song = toSong(library, track, album);
+  return {
+    song,
+    entry: { trackId: track.id },
+    albumMbid: album?.releaseGroupMbid,
+    artistMbid: song.artists[0]?.musicBrainzId,
+  };
+}
+
+export function getSong(value: string, user?: SubsonicUser) {
+  return resolveSong(value, user)?.song ?? null;
 }
 
 const radioSeedFor = (parsed: ParsedId | null, artistOnly: boolean): RadioSeed | null => {
