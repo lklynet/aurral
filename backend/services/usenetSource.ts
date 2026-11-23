@@ -3,6 +3,7 @@ import path from "node:path";
 import * as v from "valibot";
 import { asAppError } from "../../lib/errors.ts";
 import {
+  DownloadFailedError,
   DownloadSourceError,
   type AlbumQuery,
   type DownloadSource,
@@ -282,7 +283,7 @@ function nzbSource(id: NzbSourceId) {
       const state = historyState(item);
       if (state === "pending") return { done: false };
       if (state === "failed")
-        throw new DownloadSourceError(
+        throw new DownloadFailedError(
           `${label} download failed: ${item.Status || item.status || "failed"}`,
         );
       const files = await handOver(item, client.key, directory);

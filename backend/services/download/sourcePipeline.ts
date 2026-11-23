@@ -52,6 +52,7 @@ import {
   validateDownloadedTrackFile,
 } from "../trackMatching/index.ts";
 import {
+  DownloadFailedError,
   DownloadSourceError,
   NATIVE_SOURCE_IDS,
   statusResult,
@@ -434,6 +435,15 @@ async function keepFiles(payload: SourcePayload, source: DownloadSource, job: Do
   return checked;
 }
 
+function denyFailedRelease(payload: SourcePayload, source: DownloadSource, job: DownloadJob) {
+  if (payload.albumGrab === true) return blockAlbumGrabSource(payload, albumGrabJobs(payload));
+  downloadTracker.recordDeniedSource(
+    job.id,
+    source.id,
+    deniedKey(payload, source, getPayloadCandidate(payload)?.raw.id),
+  );
+}
+
 async function downloadFailed(
   payload: SourcePayload,
   source: DownloadSource,
@@ -443,6 +453,7 @@ async function downloadFailed(
 ) {
   await discardSourceWork(payload, source);
   if (!isPipelinePayloadActive(payload)) return null;
+  if (error instanceof DownloadFailedError) denyFailedRelease(payload, source, job);
   logger.warn(source.id, "Download failed", {
     jobId: job.id,
     result: payload.candidates?.[Number(payload.candidateIndex || 0)]?.raw.id ?? null,
@@ -711,15 +722,6 @@ async function readStatus(
   }
 }
 
-function denyFailedRelease(payload: SourcePayload, source: DownloadSource, job: DownloadJob) {
-  if (payload.albumGrab === true) return blockAlbumGrabSource(payload, albumGrabJobs(payload));
-  downloadTracker.recordDeniedSource(
-    job.id,
-    source.id,
-    deniedKey(payload, source, getPayloadCandidate(payload)?.raw.id),
-  );
-}
-
 async function handlePoll(payload: SourcePayload, source: DownloadSource, helpers: SourceHelpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job || job.status === "failed" || job.status === "done") return null;
@@ -730,13 +732,7 @@ async function handlePoll(payload: SourcePayload, source: DownloadSource, helper
       return await waitForFiledAlbum({ ...payload, pollAttempts }, source, job);
     const checked = await keepFiles(payload, source, job);
     if (!source.status) throw new DownloadSourceError("can't report a pending download");
-    const status = await readStatus(checked, source, source.status, directory).catch(
-      (error: unknown) => {
-        if (error instanceof DownloadSourceError && isPipelinePayloadActive(checked))
-          denyFailedRelease(checked, source, job);
-        throw error;
-      },
-    );
+    const status = await readStatus(checked, source, source.status, directory);
     if ("unreadPolls" in status)
       return { ...checked, phase: "poll", pollAttempts, ...status, delaySeconds: POLL_SECONDS };
     const current = { ...checked, unreadPolls: 0 };

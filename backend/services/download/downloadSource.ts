@@ -60,6 +60,7 @@ export type Upgrade = { currentTier: string | null } | null;
 // that rejected the download. The pipeline moves on to the next result or
 // source. Any other error fails the step, and the queue retries it.
 export class DownloadSourceError extends Error {}
+export class DownloadFailedError extends DownloadSourceError {}
 
 export const NATIVE_SOURCE_IDS = ["deemix", "qbittorrent", "tidarr", "usenet", "ytdlp"] as const;
 
