@@ -35,6 +35,8 @@ async function leaveOn(chosen: (source: Source) => boolean) {
 
 afterAll(() => leaveOn(() => true));
 
+const FINISHED = ["done", "failed", "blocked", "cancelled"];
+
 const JOURNEYS: { source: Source; recordedAs: string }[] = [
   { source: "ytdlp", recordedAs: "ytdlp" },
   { source: "nzbget", recordedAs: "usenet" },
@@ -76,6 +78,50 @@ JOURNEYS.forEach(({ source, recordedAs }, index) => {
     assert.ok(carriers.length > 0);
     for (const job of carriers) assert.equal(job.download_source, recordedAs);
   });
+});
+
+test("a playlist track lands on the album that lists its recording when the source names another", async () => {
+  const release = worldRelease(JOURNEYS.length);
+  await leaveOn((source) => source === "ytdlp");
+  const [track] = v.parse(
+    v.array(v.object({ mbid: v.string(), title: v.string() })),
+    await api.get(`/artists/release-group/${release.id}/tracks`),
+  );
+  assert.ok(track);
+  await api.post("/playlists/static-playlists", {
+    name: "Named after another release",
+    tracks: [
+      {
+        artistName: release.artist,
+        artistMbid: release.artistId,
+        trackName: track.title,
+        trackMbid: track.mbid,
+        albumName: "A sampler nobody pressed",
+        albumMbid: release.id,
+      },
+    ],
+  });
+  const jobs = await until(
+    `${track.title} to finish downloading`,
+    async () => {
+      const found = aurralRows(
+        "SELECT status, album_name, album_mbid, track_mbid FROM download_jobs WHERE track_name = ? AND artist_name = ?",
+        track.title,
+        release.artist,
+      );
+      const settled = found.every((job) => FINISHED.includes(String(job.status)));
+      return found.length > 0 && settled && found;
+    },
+    280_000,
+  );
+  for (const job of jobs) {
+    assert.deepEqual(job, {
+      status: "done",
+      album_name: release.album,
+      album_mbid: release.id,
+      track_mbid: track.mbid,
+    });
+  }
 });
 
 test.skipIf(!has("webhooks", "gotify"))(

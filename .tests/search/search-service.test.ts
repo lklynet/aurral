@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { createMockHttpServer } from "../helpers/backendTestHarness.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 import { dbOps } from "../../backend/db/helpers/index.ts";
-import { clearMetadataProviderCaches } from "../../backend/services/providers/brainzmashProvider.ts";
+import { clearMetadataProviderCaches } from "../../backend/services/providers/metadataProvider.ts";
 import {
   normalizeAlbumReleaseTypesFilter,
   searchAlbums,
@@ -13,10 +13,10 @@ import {
 } from "../../backend/services/searchService.ts";
 import { libraryManager } from "../../backend/services/libraryManager.ts";
 
-test("searchArtists normalizes BrainzMash artists", async () => {
+test("searchArtists normalizes v1 metadata artists", async () => {
   let requests = 0;
   const server = await createMockHttpServer((request, response) => {
-    if (!request.url?.startsWith("/search/artist")) {
+    if (!request.url?.startsWith("/v1/search/artist")) {
       response.writeHead(404);
       response.end();
       return;
@@ -29,16 +29,18 @@ test("searchArtists normalizes BrainzMash artists", async () => {
     }
     response.setHeader("content-type", "application/json");
     response.end(
-      JSON.stringify([
-        {
-          id: "artist-mbid",
-          artistname: "Adele",
-          sortname: "Adele",
-          type: "Person",
-          genres: ["pop"],
-          images: [{ Url: "https://images.example/adele.jpg", CoverType: "poster" }],
-        },
-      ]),
+      JSON.stringify({
+        artists: [
+          {
+            id: "artist-mbid",
+            name: "Adele",
+            sortName: "Adele",
+            type: "Person",
+            genres: ["pop"],
+            image: "https://images.example/adele.jpg",
+          },
+        ],
+      }),
     );
   });
   const originalSettings = dbOps.getSettings();
@@ -69,25 +71,22 @@ test("searchArtists normalizes BrainzMash artists", async () => {
   }
 });
 
-test("searchAlbums names the album's credited artist, not the first one listed", async () => {
+test("searchAlbums maps the album's artist name and MBID", async () => {
   const server = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
     response.end(
-      JSON.stringify(
-        request.url?.startsWith("/search/album")
+      JSON.stringify({
+        albums: request.url?.startsWith("/v1/search/album")
           ? [
               {
                 id: "agaetis",
                 title: "Ágætis byrjun",
-                artistid: "sigur-ros",
-                artists: [
-                  { id: "amiina", artistname: "amiina" },
-                  { id: "sigur-ros", artistname: "Sigur Rós" },
-                ],
+                artistId: "sigur-ros",
+                artistName: "Sigur Rós",
               },
             ]
           : [],
-      ),
+      }),
     );
   });
   const originalSettings = dbOps.getSettings();
@@ -114,30 +113,31 @@ test("searchAlbums names the album's credited artist, not the first one listed",
 });
 
 test("searchAlbums puts the album an artist and title search names first", async () => {
-  const album = (id: string, artistname: string, title: string, secondarytypes: string[] = []) => ({
+  const album = (id: string, artistName: string, title: string, secondaryTypes: string[] = []) => ({
     id,
     title,
-    secondarytypes,
-    artistid: artistname,
-    artists: [{ id: artistname, artistname }],
+    secondaryTypes,
+    artistId: artistName,
+    artistName,
   });
   const server = await createMockHttpServer((request, response) => {
     const url = new URL(request.url!, "http://127.0.0.1");
     response.setHeader("content-type", "application/json");
     response.end(
-      JSON.stringify(
-        url.pathname !== "/search/album"
-          ? []
-          : [
-              album("tribute", "Royal Philharmonic Orchestra", "Plays Fleetwood Mac's Rumours", [
-                "Compilation",
-              ]),
-              album("bundle", "Fleetwood Mac", "Fleetwood Mac / Rumours", ["Compilation"]),
-              album("self-titled", "Fleetwood Mac", "Fleetwood Mac"),
-              album("cello", "Trevor Exter", "Fleetwood Mac Rumours: Solo Cello"),
-              album("rumours", "Fleetwood Mac", "Rumours"),
-            ].slice(0, Number(url.searchParams.get("limit")) || undefined),
-      ),
+      JSON.stringify({
+        albums:
+          url.pathname !== "/v1/search/album"
+            ? []
+            : [
+                album("tribute", "Royal Philharmonic Orchestra", "Plays Fleetwood Mac's Rumours", [
+                  "Compilation",
+                ]),
+                album("bundle", "Fleetwood Mac", "Fleetwood Mac / Rumours", ["Compilation"]),
+                album("self-titled", "Fleetwood Mac", "Fleetwood Mac"),
+                album("cello", "Trevor Exter", "Fleetwood Mac Rumours: Solo Cello"),
+                album("rumours", "Fleetwood Mac", "Rumours"),
+              ].slice(0, Number(url.searchParams.get("limit")) || undefined),
+      }),
     );
   });
   const originalSettings = dbOps.getSettings();
@@ -168,16 +168,17 @@ test("searchAlbums reports a further page while more results exist", async () =>
     const url = new URL(request.url!, "http://127.0.0.1");
     response.setHeader("content-type", "application/json");
     response.end(
-      JSON.stringify(
-        url.pathname !== "/search/album"
-          ? []
-          : Array.from({ length: 45 }, (_, index) => ({
-              id: `album-${index}`,
-              title: `Paged Album ${index}`,
-              artistid: "paged",
-              artists: [{ id: "paged", artistname: "Paged Artist" }],
-            })).slice(0, Number(url.searchParams.get("limit")) || undefined),
-      ),
+      JSON.stringify({
+        albums:
+          url.pathname !== "/v1/search/album"
+            ? []
+            : Array.from({ length: 45 }, (_, index) => ({
+                id: `album-${index}`,
+                title: `Paged Album ${index}`,
+                artistId: "paged",
+                artistName: "Paged Artist",
+              })).slice(0, Number(url.searchParams.get("limit")) || undefined),
+      }),
     );
   });
   const originalSettings = dbOps.getSettings();

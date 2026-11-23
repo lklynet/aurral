@@ -85,7 +85,9 @@ export default function PersonPage() {
           <ProfileNotes
             notes={[note, !hasTopPlays(person.topPlays) && `No top plays from ${name} yet.`]}
           />
-          {hasTopPlays(person.topPlays) ? <TopPlayLists top={person.topPlays} /> : null}
+          {hasTopPlays(person.topPlays) ? (
+            <TopPlayLists id={`local:${person.username}`} name={name} top={person.topPlays} />
+          ) : null}
         </>
       ) : null}
     </ProfilePage>

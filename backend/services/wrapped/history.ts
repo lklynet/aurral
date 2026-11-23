@@ -9,7 +9,6 @@ import { scrobbleConnectionStore } from "../scrobbleConnectionStore.ts";
 import { normalizeKoitoBaseUrl } from "../koitoClient.ts";
 import { getLibraryForTrackMatches } from "../libraryQueryService.ts";
 import { guessArtistMbid } from "../artistMatch.ts";
-import { fetchDeezerArtistImageUrl } from "../releaseGroupCoverService.ts";
 import { deezerGetTrackPreview } from "../apiClients/deezer.ts";
 import { buildImageProxyUrl, warmImageProxy, warmPublicImageUrl } from "../imageProxyService.ts";
 import { buildCustomArtworkUrl, getCustomArtwork } from "../customArtworkService.ts";
@@ -318,12 +317,8 @@ async function artistPhoto({
       )
       .get(name)?.mbid ||
     (await guessArtistMbid(name, { album }));
-  const photo = known
-    ? (await getArtistImage(known, { artistName: name }).catch(() => null))?.url
-    : null;
-  return (
-    (await cachedImage(photo)) ?? cachedImage(await fetchDeezerArtistImageUrl({ artistName: name }))
-  );
+  const photo = known ? (await getArtistImage(known).catch(() => null))?.url : null;
+  return cachedImage(photo);
 }
 
 export async function buildWrappedSummary(userId: number, period: Period) {

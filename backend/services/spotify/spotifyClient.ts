@@ -412,7 +412,7 @@ export const spotifyClient = {
                 limit: 50,
                 additional_types: "episode",
                 fields:
-                  "items(item(type,name,duration_ms,artists(name),album(name))),next,total,offset",
+                  "items(item(type,name,duration_ms,artists(name),album(name),external_ids(isrc))),next,total,offset",
               },
               onPage,
             },

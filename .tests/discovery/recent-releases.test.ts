@@ -7,7 +7,7 @@ import { getRecentMissingReleases } from "../../backend/services/discovery/recen
 import { refreshReleaseMetadata } from "../../backend/services/releaseMetadataSync.ts";
 import { upsertReleaseCalendarEntry } from "../../backend/services/releaseCalendarStore.ts";
 import { db } from "../../backend/config/db-sqlite.ts";
-import { VARIOUS_ARTISTS_MBID } from "../../backend/services/trackMatching/titleText.ts";
+import { clearMetadataProviderCaches } from "../../backend/services/providers/metadataProvider.ts";
 import {
   getLibraryAlbumsByReleaseDate,
   getLibraryArtistProjection,
@@ -48,7 +48,7 @@ function addCalendarRelease(artistId: number, title: string, releaseDate: string
   return releaseGroupMbid;
 }
 
-const feedOf = (releases: unknown[]) => ({ payload: { releases } });
+const feedOf = (releases: unknown[]) => ({ releases });
 
 function freshRelease(
   artistMbids: string[],
@@ -58,22 +58,23 @@ function freshRelease(
     id = randomUUID(),
     type = "Album",
     secondaryType,
-    cover,
-  }: { id?: string; type?: string; secondaryType?: string; cover?: [string, number] } = {},
+    cover = null,
+  }: { id?: string; type?: string; secondaryType?: string; cover?: string | null } = {},
 ) {
   return {
-    release_group_mbid: id,
-    release_name: title,
-    artist_credit_name: "Calendar Artist",
-    artist_mbids: artistMbids,
-    release_group_primary_type: type,
-    ...(secondaryType && { release_group_secondary_type: secondaryType }),
-    ...(cover && { caa_release_mbid: cover[0], caa_id: cover[1] }),
-    release_date: releaseDate,
+    id,
+    title,
+    artistName: "Calendar Artist",
+    artistIds: artistMbids,
+    type,
+    secondaryTypes: secondaryType ? [secondaryType] : [],
+    cover,
+    releaseDate,
   };
 }
 
 function stubFreshReleases(feed: () => unknown) {
+  clearMetadataProviderCaches();
   const requests: string[] = [];
   vi.spyOn(http, "get").mockImplementation(async (url, config) => {
     const query = Object.entries(config?.query || {}).map(([key, value]) => `${key}=${value}`);
@@ -379,27 +380,24 @@ test("library release-date reads return dated albums without loading old albums"
   }
 });
 
-test("the calendar lists library artists' albums and EPs from one ListenBrainz request", async () => {
+test("the calendar lists library artists' albums and EPs from one AurralBrainz request", async () => {
   vi.setSystemTime(Date.parse("2030-04-10T12:00:00Z"));
   const first = createCalendarArtist("First Fresh Artist");
   const second = createCalendarArtist("Second Fresh Artist");
-  const various = createCalendarArtist("Various Artists", VARIOUS_ARTISTS_MBID);
   const laterMbid = randomUUID();
-  const coverRelease = randomUUID();
+  const cover = `https://coverartarchive.org/release/${randomUUID()}/42-1200.jpg`;
   const requests = stubFreshReleases(() =>
     feedOf([
-      freshRelease([first.mbid], "Out Now", "2030-04-02", { cover: [coverRelease, 42] }),
+      freshRelease([first.mbid], "Out Now", "2030-04-02", { cover }),
       freshRelease([second.mbid], "Coming Soon", "2030-05-01", { type: "EP" }),
       freshRelease([first.mbid, second.mbid], "Together", "2030-04-05"),
       freshRelease([first.mbid], "Just A Single", "2030-04-06", { type: "Single" }),
       freshRelease([first.mbid], "Greatest Hits", "2030-04-07", { secondaryType: "Compilation" }),
       freshRelease([randomUUID()], "Someone Else", "2030-04-08"),
       freshRelease([laterMbid], "Later Album", "2030-04-09"),
-      freshRelease([VARIOUS_ARTISTS_MBID], "Summer Hits", "2030-04-08"),
-      freshRelease([VARIOUS_ARTISTS_MBID], "Winter Hits", "2030-05-02"),
     ]),
   );
-  const artists = [first, second, various].map(({ id }) => ({ id: String(id) }));
+  const artists = [first, second].map(({ id }) => ({ id: String(id) }));
   let added: { id: number } | null = null;
 
   try {
@@ -411,7 +409,7 @@ test("the calendar lists library artists' albums and EPs from one ListenBrainz r
       ]),
       [
         ["Together", null],
-        ["Out Now", `https://imagecache.lidarr.audio/v1/caa/${coverRelease}/42-500.jpg`],
+        ["Out Now", cover],
       ],
     );
     assert.deepEqual(titles(await getRecentMissingReleases(10, { artists, when: "upcoming" })), [
@@ -425,18 +423,15 @@ test("the calendar lists library artists' albums and EPs from one ListenBrainz r
       titles(await getRecentMissingReleases(10, { artists: [{ id: String(added.id) }] })),
       ["Later Album"],
     );
-    assert.deepEqual(requests, [
-      "api.listenbrainz.org/1/explore/fresh-releases/?days=90&past=true&future=true",
-    ]);
+    assert.deepEqual(requests, ["data.aurral.org/v1/fresh-releases?"]);
   } finally {
     removeCalendarArtist(first.id);
     removeCalendarArtist(second.id);
-    removeCalendarArtist(various.id);
     if (added) removeCalendarArtist(added.id);
   }
 });
 
-test("a release that leaves the ListenBrainz feed leaves the calendar, and a failed or empty feed keeps it", async () => {
+test("a release that leaves the AurralBrainz feed leaves the calendar, and a failed or empty feed keeps it", async () => {
   vi.setSystemTime(Date.parse("2030-05-01T12:00:00Z"));
   const artist = createCalendarArtist("Changing Feed Artist");
   const older = addCalendarRelease(artist.id, "Long Ago", "2001-01-01");
@@ -459,13 +454,14 @@ test("a release that leaves the ListenBrainz feed leaves the calendar, and a fai
 
     later(7);
     answer = () => {
-      throw Object.assign(new Error("ListenBrainz is down"), { response: { status: 500 } });
+      throw Object.assign(new Error("AurralBrainz is down"), { response: { status: 500 } });
     };
     await assert.rejects(refreshReleaseMetadata());
     later(7);
-    answer = () => feedOf([freshRelease([], "Nobody's Album", "2030-04-28")]);
+    answer = () => feedOf([]);
     await assert.rejects(refreshReleaseMetadata(), /no fresh releases/);
     assert.deepEqual(await listed(), ["Kept"]);
+    later(7);
     answer = () => feedOf([kept]);
     await refreshReleaseMetadata();
     assert.deepEqual(await listed(), ["Kept"]);
@@ -482,7 +478,7 @@ test("a release that leaves the ListenBrainz feed leaves the calendar, and a fai
   }
 });
 
-test("lease loss while ListenBrainz answers leaves the last good calendar untouched", async () => {
+test("lease loss while AurralBrainz answers leaves the last good calendar untouched", async () => {
   vi.setSystemTime(Date.parse("2030-07-01T12:00:00Z"));
   const artist = createCalendarArtist("Lease Loss Artist");
   addCalendarRelease(artist.id, "Last Good Release", "2030-06-20");
@@ -505,7 +501,7 @@ test("lease loss while ListenBrainz answers leaves the last good calendar untouc
   }
 });
 
-test("an aborted refresh never asks ListenBrainz", async () => {
+test("an aborted refresh never asks AurralBrainz", async () => {
   const controller = new AbortController();
   controller.abort();
   const requests = stubFreshReleases(() => feedOf([]));

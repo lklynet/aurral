@@ -12,42 +12,68 @@ const albumMbid = "34343434-3434-4343-8343-343434343434";
 
 const linkedArtist = {
   id: linkedArtistMbid,
-  artistname: "Queen",
-  artistaliases: ["クイーン"],
+  name: "Queen",
+  aliases: ["クイーン"],
   genres: ["Rock", "Glam Rock"],
   images: [],
   links: [
+    { type: "deezer", target: "https://www.deezer.com/artist/14085093" },
     { type: "deezer", target: "https://www.deezer.com/en/artist/412" },
     { type: "discogs", target: "https://www.discogs.com/artist/81013-Queen" },
     { type: "wikidata", target: "https://www.wikidata.org/wiki/Q15862" },
     { type: "other", target: "https://constructor/artist/1" },
   ],
-  Albums: [],
+  albums: [],
 };
 
 const unlinkedArtist = {
   id: unlinkedArtistMbid,
-  artistname: "Obscure Artist",
-  artistaliases: [],
+  name: "Obscure Artist",
+  aliases: [],
   genres: [],
   images: [],
   links: [],
-  Albums: [],
+  albums: [],
+};
+
+const topTrackArtistMbid = "89898989-8989-4898-8898-898989898989";
+const topTrackAlbumMbid = "90909090-9090-4909-8909-909090909090";
+const topTrackArtist = {
+  id: topTrackArtistMbid,
+  name: "Top Track Band",
+  aliases: [],
+  genres: ["Rock"],
+  images: [],
+  links: [{ type: "deezer", target: "https://www.deezer.com/en/artist/412" }],
+  albums: [{ id: topTrackAlbumMbid, title: "Greatest Hits", type: "Album" }],
+  topTracks: [
+    {
+      recordingId: "12345678-1234-4123-8123-1234567890ab",
+      title: "Bohemian Rhapsody",
+      albumId: topTrackAlbumMbid,
+      durationMs: 354000,
+      listeners: 90000,
+    },
+  ],
 };
 
 const providerPaths: string[] = [];
 const providerServer = await createMockHttpServer((request, response) => {
   providerPaths.push(request.url || "");
   response.setHeader("content-type", "application/json");
-  if (request.url?.startsWith(`/artist/${linkedArtistMbid}`)) {
+  if (request.url?.startsWith(`/v1/artist/${linkedArtistMbid}`)) {
     response.end(JSON.stringify(linkedArtist));
     return;
   }
-  if (request.url?.startsWith(`/artist/${unlinkedArtistMbid}`)) {
+  if (request.url?.startsWith(`/v1/artist/${unlinkedArtistMbid}`)) {
     response.end(JSON.stringify(unlinkedArtist));
     return;
   }
-  if (request.url?.startsWith(`/album/${albumMbid}`)) {
+  if (request.url?.startsWith(`/v1/artist/${topTrackArtistMbid}`)) {
+    response.end(JSON.stringify(topTrackArtist));
+    return;
+  }
+  if (request.url?.startsWith(`/v1/album/${albumMbid}`)) {
     response.end(
       JSON.stringify({ id: albumMbid, title: "Jazz", images: [], artists: [linkedArtist] }),
     );
@@ -60,26 +86,22 @@ const providerServer = await createMockHttpServer((request, response) => {
   response.statusCode = 404;
   response.end("{}");
 });
-process.env.BRAINZMASH_BASE_URL = providerServer.url;
+process.env.METADATA_BASE_URL = providerServer.url;
 
 const [
   isolatedState,
   { http },
   { getArtistByMbid },
-  { musicbrainzGetArtistIdentityByMbid },
   { getArtistTagPayload },
   { default: preview },
-  { getArtistImage },
   { fetchReleaseGroupCoverUrl },
   { getArtistTopTracks },
 ] = await setupIsolatedBackend(
   "brainzmash-linked-metadata",
   () => import("../lib/http.ts"),
-  () => import("../backend/services/providers/brainzmashProvider.ts"),
-  () => import("../backend/services/apiClients/musicbrainz.ts"),
+  () => import("../backend/services/providers/metadataProvider.ts"),
   () => import("../backend/routes/artists/shared/transform.ts"),
   () => import("../backend/routes/artists/handlers/preview.ts"),
-  () => import("../backend/services/imageService.ts"),
   () => import("../backend/services/releaseGroupCoverService.ts"),
   () => import("../backend/services/musicDataSource/index.ts"),
 );
@@ -87,7 +109,7 @@ const [
 afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
   await providerServer.close();
-  delete process.env.BRAINZMASH_BASE_URL;
+  delete process.env.METADATA_BASE_URL;
 });
 
 const externalResponse = (url: string) => {
@@ -128,20 +150,6 @@ const externalResponse = (url: string) => {
       ],
     };
   }
-  if (url === "https://api.listenbrainz.org/1/metadata/artist/") {
-    return [
-      {
-        artist_mbid: unlinkedArtistMbid,
-        tag: {
-          artist: [
-            { tag: "seen live", count: 100 },
-            { tag: "classic rock", count: 90 },
-            { tag: "female vocalists", count: 80 },
-          ],
-        },
-      },
-    ];
-  }
   return {};
 };
 
@@ -150,64 +158,67 @@ function recordExternalRequests() {
   const providerGet = http.get.bind(http);
   vi.spyOn(http, "get").mockImplementation(async (url, options) => {
     if (String(url).startsWith(providerServer.url)) return providerGet(url, options);
+    if (String(url).startsWith("https://musicbrainz.org/")) {
+      throw Object.assign(new Error("not found"), { response: { status: 404 } });
+    }
     requests.push(url);
     return { status: 200, statusText: "OK", headers: {}, data: externalResponse(url) };
   });
   return requests;
 }
 
-test("artist identity comes from BrainzMash names, aliases, and linked provider IDs", async () => {
+test("artist genres come straight from v1 artist metadata without calling ListenBrainz", async () => {
   const requests = recordExternalRequests();
 
-  assert.deepEqual(await musicbrainzGetArtistIdentityByMbid(linkedArtistMbid), {
-    mbid: linkedArtistMbid,
-    name: "Queen",
-    aliases: ["クイーン"],
-    providerIds: ["412@deezer", "81013@discogs"],
-  });
-  assert.equal(
-    await musicbrainzGetArtistIdentityByMbid("56565656-5656-4565-8565-565656565656"),
-    null,
-  );
-  assert.deepEqual([...requests], []);
-});
-
-test("artist genres come from BrainzMash and ListenBrainz only fills artists without genres with real genres", async () => {
-  const requests = recordExternalRequests();
-
-  const linked = await getArtistTagPayload(
-    linkedArtistMbid,
-    "Queen",
-    await getArtistByMbid(linkedArtistMbid),
-  );
+  const linked = getArtistTagPayload(await getArtistByMbid(linkedArtistMbid));
   assert.deepEqual(linked.genres, ["Rock", "Glam Rock"]);
-  assert.deepEqual([...requests], []);
 
-  const unlinked = await getArtistTagPayload(
-    unlinkedArtistMbid,
-    "Obscure Artist",
-    await getArtistByMbid(unlinkedArtistMbid),
-  );
-  assert.deepEqual(unlinked.genres, ["classic rock"]);
-  assert.equal(requests.length, 1);
-  assert.equal(requests[0], "https://api.listenbrainz.org/1/metadata/artist/");
+  const unlinked = getArtistTagPayload(await getArtistByMbid(unlinkedArtistMbid));
+  assert.deepEqual(unlinked.genres, []);
+  assert.deepEqual([...requests], []);
 });
 
-test("artist previews use the BrainzMash Deezer link instead of a name search", async () => {
+test("artist previews play the artist file's top tracks, then the linked Deezer artist's", async () => {
   const requests = recordExternalRequests();
-  const response = await preview.request(`/artists/${linkedArtistMbid}/preview?artistName=Queen`);
-  const { tracks }: { tracks: { title: string }[] } = await response.json();
+  const previewTracks = async (mbid: string, artistName: string) => {
+    const response = await preview.request(
+      `/artists/${mbid}/preview?${new URLSearchParams({ artistName })}`,
+    );
+    const { tracks }: { tracks: { title: string; preview_url: string | null }[] } =
+      await response.json();
+    return tracks.map((track) => [track.title, track.preview_url]);
+  };
 
-  assert.deepEqual(
-    tracks.map((track) => track.title),
-    ["Mustapha"],
-  );
+  assert.deepEqual(await previewTracks(topTrackArtistMbid, "Top Track Band"), [
+    ["Bohemian Rhapsody", "/api/deezer/preview?artist=Top+Track+Band&track=Bohemian+Rhapsody"],
+  ]);
+  assert.deepEqual(requests, []);
+
+  assert.deepEqual(await previewTracks(linkedArtistMbid, "Queen"), [
+    ["Mustapha", "/api/deezer/preview/7.mp3"],
+  ]);
   assert.deepEqual(requests, ["https://api.deezer.com/artist/412/top"]);
 });
 
-test("top tracks use the Deezer artist linked on a saved BrainzMash artist, and never ask BrainzMash for it", async () => {
-  await getArtistByMbid(linkedArtistMbid);
+test("top tracks come from v1 artist data first, then fall back to the linked Deezer artist", async () => {
   const requests = recordExternalRequests();
+
+  const fromV1 = await getArtistTopTracks({
+    name: "Top Track Band",
+    mbid: topTrackArtistMbid,
+  });
+  assert.deepEqual(fromV1, [
+    {
+      name: "Bohemian Rhapsody",
+      albumName: "Greatest Hits",
+      mbid: "12345678-1234-4123-8123-1234567890ab",
+      durationMs: 354000,
+      popularity: 90000,
+    },
+  ]);
+  assert.deepEqual(requests, []);
+
+  await getArtistByMbid(linkedArtistMbid);
   providerPaths.length = 0;
 
   const saved = await getArtistTopTracks({
@@ -228,16 +239,7 @@ test("top tracks use the Deezer artist linked on a saved BrainzMash artist, and 
     "https://api.deezer.com/artist/412/top",
     "https://api.deezer.com/search/artist",
   ]);
-  assert.deepEqual(providerPaths, []);
-});
-
-test("artist images fall back to the BrainzMash-linked Deezer artist", async () => {
-  const requests = recordExternalRequests();
-
-  const result = await getArtistImage(linkedArtistMbid, { forceRefresh: true });
-
-  assert.ok(result.url);
-  assert.deepEqual(requests, ["https://api.deezer.com/artist/412"]);
+  assert.deepEqual(providerPaths, ["/v1/artist/78787878-7878-4787-8787-787878787878"]);
 });
 
 test("album covers fall back to the Deezer artist linked on the BrainzMash album", async () => {

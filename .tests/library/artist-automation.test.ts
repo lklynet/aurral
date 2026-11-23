@@ -24,7 +24,7 @@ const [
   () => import("../../backend/services/libraryManagementStore.ts"),
   () => import("../../backend/services/libraryManager.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
-  () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../../backend/services/providers/metadataProvider.ts"),
 );
 
 const artistMbid = "c1111111-1111-4111-8111-111111111111";

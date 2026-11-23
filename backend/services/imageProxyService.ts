@@ -237,21 +237,44 @@ const normalizeImageProfile: (profile?: unknown) => "library" = () => "library";
 const buildImageCacheKey = (sourceUrl: string, profile = "library") =>
   hashValue(`${normalizeImageProfile(profile)}:${sourceUrl}`);
 
+const WIKIMEDIA_FILEPATH_PATTERN =
+  /^https?:\/\/commons\.wikimedia\.org\/wiki\/Special:FilePath\/([^?#]+)/i;
+
+const rewriteWikimediaFilePath = (url: string) => {
+  const match = url.match(WIKIMEDIA_FILEPATH_PATTERN);
+  if (!match?.[1]) return url;
+  try {
+    const decoded = decodeURIComponent(match[1]).trim().replace(/ /g, "_");
+    if (!decoded) return url;
+    const canon = decoded.charAt(0).toUpperCase() + decoded.slice(1);
+    const digest = crypto.createHash("md5").update(canon, "utf8").digest("hex");
+    return `https://upload.wikimedia.org/wikipedia/commons/${digest[0]}/${digest.slice(0, 2)}/${encodeURIComponent(canon)}`;
+  } catch {
+    return url;
+  }
+};
+
 const normalizeKnownImageUrl = (value: string | null | undefined) =>
-  String(value || "")
-    .trim()
-    .replace(
-      /^(https?:\/\/coverartarchive\.org\/release-group\/[0-9a-f-]+)\/front-250(?=[/?#]|$)/i,
-      "$1/front",
-    )
-    .replace(
-      /^(https?:\/\/(?:[\w-]+\.)?ca\.archive\.org\/.*?)-thumb250(\.[a-z0-9]+)(?=[?#]|$)/i,
-      "$1$2",
-    )
-    .replace(
-      /^(https?:\/\/archive\.org\/download\/[^?#]+?)_thumb250(\.[a-z0-9]+)(?=[?#]|$)/i,
-      "$1$2",
-    );
+  rewriteWikimediaFilePath(
+    String(value || "")
+      .trim()
+      .replace(
+        /^https?:\/\/imagecache\.lidarr\.audio\/v1\/caa\//i,
+        "https://coverartarchive.org/release/",
+      )
+      .replace(
+        /^(https?:\/\/coverartarchive\.org\/release-group\/[0-9a-f-]+)\/front-250(?=[/?#]|$)/i,
+        "$1/front",
+      )
+      .replace(
+        /^(https?:\/\/(?:[\w-]+\.)?ca\.archive\.org\/.*?)-thumb250(\.[a-z0-9]+)(?=[?#]|$)/i,
+        "$1$2",
+      )
+      .replace(
+        /^(https?:\/\/archive\.org\/download\/[^?#]+?)_thumb250(\.[a-z0-9]+)(?=[?#]|$)/i,
+        "$1$2",
+      ),
+  );
 
 const getCachePaths = (cacheKey: string) => ({
   metaPath: path.join(IMAGE_PROXY_DIR, `${cacheKey}.json`),
@@ -523,7 +546,15 @@ const readBoundedResponse = async (response: Response | UndiciResponse) => {
   return Buffer.concat(chunks, totalBytes);
 };
 
-export const fetchRemoteImage = async (sourceUrl: string) => {
+const coverArtArchiveOriginalUrl = (value: string) => {
+  const match =
+    /^(https?:\/\/coverartarchive\.org\/release\/[0-9a-f-]+\/\d+)-(?:250|500|1200)(\.[a-z0-9]+)(?=[?#]|$)/i.exec(
+      value,
+    );
+  return match ? `${match[1]}${match[2]}` : null;
+};
+
+const fetchRemoteImageOnce = async (sourceUrl: string) => {
   let currentUrl = parseSafeRemoteUrl(sourceUrl);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -553,7 +584,10 @@ export const fetchRemoteImage = async (sourceUrl: string) => {
       }
       if (!response.ok) {
         await response.body?.cancel();
-        throw new Error(`Upstream image request failed with status ${response.status}`);
+        throw Object.assign(
+          new Error(`Upstream image request failed with status ${response.status}`),
+          { status: response.status },
+        );
       }
 
       const [mediaType = ""] = String(response.headers.get("content-type") || "").split(";");
@@ -572,6 +606,20 @@ export const fetchRemoteImage = async (sourceUrl: string) => {
   }
 
   throw new Error("Too many upstream image redirects");
+};
+
+export const fetchRemoteImage = async (sourceUrl: string) => {
+  try {
+    return await fetchRemoteImageOnce(sourceUrl);
+  } catch (error) {
+    const status =
+      error && typeof error === "object" && "status" in error
+        ? Number((error as { status?: unknown }).status)
+        : 0;
+    const fallbackUrl = status === 404 ? coverArtArchiveOriginalUrl(sourceUrl) : null;
+    if (!fallbackUrl) throw error;
+    return fetchRemoteImageOnce(fallbackUrl);
+  }
 };
 
 export const fetchOptimizedImage = (sourceUrl: string) =>

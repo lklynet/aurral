@@ -168,9 +168,16 @@ export function getQualityTier(id: unknown) {
   return TIER_BY_ID.get(String(id || "")) || null;
 }
 
+const GLUED_SOURCE_CODEC = /\b(web|cd|vinyl|sacd|bd|blu-?ray)(flac|alac|mp3|m4a|aac)\b/gi;
+
+export function splitGluedSourceCodec(text: string) {
+  return String(text || "").replace(GLUED_SOURCE_CODEC, "$1-$2");
+}
+
 function advertisedLossyFamily(text: string) {
-  if (/\.mp3\b|\bmp3\b/.test(text)) return "mp3";
-  if (/\.(?:m4a|aac)\b|\b(?:m4a|aac)\b/.test(text)) return "m4a";
+  const normalized = splitGluedSourceCodec(String(text || "").toLowerCase());
+  if (/\.mp3\b|\bmp3\b/.test(normalized)) return "mp3";
+  if (/\.(?:m4a|aac)\b|\b(?:m4a|aac)\b/.test(normalized)) return "m4a";
   return null;
 }
 
@@ -214,7 +221,7 @@ export function classifyAdvertisedQuality(
   bitrate: unknown = null,
   advertised: AdvertisedAudio | null = null,
 ) {
-  const text = String(fileName || "").toLowerCase();
+  const text = splitGluedSourceCodec(String(fileName || "").toLowerCase());
   if (/\.flac\b|\bflac\b/.test(text)) return advertisedFlacTier(text, advertised);
   const family = advertisedLossyFamily(text);
   if (!family) return null;

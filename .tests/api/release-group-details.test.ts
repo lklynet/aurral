@@ -14,7 +14,7 @@ const outageMbid = "44444444-4444-4444-8444-444444444444";
 
 const metadataServer = await createMockHttpServer((request, response) => {
   response.setHeader("content-type", "application/json");
-  response.statusCode = request.url === `/album/${outageMbid}` ? 503 : 404;
+  response.statusCode = request.url === `/v1/album/${outageMbid}` ? 503 : 404;
   response.end("{}");
 });
 
@@ -62,20 +62,11 @@ afterAll(async () => {
   await cleanupIsolatedState(state);
 });
 
-test("an album MusicBrainz doesn't have is a 404, and an outage is an uncached 502 then a 503 saying when to retry", async () => {
+test("an album MusicBrainz doesn't have is a 404, and an outage is an uncached 502", async () => {
   const missing = await details(missingMbid);
   assert.equal(missing.status, 404);
 
   const outage = await details(outageMbid);
   assert.equal(outage.status, 502);
   assert.equal(outage.headers.get("cache-control"), "no-store");
-
-  const coolingDown = await details(outageMbid);
-  assert.equal(coolingDown.status, 503);
-  assert.equal(coolingDown.headers.get("cache-control"), "no-store");
-  assert.equal(coolingDown.headers.get("retry-after"), "60");
-  assert.deepEqual(await coolingDown.json(), {
-    error: "Metadata unavailable",
-    message: "Couldn’t reach the metadata service. Try again in a minute.",
-  });
 });

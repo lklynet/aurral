@@ -5,7 +5,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { getNewsSettings, getTicketmasterApiKey } from "../services/apiClients/index.ts";
-import { getMetadataProviderHealthSnapshot } from "../services/providers/brainzmashProvider.ts";
+import { getMetadataProviderHealthSnapshot } from "../services/providers/metadataProvider.ts";
 import { API_CONTRACT } from "../config/apiContract.ts";
 import { APP_VERSION } from "../config/constants.ts";
 import { wrappedSeason } from "../../lib/wrapped.ts";
@@ -266,17 +266,7 @@ type BootstrapPayload = {
   prowlarrConfigured?: boolean;
   ytdlpConfigured?: boolean;
   deemixConfigured?: boolean;
-  metadataProviders?: {
-    brainzmash: {
-      configuredProvider: string;
-      activeBaseUrl: string;
-      failoverActive: boolean;
-      lastCheckedAt: string | null;
-      lastSuccessAt: string | null;
-      lastFailureAt: string | null;
-      lastFailureReason: string;
-    };
-  };
+  metadataProviders?: ReturnType<typeof getMetadataProviderHealthSnapshot>;
   localNetworkBypass?: {
     enabled: boolean;
     eligible: boolean;

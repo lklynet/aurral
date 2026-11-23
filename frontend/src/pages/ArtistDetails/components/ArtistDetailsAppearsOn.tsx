@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { DotLoader } from "../../../components/DotLoader";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { getReleaseGroupLink } from "../../../utils/searchNavigation";
-import { getReleaseGroupCoverUrl, type ReleaseGroup } from "../utils";
+import { getReleaseGroupCoverUrl, getReleaseMetric, type ReleaseGroup } from "../utils";
 import type { ArtistDetailsResponse } from "../../../utils/api/endpoints/artists.ts";
 import type { ArtistDetailsLibrary } from "../hooks/useArtistDetailsLibrary";
 import { useArtistReleaseShelf } from "../hooks/useResponsiveReleaseLimit";
@@ -77,7 +77,9 @@ export function ArtistDetailsAppearsOn({
                 artistName: artistName || artist?.name || "",
                 coverUrl: coverUrl || artistCoverImage || "",
               })}
-              detail={releaseGroup["artist-credit"]?.[0]?.name || releaseGroup["primary-type"]}
+              credit={releaseGroup["artist-credit"]?.[0]?.name}
+              type={releaseGroup["primary-type"]}
+              metric={getReleaseMetric(releaseGroup)}
               status={getAlbumStatus(releaseGroup.id)}
               busy={requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id)}
               onDownload={

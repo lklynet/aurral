@@ -1,15 +1,11 @@
 import { db } from "../config/db-sqlite.ts";
 import type { LibraryAlbumsRow } from "../db/rows.ts";
 import createCache from "./apiClients/simpleCache.ts";
-import { getAlbumByMbid, isMetadataNotFoundError } from "./providers/brainzmashProvider.ts";
+import { getAlbumByMbid, isMetadataNotFoundError } from "./providers/metadataProvider.ts";
 import { invalidateLibraryQueryCache } from "./libraryQueryService.ts";
 import { readLibraryMetadata, type LibraryMetadata } from "./libraryMetadata.ts";
-import type { NormalizedAlbum, NormalizedRelease } from "./providers/brainzmashMappers.ts";
-import {
-  listsEveryTrack,
-  runningOrder,
-  selectAlbumRelease,
-} from "./providers/brainzmashRanking.ts";
+import type { NormalizedAlbum, NormalizedRelease } from "./providers/metadataMappers.ts";
+import { listsEveryTrack, runningOrder, selectAlbumRelease } from "./providers/metadataRanking.ts";
 import type { DownloadTrackFields } from "./downloadUtils.ts";
 import { manifestIndexFor, releasesHolding, toReleaseManifest } from "./releaseManifest.ts";
 

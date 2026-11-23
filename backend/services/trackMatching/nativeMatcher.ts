@@ -7,7 +7,7 @@ import {
   RELEASE_MIX_VARIANTS,
   stripPromoDescriptors,
 } from "./semanticPolicy.ts";
-import { foldDiacritics } from "../providers/brainzmashRanking.ts";
+import { foldDiacritics } from "../providers/metadataRanking.ts";
 import { discFolderNumber, isVariousArtistsCredit, withoutFeaturedArtists } from "./titleText.ts";
 import { implausibleBitrateKbps } from "./candidateNormalizer.ts";
 import type { NameList, ReleaseTrack } from "./semanticPolicy.ts";

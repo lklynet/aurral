@@ -2,10 +2,10 @@ import { decode } from "html-entities";
 import * as v from "valibot";
 import { isOwnKey } from "../../lib/ownKey.ts";
 import { HttpError } from "../../lib/http.ts";
-import { DEEZER_HEADERS, deezerErrorSchema, deezerLimiter } from "./apiClients/deezer.ts";
+import { deezerErrorSchema, deezerSend } from "./apiClients/deezer.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import { resolveArtistAndAlbumMbids } from "./apiClients/index.ts";
-import { getAlbumTracksByAlbumMbid } from "./providers/brainzmashProvider.ts";
+import { getAlbumTracksByAlbumMbid } from "./providers/metadataProvider.ts";
 import { matchTrackByTitle } from "./downloadJobs/trackSearchContext.ts";
 import { lenient, lenientText, readOne } from "./integrationData.ts";
 
@@ -265,12 +265,8 @@ async function fetchUpstream(
   }
 }
 
-async function fetchJson(
-  source: Source,
-  url: string | URL,
-  headers?: Record<string, string>,
-): Promise<unknown> {
-  const text = await fetchUpstream(source, url, { headers });
+async function fetchJson(source: Source, url: string | URL): Promise<unknown> {
+  const text = await fetchUpstream(source, url);
   try {
     return JSON.parse(text);
   } catch {
@@ -328,11 +324,24 @@ function readNextData(html: string) {
 }
 
 async function lookupDeezer({ kind, id }: StreamingLink) {
-  const response = await deezerLimiter
-    .schedule(() => fetchJson("deezer", `https://api.deezer.com/${kind}/${id}`, DEEZER_HEADERS))
-    .catch((error: unknown) => {
-      throw error instanceof HttpError ? unavailable("deezer") : error;
-    });
+  const response = await deezerSend(`/${kind}/${id}`, { timeoutMs: REQUEST_TIMEOUT_MS }).catch(
+    (error: unknown) => {
+      if (!(error instanceof HttpError)) throw error;
+      const status = error.response?.status;
+      if (status === 404) throw notFound("deezer");
+      if (status === 429) {
+        throw linkError(
+          "Deezer is rate limiting requests; try again later",
+          429,
+          "LINK_SERVICE_RATE_LIMITED",
+        );
+      }
+      throw unavailable("deezer", status ? `request failed (${status})` : undefined);
+    },
+  );
+  if (!response || typeof response !== "object") {
+    throw unavailable("deezer", "returned an unreadable response");
+  }
   const failure = v.safeParse(deezerErrorSchema, response);
   if (failure.success) {
     const { code } = failure.output.error;

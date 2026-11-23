@@ -8,38 +8,45 @@ const MIN_PLAYS = 10;
 const MAX_RANK = 20;
 const TOP_TRACKS = 3;
 
-const ARTIST_PLAYS = `user_id = ? AND artist = ? COLLATE NOCASE AND (artist_mbid IS NULL OR artist_mbid = ?)`;
+// The unary plus keeps SQLite on the artist name index instead of walking every play without an ID.
+const ARTIST_PLAYS = `(
+  SELECT * FROM play_events WHERE user_id = @userId AND artist_mbid = @mbid
+  UNION ALL
+  SELECT * FROM play_events
+  WHERE user_id = @userId AND +artist_mbid IS NULL AND artist = @artistName COLLATE NOCASE
+)`;
 
-type ArtistParams = [number, string, string];
+type ArtistParams = { userId: number; mbid: string; artistName: string };
 
 const summaryStmt = db.prepare<
-  ArtistParams,
+  [ArtistParams],
   { plays: number; durationMs: number | null; firstPlayedAt: number | null }
 >(
   `SELECT COUNT(*) AS plays, SUM(duration_ms) AS durationMs, MIN(played_at) AS firstPlayedAt
-   FROM play_events WHERE ${ARTIST_PLAYS}`,
+   FROM ${ARTIST_PLAYS}`,
 );
 
-const weeksStmt = db.prepare<[number, ...ArtistParams, number], { week: number; plays: number }>(
-  `SELECT CAST((played_at - ?) / ${WEEK_MS} AS INTEGER) AS week, COUNT(*) AS plays
-   FROM play_events WHERE ${ARTIST_PLAYS} AND played_at >= ?
+const weeksStmt = db.prepare<[ArtistParams & { since: number }], { week: number; plays: number }>(
+  `SELECT CAST((played_at - @since) / ${WEEK_MS} AS INTEGER) AS week, COUNT(*) AS plays
+   FROM ${ARTIST_PLAYS} WHERE +played_at >= @since
    GROUP BY week`,
 );
 
-const rankStmt = db.prepare<[number, number, string, number], { ahead: number }>(
+const rankStmt = db.prepare<[ArtistParams & { since: number; plays: number }], { ahead: number }>(
   `SELECT COUNT(*) AS ahead FROM (
      SELECT 1 FROM play_events
-     WHERE user_id = ? AND played_at >= ? AND artist != ? COLLATE NOCASE
-     GROUP BY artist COLLATE NOCASE HAVING COUNT(*) > ?
+     WHERE user_id = @userId AND played_at >= @since AND artist_mbid IS NOT @mbid
+       AND NOT (artist_mbid IS NULL AND artist = @artistName COLLATE NOCASE)
+     GROUP BY artist COLLATE NOCASE HAVING COUNT(*) > @plays
    )`,
 );
 
 const topTracksStmt = db.prepare<
-  ArtistParams,
+  [ArtistParams],
   { title: string; album: string | null; trackMbid: string | null; plays: number }
 >(
   `SELECT title, album, track_mbid AS trackMbid, COUNT(*) AS plays, MAX(played_at) AS lastPlayedAt
-   FROM play_events WHERE ${ARTIST_PLAYS}
+   FROM ${ARTIST_PLAYS}
    GROUP BY title COLLATE NOCASE
    ORDER BY plays DESC, lastPlayedAt DESC
    LIMIT ${TOP_TRACKS}`,
@@ -54,18 +61,19 @@ const libraryTracksStmt = db.prepare<[...(string | null)[]], Pick<LibraryTracksR
      AND (artist.mbid = ? OR artist.name = ? COLLATE NOCASE OR track.artist_name = ? COLLATE NOCASE)`,
 );
 
-const libraryArtistPlaysStmt = db.prepare<[number, number], { plays: number }>(
-  `SELECT COUNT(play.id) AS plays
-   FROM library_artists AS artist
-   LEFT JOIN play_events AS play
-     ON play.user_id = ? AND play.artist = artist.name COLLATE NOCASE
-     AND (play.artist_mbid IS NULL OR play.artist_mbid = coalesce(artist.mbid, play.artist_mbid))
-   WHERE artist.id = ?
-   GROUP BY artist.id`,
+const libraryArtistPlaysStmt = db.prepare<[number, number, number], { plays: number }>(
+  `SELECT
+     (SELECT COUNT(*) FROM play_events AS play
+      WHERE play.user_id = ? AND play.artist_mbid = library.mbid)
+     + (SELECT COUNT(*) FROM play_events AS play
+        WHERE play.user_id = ? AND play.artist = library.name COLLATE NOCASE
+          AND (play.artist_mbid IS NULL OR library.mbid IS NULL)) AS plays
+   FROM library_artists AS library
+   WHERE library.id = ?`,
 );
 
 export const getLibraryArtistPlays = (userId: number, artistId: number) =>
-  libraryArtistPlaysStmt.get(userId, artistId)?.plays ?? null;
+  libraryArtistPlaysStmt.get(userId, userId, artistId)?.plays ?? null;
 
 const sameText = (left: string | null | undefined, right: string | null | undefined) =>
   Boolean(left && right && left.localeCompare(right, undefined, { sensitivity: "accent" }) === 0);
@@ -92,20 +100,20 @@ export function getArtistListening(
   artistName: string,
   now = Date.now(),
 ) {
-  const artist: ArtistParams = [userId, artistName, mbid];
-  const summary = summaryStmt.get(...artist);
+  const artist = { userId, mbid, artistName };
+  const summary = summaryStmt.get(artist);
   if (!summary || summary.plays < MIN_PLAYS) return null;
   const since = now - WEEKS * WEEK_MS;
   const counts = new Map<number, number>();
-  for (const row of weeksStmt.all(since, ...artist, since)) {
+  for (const row of weeksStmt.all({ ...artist, since })) {
     const week = Math.min(row.week, WEEKS - 1);
     counts.set(week, (counts.get(week) ?? 0) + row.plays);
   }
   const weeks = Array.from({ length: WEEKS }, (_, week) => counts.get(week) ?? 0);
   const yearPlays = weeks.reduce((total, plays) => total + plays, 0);
   const rank =
-    yearPlays > 0 ? (rankStmt.get(userId, since, artistName, yearPlays)?.ahead ?? 0) + 1 : null;
-  const topTracks = topTracksStmt.all(...artist);
+    yearPlays > 0 ? (rankStmt.get({ ...artist, since, plays: yearPlays })?.ahead ?? 0) + 1 : null;
+  const topTracks = topTracksStmt.all(artist);
   const queue = playableTracks(mbid, artistName, topTracks);
   return {
     plays: summary.plays,

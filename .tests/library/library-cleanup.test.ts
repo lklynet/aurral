@@ -42,8 +42,6 @@ const [
   { playlistManager },
   { findUniqueLibrarySong },
   { getPlayQueue, savePlayQueue },
-  { getMetadataBaseUrl },
-  { setMetadataProviderCooldown },
   { scanRegistrySchema },
   { finalizeQualityUpgradeSuccess },
   { saveCustomArtworkUpload },
@@ -61,15 +59,10 @@ const [
   () => import("../../backend/services/playlists/playlistManager.ts"),
   () => import("../../backend/services/subsonicLibraryService.ts"),
   () => import("../../backend/services/playQueueService.ts"),
-  () => import("../../backend/services/providers/brainzmashProvider.ts"),
-  () => import("../../backend/services/metadataProviderBudget.ts"),
   () => import("../../backend/services/libraryScanWorker.ts"),
   () => import("../../backend/services/qualityUpgradeOutcome.ts"),
   () => import("../../backend/services/customArtworkService.ts"),
 );
-// Unit tests are offline, so the default metadata provider refuses lookups up front
-// instead of making each one wait its turn in the provider's rate limit.
-setMetadataProviderCooldown(getMetadataBaseUrl(), 403, Number.MAX_SAFE_INTEGER);
 
 const root = resolveDownloadRoot();
 const outside = path.join(isolatedState.baseDir, "seed");

@@ -7,12 +7,10 @@ import { hasPermission } from "../../../services/auth.ts";
 import { requireAdmin, requireAuth, requirePermission } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
-import { getAlbumTracksByAlbumMbid } from "../../../services/providers/brainzmashProvider.ts";
+import { getAlbumTracksByAlbumMbid } from "../../../services/providers/metadataProvider.ts";
 import { chooseLibraryRelease } from "../../../services/releaseResolver.ts";
-import {
-  enrichTracksWithDeezerPreviews,
-  deezerGetAlbumTracks,
-} from "../../../services/apiClients/index.ts";
+import { deezerGetAlbumTracks } from "../../../services/apiClients/index.ts";
+import { deezerPreviewSearchPath } from "../../../../lib/deezerPreview.ts";
 import fsp from "fs/promises";
 import path from "path";
 import { logger } from "../../../services/logger.ts";
@@ -282,33 +280,19 @@ export default new Hono<AppEnv>()
         }),
       );
 
-      const needsPreview = tracksWithStreamState.some((track) => !track.streamPath);
-      if (!needsPreview) {
-        return c.json(tracksWithStreamState, 200);
-      }
-
-      const artistName = query.artistName?.trim() ?? "";
-      const albumTitle = query.albumTitle?.trim() ?? "";
-      const releaseType = query.releaseType?.trim() ?? "";
-      const releaseDate = query.releaseDate?.trim() ?? "";
-      const deezerAlbumId = query.deezerAlbumId?.trim() ?? "";
-
-      const enriched: ((typeof tracksWithStreamState)[number] & {
-        preview_url?: string | null;
-      })[] = await enrichTracksWithDeezerPreviews(tracksWithStreamState, {
-        artistName,
-        albumTitle,
-        releaseType,
-        releaseDate,
-        deezerAlbumId,
-        cacheKey: `library:${albumId || releaseGroupMbid}:${deezerAlbumId || artistName}`,
-      }).catch(() => tracksWithStreamState);
-
+      const fallbackArtist = query.artistName?.trim() ?? "";
       return c.json(
-        enriched.map((track) => ({
-          ...track,
-          preview_url: track.streamPath ? null : track.preview_url || null,
-        })),
+        tracksWithStreamState.map((track) => {
+          const trackTitle = String(track.title || "").trim();
+          const previewArtist = fallbackArtist;
+          return {
+            ...track,
+            preview_url:
+              track.streamPath || !previewArtist || !trackTitle
+                ? null
+                : deezerPreviewSearchPath(previewArtist, trackTitle),
+          };
+        }),
         200,
       );
     } catch (error) {

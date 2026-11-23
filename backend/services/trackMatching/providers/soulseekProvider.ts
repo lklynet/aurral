@@ -14,7 +14,7 @@ import {
   type RawCandidate,
 } from "../candidateNormalizer.ts";
 import type { SearchTrackRequest } from "../trackIdentity.ts";
-import { getNormalizedText } from "../../providers/brainzmashRanking.ts";
+import { getNormalizedText } from "../../providers/metadataRanking.ts";
 import { groupSoulseekSearchResults } from "../../downloadJobs/trackSearchQueries.ts";
 import { isVariousArtistsCredit } from "../titleText.ts";
 

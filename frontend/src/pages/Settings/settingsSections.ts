@@ -175,7 +175,7 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
     Logs: { item: "logs", keywords: "errors warnings problems" },
   },
   metadata: {
-    "Metadata server": "BrainzMash MusicBrainz provider base URL",
+    "Metadata server": "AurralBrainz data.aurral.org MusicBrainz provider base URL",
   },
 };
 

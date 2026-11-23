@@ -1,4 +1,4 @@
-import { foldDiacritics } from "./providers/brainzmashRanking.ts";
+import { foldDiacritics } from "./providers/metadataRanking.ts";
 
 export function searchWords(value: unknown) {
   return foldDiacritics(String(value ?? "").normalize("NFKD"))

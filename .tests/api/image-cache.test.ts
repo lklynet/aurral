@@ -81,7 +81,7 @@ afterAll(async () => {
 });
 
 test("a signed-in user gets a same-origin copy of a cover from a host without CORS", async (t) => {
-  const source = "https://imagecache.lidarr.audio/v1/caa/release/cover.jpg";
+  const source = "https://images.example/release/cover.jpg";
   const requests = stubCoverHost(t, { [source]: { body: cover, type: "image/png" } });
 
   const response = await cacheImage(source);

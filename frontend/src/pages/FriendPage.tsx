@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router";
 import { parseResponse, type InferResponseType } from "hono/client";
-import { AlertCircle, ListMusic, Users } from "../components/icons";
+import { AlertCircle, ListMusic, Pause, Play, Users } from "../components/icons";
 import ArtworkImage from "../components/ArtworkImage";
 import { ClaimBadge } from "../components/PlaylistCard";
 import RelativeTime from "../components/RelativeTime";
@@ -12,9 +12,13 @@ import Tooltip from "../components/Tooltip";
 import { useCollectionTint } from "../components/CollectionHeader";
 import { FriendButton } from "../components/FriendButton";
 import { FriendArt, friendArtSrc, useFriends, useHubLink } from "../components/PlayerFriends";
+import { PlayingIndicator } from "../components/TrackList";
+import TooltipButton from "../components/TooltipButton";
+import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useAuth } from "../contexts/AuthContext";
 import { queryKeys } from "../queryClient";
 import { browsePlaylistPath } from "../navigation/playlistPaths.ts";
+import { normalizePreviewTrack } from "../utils/audioQueue";
 import { resolveAuthenticatedApiAssetUrl } from "../utils/api/core.ts";
 import { hubLinkClient } from "../utils/api/clients/hubLink.ts";
 import { peopleClient } from "../utils/api/clients/people.ts";
@@ -24,10 +28,13 @@ import { formatTrackTotal } from "./playlists/playlistPageUtils";
 import { usePlaylistClaims } from "./usePlaylistShelf";
 import { resolveAlbumPath, resolveArtistPath } from "../navigation/resolveLinks.ts";
 import { albumPath } from "../../../lib/albumPath.ts";
+import { deezerPreviewSearchPath } from "../../../lib/deezerPreview.ts";
 import { BLEND_MIX_PREFIX, FRIEND_BLEND_MIX_PREFIX } from "../../../lib/browsePlaylists.ts";
 
 const plays = (count: number) => `${count} ${count === 1 ? "play" : "plays"}`;
 const searchPath = (query: string) => `/search?${new URLSearchParams({ q: query })}`;
+
+type RankedPlay = { active: boolean; playing: boolean; loading: boolean; onPlay: () => void };
 
 function Ranked({
   title,
@@ -43,6 +50,7 @@ function Ranked({
     note: string;
     art?: string | null;
     round?: boolean;
+    play?: RankedPlay | null;
   }[];
 }) {
   if (!rows.length) return null;
@@ -52,20 +60,54 @@ function Ranked({
         <h2>{title}</h2>
       </div>
       <ol className="friend-page__list">
-        {rows.map((row, index) => (
-          <li key={row.key}>
-            <Link className="friend-page__row" to={row.to}>
-              <span className="friend-page__rank">{index + 1}</span>
+        {rows.map((row, index) => {
+          const content = (
+            <>
               {row.art === undefined ? null : <FriendArt src={row.art} round={row.round} />}
               <span className="player-queue__copy">
                 <span className="player-queue__name">{row.name}</span>
                 <span className="player-queue__artist">{row.note}</span>
               </span>
-            </Link>
-          </li>
-        ))}
+            </>
+          );
+          return (
+            <li key={row.key}>
+              {row.play ? (
+                <div className="friend-page__row friend-page__row--play">
+                  <RankPlay rank={index + 1} name={row.name} play={row.play} />
+                  <Link className="friend-page__row-link" to={row.to}>
+                    {content}
+                  </Link>
+                </div>
+              ) : (
+                <Link className="friend-page__row" to={row.to}>
+                  <span className="friend-page__rank">{index + 1}</span>
+                  {content}
+                </Link>
+              )}
+            </li>
+          );
+        })}
       </ol>
     </section>
+  );
+}
+
+function RankPlay({ rank, name, play }: { rank: number; name: string; play: RankedPlay }) {
+  return (
+    <TooltipButton
+      className="friend-page__rank friend-page__rank-play"
+      label={`${play.playing ? "Pause" : "Preview"} ${name}`}
+      aria-busy={play.loading || undefined}
+      onClick={play.onPlay}
+    >
+      <span className="friend-page__rank-number" aria-hidden="true">
+        {play.active ? <PlayingIndicator row={play} /> : rank}
+      </span>
+      <span className="friend-page__rank-icon" aria-hidden="true">
+        {play.playing ? <Pause /> : <Play />}
+      </span>
+    </TooltipButton>
   );
 }
 
@@ -262,7 +304,39 @@ function ListeningStats({ stats }: { stats: NonNullable<TopPlays["stats"]> }) {
   );
 }
 
-export function TopPlayLists({ top }: { top: TopPlays }) {
+function useTopTrackPreviews(id: string, name: string, tracks: TopPlays["tracks"]) {
+  const { currentTrack, isPlaying, isStarting, isLoading, playTrack, togglePlayPause } =
+    useAudioQueue();
+  const source = { type: "friend-top-tracks", id, label: `${name}'s top tracks` };
+  const previews = tracks.map((track) =>
+    track.artist.trim() && track.title.trim()
+      ? normalizePreviewTrack(
+          {
+            id: `friend-top:${JSON.stringify([id, track.artist, track.title])}`,
+            title: track.title,
+            preview_url: deezerPreviewSearchPath(track.artist, track.title),
+            albumMbid: track.albumMbid,
+            trackMbid: track.mbid,
+          },
+          track.artist,
+        )
+      : null,
+  );
+  const queue = previews.filter((track) => track !== null);
+  return previews.map((track): RankedPlay | null => {
+    if (!track) return null;
+    const active = currentTrack?.id === track.id;
+    return {
+      active,
+      playing: active && (isPlaying || isStarting),
+      loading: active && isLoading,
+      onPlay: () => (active ? togglePlayPause() : playTrack(track, { source, queue })),
+    };
+  });
+}
+
+export function TopPlayLists({ id, name, top }: { id: string; name: string; top: TopPlays }) {
+  const previews = useTopTrackPreviews(id, name, top.tracks);
   return (
     <div className="friend-page__lists" data-stats={top.stats?.plays ? "" : undefined}>
       {top.stats?.plays ? <ListeningStats stats={top.stats} /> : null}
@@ -295,13 +369,14 @@ export function TopPlayLists({ top }: { top: TopPlays }) {
       <Ranked
         title="Top tracks"
         className="friend-page__section friend-page__section--tracks"
-        rows={top.tracks.map((track) => ({
+        rows={top.tracks.map((track, index) => ({
           key: `${track.artist}\u0000${track.title}`,
           to: track.albumMbid
             ? albumPath(track.albumMbid, { track: track.mbid })
             : searchPath(`${track.artist} ${track.title}`),
           name: track.title,
           note: `${track.artist} · ${plays(track.plays)}`,
+          play: previews[index],
         }))}
       />
     </div>
@@ -431,7 +506,9 @@ export default function FriendPage() {
               !!friend && !hasTopPlays(top) && `No top plays from ${name} yet.`,
             ]}
           />
-          {(friend || self) && hasTopPlays(top) ? <TopPlayLists top={top} /> : null}
+          {(friend || self) && hasTopPlays(top) ? (
+            <TopPlayLists id={`hub:${handle}`} name={name} top={top} />
+          ) : null}
         </>
       ) : null}
     </ProfilePage>

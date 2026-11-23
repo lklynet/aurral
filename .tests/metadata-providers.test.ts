@@ -1,9 +1,8 @@
 import { requireFixture } from "./playlists/fixtures.ts";
 import { asAppError } from "../lib/errors.ts";
 import { test, afterAll, vi } from "vite-plus/test";
-import { execFile, fork, type ChildProcess } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import {
   setupIsolatedBackend,
@@ -15,28 +14,23 @@ import { defaultData, DEFAULT_METADATA_BASE_URL } from "../backend/config/consta
 const [
   isolatedState,
   { dbOps },
-  brainzmashProvider,
-  {
-    acquireMetadataRequest,
-    clearMetadataRequestStates,
-    failMetadataRequest,
-    getMetadataProviderBudget,
-    listMetadataCalls,
-    reserveMetadataProviderRequest,
-  },
+  metadataProvider,
+  { listMetadataCalls, reserveMetadataProviderRequest },
   { db },
-  { http },
+  { http, HttpError },
   { readAppSettings, saveAppSettings },
   { trackWork },
+  { resolveDeezerAlbumToMbid },
 ] = await setupIsolatedBackend(
   "metadata-providers",
   () => import("../backend/db/helpers/index.ts"),
-  () => import("../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../backend/services/providers/metadataProvider.ts"),
   () => import("../backend/services/metadataProviderBudget.ts"),
   () => import("../backend/config/db-sqlite.ts"),
   () => import("../lib/http.ts"),
   () => import("../backend/services/appSettings.ts"),
   () => import("../backend/services/eventLoopWatch.ts"),
+  () => import("../backend/services/apiClients/crossProvider.ts"),
 );
 
 const {
@@ -47,7 +41,7 @@ const {
   listArtistAlbums,
   searchAlbums,
   searchArtists,
-} = brainzmashProvider;
+} = metadataProvider;
 
 afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
@@ -55,59 +49,22 @@ afterAll(async () => {
 
 const OFFLINE_CHILD_ARGS = ["--import", new URL("./setup-env.ts", import.meta.url).href];
 
-test("default settings and unset backend config use BrainzMash metadata", async () => {
+test("default settings and unset backend config use data.aurral.org metadata", async () => {
   assert.equal(defaultData.settings.integrations.metadata.baseUrl, "");
-  assert.equal(brainzmashProvider.getMetadataBaseUrl(), DEFAULT_METADATA_BASE_URL);
+  assert.equal(metadataProvider.getMetadataBaseUrl(), DEFAULT_METADATA_BASE_URL);
 
   const saveBaseUrl = (baseUrl: string) =>
     saveAppSettings({ integrations: { metadata: { baseUrl } } });
   assert.equal((await saveBaseUrl("https://metadata.example/")).error, undefined);
-  assert.equal(brainzmashProvider.getMetadataBaseUrl(), "https://metadata.example");
+  assert.equal(metadataProvider.getMetadataBaseUrl(), "https://metadata.example");
   assert.equal((await saveBaseUrl("")).error, undefined);
 
-  assert.equal(brainzmashProvider.getMetadataBaseUrl(), DEFAULT_METADATA_BASE_URL);
+  assert.equal(metadataProvider.getMetadataBaseUrl(), DEFAULT_METADATA_BASE_URL);
   assert.equal(readAppSettings().integrations.metadata?.baseUrl, "");
 
-  vi.stubEnv("BRAINZMASH_BASE_URL", "http://metadata.local:5002");
-  assert.equal(brainzmashProvider.getMetadataBaseUrl(), "http://metadata.local:5002");
+  vi.stubEnv("METADATA_BASE_URL", "http://data.local:5003");
+  assert.equal(metadataProvider.getMetadataBaseUrl(), "http://data.local:5003");
   vi.unstubAllEnvs();
-});
-
-test("entity request failures back off for one minute, ten minutes, then one hour", () => {
-  const key = "backoff:test";
-  const minute = 60 * 1000;
-  let now = 1_000_000;
-  clearMetadataRequestStates();
-
-  const first = acquireMetadataRequest(key, 120_000, now);
-  assert.equal(first.acquired, true);
-  assert.equal(failMetadataRequest(key, first.acquired ? first.token : "", now), now + minute);
-
-  now += minute;
-  const second = acquireMetadataRequest(key, 120_000, now);
-  assert.equal(second.acquired, true);
-  assert.equal(
-    failMetadataRequest(key, second.acquired ? second.token : "", now),
-    now + 10 * minute,
-  );
-
-  now += 10 * minute;
-  const third = acquireMetadataRequest(key, 120_000, now);
-  assert.equal(third.acquired, true);
-  assert.equal(failMetadataRequest(key, third.acquired ? third.token : "", now), now + 60 * minute);
-  clearMetadataRequestStates();
-});
-
-test("an abandoned entity request enters cooldown when its lease expires", () => {
-  const key = "abandoned:test";
-  const now = 2_000_000;
-  clearMetadataRequestStates();
-  assert.equal(acquireMetadataRequest(key, 1_000, now).acquired, true);
-
-  const recovered = acquireMetadataRequest(key, 1_000, now + 1_001);
-  assert.equal(recovered.acquired, false);
-  assert.equal(recovered.retryAfter, now + 1_001 + 60 * 1000);
-  clearMetadataRequestStates();
 });
 
 test("stale album metadata is served while one refresh runs in the background", async () => {
@@ -187,13 +144,13 @@ test("an incomplete BrainzMash album uses one cached MusicBrainz release browse"
     response.setHeader("content-type", "application/json");
     response.end(
       JSON.stringify(
-        request.url === `/album/${completeAlbumMbid}`
+        request.url === `/v1/album/${completeAlbumMbid}`
           ? {
               id: completeAlbumMbid,
               title: "Complete Album",
               releases: [{ id: "complete-release", tracks: [] }],
             }
-          : request.url === `/album/${omittedReleasesAlbumMbid}`
+          : request.url === `/v1/album/${omittedReleasesAlbumMbid}`
             ? {
                 id: omittedReleasesAlbumMbid,
                 title: "Album Without Releases",
@@ -283,7 +240,7 @@ test("an incomplete BrainzMash album uses one cached MusicBrainz release browse"
       .prepare<[string], { fresh_until: number }>(
         "SELECT fresh_until FROM metadata_response_cache WHERE cache_key = ?",
       )
-      .get(`${server.url}/album/${albumMbid}:{}`);
+      .get(`${server.url}/v1/album/${albumMbid}:{}`);
     assert.ok(stored);
     assert.ok(stored.fresh_until >= startedAt + 60 * 60 * 1000);
     assert.ok(stored.fresh_until < startedAt + 61 * 60 * 1000);
@@ -317,7 +274,7 @@ test("BrainzMash data Aurral can't read is never served, from the provider or th
     });
     clearMetadataProviderCaches();
     const year = Date.now() + 365 * 24 * 60 * 60 * 1000;
-    await dbOps.setMetadataResponseAsync(`${server.url}/album/album-x:{}`, {
+    await dbOps.setMetadataResponseAsync(`${server.url}/v1/album/album-x:{}`, {
       value: { id: 7 },
       freshUntil: year,
       staleUntil: year,
@@ -325,7 +282,7 @@ test("BrainzMash data Aurral can't read is never served, from the provider or th
 
     await assert.rejects(
       () => getAlbumByMbid("album-x"),
-      /BrainzMash sent \/album\/album-x data Aurral can't read/,
+      /Metadata sent \/v1\/album\/album-x data Aurral can't read/,
     );
     assert.equal((await getAlbumByMbid("album-x")).title, "Album");
     assert.equal(requests, 2);
@@ -361,8 +318,8 @@ test("cached artist lookups read only what Aurral already stored", async () => {
 
     const past = Date.now() - 1000;
     const later = Date.now() + 60_000;
-    await dbOps.setMetadataResponseAsync(`${server.url}/artist/artist-x:{}`, {
-      value: { id: "artist-x", artistname: "Artist", overview: "A biography." },
+    await dbOps.setMetadataResponseAsync(`${server.url}/v1/artist/artist-x:{}`, {
+      value: { id: "artist-x", name: "Artist", overview: "A biography." },
       freshUntil: past,
       staleUntil: later,
     });
@@ -405,7 +362,7 @@ test("entity metadata is shared with other processes until the cache is cleared"
         "--input-type=module",
         "-e",
         `
-      const { getAlbumByMbid } = await import("./backend/services/providers/brainzmashProvider.ts");
+      const { getAlbumByMbid } = await import("./backend/services/providers/metadataProvider.ts");
       const album = await getAlbumByMbid("persisted-album");
       console.log(JSON.stringify({ title: album.title }));
       process.exit(0);
@@ -433,6 +390,10 @@ test("metadata past its stale window is removed from storage", async () => {
   const previousSettings = dbOps.getSettings();
   const server = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
+    if (request.url?.startsWith("/v1/search/artist")) {
+      response.end(JSON.stringify({ artists: [] }));
+      return;
+    }
     response.end(
       JSON.stringify({ id: requireFixture(request.url).split("/").at(-1), title: "Album" }),
     );
@@ -462,7 +423,7 @@ test("metadata past its stale window is removed from storage", async () => {
       const realNow = Date.now;
       let elapsed = 0;
       Date.now = () => realNow() - 40 * day + elapsed;
-      const { getAlbumByMbid, searchArtists } = await import("./backend/services/providers/brainzmashProvider.ts");
+      const { getAlbumByMbid, searchArtists } = await import("./backend/services/providers/metadataProvider.ts");
       await getAlbumByMbid("expiring-album");
       await searchArtists("expiring search", { limit: 10 });
       elapsed = 38 * day;
@@ -500,13 +461,15 @@ test("artist album refreshes can bypass the long-lived metadata cache", async ()
     response.end(
       JSON.stringify({
         id: artistMbid,
-        artistname: "Calendar Artist",
-        Albums: [
+        name: "Calendar Artist",
+        albums: [
           {
-            Id: releaseMbid,
-            Title: requests === 1 ? "Cached Release" : "Current Release",
-            Type: "Album",
-            ReleaseStatuses: ["Official"],
+            id: releaseMbid,
+            title: requests === 1 ? "Cached Release" : "Current Release",
+            type: "Album",
+            releaseStatuses: ["Official"],
+            firstReleaseDate: "2025-05-01",
+            listeners: 1000,
           },
         ],
       }),
@@ -526,14 +489,14 @@ test("artist album refreshes can bypass the long-lived metadata cache", async ()
     });
     clearMetadataProviderCaches();
 
-    const first = await listArtistAlbums(artistMbid, { hydrateLimit: 0 });
-    const cached = await listArtistAlbums(artistMbid, { hydrateLimit: 0 });
+    const first = await listArtistAlbums(artistMbid);
+    const cached = await listArtistAlbums(artistMbid);
     const refreshed = await listArtistAlbums(artistMbid, {
-      hydrateLimit: 0,
       forceRefresh: true,
     });
 
     assert.equal(first[0]?.title, "Cached Release");
+    assert.equal(first[0]?.firstReleaseDate, "2025-05-01");
     assert.equal(cached[0]?.title, "Cached Release");
     assert.equal(refreshed[0]?.title, "Current Release");
     assert.equal(requests, 2);
@@ -544,33 +507,36 @@ test("artist album refreshes can bypass the long-lived metadata cache", async ()
   }
 });
 
-test("an artist's album list refreshes a cached album only while it is not out yet", async () => {
+test("an artist's album list comes from one artist file without per-album hydration", async () => {
   const previousSettings = dbOps.getSettings();
-  const fetched: string[] = [];
-  let upcomingRefreshed!: () => void;
-  const upcomingRefresh = new Promise<void>((resolve) => {
-    upcomingRefreshed = resolve;
-  });
-  const releaseDates = { out: "2000-01-01", soon: "2999-01-01" };
+  const requested: string[] = [];
   const server = await createMockHttpServer((request, response) => {
+    requested.push(request.url || "");
     const id = requireFixture(request.url).split("/").at(-1);
     response.setHeader("content-type", "application/json");
-    if (request.url?.startsWith("/artist/")) {
-      response.end(
-        JSON.stringify({
-          id,
-          artistname: "List Artist",
-          Albums: [
-            { Id: "out", Title: "Out", Type: "Album" },
-            { Id: "soon", Title: "Soon", Type: "Album" },
-          ],
-        }),
-      );
-      return;
-    }
-    fetched.push(String(id));
-    response.end(JSON.stringify({ id, title: id, releasedate: releaseDates.soon }));
-    upcomingRefreshed();
+    response.end(
+      JSON.stringify({
+        id,
+        name: "List Artist",
+        albums: [
+          {
+            id: "out",
+            title: "Out",
+            type: "Album",
+            firstReleaseDate: "2000-01-01",
+            listeners: 4000,
+            cover: "https://coverartarchive.org/release/r/1-1200.jpg",
+          },
+          {
+            id: "soon",
+            title: "Soon",
+            type: "Album",
+            firstReleaseDate: "2999-01-01",
+            listeners: 0,
+          },
+        ],
+      }),
+    );
   });
 
   try {
@@ -585,23 +551,115 @@ test("an artist's album list refreshes a cached album only while it is not out y
       },
     });
     clearMetadataProviderCaches();
-    for (const [id, releasedate] of Object.entries(releaseDates)) {
-      await dbOps.setMetadataResponseAsync(`${server.url}/album/${id}:{}`, {
-        value: { id, title: id, releasedate },
-        freshUntil: Date.now() - 1000,
-        staleUntil: Date.now() + 60_000,
-      });
-    }
 
     const albums = await listArtistAlbums("list-artist");
-    await upcomingRefresh;
 
     assert.deepEqual(
-      albums.map((album) => album.firstReleaseDate),
-      Object.values(releaseDates),
+      albums.map((album) => [album.id, album.firstReleaseDate, album.listeners]),
+      [
+        ["out", "2000-01-01", 4000],
+        ["soon", "2999-01-01", 0],
+      ],
     );
-    assert.deepEqual(fetched, ["soon"]);
+    assert.deepEqual(requested, ["/v1/artist/list-artist"]);
   } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("missing artist and album MBIDs fill gaps straight from MusicBrainz", async () => {
+  const previousSettings = dbOps.getSettings();
+  const missingArtistMbid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const missingAlbumMbid = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  let providerRequests = 0;
+  const server = await createMockHttpServer((_request, response) => {
+    providerRequests += 1;
+    response.statusCode = 404;
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ error: "Not found" }));
+  });
+  const providerGet = http.get.bind(http);
+  const mbPaths: string[] = [];
+  const get = vi.spyOn(http, "get").mockImplementation(async (url, options) => {
+    if (!url.startsWith("https://musicbrainz.org/")) return providerGet(url, options);
+    const pathname = new URL(url).pathname;
+    mbPaths.push(pathname);
+    if (pathname === `/ws/2/artist/${missingArtistMbid}`) {
+      return {
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        data: {
+          id: missingArtistMbid,
+          name: "Brand New Artist",
+          "sort-name": "Brand New Artist",
+          type: "Group",
+          genres: [{ name: "shoegaze", count: 5 }],
+          aliases: [{ name: "BNA" }],
+          relations: [{ type: "deezer", url: { resource: "https://www.deezer.com/artist/123" } }],
+          "release-groups": [
+            {
+              id: missingAlbumMbid,
+              title: "Debut LP",
+              "primary-type": "Album",
+              "first-release-date": "2026-11-21",
+            },
+          ],
+        },
+      };
+    }
+    if (pathname === `/ws/2/release-group/${missingAlbumMbid}`) {
+      return {
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        data: {
+          id: missingAlbumMbid,
+          title: "Debut LP",
+          "primary-type": "Album",
+          "first-release-date": "2026-11-21",
+          "artist-credit": [
+            {
+              name: "Brand New Artist",
+              artist: { id: missingArtistMbid, name: "Brand New Artist" },
+            },
+          ],
+        },
+      };
+    }
+    return { status: 200, statusText: "OK", headers: {}, data: { releases: [] } };
+  });
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: { ...(previousSettings.integrations?.metadata || {}), baseUrl: server.url },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    const artist = await getArtistByMbid(missingArtistMbid);
+    assert.equal(artist.name, "Brand New Artist");
+    assert.deepEqual(artist.genres, ["shoegaze"]);
+    assert.equal(artist.albums[0]?.id, missingAlbumMbid);
+
+    const album = await getAlbumByMbid(missingAlbumMbid);
+    assert.equal(album.title, "Debut LP");
+    assert.equal(album.artistId, missingArtistMbid);
+
+    assert.equal((await getArtistByMbid(missingArtistMbid)).name, "Brand New Artist");
+    assert.equal((await getAlbumByMbid(missingAlbumMbid)).title, "Debut LP");
+    assert.equal(providerRequests, 2);
+    assert.deepEqual(mbPaths, [
+      `/ws/2/artist/${missingArtistMbid}`,
+      `/ws/2/release-group/${missingAlbumMbid}`,
+    ]);
+  } finally {
+    get.mockRestore();
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
     await server.close();
@@ -611,13 +669,13 @@ test("an artist's album list refreshes a cached album only while it is not out y
 test("each BrainzMash request sent is counted under the work that sent it", async () => {
   const previousSettings = dbOps.getSettings();
   const server = await createMockHttpServer((request, response) => {
-    if (request.url?.startsWith("/album/")) {
+    if (request.url?.startsWith("/v1/album/")) {
       response.statusCode = 404;
       response.end("not found");
       return;
     }
     response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ id: "counted-artist", artistname: "Counted" }));
+    response.end(JSON.stringify({ id: "counted-artist", name: "Counted" }));
   });
 
   try {
@@ -702,119 +760,6 @@ test("missing entity metadata is negatively cached for repeated lookups", async 
   }
 });
 
-test("transient entity failures use a persistent cooldown instead of redownloading", async () => {
-  const previousSettings = dbOps.getSettings();
-  let requests = 0;
-  const server = await createMockHttpServer((_request, response) => {
-    requests += 1;
-    response.statusCode = 503;
-    response.end("temporarily unavailable");
-  });
-
-  try {
-    dbOps.updateSettings({
-      ...previousSettings,
-      integrations: {
-        ...(previousSettings.integrations || {}),
-        metadata: {
-          ...(previousSettings.integrations?.metadata || {}),
-          baseUrl: server.url,
-        },
-      },
-    });
-    clearMetadataProviderCaches();
-
-    await assert.rejects(() => getAlbumByMbid("large-album"));
-    await assert.rejects(
-      () => getAlbumByMbid("large-album"),
-      (error) => asAppError(error)?.code === "ERR_METADATA_COOLDOWN",
-    );
-    assert.equal(requests, 1);
-  } finally {
-    clearMetadataProviderCaches();
-    dbOps.updateSettings(previousSettings);
-    await server.close();
-  }
-});
-
-test("an album request already sent finishes and is cached after its caller leaves", async () => {
-  const previousSettings = dbOps.getSettings();
-  let requests = 0;
-  const arrived = Promise.withResolvers<void>();
-  const answer = Promise.withResolvers<void>();
-  const server = await createMockHttpServer(async (_request, response) => {
-    requests += 1;
-    arrived.resolve();
-    await answer.promise;
-    response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ id: "left-album", title: "Left Album" }));
-  });
-  const caller = new AbortController();
-
-  try {
-    dbOps.updateSettings({
-      ...previousSettings,
-      integrations: {
-        ...(previousSettings.integrations || {}),
-        metadata: {
-          ...(previousSettings.integrations?.metadata || {}),
-          baseUrl: server.url,
-        },
-      },
-    });
-    clearMetadataProviderCaches();
-
-    const left = getAlbumByMbid("left-album", { signal: caller.signal });
-    await arrived.promise;
-    caller.abort();
-    await assert.rejects(left);
-    answer.resolve();
-
-    assert.equal((await getAlbumByMbid("left-album")).title, "Left Album");
-    assert.equal(requests, 1);
-  } finally {
-    answer.resolve();
-    clearMetadataProviderCaches();
-    dbOps.updateSettings(previousSettings);
-    await server.close();
-  }
-});
-
-test("a request that waited its turn is sent with its full timeout", async () => {
-  const previousSettings = dbOps.getSettings();
-  const timeouts: (number | undefined)[] = [];
-  const get = vi.spyOn(http, "get").mockImplementation(async (url, options) => {
-    timeouts.push(options?.timeoutMs);
-    return {
-      status: 200,
-      statusText: "OK",
-      headers: {},
-      data: { id: url.split("/").at(-1), title: "In Line" },
-    };
-  });
-
-  try {
-    dbOps.updateSettings({
-      ...previousSettings,
-      integrations: {
-        ...(previousSettings.integrations || {}),
-        metadata: {
-          ...(previousSettings.integrations?.metadata || {}),
-          baseUrl: "http://metadata.test",
-        },
-      },
-    });
-    clearMetadataProviderCaches();
-
-    await Promise.all([getAlbumByMbid("first-in-line"), getAlbumByMbid("second-in-line")]);
-    assert.deepEqual(timeouts, [8000, 8000]);
-  } finally {
-    get.mockRestore();
-    clearMetadataProviderCaches();
-    dbOps.updateSettings(previousSettings);
-  }
-});
-
 test("a metadata request that reaches its turn a moment early by the wall clock is admitted", () => {
   const baseUrl = "http://slots.invalid";
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -850,71 +795,18 @@ test("a shared rate limit waits out the turn another process booked, but not a c
     const startedAt = await startOnce();
     assert.ok(startedAt - bookedAt >= 998, `started ${startedAt - bookedAt}ms after the booking`);
 
+    const beforeSkewed = Date.now();
     db.prepare("UPDATE metadata_provider_budget SET next_request_at = ? WHERE base_url = ?").run(
-      Date.now() + 60 * 60_000,
+      beforeSkewed + 60 * 60_000,
       service,
     );
     const skewedAt = await startOnce();
-    assert.ok(skewedAt - startedAt <= 1000, `waited ${skewedAt - startedAt}ms on a stale booking`);
+    assert.ok(
+      skewedAt - beforeSkewed <= 1000,
+      `waited ${skewedAt - beforeSkewed}ms on a stale booking`,
+    );
   } finally {
     vi.useRealTimers();
-  }
-});
-
-test("local request admission timeouts do not put entity metadata into cooldown", async () => {
-  const previousSettings = dbOps.getSettings();
-  let requests = 0;
-  const server = await createMockHttpServer((_request, response) => {
-    requests += 1;
-    response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ id: "admission-artist", artistname: "Admission Artist" }));
-  });
-
-  try {
-    dbOps.updateSettings({
-      ...previousSettings,
-      integrations: {
-        ...(previousSettings.integrations || {}),
-        metadata: {
-          ...(previousSettings.integrations?.metadata || {}),
-          baseUrl: server.url,
-        },
-      },
-    });
-    clearMetadataProviderCaches();
-    db.prepare(
-      `INSERT INTO metadata_provider_budget(base_url, next_request_at)
-       VALUES (?, ?)
-       ON CONFLICT(base_url) DO UPDATE SET next_request_at = excluded.next_request_at`,
-    ).run(server.url, Date.now() + 60_000);
-
-    await assert.rejects(
-      () => getArtistByMbid("admission-artist"),
-      (error) => asAppError(error)?.code === "ETIMEDOUT",
-    );
-    assert.equal(requests, 0);
-    assert.deepEqual(
-      db
-        .prepare<
-          [string],
-          { failure_count: number; retry_after: number; lease_token: string | null }
-        >(
-          `SELECT failure_count, retry_after, lease_token
-           FROM metadata_request_state WHERE cache_key LIKE ?`,
-        )
-        .get("%admission-artist%"),
-      { failure_count: 0, retry_after: 0, lease_token: null },
-    );
-
-    db.prepare("UPDATE metadata_provider_budget SET next_request_at = 0 WHERE base_url = ?").run(
-      server.url,
-    );
-    assert.equal((await getArtistByMbid("admission-artist")).name, "Admission Artist");
-    assert.equal(requests, 1);
-  } finally {
-    clearMetadataProviderCaches();
-    dbOps.updateSettings(previousSettings);
-    await server.close();
   }
 });
 
@@ -950,188 +842,7 @@ test("forced refreshes serve stale album metadata when the provider fails", asyn
       (await getAlbumByMbid("stale-album", { forceRefresh: true })).title,
       "Last Good Album",
     );
-    assert.equal(
-      (await getAlbumByMbid("stale-album", { forceRefresh: true })).title,
-      "Last Good Album",
-    );
-    assert.equal(requests, 2);
-  } finally {
-    clearMetadataProviderCaches();
-    dbOps.updateSettings(previousSettings);
-    await server.close();
-  }
-});
-
-test("an album 429 makes only that album wait out its retry-after", async () => {
-  const previousSettings = dbOps.getSettings();
-  const requested: string[] = [];
-  const server = await createMockHttpServer((request, response) => {
-    requested.push(request.url || "");
-    if (request.url?.startsWith("/album/repeat-album")) {
-      response.statusCode = 429;
-      response.setHeader("retry-after", "604800");
-      response.end(JSON.stringify({ error: "album request is temporarily rate limited" }));
-      return;
-    }
-    response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ id: "other-album", title: "Other Album" }));
-  });
-  const waitsAboutAWeek = () =>
-    assert.rejects(
-      () => getAlbumByMbid("repeat-album"),
-      (error) =>
-        asAppError(error)?.code === "ERR_METADATA_COOLDOWN" &&
-        error instanceof Error &&
-        "retryAfterMs" in error &&
-        Number(error.retryAfterMs) > 6 * 24 * 60 * 60 * 1000,
-    );
-
-  try {
-    dbOps.updateSettings({
-      ...previousSettings,
-      integrations: {
-        ...(previousSettings.integrations || {}),
-        metadata: {
-          ...(previousSettings.integrations?.metadata || {}),
-          baseUrl: server.url,
-        },
-      },
-    });
-    clearMetadataProviderCaches();
-
-    await waitsAboutAWeek();
-    await waitsAboutAWeek();
-    assert.equal((await getAlbumByMbid("other-album")).title, "Other Album");
-    assert.deepEqual(requested, ["/album/repeat-album", "/album/other-album"]);
-    assert.equal(Number(getMetadataProviderBudget(server.url).rate_limited_until), 0);
-  } finally {
-    clearMetadataProviderCaches();
-    dbOps.updateSettings(previousSettings);
-    await server.close();
-  }
-});
-
-test("a search 429 pauses every metadata request for at most fifteen minutes", async () => {
-  const previousSettings = dbOps.getSettings();
-  let requests = 0;
-  const server = await createMockHttpServer((_request, response) => {
-    requests += 1;
-    response.statusCode = 429;
-    response.setHeader("retry-after", "604800");
-    response.end("rate limited");
-  });
-
-  try {
-    dbOps.updateSettings({
-      ...previousSettings,
-      integrations: {
-        ...(previousSettings.integrations || {}),
-        metadata: {
-          ...(previousSettings.integrations?.metadata || {}),
-          baseUrl: server.url,
-        },
-      },
-    });
-    clearMetadataProviderCaches();
-
-    await assert.rejects(
-      () => searchAlbums("Rate Limited", { throwOnFailure: true, musicbrainzFallback: false }),
-      (error) => asAppError(error)?.response?.status === 429,
-    );
-    await assert.rejects(
-      () => getArtistByMbid("another-artist"),
-      (error) => asAppError(error)?.code === "ERR_METADATA_RATE_LIMITED",
-    );
-    assert.equal(requests, 1);
-    const cooldownMs =
-      Number(getMetadataProviderBudget(server.url).rate_limited_until) - Date.now();
-    assert.ok(cooldownMs > 14 * 60 * 1000 && cooldownMs <= 15 * 60 * 1000);
-    const providerUrl = new URL(
-      "../backend/services/providers/brainzmashProvider.ts",
-      import.meta.url,
-    ).href;
-    const probe = `const { getArtistByMbid } = await import(${JSON.stringify(providerUrl)});
-      try { await getArtistByMbid("other-process-cooldown"); console.log(JSON.stringify({ ok: true })); }
-      catch (error) { console.log(JSON.stringify({ code: error.code })); }
-      process.exit(0);`;
-    const { stdout } = await promisify(execFile)(
-      process.execPath,
-      [...OFFLINE_CHILD_ARGS, "--input-type=module", "-e", probe],
-      {
-        env: { ...process.env },
-        timeout: 10000,
-      },
-    );
-    assert.equal(
-      JSON.parse(requireFixture(stdout.trim().split("\n").at(-1))).code,
-      "ERR_METADATA_RATE_LIMITED",
-    );
-    assert.equal(requests, 1);
-  } finally {
-    clearMetadataProviderCaches();
-    dbOps.updateSettings(previousSettings);
-    await server.close();
-  }
-});
-
-test("a metadata 403 opens a shared blocked cooldown for subsequent requests", async () => {
-  const previousSettings = dbOps.getSettings();
-  let requests = 0;
-  const server = await createMockHttpServer((_request, response) => {
-    requests += 1;
-    if (requests === 1) {
-      response.statusCode = 403;
-      response.end("forbidden");
-      return;
-    }
-    response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ id: "artist-2", name: "Artist" }));
-  });
-
-  try {
-    dbOps.updateSettings({
-      ...previousSettings,
-      integrations: {
-        ...(previousSettings.integrations || {}),
-        metadata: {
-          ...(previousSettings.integrations?.metadata || {}),
-          baseUrl: server.url,
-        },
-      },
-    });
-    clearMetadataProviderCaches();
-
-    const blocked = getArtistByMbid("blocked-artist").catch((error) => error);
-    const queued = getArtistByMbid("queued-artist").catch((error) => error);
-    assert.equal((await blocked).response?.status, 403);
-    const blockedUntil = getMetadataProviderBudget(server.url).forbidden_until;
-    assert.equal((await queued).code, "ERR_METADATA_FORBIDDEN");
-    assert.equal(getMetadataProviderBudget(server.url).forbidden_until, blockedUntil);
-    clearMetadataProviderCaches();
-    await assert.rejects(
-      () => getArtistByMbid("another-artist"),
-      (error) => asAppError(error)?.code === "ERR_METADATA_FORBIDDEN",
-    );
-    const { stdout } = await promisify(execFile)(
-      process.execPath,
-      [
-        ...OFFLINE_CHILD_ARGS,
-        "--input-type=module",
-        "-e",
-        `
-      const { getArtistByMbid } = await import("./backend/services/providers/brainzmashProvider.ts");
-      try { await getArtistByMbid("another-process-blocked"); }
-      catch (error) { console.log(JSON.stringify({ code: error.code })); }
-      process.exit(0);
-    `,
-      ],
-      { cwd: process.cwd(), env: { ...process.env }, timeout: 10000 },
-    );
-    assert.equal(
-      JSON.parse(requireFixture(stdout.trim().split("\n").at(-1))).code,
-      "ERR_METADATA_FORBIDDEN",
-    );
-    assert.equal(requests, 1);
+    assert.equal(requests, 3);
   } finally {
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
@@ -1155,7 +866,9 @@ test("search metadata coalesces concurrent misses and shares fresh cache entries
     const requestNumber = ++requests;
     resolveRequestStarted();
     void responseReleased.then(() => {
-      response.end(JSON.stringify([{ id: `artist-${requestNumber}`, name: "Artist" }]));
+      response.end(
+        JSON.stringify({ artists: [{ id: `artist-${requestNumber}`, name: "Artist" }] }),
+      );
     });
   });
   try {
@@ -1186,11 +899,59 @@ test("search metadata coalesces concurrent misses and shares fresh cache entries
   }
 });
 
+test("search pages come out of one full answer", async () => {
+  const previousSettings = dbOps.getSettings();
+  const limits: string[] = [];
+  const row = (index: number) => ({
+    id: `id-${index}`,
+    name: `Name ${index}`,
+    title: `Name ${index}`,
+  });
+  const rows = Array.from({ length: 30 }, (_value, index) => row(index));
+  const server = await createMockHttpServer((request, response) => {
+    const url = new URL(request.url || "/", "http://provider.test");
+    limits.push(`${url.pathname} ${url.searchParams.get("limit")}`);
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ artists: rows, albums: rows }));
+  });
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: { ...(previousSettings.integrations?.metadata || {}), baseUrl: server.url },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    await trackWork(
+      () => "GET /api/search",
+      async () => {
+        for (const search of [
+          (offset: number) => searchArtists("name", { limit: 24, offset }),
+          (offset: number) => searchAlbums("name", { limit: 24, offset, sort: "titleAsc" }),
+        ]) {
+          const first = await search(0);
+          const second = await search(24);
+          assert.deepEqual([first.count, first.items.length, second.items.length], [30, 24, 6]);
+        }
+      },
+      undefined,
+      { request: true },
+    );
+    assert.deepEqual(limits, ["/v1/search/artist 50", "/v1/search/album 50"]);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
 test("album search shows no results when its MusicBrainz fallback is down", async () => {
   const previousSettings = dbOps.getSettings();
   const server = await createMockHttpServer((_request, response) => {
     response.setHeader("content-type", "application/json");
-    response.end("[]");
+    response.end(JSON.stringify({ albums: [] }));
   });
   const providerGet = http.get.bind(http);
   vi.spyOn(http, "get").mockImplementation(async (url, options) => {
@@ -1210,7 +971,13 @@ test("album search shows no results when its MusicBrainz fallback is down", asyn
     });
     clearMetadataProviderCaches();
 
-    assert.deepEqual((await searchAlbums("Missing Album")).items, []);
+    const result = await trackWork(
+      () => "GET /api/search",
+      () => searchAlbums("Missing Album"),
+      undefined,
+      { request: true },
+    );
+    assert.deepEqual(result.items, []);
   } finally {
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
@@ -1218,219 +985,145 @@ test("album search shows no results when its MusicBrainz fallback is down", asyn
   }
 });
 
-test("BrainzMash rejects the saturation boundary before its deadline", async () => {
+test("an album search AurralBrainz answers empty asks MusicBrainz once, unless MusicBrainz failed", async () => {
   const previousSettings = dbOps.getSettings();
   const server = await createMockHttpServer((_request, response) => {
     response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ Name: "Saturation" }));
+    response.end(JSON.stringify({ albums: [] }));
   });
-  const controller = new AbortController();
-  let requests: ReturnType<typeof getArtistByMbid>[] = [];
-
+  const providerGet = http.get.bind(http);
+  let asked = 0;
+  vi.spyOn(http, "get").mockImplementation(async (url, options) => {
+    if (!url.startsWith("https://musicbrainz.org/")) return providerGet(url, options);
+    asked += 1;
+    if (asked === 1) throw new Error("MusicBrainz unavailable");
+    return {
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      data: { "release-groups": [{ id: "fallback-album", title: "Missing Album" }] },
+    };
+  });
   try {
     dbOps.updateSettings({
       ...previousSettings,
       integrations: {
         ...(previousSettings.integrations || {}),
-        metadata: {
-          ...(previousSettings.integrations?.metadata || {}),
-          baseUrl: server.url,
-        },
+        metadata: { ...(previousSettings.integrations?.metadata || {}), baseUrl: server.url },
       },
     });
     clearMetadataProviderCaches();
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
-    requests = Array.from({ length: 81 }, (_, index) =>
-      getArtistByMbid(`saturation-${index}`, { signal: controller.signal }),
-    );
-    const boundary = await Promise.race([
-      requireFixture(requests[80]).then(
-        () => "resolved",
-        (error) => error.code || error.name,
-      ),
-      vi.advanceTimersByTimeAsync(7_999).then(() => "late"),
-    ]);
-    assert.equal(boundary, "EQUEUEFULL");
+
+    const titles = [];
+    for (let search = 0; search < 3; search += 1) {
+      const result = await trackWork(
+        () => "GET /api/search",
+        () => searchAlbums("Missing Album"),
+        undefined,
+        { request: true },
+      );
+      titles.push(result.items.map((item) => item.title));
+    }
+    assert.deepEqual(titles, [[], ["Missing Album"], ["Missing Album"]]);
+    assert.equal(asked, 2);
   } finally {
-    vi.useRealTimers();
-    controller.abort();
-    await Promise.allSettled(requests);
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
     await server.close();
   }
 });
 
-test("independent provider processes share request admission", async () => {
-  const previous = dbOps.getSettings();
-  const arrivals: number[] = [];
-  const server = await createMockHttpServer((_request, response) => {
-    arrivals.push(performance.now());
+test("an ID lookup asks for 100 keys at a time, and a Deezer album resolves by its ID alone", async () => {
+  const previousSettings = dbOps.getSettings();
+  const linked = { recordingId: null, albumId: "linked-album", artistId: "linked-artist" };
+  const asked: string[][] = [];
+  const server = await createMockHttpServer((request, response) => {
+    const keys = new URL(request.url ?? "", "http://metadata").searchParams.get("keys")!.split(",");
+    asked.push(keys);
     response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ id: "artist", name: "Artist" }));
+    response.end(
+      JSON.stringify({
+        ids: Object.fromEntries(
+          keys.filter((key) => key.startsWith("deezer-album:")).map((key) => [key, linked]),
+        ),
+      }),
+    );
   });
-  let children: ChildProcess[] = [];
   try {
     dbOps.updateSettings({
-      ...previous,
+      ...previousSettings,
       integrations: {
-        ...previous.integrations,
-        metadata: {
-          ...previous.integrations?.metadata,
-          baseUrl: server.url,
-        },
+        ...(previousSettings.integrations || {}),
+        metadata: { ...(previousSettings.integrations?.metadata || {}), baseUrl: server.url },
       },
     });
     clearMetadataProviderCaches();
-    children = Array.from({ length: 2 }, () =>
-      fork(fileURLToPath(new URL("./fixtures/metadata-provider-child.mts", import.meta.url)), [], {
-        env: { ...process.env },
-        execArgv: OFFLINE_CHILD_ARGS,
-        stdio: ["ignore", "ignore", "ignore", "ipc"],
-      }),
+
+    const isrcs = Array.from({ length: 150 }, (_, index) => `isrc:GBAYE06${10000 + index}`);
+    const found = await metadataProvider.lookupIds([...isrcs, "deezer-album:1", ...isrcs]);
+    assert.deepEqual(
+      asked.map((keys) => keys.length),
+      [100, 51],
     );
-    await Promise.all(
-      children.map((child) => new Promise<void>((resolve) => child.once("message", resolve))),
+    assert.deepEqual(
+      [...found],
+      [
+        [
+          "deezer-album:1",
+          { trackMbid: null, albumMbid: "linked-album", artistMbid: "linked-artist" },
+        ],
+      ],
     );
-    const startAtPerf = performance.now();
-    await Promise.all(
-      children.map(async (child, childIndex) => {
-        for (let index = 0; index < 3; index++) {
-          const done = new Promise<{ ok: boolean }>((resolve) => child.once("message", resolve));
-          child.send({ type: "request", mbid: `child-${childIndex}-${index}` });
-          assert.equal((await done).ok, true);
-        }
-      }),
-    );
-    assert.equal(arrivals.length, 6);
-    assert.ok(
-      arrivals.at(-1)! - startAtPerf >= 450,
-      "independent processes admitted a request burst",
-    );
+
+    assert.equal(await resolveDeezerAlbumToMbid("", "", 302127), "linked-album");
+    assert.deepEqual(asked.at(-1), ["deezer-album:302127"]);
   } finally {
-    await Promise.all(
-      children.map(
-        (child) =>
-          new Promise<void>((resolve) => {
-            child.once("exit", resolve);
-            child.send({ type: "shutdown" });
-          }),
-      ),
-    );
     clearMetadataProviderCaches();
-    dbOps.updateSettings(previous);
+    dbOps.updateSettings(previousSettings);
     await server.close();
   }
 });
 
-test("independent provider processes share one active entity request", async () => {
-  const previous = dbOps.getSettings();
-  let requests = 0;
-  const server = await createMockHttpServer((_request, response) => {
-    requests += 1;
-    response.setHeader("content-type", "application/json");
-    setTimeout(() => response.end(JSON.stringify({ id: "shared-artist", name: "Artist" })), 500);
-  });
-  let children: ChildProcess[] = [];
-  try {
-    dbOps.updateSettings({
-      ...previous,
-      integrations: {
-        ...previous.integrations,
-        metadata: {
-          ...previous.integrations?.metadata,
-          baseUrl: server.url,
-        },
-      },
-    });
-    clearMetadataProviderCaches();
-    children = Array.from({ length: 2 }, () =>
-      fork(fileURLToPath(new URL("./fixtures/metadata-provider-child.mts", import.meta.url)), [], {
-        env: { ...process.env },
-        execArgv: OFFLINE_CHILD_ARGS,
-        stdio: ["ignore", "ignore", "ignore", "ipc"],
-      }),
-    );
-    await Promise.all(
-      children.map((child) => new Promise<void>((resolve) => child.once("message", resolve))),
-    );
-    const results = children.map(
-      (child) =>
-        new Promise<{ ok: boolean }>((resolve) => {
-          child.once("message", resolve);
-          child.send({ type: "request", mbid: "shared-artist" });
-        }),
-    );
-    assert.ok((await Promise.all(results)).every((result) => result.ok));
-    assert.equal(requests, 1);
-  } finally {
-    await Promise.all(
-      children.map(
-        (child) =>
-          new Promise<void>((resolve) => {
-            child.once("exit", resolve);
-            child.send({ type: "shutdown" });
-          }),
-      ),
-    );
-    clearMetadataProviderCaches();
-    dbOps.updateSettings(previous);
-    await server.close();
-  }
-});
-
-test("clearing caches preserves provider spacing for another process", async () => {
-  const previous = dbOps.getSettings();
-  const arrivals: number[] = [];
-  const server = await createMockHttpServer((_request, response) => {
-    arrivals.push(performance.now());
-    response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ id: "artist", name: "Artist" }));
-  });
-  let child: ChildProcess | undefined;
-  try {
-    dbOps.updateSettings({
-      ...previous,
-      integrations: {
-        ...previous.integrations,
-        metadata: {
-          ...previous.integrations?.metadata,
-          baseUrl: server.url,
-        },
-      },
-    });
-    clearMetadataProviderCaches();
-    child = fork(
-      fileURLToPath(new URL("./fixtures/metadata-provider-child.mts", import.meta.url)),
-      [],
+test("a rate limited search waits out Retry-After in the background and fails at once for a request", async () => {
+  const sentAt: number[] = [];
+  const get = vi.spyOn(http, "get").mockImplementation(async (url) => {
+    sentAt.push(Date.now());
+    if (sentAt.length > 2) {
+      return { status: 200, statusText: "OK", headers: {}, data: { artists: [] } };
+    }
+    throw new HttpError(
+      "Too many requests",
+      { method: "GET", url },
       {
-        env: { ...process.env },
-        execArgv: OFFLINE_CHILD_ARGS,
-        stdio: ["ignore", "ignore", "ignore", "ipc"],
+        response: {
+          status: 429,
+          statusText: "Too Many Requests",
+          headers: { "retry-after": "30" },
+          data: {},
+        },
       },
     );
-    const spawned = child;
-    await new Promise<void>((resolve) => spawned.once("message", resolve));
-    const beforeFirstRequest = performance.now();
-    await getArtistByMbid("before-cache-clear");
+  });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  vi.setTimerTickMode("nextTimerAsync");
+  try {
     clearMetadataProviderCaches();
-    const done = new Promise<{ ok: boolean }>((resolve) => spawned.once("message", resolve));
-    spawned.send({ type: "request", mbid: "after-cache-clear" });
-    assert.equal((await done).ok, true);
-    assert.equal(arrivals.length, 2);
-    assert.ok(
-      requireFixture(arrivals[1]) - beforeFirstRequest >= 95,
-      "cache clearing allowed an aggregate request burst",
+    await assert.rejects(
+      trackWork(
+        () => "GET /api/search",
+        () => searchArtists("typed", { throwOnFailure: true }),
+        undefined,
+        { request: true },
+      ),
     );
+    assert.equal(sentAt.length, 1);
+
+    assert.deepEqual((await searchArtists("scanned", { throwOnFailure: true })).items, []);
+    assert.equal(sentAt.length, 3);
+    assert.ok(sentAt[2]! - sentAt[1]! >= 30_000, `retried after ${sentAt[2]! - sentAt[1]!}ms`);
   } finally {
-    const running = child;
-    if (running)
-      await new Promise<void>((resolve) => {
-        running.once("exit", resolve);
-        running.send({ type: "shutdown" });
-      });
+    vi.useRealTimers();
+    get.mockRestore();
     clearMetadataProviderCaches();
-    dbOps.updateSettings(previous);
-    await server.close();
   }
 });

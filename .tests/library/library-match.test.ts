@@ -30,7 +30,7 @@ const [
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
-  () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../../backend/services/providers/metadataProvider.ts"),
   () => import("../../backend/services/libraryIndexService.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
   () => import("../../backend/services/downloadPaths.ts"),
@@ -69,13 +69,13 @@ beforeAll(async () => {
     const artists: Record<string, object> = {
       [KNOWN_MBID]: {
         id: KNOWN_MBID,
-        artistname: "Known Artist",
-        Albums: [
-          { Id: PICKED_GROUP, Title: "Picked Album", Type: "Album", SecondaryTypes: [] },
-          { Id: OTHER_GROUP, Title: "Picked Album Live", Type: "Album", SecondaryTypes: ["Live"] },
+        name: "Known Artist",
+        albums: [
+          { id: PICKED_GROUP, title: "Picked Album", type: "Album", secondaryTypes: [] },
+          { id: OTHER_GROUP, title: "Picked Album Live", type: "Album", secondaryTypes: ["Live"] },
         ],
       },
-      [OTHER_MBID]: { id: OTHER_MBID, artistname: "Other Artist" },
+      [OTHER_MBID]: { id: OTHER_MBID, name: "Other Artist" },
     };
     const groups: Record<string, object> = {
       [PICKED_GROUP]: { id: PICKED_GROUP, title: "Picked Album", releases: [] },
@@ -83,8 +83,8 @@ beforeAll(async () => {
       [TRACK_GROUP]: {
         id: TRACK_GROUP,
         title: "Track Album",
-        artistid: KNOWN_MBID,
-        artists: [{ id: KNOWN_MBID, artistname: "Known Artist" }],
+        artistId: KNOWN_MBID,
+        artists: [{ id: KNOWN_MBID, name: "Known Artist" }],
         releases: [
           {
             id: TRACK_RELEASE,
@@ -92,28 +92,31 @@ beforeAll(async () => {
             tracks: [
               [FULL_RECORDING, "The Whole Title"],
               [NEXT_RECORDING, "Next Song"],
-            ].map(([recordingid, trackname], index) => ({
+            ].map(([recordingId, title], index) => ({
               id: `${TRACK_RELEASE}-${index + 1}`,
-              recordingid,
-              trackname,
-              artistid: KNOWN_MBID,
-              durationms: 200,
-              trackposition: index + 1,
-              mediumnumber: 1,
+              recordingId,
+              title,
+              artistId: KNOWN_MBID,
+              durationMs: 200,
+              trackPosition: index + 1,
+              mediumNumber: 1,
             })),
           },
         ],
       },
     };
     let body: object | null = null;
-    if (url.pathname.startsWith("/artist/"))
-      body = artists[url.pathname.split("/")[2] ?? ""] || null;
-    if (url.pathname.startsWith("/album/")) body = groups[url.pathname.split("/")[2] ?? ""] || null;
-    if (url.pathname === "/search/artist") {
-      body =
-        url.searchParams.get("query") === "Wrongly Matched"
-          ? [{ id: MATCHED_BY_NAME_MBID, artistname: "Wrongly Matched" }]
-          : [];
+    if (url.pathname.startsWith("/v1/artist/"))
+      body = artists[url.pathname.split("/")[3] ?? ""] || null;
+    if (url.pathname.startsWith("/v1/album/"))
+      body = groups[url.pathname.split("/")[3] ?? ""] || null;
+    if (url.pathname === "/v1/search/artist") {
+      body = {
+        artists:
+          url.searchParams.get("q") === "Wrongly Matched"
+            ? [{ id: MATCHED_BY_NAME_MBID, name: "Wrongly Matched" }]
+            : [],
+      };
     }
     if (!body) {
       response.writeHead(404);

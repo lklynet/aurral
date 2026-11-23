@@ -39,7 +39,7 @@ import {
 import { judgeRelease } from "./releaseJudge.ts";
 import { manifestIndexFor, type ReleaseManifest } from "../releaseManifest.ts";
 import { isRequestedYoutubeAlbum, readYoutubeFile } from "./youtubeEvidence.ts";
-import { scoreTextMatch } from "../providers/brainzmashRanking.ts";
+import { scoreTextMatch } from "../providers/metadataRanking.ts";
 import { validateParsedQuality } from "../qualityProfile.ts";
 import { logger } from "../logger.ts";
 
