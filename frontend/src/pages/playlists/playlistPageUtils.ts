@@ -9,12 +9,7 @@ import listenbrainzLogo from "../../../images/logos/listenbrainz-color.svg";
 import spotifyLogo from "../../../images/logos/spotify-color.svg";
 import youtubeMusicLogo from "../../../images/logos/youtube-music-color.svg";
 import deezerLogo from "../../../images/logos/deezer-color.svg";
-import {
-  formatTrackCountLabel,
-  type Flow,
-  type PlaylistStats,
-  type PlaylistStatus,
-} from "../../utils/playlistStats";
+import { type Flow, type PlaylistStats, type PlaylistStatus } from "../../utils/playlistStats";
 import { getApiErrorText } from "../../utils/api/errors.ts";
 import { IMPORT_PROVIDER_LABELS, isNativeImportProvider } from "../../../../lib/importProviders.ts";
 
@@ -53,9 +48,6 @@ export const choiceMenuItem = <T extends { checked: boolean }>({ checked, ...ite
 });
 
 export const formatTrackTotal = (count: number) => `${count} ${count === 1 ? "track" : "tracks"}`;
-
-export const formatFlowTrackLabel = (count: number, stats: PlaylistStats | null | undefined) =>
-  Number(stats?.total || 0) > 0 ? formatTrackCountLabel(count, stats) : formatTrackTotal(count);
 
 export const getFlowActivity = ({
   flow,

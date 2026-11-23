@@ -206,7 +206,7 @@ test("collaboration releases retain an independent calendar row for each artist"
   }
 });
 
-test("an owned album in the ListenBrainz feed stays out of the calendar and its library metadata is left alone", async () => {
+test("an owned album in the release feed stays out of the calendar and its library metadata is left alone", async () => {
   const artistMbid = randomUUID();
   const releaseMbid = randomUUID();
   const libraryArtist = upsertLibraryArtist({
