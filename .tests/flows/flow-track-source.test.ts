@@ -336,7 +336,7 @@ test("discover filters by an artist's own tags, not tags borrowed from its seeds
       matchPercent: 80,
       tags: ["Hip-Hop"],
       candidateTagsHydrated: true,
-      tagSource: "lastfm_artist",
+      tagSource: "artist",
     },
   ];
   source._getArtistTopTagLists = async (artists) => {

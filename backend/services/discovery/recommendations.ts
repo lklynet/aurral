@@ -101,7 +101,7 @@ const toBridgeSeed = (bridge: DiscoveryRecommendation) => {
   return {
     mbid: bridge.id || bridge.mbid || null,
     artistName: bridge.name!,
-    source: isChartPick(bridge) ? STARTER_SEED_SOURCE : "lastfm_related",
+    source: isChartPick(bridge) ? STARTER_SEED_SOURCE : "similar",
     profileBucket: "two_hop_bridge",
     weight,
     affinityWeight: weight,

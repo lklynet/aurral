@@ -42,7 +42,7 @@ test("single-pass refresh: applyHydratedCandidateTags recalculates score when ca
   assert.deepEqual(hydrated.matchedTags, ["industrial", "noise rock"]);
   assert.equal(hydrated.scoreTagAffinity, 45);
   assert.equal(hydrated.candidateTagsHydrated, true);
-  assert.equal(hydrated.tagSource, "lastfm_artist");
+  assert.equal(hydrated.tagSource, "artist");
   assert.ok(hydrated.scoreTotal != null);
   assert.ok(hydrated.scoreTotal > 120);
 });

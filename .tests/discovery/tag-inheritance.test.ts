@@ -10,7 +10,7 @@ test("tag inheritance requires three seed tags and skips directly hydrated candi
     canInheritTagsFromSeeds({
       tags: ["shoegaze", "dream-pop", "indie"],
       candidateTagsHydrated: true,
-      tagSource: "lastfm_artist",
+      tagSource: "artist",
     }),
     false,
   );
