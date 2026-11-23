@@ -97,7 +97,7 @@ test("recommendation candidates aggregate across multiple seeds", () => {
   assert.ok(recommendation.reasonCodes.length > 0);
 });
 
-test("mergeResolvedRecommendations collapses name and mbid variants of the same artist", () => {
+test("mergeResolvedRecommendations collapses name and mbid variants of the same artist, but not a namesake with another MBID", () => {
   const merged = mergeResolvedRecommendations([
     {
       name: "Slowdive",
@@ -115,10 +115,22 @@ test("mergeResolvedRecommendations collapses name and mbid variants of the same 
       sourceTypes: ["listenbrainz"],
       tags: ["dream-pop"],
     },
+    ...["5", "6", "5"].map((digit) => ({
+      id: `${digit.repeat(8)}-${digit.repeat(4)}-${digit.repeat(4)}-${digit.repeat(4)}-${digit.repeat(12)}`,
+      name: "Slowdive",
+    })),
+    { foreignArtistId: "77777777-7777-7777-7777-777777777777", name: "Slowdive" },
   ]);
 
-  assert.equal(merged.length, 1);
-  assert.equal(merged[0]?.id, "44444444-4444-4444-4444-444444444444");
+  assert.deepEqual(
+    merged.map((entry) => entry.id),
+    [
+      "44444444-4444-4444-4444-444444444444",
+      "55555555-5555-5555-5555-555555555555",
+      "66666666-6666-6666-6666-666666666666",
+      "77777777-7777-7777-7777-777777777777",
+    ],
+  );
   assert.equal(merged[0]?.sourceType, "blended");
   assert.deepEqual(merged[0]?.tags.sort(), ["dream-pop", "shoegaze"]);
 });

@@ -686,7 +686,7 @@ export class FlowTrackSource {
     const { filters, excludeArtistKeys, blockedTags, pick } = options;
     const end = Math.min(artists.length, options.maxArtists ?? artists.length);
     const tracks: FlowTrackEntry[] = [];
-    const seen = new Set<string>();
+    const seenArtistKeys = new Set<string>();
     let cursor = 0;
     while (tracks.length < limit && cursor < end) {
       const batch: { artist: HarvestArtist; name: string }[] = [];
@@ -695,10 +695,9 @@ export class FlowTrackSource {
         cursor += 1;
         if (!artist) continue;
         const name = String(artist?.name || artist?.artistName || "").trim();
-        const key = this._artistKey(name);
-        if (!key || seen.has(key)) continue;
+        if (!this._artistKey(name) || matchesArtistKeys(artist, seenArtistKeys)) continue;
         if (matchesArtistKeys(artist, excludeArtistKeys)) continue;
-        seen.add(key);
+        artistMatchKeys(artist).forEach((key) => seenArtistKeys.add(key));
         batch.push({ artist, name });
       }
       const eligible = await this._keepByTags(batch, filters, blockedTags);
@@ -994,21 +993,23 @@ export class FlowTrackSource {
         artists: await this._getTagArtists(tag, perGroup).catch(() => []),
       })),
     ]);
-    const pool = new Map<string, HarvestArtist>();
+    const pool: HarvestArtist[] = [];
+    const pooledKeys = new Set<string>();
     const deepest = Math.max(0, ...groups.map((group) => group.artists.length));
     for (let rank = 0; rank < deepest; rank += 1) {
       for (const { reason, artists } of groups) {
         const name = String(artists[rank]?.name || "").trim();
-        const key = this._artistKey(name);
-        if (!key || pool.has(key)) continue;
-        pool.set(key, {
+        const artist = {
           name,
           artistMbid: String(artists[rank]?.mbid || "").trim() || null,
           reason,
-        });
+        };
+        if (!this._artistKey(name) || matchesArtistKeys(artist, pooledKeys)) continue;
+        artistMatchKeys(artist).forEach((key) => pooledKeys.add(key));
+        pool.push(artist);
       }
     }
-    return [...pool.values()];
+    return pool;
   }
 
   async getFocusTracks(limit: number, flow: FlowRunSpec, context: Partial<SourceContext> = {}) {
@@ -1128,25 +1129,25 @@ export class FlowTrackSource {
     const albums = await this._getRecentReleases(
       this._isFiltered(filters) ? FILTERED_ARTIST_LIMIT : limit,
     );
-    const albumsByArtist = Map.groupBy(albums, (album) => album.artistName);
+    const releaseArtistKey = (artist: HarvestArtist) =>
+      artistMbidOf(artist) ?? `name:${this._artistKey(String(artist.name ?? ""))}`;
+    const releaseArtists = albums.map((album) => ({
+      album,
+      artist: {
+        name: album.artistName,
+        artistMbid: album.artistMbid || album.foreignArtistId || null,
+        reason: "New release",
+      },
+    }));
+    const albumsByArtist = Map.groupBy(releaseArtists, ({ artist }) => releaseArtistKey(artist));
     return this._harvestArtists(
-      [...albumsByArtist.values()].flatMap(([album]) =>
-        album
-          ? [
-              {
-                name: album.artistName,
-                artistMbid: album.artistMbid || album.foreignArtistId || null,
-                reason: "New release",
-              },
-            ]
-          : [],
-      ),
+      [...albumsByArtist.values()].flatMap(([entry]) => (entry ? [entry.artist] : [])),
       limit,
       {
         filters,
         excludeArtistKeys,
-        pick: async (_artist, name) => {
-          for (const album of albumsByArtist.get(name) ?? []) {
+        pick: async (artist) => {
+          for (const { album } of albumsByArtist.get(releaseArtistKey(artist)) ?? []) {
             const releaseYear = String(album.releaseDate || "").slice(0, 4) || null;
             if (!this._matchesYearRange(releaseYear, filters.yearFrom, filters.yearTo)) continue;
             const pick = await this._pickTrackFromRelease({
