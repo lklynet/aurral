@@ -205,6 +205,7 @@ type DeezerTrack = v.InferOutput<typeof deezerTrackSchema>;
 
 const deezerIdKeys = (row: DeezerTrack) => [
   isrcKey(row.isrc),
+  row.album?.id ? `deezer-album:${row.album.id}` : null,
   row.artist?.id ? `deezer-artist:${row.artist.id}` : null,
 ];
 

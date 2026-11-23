@@ -23,10 +23,16 @@ export const loadCatalogueIds = (keys: (string | null)[]) =>
 // The album is the recording's best-known one, which the source may name
 // differently. A download keeps it because it lists the recording.
 export function catalogueTrackIds(ids: CatalogueIds, keys: (string | null)[]) {
-  const [known] = keys.flatMap((key) => (key && ids.get(key)) || []);
-  return {
-    trackMbid: known?.trackMbid ?? null,
-    albumMbid: known?.albumMbid ?? null,
-    artistMbid: known?.artistMbid ?? null,
-  };
+  let trackMbid: string | null = null;
+  let albumMbid: string | null = null;
+  let artistMbid: string | null = null;
+  for (const key of keys) {
+    const entry = key ? ids.get(key) : null;
+    if (!entry) continue;
+    if (artistMbid && entry.artistMbid && entry.artistMbid !== artistMbid) continue;
+    trackMbid ??= entry.trackMbid;
+    albumMbid ??= entry.albumMbid;
+    artistMbid ??= entry.artistMbid;
+  }
+  return { trackMbid, albumMbid, artistMbid };
 }
