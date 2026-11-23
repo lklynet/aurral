@@ -36,7 +36,7 @@ test("submits only real MusicBrainz IDs, with the album as a release group", asy
       title: "Example Track",
       album: "Example Album",
       albumMbid: "22222222-2222-4222-8222-222222222222",
-      artistMbid: "11111111-1111-4111-8111-111111111111",
+      artistMbids: ["11111111-1111-4111-8111-111111111111"],
       trackMbid: "908604612",
     },
   });

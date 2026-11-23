@@ -23,7 +23,9 @@ Each user connects while signed in. The instance API key cannot connect an accou
 
 Aurral records each play from the built-in player and from Subsonic clients before it contacts ListenBrainz. If ListenBrainz is down, playback continues and Aurral keeps the play.
 
-Aurral queues each play and retries temporary failures. Because of the retries, ListenBrainz can receive the same play twice. Aurral's own history does not depend on the result.
+Aurral queues each play and retries temporary failures for about 17 hours. Because of the retries, ListenBrainz can receive the same play twice. Aurral's own history does not depend on the result.
+
+For a song in your Library, Aurral sends the MusicBrainz IDs from the file's tags: every artist credited on the song, and the release you played it from. A song on a compilation counts for its own artists, not Various Artists.
 
 ## Coming from Last.fm
 

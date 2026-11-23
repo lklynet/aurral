@@ -216,7 +216,7 @@ export const playEventQueue = defineQueue<v.InferOutput<typeof playEventDelivery
   name: "play-events",
   group: "play-events",
   leaseMs: 2 * MINUTE,
-  maxAttempts: 5,
+  maxAttempts: 12,
   retryDelayMs: 30_000,
   backoff: "exponential",
   timeoutMs: 15 * MINUTE,
