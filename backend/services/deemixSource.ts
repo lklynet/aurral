@@ -105,7 +105,7 @@ const listing = (artist: string, title: string, tracks: DeemixAlbumTrack[]) => (
   })),
 });
 
-// An album counts only when its whole Deezer tracklist is the requested
+// An album counts only when its Deezer tracklist holds the whole requested
 // release and Deezer streams some of it, so nothing downloads before that
 // check.
 async function searchAlbums(

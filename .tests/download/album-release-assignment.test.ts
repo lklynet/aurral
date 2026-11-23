@@ -76,10 +76,9 @@ test("an unverified album must contain the pinned complete edition before import
         },
       });
     const bonus = await assign(paths);
-    assert.deepEqual([...bonus.accepted], []);
     assert.deepEqual(
-      bonus.rejected.map(({ jobId }) => jobId),
-      ["wanted-second"],
+      bonus.accepted.map(({ jobId, filePath }) => [jobId, filePath]),
+      [["wanted-second", paths[1]]],
     );
     assert.deepEqual([...(await assign([requireFixture(paths[1])])).accepted], []);
     const complete = await assign(paths.slice(0, 2));

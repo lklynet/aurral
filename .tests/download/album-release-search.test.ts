@@ -57,7 +57,7 @@ test("a single requested track validates the whole edition and downloads only it
   );
 });
 
-test("a distinct bonus song rejects a pinned release even when its quality is disabled", () => {
+test("a pinned release's folder with a distinct bonus song downloads only the wanted files", () => {
   const results = [
     ...copy("peer"),
     {
@@ -69,23 +69,11 @@ test("a distinct bonus song rejects a pinned release even when its quality is di
     },
   ];
   for (const wanted of [jobs, [requireFixture(jobs[1])]]) {
-    assert.equal(
-      selectSoulseekAlbumFolder(results, wanted, {
-        manifest,
-        profile: { ...flacFirst, enabled: ["flac-standard"] },
-      }).decision,
-      "skip",
-    );
-    assert.equal(
-      selectSoulseekAlbumFolder(
-        results.map((file) => ({
-          ...file,
-          locked: file.file.endsWith("Bonus.mp3"),
-        })),
-        wanted,
-        { manifest },
-      ).decision,
-      "skip",
+    const selection = selectSoulseekAlbumFolder(results, wanted, { manifest });
+    assert.equal(selection.decision, "selectable");
+    assert.deepEqual(
+      selection.selected?.files.map(({ jobId, file }) => [jobId, file]),
+      wanted.map((job) => [job.id, requireFixture(results[jobs.indexOf(job)]).file]),
     );
   }
 });
