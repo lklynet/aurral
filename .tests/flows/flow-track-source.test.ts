@@ -438,11 +438,13 @@ test("Deep Dive with a year range keeps preferring tracks ranked 10 to 25", asyn
   assert.equal(pick?.trackName, "Track 12");
 });
 
-test("new releases try an artist's older release when the newest has no usable track", async () => {
+test("new releases try an artist's older release when the newest has no usable track, and keep a namesake apart", async () => {
   const source = new FlowTrackSource();
-  const release = (albumName: string, releaseDate: string) => ({
+  const band = "00000000-0000-4000-8000-0000000000a1";
+  const namesake = "00000000-0000-4000-8000-0000000000a2";
+  const release = (albumName: string, releaseDate: string, artistMbid = band) => ({
     artistName: "Band",
-    artistMbid: null,
+    artistMbid,
     foreignArtistId: null,
     releaseDate,
     albumName,
@@ -451,16 +453,20 @@ test("new releases try an artist's older release when the newest has no usable t
   });
   source._getRecentReleases = async () => [
     release("Newest", "2026-03-01"),
+    release("Namesake EP", "2026-02-01", namesake),
     release("Older", "2026-01-01"),
   ];
   source._pickTrackFromRelease = async ({ albumTitle }) =>
-    albumTitle === "Older" ? { trackName: "Older Single", albumName: "Older" } : null;
+    albumTitle === "Newest" ? null : { trackName: `${albumTitle} Single`, albumName: albumTitle };
 
   const tracks = await source.getNewReleaseTracks(5);
 
   assert.deepEqual(
-    tracks.map((track) => track.trackName),
-    ["Older Single"],
+    tracks.map((track) => [track.trackName, track.artistMbid]),
+    [
+      ["Older Single", band],
+      ["Namesake EP Single", namesake],
+    ],
   );
 });
 

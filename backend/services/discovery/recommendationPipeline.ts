@@ -1149,8 +1149,10 @@ export const mergeResolvedRecommendations = (
   recommendations: DiscoveryRecommendation[] = [],
   existingArtistKeys: Set<string> = new Set(),
 ) => {
-  const merged = new Map<string | null, MergedRecommendation>();
-  const aliases = new Map<string | null, string | null>();
+  const merged = new Map<string, MergedRecommendation>();
+  const byMbid = new Map<string, string>();
+  const byName = new Map<string, string>();
+  const unidentifiedByName = new Map<string, string>();
 
   for (const recommendation of Array.isArray(recommendations) ? recommendations : []) {
     if (matchesArtistKeys(recommendation, existingArtistKeys)) continue;
@@ -1158,8 +1160,16 @@ export const mergeResolvedRecommendations = (
       normalizeMbid(recommendation?.id) || normalizeMbid(recommendation?.navigateTo);
 
     const nameKey = `name:${normalizeText(recommendation?.name)}`;
-    const identityKeys = recommendationMbid ? [recommendationMbid, nameKey] : [nameKey];
-    const identity = identityKeys.find((key) => aliases.has(key)) || recommendationMbid || nameKey;
+    const identity = recommendationMbid
+      ? (byMbid.get(recommendationMbid) ?? unidentifiedByName.get(nameKey) ?? recommendationMbid)
+      : (byName.get(nameKey) ?? nameKey);
+    if (recommendationMbid) {
+      byMbid.set(recommendationMbid, identity);
+      if (unidentifiedByName.get(nameKey) === identity) unidentifiedByName.delete(nameKey);
+    } else if (!merged.has(identity)) {
+      unidentifiedByName.set(nameKey, identity);
+    }
+    if (!byName.has(nameKey)) byName.set(nameKey, identity);
 
     const existing = merged.get(identity);
     if (!existing) {
@@ -1193,9 +1203,6 @@ export const mergeResolvedRecommendations = (
         discoveryDepth: Number(recommendation?.discoveryDepth || 1) || 1,
       };
       merged.set(identity, entry);
-      for (const key of identityKeys) {
-        aliases.set(key, identity);
-      }
       continue;
     }
 
@@ -1301,9 +1308,6 @@ export const mergeResolvedRecommendations = (
           .map((seed) => [normalizeText(seed.artistName), seed]),
       ).values(),
     ];
-    for (const key of identityKeys) {
-      aliases.set(key, identity);
-    }
   }
 
   return [...merged.values()].map((entry) => ({

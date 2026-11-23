@@ -44,6 +44,7 @@ export type Mix = {
 type TrackPlays = {
   trackId: string;
   artist: string;
+  artistMbid: string | null;
   title: string;
   total: number;
   recent: number;
@@ -81,7 +82,8 @@ const playKey = (artist: string, title: string) =>
   `${artist.trim().toLowerCase()}\0${title.trim().toLowerCase()}`;
 
 const playsStmt = db.prepare<[number, number, number, number, number, number], TrackPlays>(`
-  SELECT MIN(track_id) AS trackId, MIN(artist) AS artist, MIN(title) AS title,
+  SELECT MIN(track_id) AS trackId, MIN(artist) AS artist, MAX(artist_mbid) AS artistMbid,
+         MIN(title) AS title,
          COUNT(*) AS total,
          SUM(played_at >= ?) AS recent,
          SUM(played_at >= ? AND played_at < ?) AS rewind,
@@ -556,7 +558,9 @@ function closestPartners(userId: number, partners: Partner[], now: number) {
 function blendFavorites(userId: number, now: number, blocked: Set<string>): Favorite[] {
   return playsStmt
     .all(now - ON_REPEAT_MS, now - REWIND_MS, now - ON_REPEAT_MS, now - TOP_ARTIST_MS, userId, now)
-    .filter((play) => !matchesArtistKeys({ name: play.artist }, blocked))
+    .filter(
+      (play) => !matchesArtistKeys({ name: play.artist, artistMbid: play.artistMbid }, blocked),
+    )
     .map((play) => ({ play, weight: 2 * Math.log1p(play.season) + Math.log1p(play.total) }))
     .sort((left, right) => right.weight - left.weight)
     .slice(0, BLEND_WINDOW);
@@ -588,6 +592,7 @@ function friendFavorites(friend: FriendTracks, blocked: Set<string>): Favorite[]
     .map(({ title, artist }): TrackPlays => ({
       trackId: "",
       artist,
+      artistMbid: null,
       title,
       total: 0,
       recent: 0,
@@ -725,7 +730,8 @@ export function getUserBlends(userId: number, now = Date.now()) {
 }
 
 const recentPlaysStmt = db.prepare<[number, number, number], TrackPlays>(`
-  SELECT MIN(track_id) AS trackId, MIN(artist) AS artist, MIN(title) AS title,
+  SELECT MIN(track_id) AS trackId, MIN(artist) AS artist, MAX(artist_mbid) AS artistMbid,
+         MIN(title) AS title,
          COUNT(*) AS total, COUNT(*) AS recent, 0 AS rewind, COUNT(*) AS season,
          MAX(played_at) AS lastPlayedAt
   FROM play_events
@@ -739,7 +745,9 @@ function listensOf(userId: number, person: BlendPartner, now: number): Mix | nul
   const blocked = getBlockedArtistKeys(userId);
   const plays = recentPlaysStmt
     .all(person.id, now - ON_REPEAT_MS, now)
-    .filter((play) => !matchesArtistKeys({ name: play.artist }, blocked));
+    .filter(
+      (play) => !matchesArtistKeys({ name: play.artist, artistMbid: play.artistMbid }, blocked),
+    );
   const trackIds = ranked(
     plays,
     resolvePlays(plays),

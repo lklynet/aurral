@@ -1,7 +1,7 @@
 import { db } from "../config/db-sqlite.ts";
 import type { LibraryArtistsRow } from "../db/rows.ts";
 import * as musicData from "./musicDataSource/index.ts";
-import { matchesArtistKeys } from "../../lib/artistMatch.ts";
+import { isSameArtist, matchesArtistKeys } from "../../lib/artistMatch.ts";
 import { getBlockedArtistKeys } from "./discovery/feedback.ts";
 import { getBlockedTagKeys, hasBlockedTag } from "./discovery/blockedTags.ts";
 
@@ -101,7 +101,10 @@ function resolveSeed(seed: RadioSeed) {
   const ids = uniqueText(artistRefs.map((artist) => artist.id));
   const mbids = uniqueText(artistRefs.map((artist) => artist.mbid));
   const names = uniqueText(artistRefs.map((artist) => artist.name));
-  const matchedArtists =
+  const refMatches = (ref: RadioArtistRef, artist: ArtistRow & { identityKey: string }) =>
+    Boolean(ref.id && (String(artist.id) === ref.id || artist.identityKey === ref.id)) ||
+    isSameArtist({ mbid: ref.mbid, name: ref.name }, { mbid: artist.mbid, name: artist.name });
+  const candidateArtists =
     ids.length || mbids.length || names.length
       ? db
           .prepare<string[], ArtistRow & { identityKey: string }>(
@@ -111,15 +114,12 @@ function resolveSeed(seed: RadioSeed) {
           )
           .all(...ids, ...ids, ...mbids, ...names)
       : [];
+  const matchedArtists = candidateArtists.filter((artist) =>
+    artistRefs.some((ref) => refMatches(ref, artist)),
+  );
   const external = artistRefs.filter(
     (ref) =>
-      Boolean(ref.mbid || ref.name) &&
-      !matchedArtists.some(
-        (artist) =>
-          (ref.id && (String(artist.id) === ref.id || artist.identityKey === ref.id)) ||
-          (ref.mbid && artist.mbid === ref.mbid) ||
-          (ref.name && artist.name.toLowerCase() === ref.name.toLowerCase()),
-      ),
+      Boolean(ref.mbid || ref.name) && !matchedArtists.some((artist) => refMatches(ref, artist)),
   );
 
   const artistIds = [
@@ -201,10 +201,9 @@ async function similarArtistScores(
   }
   const libraryArtists = db.prepare<string[], ArtistRow>(branches.join(" UNION ")).all(...params);
   for (const entry of similar) {
-    const name = entry.name.toLowerCase();
     const match = Math.max(0, Math.min(1, entry.match));
     for (const artist of libraryArtists) {
-      if ((entry.mbid && artist.mbid === entry.mbid) || artist.name.toLowerCase() === name) {
+      if (isSameArtist(entry, { mbid: artist.mbid, name: artist.name })) {
         scores.set(artist.id, Math.max(scores.get(artist.id) ?? 0, 0.35 + 0.6 * match));
       }
     }

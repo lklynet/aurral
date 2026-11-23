@@ -23,10 +23,12 @@ function addArtist(
   genres: string[] = [],
   albumGenres: string[] = [],
   trackGenres: string[][] = [],
+  mbid: string | null = null,
 ) {
   const artist = store.upsertLibraryArtist({
     identityKey: `artist:${name}`,
     name,
+    mbid,
     metadata: genres.length ? { genres } : null,
   });
   const album = store.upsertLibraryAlbum({
@@ -180,20 +182,26 @@ test("an artist radio still plays when similar artists can't be reached", async 
   assert.deepEqual(Object.keys(countByArtist(picks)).sort(), ["Massive Attack", "Tricky"]);
 });
 
-test("a radio for an artist outside the library plays its similar artists from the library", async () => {
+test("a radio for an artist outside the library plays its similar artists from the library, not a namesake", async () => {
+  const beth = "00000000-0000-4000-8000-0000000000b1";
   addArtist("Portishead", 3);
   addArtist("Tricky", 3);
+  addArtist("Beth Gibbons", 3, [], [], [], "00000000-0000-4000-8000-0000000000b2");
 
+  const askedFor: (string | null | undefined)[] = [];
   const picks = await buildRadio({
     userId,
-    seed: { artists: [{ name: "Beth Gibbons", mbid: "beth" }] },
+    seed: { artists: [{ name: "Beth Gibbons", mbid: beth }] },
     limit: 4,
     random: seeded(11),
-    similarArtists: async (artist) =>
-      artist.mbid === "beth" ? [{ mbid: null, name: "Portishead", match: 1 }] : [],
+    similarArtists: async (artist) => {
+      askedFor.push(artist.mbid);
+      return artist.mbid === beth ? [{ mbid: null, name: "Portishead", match: 1 }] : [];
+    },
   });
 
-  assert.deepEqual(countByArtist(picks), { Portishead: 2, Tricky: 2 });
+  assert.deepEqual(askedFor, [beth]);
+  assert.equal(countByArtist(picks).Portishead, 2);
 });
 
 test("Subsonic similar songs follow the song id and leave out the song itself", async () => {

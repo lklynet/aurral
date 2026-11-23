@@ -267,6 +267,15 @@ test("Blends mix two people's plays with their 3 closest listeners until either 
     new Set(["Shared A", "Shared B", "Mia A", "Mia B", "Mia C"]),
   );
   assert.equal(await getUserMix(lee, `listens-${kit}`, NOW), null);
+  db.prepare("UPDATE play_events SET artist_mbid = ? WHERE artist = 'Lee A'").run(
+    "00000000-0000-4000-8000-00000000000a",
+  );
+  addDiscoveryFeedback(mia, {
+    action: "block_artist",
+    artistId: "00000000-0000-4000-8000-00000000000b",
+    artistName: "Lee A",
+  });
+  assert.ok((await blendOf(lee, mia))?.trackIds.some((id) => artistOf(id) === "Lee A"));
   addDiscoveryFeedback(mia, { action: "block_artist", artistName: "Lee A" });
   assert.ok((await blendOf(lee, mia))?.trackIds.every((id) => artistOf(id) !== "Lee A"));
 
