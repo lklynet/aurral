@@ -1,6 +1,6 @@
 import { WORKER_GROUPS } from "./jobs/groups.ts";
 import { ownsQueueHere } from "./jobs/queue.ts";
-import { logger } from "./logger.ts";
+import { logger, safeLogDiagnostic } from "./logger.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
 
@@ -13,7 +13,7 @@ function exitAfterReporting(label: string) {
   return (error: unknown) => {
     logger.error("system", label, error ?? undefined);
     if (!process.connected) process.exit(1);
-    const reason = `Worker crashed: ${asAppError(error)?.message || String(error)}`;
+    const reason = `Worker crashed: ${safeLogDiagnostic(error)}`;
     process.send!({ type: "crashed", reason }, () => process.exit(1));
   };
 }
@@ -31,15 +31,14 @@ const IDLE_STOP_MS = (() => {
   return configured <= 0 ? 0 : Math.max(5000, Math.floor(configured));
 })();
 async function loadDownloadOwner() {
-  const owner = await import("./downloadJobs/downloadWorker.ts");
-  if (!(owner.downloadWorker instanceof owner.DownloadWorker)) {
+  const { DownloadWorker, downloadWorker } = await import("./downloadJobs/downloadWorker.ts");
+  if (!(downloadWorker instanceof DownloadWorker)) {
     throw new Error("Download worker process requires the download owner");
   }
-  return { worker: owner.downloadWorker, startIfPending: owner.startWorkerIfPending };
+  return downloadWorker;
 }
 
-const downloadOwner = group === "downloads" ? await loadDownloadOwner() : null;
-const downloadWorker = downloadOwner?.worker ?? null;
+const downloadWorker = group === "downloads" ? await loadDownloadOwner() : null;
 const playlistOperationStatus =
   group === "downloads"
     ? (await import("./playlists/playlistOperationWorker.ts")).getPlaylistOperationWorkerStatus
@@ -147,7 +146,6 @@ process.once("disconnect", () => {
   void stop();
 });
 
-await downloadOwner?.startIfPending();
 startGroupWorkers();
 process.send({ type: "ready", group });
 const heartbeat = setInterval(() => {
