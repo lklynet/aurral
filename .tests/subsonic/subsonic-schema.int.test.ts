@@ -243,6 +243,7 @@ beforeAll(async () => {
         title: "Schema Song",
         track: { no: 1, of: null },
         genre: ["Rock"],
+        releasetype: ["album", "compilation"],
         musicbrainz_albumartistid: ["11111111-1111-4111-8111-111111111111"],
         musicbrainz_releasegroupid: "22222222-2222-4222-8222-222222222222",
         musicbrainz_recordingid: "33333333-3333-4333-8333-333333333333",
@@ -314,6 +315,7 @@ test("system and browsing responses match the Subsonic and OpenSubsonic schemas"
   const artist = await assertValid("getArtist", { id: artistId });
   const albumId = artist.artist.album[0].id;
   const album = await assertValid("getAlbum", { id: albumId });
+  assert.match(JSON.stringify(album), /"releaseTypes":\["album","compilation"\]/);
   const songId = album.album.song[0].id;
   await assertValid("getSong", { id: songId });
   await assertValid("getMusicDirectory", { id: "1" });

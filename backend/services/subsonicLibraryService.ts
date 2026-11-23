@@ -165,6 +165,7 @@ type SubsonicAlbum = {
   starred?: string;
   musicBrainzId: string;
   year?: number;
+  releaseTypes?: string[];
 } & SubsonicGenreFields &
   SubsonicRatingFields;
 type SubsonicArtist = {
@@ -240,7 +241,7 @@ const includesAurralMusicFolder = (options: SubsonicQuery = {}) => {
   return !musicFolderId || musicFolderId === "1";
 };
 
-const genreNames = (value: unknown) =>
+const tagValues = (value: unknown) =>
   (Array.isArray(value) ? value : [value])
     .flatMap((entry) => String(entry || "").split(";"))
     .map((entry) => entry.trim())
@@ -248,6 +249,16 @@ const genreNames = (value: unknown) =>
 
 const readField = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
+
+// Clients match the lowercase names Picard writes to RELEASETYPE, so types
+// from MusicBrainz are lowercased too.
+const albumReleaseTypes = ({ metadata }: LibraryAlbum) => {
+  const primary = metadata?.albumType || metadata?.releaseType;
+  const types = primary
+    ? [primary, readField(metadata, "secondaryTypes")]
+    : [readField(readField(metadata, "tags"), "releasetype")];
+  return [...new Set(types.flatMap(tagValues).map((type) => type.toLowerCase()))];
+};
 
 type GenreEntity = { metadata?: object | null } | null | undefined;
 
@@ -259,7 +270,7 @@ const entityGenres = (entity: GenreEntity) => {
     readField(metadata, "genre"),
     readField(readField(metadata, "tags"), "genre"),
   ]
-    .flatMap(genreNames)
+    .flatMap(tagValues)
     .filter((genre, index, values) => values.indexOf(genre) === index);
 };
 
@@ -424,6 +435,8 @@ const albumData = (library: IndexedLibrary, album: LibraryAlbum) => {
     value.genre = genres[0];
     value.genres = genres.map((name) => ({ name }));
   }
+  const types = albumReleaseTypes(album);
+  if (types.length) value.releaseTypes = types;
   return {
     tracks,
     value,
@@ -472,7 +485,7 @@ const toArtist = (library: IndexedLibrary, artist: LibraryArtist) => {
   };
 };
 
-export const toChildAlbum = ({ name, songCount, ...album }: SubsonicAlbum) => ({
+export const toChildAlbum = ({ name, songCount, releaseTypes, ...album }: SubsonicAlbum) => ({
   ...album,
   parent: album.artistId,
   isDir: true,
