@@ -1015,6 +1015,7 @@ const trackFromJob = (job: DownloadJob | null | undefined) => {
   return (
     track && {
       ...track,
+      filePath: job?.finalPath,
       albumTrackCount: job?.albumTrackCount,
       albumTrackTitles: job?.albumTrackTitles,
     }
@@ -1092,7 +1093,7 @@ export function keepPlaylistStarsInLibrary(playlistId: string) {
   })();
 }
 
-const findAvailableLibraryTrack = (track: PlaylistTrackInput | null | undefined) =>
+const findAvailableLibraryTrack = (track: ReturnType<typeof trackFromJob>) =>
   resolveLibraryTracks([track])[0];
 
 // Map playlist-song star rows to their library song row when the entry is a library track.
