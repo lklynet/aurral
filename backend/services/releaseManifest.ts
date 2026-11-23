@@ -185,7 +185,7 @@ export function releasesHolding<Release extends ManifestReleaseInput>(
 }
 
 // The boundary parser for the exact edition a download must deliver. It takes
-// a BrainzMash album and one of its releases, or a release record that uses
+// a metadata album and one of its releases, or a release record that uses
 // Aurral's own track field names, and refuses any tracklist that is not
 // complete and ordered.
 export function toReleaseManifest(

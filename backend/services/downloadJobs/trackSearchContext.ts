@@ -507,7 +507,7 @@ async function applyReleaseManifest(
 }
 
 // A complete release identity can skip release discovery. Its
-// recording ID is still checked against the cached BrainzMash tracklist so
+// recording ID is still checked against the cached metadata tracklist so
 // jobs created before that rule can be repaired safely.
 function hasReleaseIdentity(track: ResolvedTrack) {
   return (
