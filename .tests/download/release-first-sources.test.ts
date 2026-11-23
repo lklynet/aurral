@@ -2101,15 +2101,24 @@ test("a two-disc Soulseek release pairs each track with its own disc, in disc fo
 test("after an album attempt falls back, a sibling's own track search puts the copy from a folder of its release first", async (t) => {
   useSources({ slskd: { enabled: true, url: "http://127.0.0.1:9" } });
   await serveGroups(t, [resolvedGroup]);
-  const titles = ["First", "Second", "Third", "Bonus"];
-  const folder = (username: string, held: string[]) =>
+  const folder = (username: string, held: [number, string][]) =>
     soulseekFolder(
       username,
       "Resolved Band\\Resolved Album",
-      held.map((title) => [`0${titles.indexOf(title) + 1} - ${title}`]),
+      held.map(([place, title]) => [`0${place} - ${title}`]),
     );
-  // The first folder is the release plus a bonus song; the second is the release missing one song.
-  mockSoulseekSearch(t, [folder("bonus", titles), folder("exact", ["First", "Third"])]);
+  // The first folder holds a live version of one song; the second is the release missing one song.
+  mockSoulseekSearch(t, [
+    folder("live", [
+      [1, "First"],
+      [2, "Second (Live)"],
+      [3, "Third"],
+    ]),
+    folder("exact", [
+      [1, "First"],
+      [3, "Third"],
+    ]),
+  ]);
   const [leader, sibling] = resolvedJobs(["Second", "Third"], "affinity-request");
   assert.ok(leader !== undefined && sibling !== undefined);
 
@@ -2132,6 +2141,6 @@ test("after an album attempt falls back, a sibling's own track search puts the c
   while (step?.phase === "search") step = await processPipelinePayload(step);
   assert.deepEqual(
     soulseekReleaseCandidates(step).map((candidate) => candidate.raw.user),
-    ["exact", "bonus"],
+    ["exact", "live"],
   );
 });
