@@ -10,6 +10,7 @@ import { useSharedArtworkStyle } from "../../navigation/viewTransitions.ts";
 import { libraryArtistPlaysQueryOptions } from "../../utils/api/endpoints/library.ts";
 import {
   firstAvailableFile,
+  newestReleaseFirst,
   releaseTypeOf,
   type LibraryAlbum,
   type LibraryArtist,
@@ -30,9 +31,6 @@ const MOST_PLAYED = 10;
 const count = (total: number, unit: string) => `${total} ${unit}${total === 1 ? "" : "s"}`;
 
 const isSingle = (album: LibraryAlbum) => ["Single", "EP"].includes(releaseTypeOf(album) ?? "");
-
-const newestFirst = (left: LibraryAlbum, right: LibraryAlbum) =>
-  String(right.releaseDate || "").localeCompare(String(left.releaseDate || ""));
 
 function ReleaseSection({
   title,
@@ -91,12 +89,12 @@ export function LibraryArtistDetail({
   const name = artist.name || "Unknown Artist";
   const owned = albums
     .filter((album) => String(album.artistId) === String(artist.id))
-    .sort(newestFirst);
+    .sort(newestReleaseFirst);
   const { mbid } = artist;
   const appearsOn = mbid
     ? albums
         .filter((album) => !owned.includes(album) && album.creditedArtistMbids?.includes(mbid))
-        .sort(newestFirst)
+        .sort(newestReleaseFirst)
     : [];
   const releases = owned.filter((album) => !isSingle(album));
   const sections = [

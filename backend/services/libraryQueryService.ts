@@ -2949,13 +2949,15 @@ function buildPageQuery({
     orderBy = `(SELECT MAX(play.played_at) ${TRACK_PLAYS}) ${latestFirst}, track.id`;
     orderParameters.push(userId ?? -1);
   } else if (sort === "released" && kind !== "genres") {
+    const dated = (alias: string) =>
+      `CASE WHEN ${alias}.release_date GLOB '[0-9][0-9][0-9][0-9]*' THEN ${alias}.release_date END`;
     const released =
       kind === "artists"
-        ? "(SELECT MAX(release_album.release_date) FROM library_albums AS release_album WHERE release_album.artist_id = artist.id)"
+        ? `(SELECT MAX(${dated("release_album")}) FROM library_albums AS release_album WHERE release_album.artist_id = artist.id)`
         : kind === "tracks"
-          ? "MAX(album.release_date)"
-          : "album.release_date";
-    orderBy = `coalesce(${released}, '') = '', ${released} ${latestFirst}, ${idExpression}`;
+          ? `MAX(${dated("album")})`
+          : dated("album");
+    orderBy = `${released} IS NULL, ${released} ${latestFirst}, ${idExpression}`;
   } else if (favorites && sort === "favorited") {
     orderBy = `favorite.value ${latestFirst}, ${idExpression}`;
   } else if (kind === "albums" && sort === "random") {
