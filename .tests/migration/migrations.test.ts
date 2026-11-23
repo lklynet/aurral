@@ -262,6 +262,39 @@ test("upgrading clears BrainzMash cache rows and saved defaults when moving to d
   );
 });
 
+test("upgrading renames stored discovery sources that still say Last.fm", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, 31));
+  const cache = db.prepare<[string, string]>(
+    "INSERT INTO discovery_cache (key, value, last_updated) VALUES (?, ?, 1)",
+  );
+  cache.run(
+    "user:1:recommendations",
+    JSON.stringify([
+      { name: "Bridge", sourceTypes: ["lastfm_related"], tagSource: "lastfm_artist" },
+      { name: "Kept", sourceTypes: ["library"], tagSource: "inherited" },
+    ]),
+  );
+
+  migrate(db);
+
+  assert.deepEqual(
+    JSON.parse(
+      db
+        .prepare<[], string>(
+          "SELECT value FROM discovery_cache WHERE key = 'user:1:recommendations'",
+        )
+        .pluck()
+        .get() ?? "null",
+    ),
+    [
+      { name: "Bridge", sourceTypes: ["similar"], tagSource: "artist" },
+      { name: "Kept", sourceTypes: ["library"], tagSource: "inherited" },
+    ],
+  );
+});
+
 test("upgrading names a Usenet job's download by its client and its turned-down releases by album", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");

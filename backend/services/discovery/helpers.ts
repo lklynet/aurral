@@ -182,7 +182,7 @@ export const canInheritTagsFromSeeds = (item: {
   tagSource?: string;
   tags?: unknown[];
 }) => {
-  if (item.candidateTagsHydrated && item.tagSource === "lastfm_artist") return false;
+  if (item.candidateTagsHydrated && item.tagSource === "artist") return false;
   const seedTagCount = Array.isArray(item.tags) ? item.tags.length : 0;
   return seedTagCount >= INHERITED_TAG_MINIMUM;
 };

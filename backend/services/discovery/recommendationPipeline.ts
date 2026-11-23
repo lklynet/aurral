@@ -308,7 +308,7 @@ export const applyHydratedCandidateTags = (
       ...recommendation,
       tags: normalizedTags,
       candidateTagsHydrated: true,
-      tagSource: options.source || "lastfm_artist",
+      tagSource: options.source || "artist",
     };
   }
 
@@ -343,7 +343,7 @@ export const applyHydratedCandidateTags = (
     scoreTotal,
     score: scoreTotal,
     candidateTagsHydrated: true,
-    tagSource: options.source || "lastfm_artist",
+    tagSource: options.source || "artist",
   };
 };
 
@@ -1137,7 +1137,7 @@ export const mergeRetainedRecommendationPool = ({
   const existing = Array.isArray(existingRecommendations) ? existingRecommendations : [];
   const chartPickNames = new Set(existing.filter(isChartPick).map(({ name }) => name));
   const viaChartPicks = ({ sourceTypes = [], sourceArtists = [] }: DiscoveryRecommendation) =>
-    sourceTypes.every((source) => source === "lastfm_related") &&
+    sourceTypes.every((source) => source === "similar") &&
     sourceArtists.length > 0 &&
     sourceArtists.every((name) => chartPickNames.has(name));
   const retained = existing

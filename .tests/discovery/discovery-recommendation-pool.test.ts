@@ -158,13 +158,7 @@ test("picks from chart seeds alone never carry over to the next rebuild", () => 
   artists.reset();
   const retained = artists.makeBatch(5, 300, "retained").map((artist, index) => ({
     ...artist,
-    sourceTypes: [
-      ["charts"],
-      ["charts", "spotify"],
-      ["spotify"],
-      ["lastfm_related"],
-      ["lastfm_related"],
-    ][index],
+    sourceTypes: [["charts"], ["charts", "spotify"], ["spotify"], ["similar"], ["similar"]][index],
     sourceArtists: [
       ["Chart"],
       ["Chart", "Seed"],

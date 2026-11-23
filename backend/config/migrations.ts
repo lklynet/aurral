@@ -459,6 +459,13 @@ const indexPlaysByArtistId: Migration = (db) =>
       ON play_events(user_id, artist_mbid);
   `);
 
+const renameDiscoverySourceLabels: Migration = (db) =>
+  db.exec(`
+    UPDATE discovery_cache
+    SET value = replace(replace(value, '"lastfm_related"', '"similar"'), '"lastfm_artist"', '"artist"')
+    WHERE instr(value, '"lastfm_') > 0;
+  `);
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -491,6 +498,7 @@ export const migrations: Migration[] = [
   moveMetadataToDataAurral,
   forgetArtistCoverAlbums,
   indexPlaysByArtistId,
+  renameDiscoverySourceLabels,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {
