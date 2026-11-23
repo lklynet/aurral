@@ -1,6 +1,5 @@
 import type { InferResponseType } from "hono/client";
 import type { playlistJobsClient } from "./api/clients/playlistJobs.ts";
-import { formatDateTime } from "./dateTime.ts";
 
 type PlaylistStatusSnapshot = InferResponseType<typeof playlistJobsClient.status.$get, 200>;
 
@@ -61,50 +60,8 @@ export const EMPTY_PLAYLIST_STATS: PlaylistStats = {
   failed: 0,
 };
 
-export const getPlaylistDownloadProgressPct = (
-  stats: PlaylistStats | null | undefined,
-  trackCount = 0,
-) => {
-  const done = statCount(stats?.done);
-  const total = Math.max(
-    statCount(trackCount),
-    statCount(stats?.pending) +
-      statCount(stats?.downloading) +
-      statCount(stats?.blocked) +
-      done +
-      statCount(stats?.failed),
-  );
-  if (total <= 0) return null;
-  return Math.min(100, Math.round((done / total) * 100));
-};
-
-export const formatTrackCountLabel = (
-  trackCount: number,
-  stats: PlaylistStats | null | undefined,
-) => {
-  const count = statCount(trackCount);
-  const trackWord = count === 1 ? "track" : "tracks";
-  const base = `${count} ${trackWord}`;
-  const pct = getPlaylistDownloadProgressPct(stats, count);
-  if (pct === null) return base;
-  return `${base} · ${pct}%`;
-};
-
 export const parseFlowTimestamp = (value: number | string | null | undefined) =>
   typeof value === "number" ? value : Number.parseInt(String(value), 10);
-
-export const formatFlowLastRun = (lastRunAt: number | null | undefined) => {
-  const timestamp = parseFlowTimestamp(lastRunAt);
-  if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return null;
-  return formatDateTime(date, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-};
 
 export const sanitizePlaylistStats = (stats: Partial<PlaylistStats> | null | undefined) => {
   const pending = statCount(stats?.pending);

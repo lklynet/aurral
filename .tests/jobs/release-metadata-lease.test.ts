@@ -46,7 +46,7 @@ test("a metadata refresh waiting on another's lease stops without running or spe
   }
 });
 
-test("losing the lease ends a refresh blocked on ListenBrainz", async () => {
+test("losing the lease ends a refresh blocked on the release feed", async () => {
   const { refreshReleaseMetadata } = await import("../../backend/services/releaseMetadataSync.ts");
   const { upsertLibraryArtist } = await import("../../backend/services/libraryMediaStore.ts");
   const { http } = await import("../../lib/http.ts");

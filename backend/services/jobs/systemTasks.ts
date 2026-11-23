@@ -125,7 +125,7 @@ const SYSTEM_TASKS = {
   "release-metadata-refresh": {
     queue: "releaseMetadata",
     label: "Release metadata refresh",
-    description: "Refreshes recent and upcoming releases from ListenBrainz.",
+    description: "Refreshes recent and upcoming releases.",
     schedule: { everyMs: 24 * HOUR, priority: -5 },
     startup: { delayMs: 12_000, priority: -5 },
     interruptible: true,

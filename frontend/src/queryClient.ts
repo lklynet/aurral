@@ -95,7 +95,6 @@ export const queryKeys = {
   listeningHistory: (userId: MaybeId): QueryKey => ["auth", "listening-history", userId || null],
   libraryPrefix: ["library"],
   libraryFavorites: ["library", "favorites"],
-  libraryAlbums: (artistId: MaybeId): QueryKey => ["library", "albums", artistId || null],
   libraryAlbumsPrefix: ["library", "albums"],
   libraryArtist: (mbid: MaybeText): QueryKey => ["library", "artist", mbid || null],
   libraryMatches: (

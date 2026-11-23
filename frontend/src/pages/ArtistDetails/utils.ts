@@ -41,11 +41,6 @@ export interface ReleaseMetricValue {
   title: string;
 }
 
-export interface PlayableTrack {
-  previewProvider?: string | null;
-  streamPath?: string | null;
-}
-
 export interface ArtistCoverImage {
   image: string | null;
   front?: boolean;
@@ -513,18 +508,4 @@ export const buildPick = <T extends ReleaseGroup>({
     type: releaseGroup["primary-type"] || "Release",
     releaseGroup,
   };
-};
-
-export const isLibraryPlaybackTrack = (track: PlayableTrack | null | undefined) =>
-  !!track?.streamPath;
-
-export const getTrackPlayAccessibilityLabel = (
-  track: PlayableTrack | null | undefined,
-  isPlaying: boolean,
-) => {
-  const fromLibrary = isLibraryPlaybackTrack(track);
-  if (isPlaying) {
-    return fromLibrary ? "Pause library playback" : "Pause preview";
-  }
-  return fromLibrary ? "Play from library" : "Play preview";
 };
