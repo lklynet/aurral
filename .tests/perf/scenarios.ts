@@ -144,9 +144,7 @@ export const scenarios: Scenario[] = [
   {
     name: "discover artist",
     requests: () => [
-      `/api/artists/${DISCOVER_ARTIST}?${new URLSearchParams({ mode: "core", releaseTypes: allReleaseTypes.join(",") })}`,
-      `/api/artists/${DISCOVER_ARTIST}/cover`,
-      `/api/artists/${DISCOVER_ARTIST}/similar?limit=10`,
+      `/api/artists/${DISCOVER_ARTIST}?${new URLSearchParams({ releaseTypes: allReleaseTypes.join(","), appearsOnLimit: "24" })}`,
       `/api/artists/${DISCOVER_ARTIST}/playlists`,
       `/api/artists/${DISCOVER_ARTIST}/shows`,
       `/api/artists/${DISCOVER_ARTIST}/listening?artistName=${encodeURIComponent("Perf Artist 00001")}`,
@@ -156,16 +154,14 @@ export const scenarios: Scenario[] = [
   { name: "discover album", requests: () => [`/api/artists/release-group/${DISCOVER_ALBUM}`] },
   {
     name: "discover album tracks",
-    requests: () => [
-      `/api/artists/release-group/${DISCOVER_ALBUM}/tracks`,
-      `/api/artists/release-group/${DISCOVER_ALBUM}/previews`,
-    ],
+    requests: () => [`/api/artists/release-group/${DISCOVER_ALBUM}/tracks`],
   },
   {
     name: "discover album editions",
     requests: () => [`/api/artists/release-group/${DISCOVER_ALBUM}/editions`],
   },
   { name: "discover search", requests: () => ["/api/search?q=perf&scope=artist"] },
+  { name: "unified search", requests: () => ["/api/search/unified?q=perf"] },
   { name: "similar artists", requests: () => [`/api/artists/${SIMILAR_ARTIST}/similar`] },
   { name: "playlists", requests: () => ["/api/playlists/status"] },
   {

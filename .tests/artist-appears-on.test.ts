@@ -5,49 +5,14 @@ import { test } from "vite-plus/test";
 import appearsOn from "../backend/routes/artists/handlers/appearsOn.ts";
 import { dbOps } from "../backend/db/helpers/index.ts";
 import { json, stubFetch } from "./helpers/stubFetch.ts";
-import { useFakeClock } from "./helpers/fakeClock.ts";
-
-useFakeClock();
 
 const VARIOUS_ARTISTS = "89ad4ac3-39f7-470e-963a-56509c546377";
 const GUEST_HOST = "22222222-2222-4222-8222-222222222222";
+const RG_FEATURE = "aaaaaaaa-aaaa-4aaa-8aaa-000000000001";
+const RG_COMP = "aaaaaaaa-aaaa-4aaa-8aaa-000000000002";
+const RG_CORRECTED = "aaaaaaaa-aaaa-4aaa-8aaa-000000000003";
 
-const credit = (id: string, name: string) => [{ name, joinphrase: "", artist: { id, name } }];
-
-const mbRelease = ({
-  id,
-  groupId,
-  title,
-  date,
-  by,
-}: {
-  id: string;
-  groupId: string;
-  title: string;
-  date: string;
-  by: { name: string; joinphrase: string; artist: { id: string; name: string } }[];
-}) => ({
-  id,
-  title,
-  date,
-  status: "Official",
-  "artist-credit": by,
-  "release-group": {
-    id: groupId,
-    title,
-    "first-release-date": date,
-    "primary-type": "Album",
-    "secondary-types": [],
-    "artist-credit": by,
-  },
-});
-
-const isTrackArtistBrowse = (url: URL, mbid: string) =>
-  url.hostname === "musicbrainz.org" &&
-  url.pathname === "/ws/2/release" &&
-  url.searchParams.get("track_artist") === mbid;
-
-async function postAppearsOn(mbid: string, body: { limit?: number } = {}) {
+async function postAppearsOn(mbid: string, body: { limit?: number; excludeIds?: string[] } = {}) {
   const response = await appearsOn.request(`/artists/${mbid}/appears-on`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -56,56 +21,51 @@ async function postAppearsOn(mbid: string, body: { limit?: number } = {}) {
   return { status: response.status, body: await response.json() };
 }
 
-test("appears-on lists other artists' releases once each, newest first, and never the artist's own", async (t) => {
+test("appears-on serves the artist file's appearances and paginates with excludeIds", async (t) => {
   const mbid = "33333333-3333-4333-8333-333333333333";
-  const ownCredit = credit(mbid, "Guest Artist");
   stubFetch(t, (url) => {
-    if (!isTrackArtistBrowse(url, mbid)) return json({}, 404);
+    if (url.pathname !== `/v1/artist/${mbid}`) return json({}, 404);
     return json({
-      "release-count": 4,
-      "release-offset": 0,
-      releases: [
-        mbRelease({
-          id: "r-comp",
-          groupId: "rg-comp",
-          title: "Hits of 1995",
-          date: "1995-03-01",
-          by: credit(VARIOUS_ARTISTS, "Various Artists"),
-        }),
-        mbRelease({
-          id: "r-comp-reissue",
-          groupId: "rg-comp",
-          title: "Hits of 1995",
-          date: "2001-06-01",
-          by: credit(VARIOUS_ARTISTS, "Various Artists"),
-        }),
-        mbRelease({
-          id: "r-own",
-          groupId: "rg-own",
-          title: "Own Album",
-          date: "2020-01-01",
-          by: ownCredit,
-        }),
-        mbRelease({
-          id: "r-feature",
-          groupId: "rg-feature",
+      id: mbid,
+      name: "Guest Artist",
+      appearsOn: [
+        {
+          id: RG_FEATURE,
           title: "Host Album",
-          date: "2010-09-09",
-          by: credit(GUEST_HOST, "Host Artist"),
-        }),
+          type: "Album",
+          firstReleaseDate: "2010-09-09",
+          artistId: GUEST_HOST,
+          artistName: "Host Artist",
+        },
+        {
+          id: RG_COMP,
+          title: "Hits of 1995",
+          type: "Album",
+          secondaryTypes: ["Compilation"],
+          firstReleaseDate: "1995-03-01",
+          artistId: VARIOUS_ARTISTS,
+          artistName: "Various Artists",
+        },
       ],
     });
   });
 
-  const response = await postAppearsOn(mbid, { limit: 24 });
-
-  assert.equal(response.status, 200);
+  const first = await postAppearsOn(mbid, { limit: 1 });
+  assert.equal(first.status, 200);
   assert.deepEqual(
-    response.body.items.map((item: { id: string }) => item.id),
-    ["rg-feature", "rg-comp"],
+    first.body.items.map((item: { id: string }) => item.id),
+    [RG_FEATURE],
   );
-  assert.equal(response.body.items[1]["artist-credit"][0].name, "Various Artists");
-  assert.equal(response.body.hasMore, false);
+  assert.equal(first.body.hasMore, true);
+
+  const second = await postAppearsOn(mbid, { limit: 1, excludeIds: [RG_FEATURE] });
+  assert.equal(second.status, 200);
+  assert.deepEqual(
+    second.body.items.map((item: { id: string }) => item.id),
+    [RG_COMP],
+  );
+  assert.equal(second.body.items[0]["artist-credit"][0].name, "Various Artists");
+  assert.equal(second.body.hasMore, false);
 });
 
 test("appears-on follows the artist's saved MusicBrainz ID", async (t) => {
@@ -116,18 +76,19 @@ test("appears-on follows the artist's saved MusicBrainz ID", async (t) => {
     dbOps.deleteArtistOverride(mbid);
   });
   stubFetch(t, (url) => {
-    if (!isTrackArtistBrowse(url, corrected)) return json({}, 404);
+    if (url.pathname !== `/v1/artist/${corrected}`) return json({}, 404);
     return json({
-      "release-count": 1,
-      "release-offset": 0,
-      releases: [
-        mbRelease({
-          id: "r-corrected",
-          groupId: "rg-corrected",
+      id: corrected,
+      name: "Corrected Artist",
+      appearsOn: [
+        {
+          id: RG_CORRECTED,
           title: "Host Album",
-          date: "2010-09-09",
-          by: credit(GUEST_HOST, "Host Artist"),
-        }),
+          type: "Album",
+          firstReleaseDate: "2010-09-09",
+          artistId: GUEST_HOST,
+          artistName: "Host Artist",
+        },
       ],
     });
   });
@@ -141,103 +102,6 @@ test("appears-on follows the artist's saved MusicBrainz ID", async (t) => {
   assert.ok("items" in body);
   assert.deepEqual(
     body.items.map(({ id }) => id),
-    ["rg-corrected"],
+    [RG_CORRECTED],
   );
-});
-
-test("appears-on skips a release Aurral can't read and still pages by what MusicBrainz sent", async (t) => {
-  const mbid = "55555555-5555-4555-8555-555555555555";
-  const offsets: (string | null)[] = [];
-  stubFetch(t, (url) => {
-    if (!isTrackArtistBrowse(url, mbid)) return json({}, 404);
-    offsets.push(url.searchParams.get("offset"));
-    return json({
-      "release-count": 2,
-      "release-offset": 0,
-      releases: [
-        { id: "r-broken", title: "Broken", "release-group": { id: 7 } },
-        mbRelease({
-          id: "r-feature",
-          groupId: "rg-readable",
-          title: "Host Album",
-          date: "2010-09-09",
-          by: credit(GUEST_HOST, "Host Artist"),
-        }),
-      ],
-    });
-  });
-
-  const response = await postAppearsOn(mbid, { limit: 24 });
-
-  assert.equal(response.status, 200);
-  assert.deepEqual(
-    response.body.items.map((item: { id: string }) => item.id),
-    ["rg-readable"],
-  );
-  assert.equal(response.body.hasMore, false);
-  assert.deepEqual(offsets, ["0"]);
-});
-
-test("a failed MusicBrainz lookup reports an error and the next request retries", async (t) => {
-  const mbid = "66666666-6666-4666-8666-666666666666";
-  let musicbrainzUp = false;
-  stubFetch(t, (url) => {
-    if (!isTrackArtistBrowse(url, mbid)) return json({}, 404);
-    if (!musicbrainzUp) return json({ error: "unavailable" }, 503);
-    return json({
-      "release-count": 1,
-      "release-offset": 0,
-      releases: [
-        mbRelease({
-          id: "r-feature",
-          groupId: "rg-retry-feature",
-          title: "Host Album",
-          date: "2010-09-09",
-          by: credit(GUEST_HOST, "Host Artist"),
-        }),
-      ],
-    });
-  });
-
-  const failed = await postAppearsOn(mbid, { limit: 24 });
-  assert.equal(failed.status, 502);
-
-  musicbrainzUp = true;
-  const retried = await postAppearsOn(mbid, { limit: 24 });
-  assert.equal(retried.status, 200);
-  assert.deepEqual(
-    retried.body.items.map((item: { id: string }) => item.id),
-    ["rg-retry-feature"],
-  );
-});
-
-test("a busy MusicBrainz response is retried once after a pause", async (t) => {
-  const mbid = "77777777-7777-4777-8777-777777777777";
-  let requests = 0;
-  stubFetch(t, (url) => {
-    if (!isTrackArtistBrowse(url, mbid)) return json({}, 404);
-    requests += 1;
-    if (requests === 1) return json({ error: "busy" }, 503);
-    return json({
-      "release-count": 1,
-      "release-offset": 0,
-      releases: [
-        mbRelease({
-          id: "r-busy-feature",
-          groupId: "rg-busy-feature",
-          title: "Host Album",
-          date: "2012-02-02",
-          by: credit(GUEST_HOST, "Host Artist"),
-        }),
-      ],
-    });
-  });
-
-  const result = await postAppearsOn(mbid, { limit: 24 });
-  assert.equal(result.status, 200);
-  assert.deepEqual(
-    result.body.items.map((item: { id: string }) => item.id),
-    ["rg-busy-feature"],
-  );
-  assert.equal(requests, 2);
 });

@@ -29,16 +29,13 @@ import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { useQueueTrackActions } from "../../hooks/useQueueTrackActions";
 import { useShareAction } from "../../hooks/useShareAction";
 import { readAlbumRouteState } from "../../navigation/albumRoute.tsx";
-import { queryClient, queryKeys } from "../../queryClient.ts";
+import { queryClient } from "../../queryClient.ts";
 import {
   libraryAlbumLookupQueryOptions,
   releaseGroupDetailsQueryOptions,
 } from "../../queryOptions.ts";
 import { asApiError } from "../../utils/api/core.ts";
-import {
-  getReleaseTrackCredits,
-  type ReleaseGroupTrack,
-} from "../../utils/api/endpoints/artists.ts";
+import { type ReleaseGroupTrack } from "../../utils/api/endpoints/artists.ts";
 import { useReleaseGroupTracks } from "../../hooks/useReleaseGroupTracks.ts";
 import { formatArtistCredit } from "../../../../lib/artistCredit.ts";
 import { buildAlbumAddAction, countReleaseTracks } from "../../utils/albumAddAction";
@@ -274,25 +271,12 @@ function AlbumPage() {
   const hasMissingTracks = merged.some(
     (entry) => !entry.libraryTrack || !firstAvailableFile(entry.libraryTrack),
   );
-  const creditsReleaseMbid = hasMissingTracks ? releaseTracks[0]?.releaseMbid : null;
-  const { data: releaseCredits } = useQuery({
-    queryKey: queryKeys.releaseTrackCredits(creditsReleaseMbid),
-    queryFn: ({ signal }) => getReleaseTrackCredits(creditsReleaseMbid ?? "", { signal }),
-    enabled: Boolean(creditsReleaseMbid),
-    staleTime: 24 * 60 * 60 * 1000,
-  });
   const creditFor = useCallback(
     (track: ReleaseGroupTrack) => {
-      const credit = track.mbid ? releaseCredits?.credits[track.mbid] : undefined;
-      const text = credit ? formatArtistCredit(credit) : "";
+      const text = track.credits?.length ? formatArtistCredit(track.credits) : "";
       return text && text.toLowerCase() !== artistName.toLowerCase() ? text : null;
     },
-    [artistName, releaseCredits],
-  );
-
-  const hasReleaseCredit = useCallback(
-    (track: ReleaseGroupTrack) => Boolean(track.mbid && releaseCredits?.credits[track.mbid]),
-    [releaseCredits],
+    [artistName],
   );
 
   const ownedTrackMbids = useMemo(
@@ -346,6 +330,7 @@ function AlbumPage() {
   const rows: TrackListRow[] = entries.map((entry, index) => {
     const { releaseIndex } = entry;
     const section = sections[index];
+    const popular = entry.releaseTrack?.popular ?? false;
     if (!entry.libraryTrack) {
       return {
         ...releaseRows.buildReleaseTrackRow(entry.releaseTrack!, releaseIndex, {
@@ -353,6 +338,7 @@ function AlbumPage() {
           number: entry.number,
         }),
         section,
+        popular,
       };
     }
     const track = entry.libraryTrack;
@@ -371,10 +357,11 @@ function AlbumPage() {
     return {
       ...row,
       section,
+      popular,
       key: entry.key,
       number: entry.releaseTrack || !splitEditions ? entry.number : null,
       subtitle:
-        !hasFile && entry.releaseTrack && hasReleaseCredit(entry.releaseTrack)
+        !hasFile && entry.releaseTrack?.credits?.length
           ? creditFor(entry.releaseTrack)
           : isAlbumArtistCredit(track, libraryArtist)
             ? null

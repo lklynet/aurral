@@ -6,18 +6,18 @@ import {
   isMetadataNotFoundError,
   listArtistAlbums,
   resolveAlbumByArtistAndTitle,
-} from "../providers/brainzmashProvider.ts";
+} from "../providers/metadataProvider.ts";
 import {
   scoreTextMatch as scoreTextMatchBase,
   getYear,
   pickResolvedDurationMs,
   selectAlbumRelease,
-} from "../providers/brainzmashRanking.ts";
+} from "../providers/metadataRanking.ts";
 import createCache from "../apiClients/simpleCache.ts";
 import { sameVersion, trackRequestFor } from "../releaseManifest.ts";
 import { resolveReleaseManifest } from "../releaseResolver.ts";
 import type { DownloadTrackFields } from "../downloadUtils.ts";
-import type { NormalizedAlbum, NormalizedRelease } from "../providers/brainzmashMappers.ts";
+import type { NormalizedAlbum, NormalizedRelease } from "../providers/metadataMappers.ts";
 
 type ResolvedTrack = DownloadTrackFields & {
   artistName: string;
@@ -196,16 +196,10 @@ async function resolveReleaseGroup(track: DownloadTrackFields): Promise<ReleaseG
       noteFailure(error);
     }
     try {
-      const albums = safeMbid ? await listArtistAlbums(safeMbid, { hydrateLimit: 0 }) : [];
+      const albums = safeMbid ? await listArtistAlbums(safeMbid) : [];
       const candidates = albums.filter(
         (album) => album.id && matchesAlbumTitle(album.title, safeAlbum),
       );
-      if (track.releaseYear && candidates.length > 1) {
-        for (const candidate of candidates) {
-          const album = await getAlbumByMbid(candidate.id).catch(() => null);
-          candidate.firstReleaseDate = album?.releaseDate || null;
-        }
-      }
       for (const best of rankCandidates(candidates, safeAlbum, track.releaseYear)) {
         if (!(await holds(best.id))) continue;
         return {
@@ -299,6 +293,28 @@ export function matchTrackByTitle<T extends MatchableTrack>(
   return best;
 }
 
+// A recording ID names a track only on a release that also gives it the
+// track's title, on any edition and under an ID MusicBrainz has since merged.
+function matchRecording(releaseContext: ReleaseContext | null, track: ResolvedTrack) {
+  const recording = String(track.trackMbid || "")
+    .trim()
+    .toLowerCase();
+  if (!recording) return null;
+  return matchTrackByTitle(
+    releaseContext?.identityTracks?.filter((entry) =>
+      [entry.recordingId, ...entry.recordingAliases].some(
+        (id) =>
+          String(id || "")
+            .trim()
+            .toLowerCase() === recording,
+      ),
+    ),
+    track.trackName,
+    track.trackNumber,
+    track.discNumber,
+  );
+}
+
 function applyReleaseContext(base: ResolvedTrack, releaseContext: ReleaseContext | null) {
   const existingArtistMbid = String(base.artistMbid || "")
     .trim()
@@ -329,19 +345,7 @@ function applyReleaseContext(base: ResolvedTrack, releaseContext: ReleaseContext
     .toLowerCase();
   let identityMatchedTrack = null;
   if (existingTrackMbid) {
-    identityMatchedTrack = matchTrackByTitle(
-      releaseContext?.identityTracks?.filter((track) =>
-        [track?.recordingId, ...(track?.recordingAliases || [])].some(
-          (id) =>
-            String(id || "")
-              .trim()
-              .toLowerCase() === existingTrackMbid,
-        ),
-      ),
-      base.trackName,
-      base.trackNumber,
-      base.discNumber,
-    );
+    identityMatchedTrack = matchRecording(releaseContext, base);
     if (!identityMatchedTrack) {
       identityMatchedTrack = matchTrackByTitle(
         releaseContext?.identityTracks?.filter(
@@ -549,10 +553,13 @@ export async function resolveTrackSearchContext(
   if (base.albumMbid) {
     releaseContext = await fetchReleaseContext(base.albumMbid);
     unreachable = !releaseContext;
-    const otherAlbum =
-      releaseContext?.albumName &&
-      base.albumName &&
-      !matchesAlbumTitle(releaseContext.albumName, base.albumName);
+    const album = releaseContext?.unknown ? null : releaseContext;
+    const renamed =
+      album?.albumName && base.albumName && !matchesAlbumTitle(album.albumName, base.albumName);
+    // An album that lists the track's recording is the track's album under
+    // any name, so a source that names another edition, a single, or a
+    // compilation keeps the IDs it was matched to.
+    const otherAlbum = renamed && !matchRecording(album, base);
     const credited = releaseContext?.artists?.some(
       (artist) =>
         (base.artistMbid &&
@@ -569,6 +576,11 @@ export async function resolveTrackSearchContext(
       base.trackMbid = null;
       base.albumTrackTitles = [];
       releaseContext = null;
+    } else if (album && renamed) {
+      // Searches, folders, and tags follow the album name, so it is the
+      // name of the album the IDs give.
+      base.albumName = album.albumName;
+      base.releaseYear = album.releaseYear;
     }
   }
 

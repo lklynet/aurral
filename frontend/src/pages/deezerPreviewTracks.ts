@@ -19,6 +19,9 @@ type DeezerPreviewTrack = {
   preview_url: string | null;
   artworkUrl: string | null;
   deezerAlbumId: string | null;
+  artistMbid?: string | null;
+  albumMbid?: string | null;
+  trackMbid?: string | null;
   owned?: OwnedTrack | null;
   reason?: string | null;
 };
@@ -47,9 +50,9 @@ export const mapPreviewTracks = (tracks: DeezerPreviewTrack[] | undefined, sourc
       deezerAlbumId: track.deezerAlbumId || null,
       libraryTrackId: owned?.libraryTrackId ?? null,
       libraryAlbumId: owned?.libraryAlbumId ?? null,
-      artistMbid: owned?.artistMbid ?? null,
-      albumMbid: owned?.albumMbid ?? null,
-      trackMbid: owned?.trackMbid ?? null,
+      artistMbid: owned?.artistMbid ?? track.artistMbid ?? null,
+      albumMbid: owned?.albumMbid ?? track.albumMbid ?? null,
+      trackMbid: owned?.trackMbid ?? track.trackMbid ?? null,
       resolvesLinks: true,
     };
   });

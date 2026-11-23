@@ -175,13 +175,13 @@ test("a track found by artist and title plays its Deezer preview for a signed-in
   assert.deepEqual(requests, ["https://api.deezer.com/search", "https://api.deezer.com/track/13"]);
 });
 
-test("a friend's cover is looked up on Deezer by name once, and a miss isn't asked again", async () => {
+test("a friend's cover is looked up by name once, and a miss isn't asked again", async () => {
   const cover = "https://cdn-images.dzcdn.net/images/cover/abc/1000x1000-000000-80-0-0.jpg";
   const requests = stubDeezer({
     "https://api.deezer.com/search/album": () => ({
       data: [{ id: 1, title: "In Rainbows", artist: { name: "Radiohead" }, cover_xl: cover }],
     }),
-    "https://api.deezer.com/search/artist": () => ({ data: [] }),
+    "https://data.aurral.org/v1/search/artist": () => ({ artists: [] }),
   });
   const user = userOps.createUser("friend", "password-hash");
   assert.ok(user);
@@ -200,6 +200,6 @@ test("a friend's cover is looked up on Deezer by name once, and a miss isn't ask
   );
   assert.deepEqual(requests, [
     "https://api.deezer.com/search/album",
-    "https://api.deezer.com/search/artist",
+    "https://data.aurral.org/v1/search/artist",
   ]);
 });

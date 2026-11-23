@@ -90,7 +90,7 @@ async function loadImageColors(
 }
 
 test("covers from hosts without CORS are read through Aurral's same-origin copy", async (t) => {
-  const source = "https://imagecache.lidarr.audio/v1/caa/release/image.jpg";
+  const source = "https://images.example/release/image.jpg";
   const localCopy = `/api/image-proxy/${"a".repeat(64)}.webp`;
   const colors = await loadImageColors(t, {
     cacheImage: async () => ({ status: 200, body: { url: localCopy } }),

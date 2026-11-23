@@ -11,21 +11,12 @@ import { artistsClient } from "../clients/artists.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 
 export type ArtistDetailsResponse = InferResponseType<(typeof artistsClient)[":mbid"]["$get"], 200>;
-type ReleaseGroupPreview = InferResponseType<
-  (typeof artistsClient)["release-group"][":mbid"]["previews"]["$get"],
-  200
->["previews"][string];
 export type ReleaseGroupTrack = InferResponseType<
   (typeof artistsClient)["release-group"][":mbid"]["tracks"]["$get"],
   200
->[number] &
-  Partial<ReleaseGroupPreview>;
+>[number];
 export type SimilarArtistsResponse = InferResponseType<
   (typeof artistsClient)[":mbid"]["similar"]["$get"],
-  200
->;
-type ReleaseGroupRatings = InferResponseType<
-  (typeof artistsClient)["release-groups"]["ratings"]["$post"],
   200
 >;
 type ReleaseGroupCoverResponse = InferResponseType<
@@ -37,14 +28,6 @@ type ArtistVideo = NonNullable<
 > & { trackTitle: string };
 
 const coverFetch = apiFetchWithin(4000);
-
-export const getReleaseTrackCredits = (mbid: string, { signal }: { signal?: AbortSignal } = {}) =>
-  parseResponse(
-    artistsClient.release[":mbid"].credits.$get(
-      { param: { mbid: encodeURIComponent(mbid) } },
-      { init: { signal } },
-    ),
-  );
 
 export const getReleaseGroupTracks = (
   mbid: string,
@@ -70,29 +53,6 @@ export const getReleaseGroupEditions = (mbid: string, { signal }: { signal?: Abo
     ),
   );
 
-export const getReleaseGroupPreviews = (
-  mbid: string,
-  {
-    signal,
-    artistMbid,
-    deezerAlbumId,
-    release,
-  }: { artistMbid?: string; deezerAlbumId?: string; release?: string; signal?: AbortSignal } = {},
-) =>
-  parseResponse(
-    artistsClient["release-group"][":mbid"].previews.$get(
-      {
-        param: { mbid: encodeURIComponent(mbid) },
-        query: {
-          artistMbid: artistMbid || undefined,
-          deezerAlbumId: deezerAlbumId || undefined,
-          release: release || undefined,
-        },
-      },
-      { init: { signal } },
-    ),
-  );
-
 export const getArtistPreview = (
   mbid: string | number,
   artistName?: string | null,
@@ -104,21 +64,6 @@ export const getArtistPreview = (
       { init: { signal } },
     ),
   );
-
-export const getReleaseGroupRatingsBatch = async (
-  ids: string[] = [],
-): Promise<ReleaseGroupRatings> => {
-  const normalizedIds = [...new Set(ids.filter(Boolean))];
-  if (!normalizedIds.length) return { ratings: {} };
-  return queryClient.fetchQuery({
-    queryKey: queryKeys.releaseGroupRatings(normalizedIds),
-    queryFn: () =>
-      parseResponse(
-        artistsClient["release-groups"].ratings.$post({ json: { ids: normalizedIds } }),
-      ),
-    staleTime: 5 * 60 * 1000,
-  });
-};
 
 const normalizeCoverPart = (value: string | null | undefined) =>
   String(value || "")

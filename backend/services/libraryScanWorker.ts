@@ -455,11 +455,33 @@ const doneJobPathsStmt = db
   )
   .pluck();
 
+// Indexed files whose track has a done job whose own file left the Library.
+const tracksMissingJobFilesStmt = db
+  .prepare<[string], string>(
+    `SELECT DISTINCT f.path FROM json_each(?) AS changed
+     CROSS JOIN library_media_files f
+       ON f.source IN ('aurral', 'readonly', 'flow') AND f.path = changed.value AND f.available = 1
+     JOIN library_tracks t ON t.id = f.track_id
+     WHERE EXISTS (
+       SELECT 1 FROM download_jobs j
+       WHERE j.status = 'done' AND j.final_path IS NOT NULL AND j.upgrade_for_job_id IS NULL
+         AND lower(trim(coalesce(j.track_name, ''))) = lower(trim(t.title))
+         AND NOT EXISTS (
+           SELECT 1 FROM library_media_files m
+           WHERE m.source IN ('aurral', 'readonly', 'flow') AND m.path = j.final_path
+         )
+     )`,
+  )
+  .pluck();
+
 async function followChangedJobFiles(changedFiles: Set<string>) {
   if (changedFiles.size === 0) return;
-  const paths = doneJobPathsStmt
-    .all()
-    .filter((filePath) => changedFiles.has(path.resolve(filePath)));
+  const paths = [
+    ...new Set([
+      ...doneJobPathsStmt.all().filter((filePath) => changedFiles.has(path.resolve(filePath))),
+      ...tracksMissingJobFilesStmt.all(JSON.stringify([...changedFiles])),
+    ]),
+  ];
   if (paths.length === 0) return;
   try {
     if (isDownloadOwnerProcess()) {

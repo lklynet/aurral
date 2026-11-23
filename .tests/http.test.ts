@@ -59,7 +59,7 @@ test("cross-origin redirects drop credential headers but same-origin redirects k
 });
 
 test.each([
-  "https://brainzmash.kell.ly/artist/5b11f4ce-a62d-471e-81fc-a69a8278c7da",
+  "https://data.aurral.org/v1/artist/5b11f4ce-a62d-471e-81fc-a69a8278c7da",
   "https://musicbrainz.org/ws/2/artist/5b11f4ce-a62d-471e-81fc-a69a8278c7da",
 ])("tests never open a connection to the shared %s", async (url) => {
   const { host } = new URL(url);

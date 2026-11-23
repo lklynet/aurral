@@ -120,17 +120,6 @@ export const listenbrainz: Outside = {
       }));
       return { payload: { artists, range: param("range"), count: artists.length } };
     }
-    if (path === "/1/explore/fresh-releases") {
-      const releases = music.fresh.map((album) => ({
-        artist_credit_name: album.artist.name,
-        artist_mbids: [album.artist.id],
-        release_date: releaseDate(album),
-        release_group_mbid: album.id,
-        release_group_primary_type: album.type,
-        release_name: album.title,
-      }));
-      return { payload: { releases } };
-    }
     const [, user, part, kind] =
       /^\/1\/(?:stats\/)?user\/([^/]+)\/(\w+)(?:\/(\w+))?$/.exec(path) ?? [];
     if (user && part === "listens") {

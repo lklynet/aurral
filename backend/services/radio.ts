@@ -185,12 +185,21 @@ async function similarArtistScores(
   const names = uniqueText(similar.map((artist) => artist.name));
   const scores = new Map<number, number>();
   if (!mbids.length && !names.length) return scores;
-  const libraryArtists = db
-    .prepare<string[], ArtistRow>(
-      `SELECT id, name, mbid FROM library_artists
-       WHERE mbid IN (${placeholders(mbids)}) OR lower(name) IN (${lowerPlaceholders(names)})`,
-    )
-    .all(...mbids, ...names);
+  const branches: string[] = [];
+  const params: string[] = [];
+  if (mbids.length) {
+    branches.push(
+      `SELECT id, name, mbid FROM library_artists WHERE mbid IN (${placeholders(mbids)})`,
+    );
+    params.push(...mbids);
+  }
+  if (names.length) {
+    branches.push(
+      `SELECT id, name, mbid FROM library_artists WHERE name COLLATE NOCASE IN (${placeholders(names)})`,
+    );
+    params.push(...names);
+  }
+  const libraryArtists = db.prepare<string[], ArtistRow>(branches.join(" UNION ")).all(...params);
   for (const entry of similar) {
     const name = entry.name.toLowerCase();
     const match = Math.max(0, Math.min(1, entry.match));

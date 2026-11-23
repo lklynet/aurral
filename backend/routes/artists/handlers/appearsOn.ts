@@ -1,10 +1,8 @@
 import { Hono } from "hono";
 import * as v from "valibot";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
-import {
-  getMusicbrainzAppearsOnScanState,
-  musicbrainzGetArtistAppearsOnReleaseGroups,
-} from "../../../services/apiClients/index.ts";
+import { getArtistByMbid } from "../../../services/providers/metadataProvider.ts";
+import { listedReleaseGroup, toAppearsOnReleaseGroup } from "../shared/transform.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { asAppError } from "../../../../lib/errors.ts";
@@ -40,29 +38,16 @@ export default new Hono<AppEnv>()
     const { signal } = c.req.raw;
 
     try {
-      let availableItems = await musicbrainzGetArtistAppearsOnReleaseGroups(mbid, {
-        limit: 250,
-        offset: 0,
-        signal,
-        scanPageBudget: 0,
-      });
-      let unseenItems = availableItems.filter((item) => !excluded.has(item.id));
-      if (unseenItems.length < limit && !getMusicbrainzAppearsOnScanState(mbid).complete) {
-        availableItems = await musicbrainzGetArtistAppearsOnReleaseGroups(mbid, {
-          limit: 250,
-          offset: 0,
-          signal,
-          scanPageBudget: 1,
-        });
-        unseenItems = availableItems.filter((item) => !excluded.has(item.id));
-      }
-      const items = withCoverUrls(unseenItems.slice(0, limit));
+      const metadataArtist = await getArtistByMbid(mbid, { signal }).catch(() => null);
+      const unseen = (metadataArtist?.appearsOn ?? [])
+        .filter((item) => !excluded.has(item.id))
+        .map(toAppearsOnReleaseGroup);
+      const items = withCoverUrls(unseen.slice(0, limit), listedReleaseGroup);
       return c.json(
         {
           items,
           offset,
-          hasMore:
-            unseenItems.length > items.length || !getMusicbrainzAppearsOnScanState(mbid).complete,
+          hasMore: unseen.length > items.length,
         },
         200,
       );

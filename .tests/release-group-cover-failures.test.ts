@@ -23,7 +23,7 @@ const providerServer = await createMockHttpServer((request, response) => {
   response.setHeader("content-type", "application/json");
   response.end(JSON.stringify(reply?.body ?? {}));
 });
-process.env.BRAINZMASH_BASE_URL = providerServer.url;
+process.env.METADATA_BASE_URL = providerServer.url;
 
 const [
   isolatedState,
@@ -35,7 +35,7 @@ const [
 ] = await setupIsolatedBackend(
   "release-group-cover-failures",
   () => import("../backend/db/helpers/index.ts"),
-  () => import("../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../backend/services/providers/metadataProvider.ts"),
   () => import("../backend/services/releaseGroupCoverService.ts"),
   () => import("../backend/services/imageProxyService.ts"),
   () => import("../backend/routes/artists/handlers/releaseGroup.ts"),
@@ -59,14 +59,14 @@ beforeEach(() => {
 afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
   await providerServer.close();
-  delete process.env.BRAINZMASH_BASE_URL;
+  delete process.env.METADATA_BASE_URL;
 });
 
 test("a cover two callers want at once is asked for once and saved", async () => {
   const cover = "https://images.example/shared.jpg";
-  replies.set(`/album/${mbid}`, {
+  replies.set(`/v1/album/${mbid}`, {
     status: 200,
-    body: { id: mbid, images: [{ CoverType: "Cover", Url: cover }] },
+    body: { id: mbid, images: [{ kind: "Cover", url: cover }] },
   });
 
   const [result, sameTime] = await Promise.all([
@@ -76,12 +76,12 @@ test("a cover two callers want at once is asked for once and saved", async () =>
 
   assert.equal(result.imageUrl, buildStableImageProxyUrl(cover));
   assert.deepEqual(sameTime, result);
-  assert.deepEqual(requests, [`/album/${mbid}`]);
+  assert.deepEqual(requests, [`/v1/album/${mbid}`]);
   assert.equal(dbOps.getImage(`rg:${mbid}`)?.imageUrl, buildStableImageProxyUrl(cover));
 });
 
-test("failed cover metadata requests log the MBID once and remain retryable", async () => {
-  replies.set(`/album/${mbid}`, { status: 503, body: {} });
+test("failed cover metadata requests log the MBID and remain retryable", async () => {
+  replies.set(`/v1/album/${mbid}`, { status: 503, body: {} });
   const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
 
   const result = await fetchReleaseGroupCoverUrl(mbid);
@@ -97,12 +97,16 @@ test("failed cover metadata requests log the MBID once and remain retryable", as
     reason: `Request to ${new URL(providerServer.url).host} failed with status code 503`,
   });
 
+  const cover = "https://images.example/recovered.jpg";
+  replies.set(`/v1/album/${mbid}`, {
+    status: 200,
+    body: { id: mbid, images: [{ kind: "Cover", url: cover }] },
+  });
   const retried = await fetchReleaseGroupCoverUrl(mbid);
 
-  assert.deepEqual(requests, [`/album/${mbid}`]);
-  assert.equal(retried.transientError, true);
-  assert.equal(warnings.mock.calls.length, 1);
-  assert.equal(dbOps.getImage(`rg:${mbid}`), null);
+  assert.equal(retried.transientError, false);
+  assert.equal(retried.imageUrl, buildStableImageProxyUrl(cover));
+  assert.equal(dbOps.getImage(`rg:${mbid}`)?.imageUrl, buildStableImageProxyUrl(cover));
 });
 
 test("confirmed missing metadata is cached as missing artwork without a warning", async () => {
@@ -114,14 +118,14 @@ test("confirmed missing metadata is cached as missing artwork without a warning"
   assert.equal(result.notFound, true);
   assert.equal(result.transientError, false);
   assert.equal(dbOps.getImage(`rg:${mbid}`)?.imageUrl, "NOT_FOUND");
-  assert.deepEqual(requests, [`/album/${mbid}`]);
+  assert.deepEqual(requests, [`/v1/album/${mbid}`]);
   assert.equal(warnings.mock.calls.length, 0);
 });
 
-test("an album BrainzMash has no cover for takes Deezer's, however long the discography, without asking BrainzMash again", async () => {
-  replies.set(`/album/${mbid}`, {
+test("an album metadata has no cover for takes Deezer's, however long the discography, without asking metadata again", async () => {
+  replies.set(`/v1/album/${mbid}`, {
     status: 200,
-    body: { id: mbid, images: [{ CoverType: "Disc", Url: "https://images.example/disc.png" }] },
+    body: { id: mbid, images: [{ kind: "Disc", url: "https://images.example/disc.png" }] },
   });
   const cover = "https://images.example/deezer.jpg";
   deezerReplies.set("/search/artist", { data: [{ id: 7, name: "Cover Artist" }] });
@@ -142,16 +146,45 @@ test("an album BrainzMash has no cover for takes Deezer's, however long the disc
   });
 
   assert.equal(result.imageUrl, cover);
-  assert.deepEqual(requests, [`/album/${mbid}`]);
+  assert.deepEqual(requests, [`/v1/album/${mbid}`]);
   assert.equal(dbOps.getImage(`rg:${mbid}`), null);
+
+  requests.length = 0;
+  const rows = withCoverUrls([{ id: mbid, title: "Covered" }], ({ title }) => ({
+    artistName: "Cover Artist",
+    albumTitle: title,
+  }));
+  assert.equal(
+    rows[0]?.coverUrl,
+    `/api/artists/release-group/${mbid}/cover/image?artist=Cover+Artist&title=Covered`,
+  );
+  const listed = await testClient(releaseGroupRoutes).artists["release-group"][
+    ":mbid"
+  ].cover.image.$get({ param: { mbid }, query: { artist: "Cover Artist", title: "Covered" } });
+  assert.equal(listed.headers.get("location"), cover);
+  assert.deepEqual(requests, []);
+
+  const own = "https://images.example/own.jpg";
+  clearMetadataProviderCaches();
+  replies.set(`/v1/album/${mbid}`, {
+    status: 200,
+    body: { id: mbid, images: [{ kind: "Cover", url: own }] },
+  });
+  const mislisted = await fetchReleaseGroupCoverUrl(mbid, {
+    artistName: "Cover Artist",
+    albumTitle: "Not On Deezer",
+    listedWithoutCover: true,
+  });
+  assert.equal(mislisted.imageUrl, buildStableImageProxyUrl(own));
+  assert.deepEqual(requests, [`/v1/album/${mbid}`]);
 });
 
 test("a refresh swaps a cover link that no longer loads for Deezer's on the album page too, and keeps it when Deezer has none", async (t) => {
   const dead = "https://images.example/dead.jpg";
   const cover = "https://images.example/deezer-swap.jpg";
-  replies.set(`/album/${mbid}`, {
+  replies.set(`/v1/album/${mbid}`, {
     status: 200,
-    body: { id: mbid, images: [{ CoverType: "Cover", Url: dead }] },
+    body: { id: mbid, images: [{ kind: "Cover", url: dead }] },
   });
   deezerReplies.set("/search/artist", { data: [{ id: 8, name: "Swap Artist" }] });
   deezerReplies.set("/artist/8/albums", {

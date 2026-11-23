@@ -1,15 +1,27 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
-import { getArtistPreview } from "../../../utils/api/endpoints/artists.ts";
+import {
+  getArtistPreview,
+  type ArtistDetailsResponse,
+} from "../../../utils/api/endpoints/artists.ts";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
 import type { deezerGetArtistTopTracksById } from "../../../../../backend/services/apiClients/index.ts";
 
-export type ArtistPreviewTrack = Awaited<ReturnType<typeof deezerGetArtistTopTracksById>>[number];
+type DeezerPreviewTrack = Awaited<ReturnType<typeof deezerGetArtistTopTracksById>>[number];
+type MetadataTopTrack = ArtistDetailsResponse["topTracks"][number];
+export type ArtistPreviewTrack = (DeezerPreviewTrack | MetadataTopTrack) & {
+  albumMbid?: string | null;
+  trackMbid?: string | null;
+};
 
 export function usePreviewPlayer(
   mbid: string | undefined,
   artistNameFromNav: string | null | undefined,
   artist: { name?: string | null } | null | undefined,
+  {
+    initialTracks,
+    loadingDetails = false,
+  }: { initialTracks?: MetadataTopTrack[]; loadingDetails?: boolean } = {},
 ) {
   const [previewTracks, setPreviewTracks] = useState<ArtistPreviewTrack[]>([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -31,8 +43,22 @@ export function usePreviewPlayer(
   const isArtistPlaybackActive = isArtistQueue && (isPlaying || isLoading);
 
   useEffect(() => {
+    if (!mbid) {
+      setPreviewTracks([]);
+      setLoadingPreview(false);
+      return;
+    }
+    if (loadingDetails) {
+      setLoadingPreview(true);
+      return;
+    }
+    if (initialTracks && initialTracks.length > 0) {
+      setPreviewTracks(initialTracks);
+      setLoadingPreview(false);
+      return;
+    }
     const name = artistName;
-    if (!mbid || !name || name === "Loading artist" || name === "Unknown Artist") {
+    if (!name || name === "Loading artist" || name === "Unknown Artist") {
       setPreviewTracks([]);
       setLoadingPreview(false);
       return;
@@ -50,7 +76,7 @@ export function usePreviewPlayer(
         if (!controller.signal.aborted) setLoadingPreview(false);
       });
     return () => controller.abort();
-  }, [mbid, artistName]);
+  }, [mbid, artistName, initialTracks, loadingDetails]);
 
   const getPlayableTracks = useCallback(
     () => previewTracks.filter((track) => track?.preview_url),

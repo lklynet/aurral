@@ -1,4 +1,5 @@
 import {
+  isrcOf,
   pageOf,
   releaseDate,
   type Album,
@@ -56,6 +57,7 @@ const track = (entry: Track) => ({
   id: entry.number,
   title: entry.title,
   title_short: entry.title,
+  isrc: isrcOf(entry),
   link: `https://www.deezer.com/track/${entry.number}`,
   preview: `${PREVIEW_ORIGIN}/deezer/preview/${entry.number}.mp3`,
   duration: Math.round(entry.durationMs / 1000),

@@ -5,7 +5,7 @@ import { withCoverUrls } from "./releaseGroupCoverService.ts";
 import {
   searchAlbums as providerSearchAlbums,
   searchArtists as providerSearchArtists,
-} from "./providers/brainzmashProvider.ts";
+} from "./providers/metadataProvider.ts";
 import {
   PRIMARY_RELEASE_TYPES as PRIMARY_RELEASE_TYPE_LIST,
   SECONDARY_RELEASE_TYPES as SECONDARY_RELEASE_TYPE_LIST,
