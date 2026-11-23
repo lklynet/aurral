@@ -53,6 +53,10 @@ const TRACK_GROUP = "66666666-6666-4666-8666-666666666664";
 const TRACK_RELEASE = "77777777-7777-4777-8777-777777777771";
 const FULL_RECORDING = "88888888-8888-4888-8888-888888888881";
 const NEXT_RECORDING = "88888888-8888-4888-8888-888888888882";
+const ADDED_MBID = "55555555-5555-4555-8555-555555555558";
+const REMATCHED_MBID = "55555555-5555-4555-8555-555555555559";
+const ADDED_GROUP = "66666666-6666-4666-8666-666666666665";
+const REMATCHED_GROUP = "66666666-6666-4666-8666-666666666666";
 
 let providerAvailable = true;
 let server: { url: string; close: () => Promise<void> };
@@ -77,10 +81,12 @@ beforeAll(async () => {
         ],
       },
       [OTHER_MBID]: { id: OTHER_MBID, name: "Other Artist" },
+      [REMATCHED_MBID]: { id: REMATCHED_MBID, name: "Rematched Artist" },
     };
     const groups: Record<string, object> = {
       [PICKED_GROUP]: { id: PICKED_GROUP, title: "Picked Album", releases: [] },
       [OTHER_GROUP]: { id: OTHER_GROUP, title: "Picked Album Live", releases: [] },
+      [REMATCHED_GROUP]: { id: REMATCHED_GROUP, title: "Rematched Album", releases: [] },
       [TRACK_GROUP]: {
         id: TRACK_GROUP,
         title: "Track Album",
@@ -395,6 +401,49 @@ test("a hand-picked release group keeps an untagged album's files through full r
     db.prepare("SELECT COUNT(*) FROM library_albums WHERE title = 'Folder Title'").pluck().get(),
     0,
   );
+});
+
+test("rematching an artist and album Aurral added leaves their old MBIDs behind", async () => {
+  const { artist, album } = createArtist("Added Artist", {
+    mbid: ADDED_MBID,
+    metadata: { id: ADDED_MBID, foreignArtistId: ADDED_MBID, librarySource: "aurral" },
+  });
+  db.prepare(
+    "UPDATE library_albums SET identity_key = ?, mbid = ?, release_group_mbid = ?, metadata_json = ? WHERE id = ?",
+  ).run(
+    `release-group:${ADDED_GROUP}`,
+    ADDED_GROUP,
+    ADDED_GROUP,
+    JSON.stringify({ id: ADDED_GROUP, foreignAlbumId: ADDED_GROUP, librarySource: "aurral" }),
+    album.id,
+  );
+
+  assert.equal((await updateMbid(artist.id, REMATCHED_MBID)).status, 200);
+  assert.equal((await updateReleaseGroup(album.id, REMATCHED_GROUP)).status, 200);
+
+  const albumsFor = async (reference: string) => {
+    const response = await app.request(`/library/albums?readPath=library&artistId=${reference}`);
+    return v.parse(
+      v.array(v.looseObject({ id: v.number(), foreignAlbumId: v.string() })),
+      await response.json(),
+    );
+  };
+  const albumLookup = await app.request("/library/albums/lookup/batch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mbids: [ADDED_GROUP, REMATCHED_GROUP] }),
+  });
+  const lookup = getArtistLibraryLookup(REMATCHED_MBID);
+
+  assert.deepEqual(await albumsFor(ADDED_MBID), []);
+  assert.deepEqual(
+    (await albumsFor(REMATCHED_MBID)).map((entry) => [entry.id, entry.foreignAlbumId]),
+    [[album.id, REMATCHED_GROUP]],
+  );
+  assert.deepEqual(Object.keys(v.parse(v.record(v.string(), v.unknown()), await albumLookup.json())), [
+    REMATCHED_GROUP,
+  ]);
+  assert.equal(lookup.artist?.foreignArtistId, REMATCHED_MBID);
 });
 
 test("an album whose match was removed by hand stays out of automatic matching", async () => {
