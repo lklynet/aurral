@@ -26,7 +26,12 @@ import {
   writeAudioMetadata,
 } from "../downloadUtils.ts";
 import { logger } from "../logger.ts";
-import { albumGrabJobs, deniedAlbumSources, finishAlbumGrab } from "../albumGrab.ts";
+import {
+  albumGrabJobs,
+  blockAlbumGrabSource,
+  deniedAlbumSources,
+  finishAlbumGrab,
+} from "../albumGrab.ts";
 import { selectSoulseekAlbumFolder } from "../albumReleaseSearch.ts";
 import { getQualityProfile } from "../qualityProfile.ts";
 import { isAudioFile } from "../downloadJobs/usenetReleaseSearch.ts";
@@ -706,6 +711,15 @@ async function readStatus(
   }
 }
 
+function denyFailedRelease(payload: SourcePayload, source: DownloadSource, job: DownloadJob) {
+  if (payload.albumGrab === true) return blockAlbumGrabSource(payload, albumGrabJobs(payload));
+  downloadTracker.recordDeniedSource(
+    job.id,
+    source.id,
+    deniedKey(payload, source, getPayloadCandidate(payload)?.raw.id),
+  );
+}
+
 async function handlePoll(payload: SourcePayload, source: DownloadSource, helpers: SourceHelpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job || job.status === "failed" || job.status === "done") return null;
@@ -716,7 +730,13 @@ async function handlePoll(payload: SourcePayload, source: DownloadSource, helper
       return await waitForFiledAlbum({ ...payload, pollAttempts }, source, job);
     const checked = await keepFiles(payload, source, job);
     if (!source.status) throw new DownloadSourceError("can't report a pending download");
-    const status = await readStatus(checked, source, source.status, directory);
+    const status = await readStatus(checked, source, source.status, directory).catch(
+      (error: unknown) => {
+        if (error instanceof DownloadSourceError && isPipelinePayloadActive(checked))
+          denyFailedRelease(checked, source, job);
+        throw error;
+      },
+    );
     if ("unreadPolls" in status)
       return { ...checked, phase: "poll", pollAttempts, ...status, delaySeconds: POLL_SECONDS };
     const current = { ...checked, unreadPolls: 0 };
