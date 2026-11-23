@@ -1075,8 +1075,15 @@ test("an ID lookup asks for 100 keys at a time, and a Deezer album resolves by i
       ],
     );
 
+    dbOps.setDeezerMbidCache("dz:302127", "old-provider-guess");
+    dbOps.setDeezerMbidCache("aa:linked artist\0linked album", "old-title-guess");
+    assert.equal(
+      await resolveDeezerAlbumToMbid("Linked Artist", "Linked Album", 302127),
+      "linked-album",
+    );
     assert.equal(await resolveDeezerAlbumToMbid("", "", 302127), "linked-album");
-    assert.deepEqual(asked.at(-1), ["deezer-album:302127"]);
+    assert.deepEqual(asked.slice(2), [["deezer-album:302127"]]);
+    assert.equal(dbOps.getDeezerMbidCache("dz:302127"), "linked-album");
   } finally {
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
