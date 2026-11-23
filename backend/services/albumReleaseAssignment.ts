@@ -5,6 +5,7 @@ import {
   downloadedFileEvidence,
   validateDownloadedTrackFile,
 } from "./trackMatching/postDownloadValidator.ts";
+import { resolveListingFileIsrcs } from "./trackMatching/isrcRecording.ts";
 import { mapRequest, trackRequestFor, type ReleaseManifest } from "./releaseManifest.ts";
 import { judgeRelease } from "./trackMatching/releaseJudge.ts";
 
@@ -50,7 +51,11 @@ export async function assignDownloadedAlbumFiles({
     rejected: jobs.map((job) => ({ jobId: job.id, reason })),
     unreadableCount,
   });
-  const verdict = judgeRelease(manifest, { files: readable.map((entry) => entry.evidence) });
+  const files = await resolveListingFileIsrcs(
+    readable.map((entry) => entry.evidence),
+    manifest,
+  );
+  const verdict = judgeRelease(manifest, { files });
   if (!verified && unreadableCount) return failedRelease("The album contains unreadable audio");
   if (!verified && verdict.kind !== "exact") return failedRelease(verdict.reason);
   const { wanted } = mapRequest(manifest, jobs);
@@ -69,7 +74,13 @@ export async function assignDownloadedAlbumFiles({
       },
       filePath: entry.filePath,
       source,
-      options: { parseFile: parseAudio, strict: true, release: manifest, albumImport: true },
+      options: {
+        parseFile: parseAudio,
+        strict: true,
+        release: manifest,
+        albumImport: true,
+        isrcRecordingMbid: files[pair.fileIndex]?.isrcRecordingMbid ?? null,
+      },
     });
     if (validation.valid) {
       accepted.push({

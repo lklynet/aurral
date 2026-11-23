@@ -3,7 +3,7 @@
 // generate tagged audio; unit cases inject a parse function.
 
 import type { IAudioMetadata } from "music-metadata";
-import { test, afterAll } from "vite-plus/test";
+import { test, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFileSync } from "child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -14,10 +14,18 @@ import {
   selectVerifiedDownloadedFile,
   POST_DOWNLOAD_DECISIONS,
 } from "../../backend/services/trackMatching/index.ts";
+import { lookupIds } from "../../backend/services/providers/metadataProvider.ts";
+
+vi.mock("../../backend/services/providers/metadataProvider.ts", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../backend/services/providers/metadataProvider.ts")
+  >()),
+  lookupIds: vi.fn(),
+}));
 
 type ValidationInput = NonNullable<Parameters<typeof validateDownloadedTrackFile>[0]>;
 type Tags = Partial<
-  Omit<IAudioMetadata["common"], "track" | "disk" | "title" | "artist" | "album">
+  Omit<IAudioMetadata["common"], "track" | "disk" | "title" | "artist" | "album" | "isrc">
 > & {
   title?: string | null;
   artist?: string | null;
@@ -25,6 +33,7 @@ type Tags = Partial<
   track?: number;
   disc?: number;
   mbid?: string;
+  isrc?: string[];
 };
 
 const hasFfmpeg = (() => {
@@ -63,6 +72,7 @@ function stubParsed(
       track: { no: tags.track ?? null, of: null },
       disk: { no: tags.disc ?? null, of: null },
       musicbrainz_recordingid: tags.mbid,
+      isrc: tags.isrc,
     },
     format: {
       trackInfo: [],
@@ -1127,4 +1137,122 @@ test("a bonus-track note on the requested title does not make the album copy ano
     },
   });
   assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED, outcome.reason ?? "");
+});
+
+test("a file whose ISRC names the requested recording verifies despite a different title and length", async () => {
+  const recording = "11111111-1111-4111-8111-111111111111";
+  vi.mocked(lookupIds).mockResolvedValue(
+    new Map([["isrc:XXABC2600001", { trackMbid: recording, albumMbid: null, artistMbid: null }]]),
+  );
+  const release = {
+    releaseMbid: "release",
+    releaseGroupMbid: null,
+    title: "Album",
+    artistNames: ["The Band"],
+    compilation: false,
+    secondaryTypes: [],
+    tracks: [],
+  };
+  const request = {
+    artistName: "The Band",
+    trackName: "First Song",
+    albumName: "Album",
+    durationMs: 200000,
+    trackNumber: 1,
+    recordingMbid: recording,
+  };
+  const filePath = "/staging/01 A Completely Different Title.flac";
+  const withoutIsrc = await validateDownloadedTrackFile({
+    request,
+    filePath,
+    source: "soulseek",
+    options: {
+      release,
+      parseFile: stubParseFile(
+        stubParsed(
+          { title: "A Completely Different Title", artist: "The Band", album: "Album" },
+          205,
+        ),
+      ),
+    },
+  });
+  assert.equal(withoutIsrc.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+  const outcome = await validateDownloadedTrackFile({
+    request,
+    filePath,
+    source: "soulseek",
+    options: {
+      release,
+      parseFile: stubParseFile(
+        stubParsed(
+          {
+            title: "A Completely Different Title",
+            artist: "The Band",
+            album: "Album",
+            isrc: ["XXABC2600001"],
+          },
+          205,
+        ),
+      ),
+    },
+  });
+  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED, JSON.stringify(outcome));
+});
+
+test("an ISRC settles a non-Latin title contradiction on the requested recording", async () => {
+  const recording = "22222222-2222-4222-8222-222222222222";
+  vi.mocked(lookupIds).mockResolvedValue(
+    new Map([["isrc:XXABC2600002", { trackMbid: recording, albumMbid: null, artistMbid: null }]]),
+  );
+  const release = {
+    releaseMbid: "release",
+    releaseGroupMbid: null,
+    title: "Album",
+    artistNames: ["The Band"],
+    compilation: false,
+    secondaryTypes: [],
+    tracks: [],
+  };
+  const request = {
+    artistName: "The Band",
+    trackName: "テスト曲その一",
+    albumName: "Album",
+    durationMs: 200000,
+    trackNumber: 1,
+    recordingMbid: recording,
+  };
+  const filePath = "/staging/01 別のテスト曲名.flac";
+  const withoutIsrc = await validateDownloadedTrackFile({
+    request,
+    filePath,
+    source: "soulseek",
+    options: {
+      release,
+      parseFile: stubParseFile(
+        stubParsed({ title: "別のテスト曲名", artist: "The Band", album: "Album" }, 200),
+      ),
+    },
+  });
+  assert.equal(withoutIsrc.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+  assert.ok(withoutIsrc.contradictions?.includes("title"));
+  const outcome = await validateDownloadedTrackFile({
+    request,
+    filePath,
+    source: "soulseek",
+    options: {
+      release,
+      parseFile: stubParseFile(
+        stubParsed(
+          {
+            title: "別のテスト曲名",
+            artist: "The Band",
+            album: "Album",
+            isrc: ["XXABC2600002"],
+          },
+          200,
+        ),
+      ),
+    },
+  });
+  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED, JSON.stringify(outcome));
 });

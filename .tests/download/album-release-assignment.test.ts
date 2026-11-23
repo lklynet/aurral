@@ -1,4 +1,4 @@
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
@@ -8,7 +8,15 @@ import { dirname, join } from "node:path";
 import type { IAudioMetadata, ICommonTagsResult } from "music-metadata";
 import type { ReleaseManifest } from "../../backend/services/releaseManifest.ts";
 import { assignDownloadedAlbumFiles } from "../../backend/services/albumReleaseAssignment.ts";
+import { lookupIds } from "../../backend/services/providers/metadataProvider.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
+
+vi.mock("../../backend/services/providers/metadataProvider.ts", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../backend/services/providers/metadataProvider.ts")
+  >()),
+  lookupIds: vi.fn(),
+}));
 
 const audioFixture = async (filePath: string) => {
   await writeFile(filePath, "");
@@ -637,6 +645,76 @@ test("album assignment accepts a file tagged with a recording ID MusicBrainz mer
     });
     assert.deepEqual(
       result.accepted.map(({ jobId }) => jobId),
+      ["first", "second"],
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("album assignment accepts files whose ISRC names the requested recordings", async () => {
+  const root = await mkdtemp(join(tmpdir(), "aurral-album-isrc-"));
+  try {
+    const paths = ["01 Wrong.flac", "02 Also Wrong.flac"].map((name) => join(root, name));
+    for (const filePath of paths) await audioFixture(filePath);
+    const first = "11111111-1111-4111-8111-111111111111";
+    const second = "22222222-2222-4222-8222-222222222222";
+    const parsed = new Map([
+      [paths[0], fileTags("Wrong", 1, 200, { isrc: ["XXABC2600001"] })],
+      [paths[1], fileTags("Also Wrong", 2, 200, { isrc: ["XXABC2600002"] })],
+    ]);
+    const jobs = [
+      {
+        id: "first",
+        trackName: "First",
+        artistName: "The Band",
+        albumName: "Album",
+        durationMs: 200000,
+        trackNumber: 1,
+        trackMbid: first,
+      },
+      {
+        id: "second",
+        trackName: "Second",
+        artistName: "The Band",
+        albumName: "Album",
+        durationMs: 200000,
+        trackNumber: 2,
+        trackMbid: second,
+      },
+    ];
+    const manifest = pinned("release", [
+      { title: "First", trackNumber: 1, durationMs: 200000, recordingMbid: first },
+      { title: "Second", trackNumber: 2, durationMs: 200000, recordingMbid: second },
+    ]);
+    const assign = () =>
+      assignDownloadedAlbumFiles({
+        jobs,
+        filePaths: paths,
+        source: "soulseek",
+        manifest,
+        parseAudio: async (filePath) => {
+          const tags = parsed.get(filePath);
+          assert.ok(tags);
+          return tags;
+        },
+      });
+    vi.mocked(lookupIds).mockResolvedValue(
+      new Map([
+        ["isrc:XXABC2600001", { trackMbid: first, albumMbid: null, artistMbid: null }],
+        ["isrc:XXABC2600002", { trackMbid: second, albumMbid: null, artistMbid: null }],
+      ]),
+    );
+    const result = await assign();
+    assert.deepEqual(
+      result.accepted.map(({ jobId }) => jobId),
+      ["first", "second"],
+    );
+    vi.mocked(lookupIds).mockResolvedValue(new Map());
+    const fallback = await assign();
+    assert.deepEqual([...fallback.accepted], []);
+    assert.deepEqual(
+      fallback.rejected.map(({ jobId }) => jobId),
       ["first", "second"],
     );
   } finally {

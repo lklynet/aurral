@@ -32,11 +32,13 @@ import {
 import {
   MATCH_POLICY,
   parseListingTitle,
+  readIsrc,
   readRecordingMbid,
   titleSimilarity,
   verifyDownloadedRecording,
 } from "./nativeMatcher.ts";
 import { judgeRelease } from "./releaseJudge.ts";
+import { lookupIsrcRecording, resolveListingFileIsrcs } from "./isrcRecording.ts";
 import { manifestIndexFor, type ReleaseManifest } from "../releaseManifest.ts";
 import { isRequestedYoutubeAlbum, readYoutubeFile } from "./youtubeEvidence.ts";
 import { scoreTextMatch } from "../providers/metadataRanking.ts";
@@ -61,6 +63,7 @@ type ValidationOptions = {
   manualSelection?: boolean;
   albumImport?: boolean;
   release?: ReleaseManifest | null;
+  isrcRecordingMbid?: string | null;
 };
 
 type ParsedFile = { filePath: string; parsed: IAudioMetadata };
@@ -125,6 +128,7 @@ export function downloadedFileEvidence(
     trackNumber: parsed?.common?.track?.no || listing.trackNumber || null,
     discNumber: parsed?.common?.disk?.no || listing.discNumber || null,
     recordingMbid: readRecordingMbid(parsed?.common?.musicbrainz_recordingid),
+    isrc: readIsrc(parsed?.common?.isrc),
     album: String(parsed?.common?.album || "").trim() || null,
     filename: path.basename(filePath),
     path: filePath,
@@ -184,6 +188,7 @@ export function buildActualFileCandidate(
       readRecordingMbid(common.musicbrainz_recordingid) ||
       readRecordingMbid(common.musicbrainz_trackid) ||
       null,
+    isrc: readIsrc(common.isrc),
     releaseMbid: readTagText(common.musicbrainz_albumid) || null,
     filename: fileName,
     path: filePath,
@@ -291,6 +296,21 @@ export async function validateDownloadedTrackFile({
 
   const actual = buildActualFileCandidate(parsed, filePath, source, candidate);
   const actualDurationMs = actual.durationMs;
+
+  // A file whose ISRC the catalogue maps to the requested recording is that
+  // recording, even when a tagger spells the title differently. Without a
+  // release to hold the requested recording IDs the lookup cannot pair, so
+  // the file validates exactly as before.
+  let isrcRecordingMbid = options.isrcRecordingMbid ?? null;
+  if (
+    options.isrcRecordingMbid === undefined &&
+    options.release &&
+    actual.isrc &&
+    !actual.recordingMbid &&
+    (trackRequest.recordingMbid || trackRequest.recordingMbidAliases.length)
+  ) {
+    isrcRecordingMbid = await lookupIsrcRecording(actual.isrc);
+  }
 
   const kbps = implausibleBitrateKbps({
     path: filePath,
@@ -407,6 +427,7 @@ export async function validateDownloadedTrackFile({
       artists: youtube ? youtube.artists : actual.artists,
       durationMs: actualDurationMs,
       recordingMbid: actual.recordingMbid,
+      isrcRecordingMbid,
       album: actual.album,
       path: actual.path,
       filename: hasYtdlpIdFilename ? null : actual.filename,
@@ -471,7 +492,8 @@ export async function validateDownloadedTrackFile({
   const durationUncertain =
     verification.durationGapMs != null &&
     verification.durationGapMs > maxDurationGapMs &&
-    !verification.evidence.includes("recording-mbid");
+    !verification.evidence.includes("recording-mbid") &&
+    !verification.evidence.includes("isrc");
   // Uploaders add words such as "Concept" or "Reworked" that no version rule
   // knows, so a YouTube title must match exactly.
   const titleAgrees = source !== "ytdlp" || verification.titleSimilarity === 1;
@@ -583,11 +605,13 @@ export async function selectVerifiedDownloadedFile({
   let pool = parsedFiles;
   let poolOptions = fileOptions;
   if (releaseIndex != null && parsedFiles.length > 0) {
-    const verdict = judgeRelease(release!, {
-      files: parsedFiles.map(({ filePath, parsed }) =>
+    const files = await resolveListingFileIsrcs(
+      parsedFiles.map(({ filePath, parsed }) =>
         downloadedFileEvidence(filePath, parsed, { album: release!.title }),
       ),
-    });
+      release!,
+    );
+    const verdict = judgeRelease(release!, { files });
     const copies = verdict.copiesForTrack[releaseIndex] ?? [];
     const placed = new Set(verdict.assignment.pairs.map((pair) => pair.fileIndex));
     pool =
