@@ -722,3 +722,47 @@ test("files numbered disc by hundred pair with their own disc", () => {
   }));
   assert.deepEqual(judgeRelease(twoDiscs, listing(twoDiscs, swapped)).missing, [0, 1, 2, 3]);
 });
+
+test("a file whose ISRC names the track's recording pairs despite a different title and length", () => {
+  const pressed = release(["First Song", "Second Song"]);
+  requireFixture(pressed.tracks[0]).recordingMbid = RECORDING;
+  requireFixture(pressed.tracks[1]).recordingMbid = OTHER_RECORDING;
+  const files = pressed.tracks.map((_, index) =>
+    fileFor(pressed, index, {
+      title:
+        index === 0 ? "A Completely Different Title" : requireFixture(pressed.tracks[index]).title,
+      durationMs: requireFixture(pressed.tracks[index]).durationMs + (index === 0 ? 5000 : 0),
+      isrcRecordingMbid: index === 0 ? RECORDING : null,
+    }),
+  );
+  const verdict = judgeRelease(pressed, listing(pressed, files));
+  assert.equal(verdict.kind, "exact");
+  assert.deepEqual(verdict.fileForTrack, [0, 1]);
+});
+
+test("an ISRC pairs a track whose title contradicts it in another script", () => {
+  const script = release(["テスト曲その一", "テスト曲その二"]);
+  requireFixture(script.tracks[0]).recordingMbid = RECORDING;
+  const renamed = (stamped: boolean) =>
+    script.tracks.map((_, index) =>
+      fileFor(script, index, {
+        title: index === 0 ? "別のテスト曲名" : requireFixture(script.tracks[index]).title,
+        isrcRecordingMbid: stamped && index === 0 ? RECORDING : null,
+      }),
+    );
+  assert.equal(judgeRelease(script, listing(script, renamed(false))).kind, "rejected");
+  const verdict = judgeRelease(script, listing(script, renamed(true)));
+  assert.equal(verdict.kind, "exact");
+  assert.deepEqual(verdict.fileForTrack, [0, 1]);
+});
+
+test("an ISRC naming a recording off the release leaves the title match in charge", () => {
+  const named = release(["First Song", "Second Song"]);
+  requireFixture(named.tracks[0]).recordingMbid = RECORDING;
+  const files = named.tracks.map((_, index) =>
+    fileFor(named, index, { isrcRecordingMbid: OTHER_RECORDING }),
+  );
+  const verdict = judgeRelease(named, listing(named, files));
+  assert.equal(verdict.kind, "exact");
+  assert.deepEqual(verdict.fileForTrack, [0, 1]);
+});

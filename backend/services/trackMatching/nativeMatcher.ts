@@ -48,6 +48,16 @@ export function readRecordingMbid(value: unknown) {
   return UUID_REGEX.test(id) ? id : null;
 }
 
+// Download sources tag files with the recording's ISRC. Only a 12-character
+// code counts, the same rule the catalogue lookup keys on.
+export function readIsrc(value: unknown) {
+  const list: unknown[] = Array.isArray(value) ? value : [value];
+  const code = String(list[0] ?? "")
+    .replace(/[^a-z0-9]/gi, "")
+    .toUpperCase();
+  return code.length === 12 ? code : null;
+}
+
 type RecordingRequest = {
   title?: string | null;
   albumName?: string | null;
@@ -79,6 +89,7 @@ type RecordingCandidate = {
   directoryPath?: string | null;
   recordingMbid?: unknown;
   recording_mbid?: unknown;
+  isrcRecordingMbid?: unknown;
   durationMs?: unknown;
   duration_ms?: unknown;
   sizeBytes?: unknown;
@@ -345,6 +356,11 @@ export function compareRecording(
   const candidateId = readRecordingMbid(candidate.recordingMbid || candidate.recording_mbid) || "";
   const sameRecording = Boolean(candidateId) && requestIds.includes(candidateId);
   if (requestId && candidateId && !sameRecording) contradictions.push("recording-mbid");
+  // A file whose ISRC the catalogue maps to a requested recording is that
+  // recording. Its title and length may still differ: pressings and taggers
+  // vary both while the recording stays the same.
+  const isrcRecordingId = readRecordingMbid(candidate.isrcRecordingMbid) || "";
+  const sameIsrc = Boolean(isrcRecordingId) && requestIds.includes(isrcRecordingId);
   const offeredTitle = [candidate.versionTitle || candidate.title, candidate.fileNameTitle]
     .filter(Boolean)
     .join(" ");
@@ -378,8 +394,20 @@ export function compareRecording(
   );
   if (artist != null && artist < policy.minArtistNonConflictSimilarity)
     contradictions.push("artist");
+  // The ISRC names the recording, so a different title or a pressing's
+  // length cannot contradict it. A length past the outer window still does:
+  // that is no longer a pressing of the requested recording. The narrowed
+  // windows some callers pass target title-matched files, not identified ones.
+  const effectiveContradictions = sameIsrc
+    ? contradictions.filter(
+        (contradiction) =>
+          contradiction !== "title" &&
+          (contradiction !== "duration" || (gap != null && gap > MATCH_POLICY.maxDurationGapMs)),
+      )
+    : contradictions;
   const evidence = [];
   if (sameRecording) evidence.push("recording-mbid");
+  if (sameIsrc) evidence.push("isrc");
   if (title >= policy.minTitleSimilarity) evidence.push("title");
   if (artist != null && artist >= policy.minArtistSimilarity) evidence.push("artist");
   if (gap != null && gap <= policy.maxDurationGapMs) evidence.push("duration");
@@ -388,10 +416,10 @@ export function compareRecording(
     title * 0.55 +
       (artist ?? 0) * 0.2 +
       (gap == null ? 0 : Math.max(0, 1 - gap / policy.maxDurationGapMs)) * 0.25 +
-      (evidence.includes("recording-mbid") ? 0.2 : 0),
+      (evidence.includes("recording-mbid") || evidence.includes("isrc") ? 0.2 : 0),
   );
   return {
-    contradictions,
+    contradictions: effectiveContradictions,
     evidence,
     score,
     titleSimilarity: title,
@@ -627,6 +655,7 @@ export function verifyDownloadedRecording(
   }
   if (
     observed.fileNameTitle &&
+    !result.evidence.includes("isrc") &&
     (nonLatinTitleContradiction(request.title, observed.fileNameTitle) ||
       (result.titleSimilarity >= policy.minTitleSimilarity &&
         normalizeMatchText(observed.fileNameTitle) &&
@@ -636,9 +665,11 @@ export function verifyDownloadedRecording(
     result.contradictions.push("filename-title");
   }
   // Another song by the same artist with a similar length is not a near
-  // match: without its title or recording ID, a file is a different song.
+  // match: without its title or recording ID, a file is a different song. A
+  // resolved ISRC is its recording ID.
   if (
     !result.evidence.includes("recording-mbid") &&
+    !result.evidence.includes("isrc") &&
     !result.evidence.includes("title") &&
     !result.contradictions.includes("title")
   ) {
@@ -646,7 +677,8 @@ export function verifyDownloadedRecording(
   }
   let decision = "ambiguous";
   if (result.contradictions.length) decision = "no_match";
-  else if (result.evidence.includes("recording-mbid")) decision = "matched";
+  else if (result.evidence.includes("recording-mbid") || result.evidence.includes("isrc"))
+    decision = "matched";
   else if (
     result.evidence.includes("title") &&
     result.evidence.includes("artist") &&

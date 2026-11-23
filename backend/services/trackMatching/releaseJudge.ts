@@ -58,6 +58,8 @@ type ReleaseListingFile = {
   album?: string | null;
   durationMs?: number | null;
   recordingMbid?: string | null;
+  isrc?: string | null;
+  isrcRecordingMbid?: string | null;
   filename?: string | null;
   path?: string | null;
   trackNumber?: number | null;
@@ -291,6 +293,7 @@ function fileCandidate(listing: JudgedListing, file: ReleaseListingFile, labelAr
     artists: names(file.artists).length ? names(file.artists) : labelArtists,
     durationMs: file.durationMs,
     recordingMbid: file.recordingMbid,
+    isrcRecordingMbid: file.isrcRecordingMbid,
     album: [...new Set([file.album, listing.albumLabel].filter(Boolean))],
     filename: filename ? parseListingTitle(filename).title : null,
     directoryPath: directoryOf(file.path),
@@ -327,9 +330,15 @@ function judgePair(
   const titled = readsAsTitle(entry.title, fileTitle);
   const recordingId = readRecordingMbid(file.recordingMbid);
   const sameRecording = Boolean(recordingId) && entry.recordingIds.includes(recordingId);
+  // A file whose ISRC the catalogue maps to this track's recording is this
+  // track, however its title reads. A file that names another track's place
+  // still cannot take it.
+  const isrcRecordingId = readRecordingMbid(file.isrcRecordingMbid);
+  const sameIsrc = Boolean(isrcRecordingId) && entry.recordingIds.includes(isrcRecordingId);
   const similarTitle =
     titled && keySimilarity(entry.title.key, fileTitle.key) >= policy.minTitleSimilarity;
-  if (titled && !similarTitle && !sameRecording) return blocked(["title"], false, null);
+  if (titled && !similarTitle && !sameRecording && !sameIsrc)
+    return blocked(["title"], false, null);
   const position = comparePosition(track, file, ordered ? trackIndex + 1 : null);
   if (position === "different")
     return blocked(["position"], similarTitle || sameRecording, position);
@@ -345,7 +354,14 @@ function judgePair(
     (variant) => !RELEASE_MIX_VARIANTS.has(variant),
   );
   const gap = comparison.durationGapMs;
-  if (gap != null && gap > policy.selectedDurationGapMs && !blockers.includes("duration"))
+  // The ISRC names the recording, so a pressing's length within the outer
+  // window cannot block its place. Past the window it still does.
+  if (
+    gap != null &&
+    gap > policy.selectedDurationGapMs &&
+    !blockers.includes("duration") &&
+    !(sameIsrc && gap <= MATCH_POLICY.maxDurationGapMs)
+  )
     blockers.push("duration");
   const recording = comparison.evidence.includes("recording-mbid");
   const titleEvidence = comparison.evidence.includes("title");
@@ -353,6 +369,7 @@ function judgePair(
   const placed = position === "same";
   const identity =
     recording ||
+    sameIsrc ||
     (titleEvidence && gap != null) ||
     (exactTitle && placed) ||
     (!titled && placed && gap != null && (artistVouched || comparison.evidence.includes("artist")));
@@ -362,9 +379,9 @@ function judgePair(
     trackIndex,
     blockers,
     position,
-    named: recording || titleEvidence,
+    named: recording || sameIsrc || titleEvidence,
     eligible: blockers.length === 0 && identity,
-    sameSong: recording || exactTitle || (!titled && placed),
+    sameSong: recording || sameIsrc || exactTitle || (!titled && placed),
     implausible,
     score: implausible ? 0 : comparison.score + (placed ? 0.05 : 0),
     evidence: [...comparison.evidence, ...(placed ? ["position"] : [])],
