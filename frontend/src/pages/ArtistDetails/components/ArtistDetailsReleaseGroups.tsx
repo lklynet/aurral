@@ -4,6 +4,7 @@ import { DotLoader } from "../../../components/DotLoader";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { getReleaseGroupLink } from "../../../utils/searchNavigation";
 import {
+  getReleaseMetric,
   getPopularReleaseGroups,
   getReleaseGroupCoverUrl,
   type LibraryReleaseGroup,
@@ -180,7 +181,8 @@ export function ArtistDetailsReleaseGroups({
                       coverUrl: coverUrl || artistCoverImage || "",
                     })
               }
-              detail={releaseGroup["primary-type"]}
+              type={releaseGroup["primary-type"]}
+              metric={getReleaseMetric(releaseGroup)}
               status={getAlbumStatus(releaseGroup.id)}
               busy={requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id)}
               onDownload={

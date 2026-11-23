@@ -175,6 +175,70 @@ test("a year range falls back to the best track of an in-range release", async (
   assert.equal(pick?.durationMs, 200000);
 });
 
+test("a year range reads artist releases and album tracks from data.aurral.org when an MBID is known", async () => {
+  const artistMbid = "11111111-1111-4111-8111-111111111111";
+  const albumMbid = "22222222-2222-4222-8222-222222222222";
+  const recordingMbid = "33333333-3333-4333-8333-333333333333";
+  const hosts: string[] = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = new URL(String(input));
+    hosts.push(url.hostname);
+    if (url.hostname === "data.aurral.org" && url.pathname === `/v1/artist/${artistMbid}`) {
+      return json({
+        id: artistMbid,
+        name: "Metadata Band",
+        albums: [
+          { id: "old-album", title: "Old Record", type: "Album", firstReleaseDate: "2018-04-01" },
+          { id: albumMbid, title: "Comeback LP", type: "Album", firstReleaseDate: "2025-08-15" },
+        ],
+        topTracks: [],
+      });
+    }
+    if (url.hostname === "data.aurral.org" && url.pathname === `/v1/album/${albumMbid}`) {
+      return json({
+        id: albumMbid,
+        title: "Comeback LP",
+        releases: [
+          {
+            id: "rel-1",
+            status: "Official",
+            tracks: [
+              {
+                id: "t-1",
+                recordingId: recordingMbid,
+                title: "Fresh Cut",
+                trackPosition: 1,
+                mediumNumber: 1,
+                durationMs: 215000,
+              },
+            ],
+          },
+        ],
+      });
+    }
+    return json({ error: "unexpected" });
+  });
+  const source = new FlowTrackSource();
+  source._getArtistTopTrackList = async () => [topTrack("Old Hit", "Old Record")];
+
+  const pick = await source._pickTrackInYears(
+    "Metadata Band",
+    years(source, 2025, 2026),
+    false,
+    null,
+    artistMbid,
+  );
+
+  assert.deepEqual(pick, {
+    trackName: "Fresh Cut",
+    albumName: "Comeback LP",
+    trackMbid: recordingMbid,
+    durationMs: 215000,
+    releaseYear: "2025",
+  });
+  assert.deepEqual([...new Set(hosts)], ["data.aurral.org"]);
+});
+
 test("tags filter trending artists and match spelling variants", async () => {
   const source = new FlowTrackSource();
   const chartTrack = (artistName: string) => ({

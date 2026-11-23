@@ -4,10 +4,10 @@ import assert from "node:assert/strict";
 import { http } from "../../lib/http.ts";
 
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
-import { clearMetadataProviderCaches } from "../../backend/services/providers/brainzmashProvider.ts";
+import { clearMetadataProviderCaches } from "../../backend/services/providers/metadataProvider.ts";
 import { clearReleaseManifests } from "../../backend/services/releaseResolver.ts";
-import { pickResolvedDurationMs } from "../../backend/services/providers/brainzmashRanking.ts";
-import { toNormalizedTrack } from "../../backend/services/providers/brainzmashMappers.ts";
+import { pickResolvedDurationMs } from "../../backend/services/providers/metadataRanking.ts";
+import { toNormalizedTrack } from "../../backend/services/providers/metadataMappers.ts";
 
 const [isolatedState, { dbOps }, { resolveTrackSearchContext }] = await setupIsolatedBackend(
   "track-search-context",
@@ -29,12 +29,12 @@ afterEach(() => {
   now = Date.now();
 });
 
-test("BrainzMash release-track IDs are not treated as recording IDs, and merged recording IDs are kept", () => {
+test("release-track IDs are not treated as recording IDs, and merged recording IDs are kept", () => {
   assert.deepEqual(
     toNormalizedTrack({
       id: "release-track-id",
-      trackname: "Song",
-      oldrecordingids: ["merged-recording-id"],
+      title: "Song",
+      oldRecordingIds: ["merged-recording-id"],
     }),
     {
       id: "release-track-id",
@@ -80,32 +80,34 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
 
   vi.spyOn(http, "get").mockImplementation(async (url, options) => {
     const path = new URL(url).pathname;
-    if (path === "/search/album") {
+    if (path === "/v1/search/album") {
       return {
         status: 200,
         statusText: "OK",
         headers: {},
-        data: options?.query?.artist
-          ? [
-              {
-                id: "wrong-album",
-                title: "Jet Set Radio",
-                artistid: "wrong-artist",
-                artists: [{ id: "wrong-artist", artistname: "Vulgar Unicorn" }],
-              },
-            ]
-          : [
-              {
-                id: "correct-album",
-                title: "Jet Set Radio Future Original Sound Tracks",
-                artistid: "correct-artist",
-                artists: [{ id: "correct-artist", artistname: "長沼英樹" }],
-                releasedate: "2002-03-20",
-              },
-            ],
+        data: {
+          albums: options?.query?.artist
+            ? [
+                {
+                  id: "wrong-album",
+                  title: "Jet Set Radio",
+                  artistId: "wrong-artist",
+                  artistName: "Vulgar Unicorn",
+                },
+              ]
+            : [
+                {
+                  id: "correct-album",
+                  title: "Jet Set Radio Future Original Sound Tracks",
+                  artistId: "correct-artist",
+                  artistName: "長沼英樹",
+                  releaseDate: "2002-03-20",
+                },
+              ],
+        },
       };
     }
-    if (path === "/album/wrong-album") {
+    if (path === "/v1/album/wrong-album") {
       return {
         status: 200,
         statusText: "OK",
@@ -113,18 +115,18 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
         data: {
           id: "wrong-album",
           title: "Jet Set Radio",
-          artistid: "wrong-artist",
-          artists: [{ id: "wrong-artist", artistname: "Vulgar Unicorn" }],
+          artistId: "wrong-artist",
+          artists: [{ id: "wrong-artist", name: "Vulgar Unicorn" }],
           releases: [
             {
               id: "wrong-release",
               status: "Official",
               tracks: [
                 {
-                  trackname: "I Saw the Messenger of the New God There",
-                  trackposition: 4,
-                  durationms: 524773,
-                  recordingid: "wrong-track",
+                  title: "I Saw the Messenger of the New God There",
+                  trackPosition: 4,
+                  durationMs: 524773,
+                  recordingId: "wrong-track",
                 },
               ],
             },
@@ -132,7 +134,7 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
         },
       };
     }
-    if (path === "/album/correct-album") {
+    if (path === "/v1/album/correct-album") {
       return {
         status: 200,
         statusText: "OK",
@@ -140,22 +142,20 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
         data: {
           id: "correct-album",
           title: "Jet Set Radio Future Original Sound Tracks",
-          artistid: "correct-artist",
-          artists: [
-            { id: "correct-artist", artistname: "長沼英樹", artistaliases: ["Hideki Naganuma"] },
-          ],
-          releasedate: "2002-03-20",
+          artistId: "correct-artist",
+          artists: [{ id: "correct-artist", name: "長沼英樹", aliases: ["Hideki Naganuma"] }],
+          releaseDate: "2002-03-20",
           releases: [
             {
               id: "correct-release",
               status: "Official",
-              releasedate: "2002-03-20",
+              releaseDate: "2002-03-20",
               tracks: [
                 {
-                  trackname: "The Concept of Love",
-                  trackposition: 1,
-                  durationms: 222813,
-                  recordingid: "correct-track",
+                  title: "The Concept of Love",
+                  trackPosition: 1,
+                  durationMs: 222813,
+                  recordingId: "correct-track",
                 },
               ],
             },
@@ -201,7 +201,7 @@ test("resolveTrackSearchContext preserves a recording from a non-representative 
     dbOps.updateSettings(originalSettings);
   });
   const get = vi.spyOn(http, "get").mockImplementation(async (url) => {
-    assert.equal(new URL(url).pathname, "/album/b1392450-e666-3926-a536-22c65f834433");
+    assert.equal(new URL(url).pathname, "/v1/album/b1392450-e666-3926-a536-22c65f834433");
     return {
       status: 200,
       statusText: "OK",
@@ -209,14 +209,14 @@ test("resolveTrackSearchContext preserves a recording from a non-representative 
       data: {
         id: "b1392450-e666-3926-a536-22c65f834433",
         title: "OK Computer",
-        artistid: "earlier-alias-artist",
+        artistId: "earlier-alias-artist",
         artists: [
           {
             id: "earlier-alias-artist",
-            artistname: "Different Artist",
-            artistaliases: ["Radiohead"],
+            name: "Different Artist",
+            aliases: ["Radiohead"],
           },
-          { id: "a74b1b7f-71a5-4011-9441-d0b5e4122711", artistname: "Radiohead" },
+          { id: "a74b1b7f-71a5-4011-9441-d0b5e4122711", name: "Radiohead" },
         ],
         releases: [
           {
@@ -225,17 +225,17 @@ test("resolveTrackSearchContext preserves a recording from a non-representative 
             tracks: [
               {
                 id: "airbag-representative-track",
-                recordingid: "airbag-representative-recording",
-                trackname: "Airbag",
-                trackposition: 1,
-                durationms: 287000,
+                recordingId: "airbag-representative-recording",
+                title: "Airbag",
+                trackPosition: 1,
+                durationMs: 287000,
               },
               {
                 id: "paranoid-representative-track",
-                recordingid: "paranoid-representative-recording",
-                trackname: "Paranoid Android",
-                trackposition: 2,
-                durationms: 382000,
+                recordingId: "paranoid-representative-recording",
+                title: "Paranoid Android",
+                trackPosition: 2,
+                durationMs: 382000,
               },
             ],
           },
@@ -245,17 +245,17 @@ test("resolveTrackSearchContext preserves a recording from a non-representative 
             tracks: [
               {
                 id: "airbag-remaster-track",
-                recordingid: "airbag-remaster-recording",
-                trackname: "Airbag",
-                trackposition: 1,
-                durationms: 288000,
+                recordingId: "airbag-remaster-recording",
+                title: "Airbag",
+                trackPosition: 1,
+                durationMs: 288000,
               },
               {
                 id: "release-track-from-musicbrainz",
-                recordingid: "recording-from-musicbrainz",
-                trackname: "Paranoid Android",
-                trackposition: 2,
-                durationms: 383000,
+                recordingId: "recording-from-musicbrainz",
+                title: "Paranoid Android",
+                trackPosition: 2,
+                durationMs: 383000,
               },
             ],
           },
@@ -301,17 +301,17 @@ test("resolveTrackSearchContext learns a track's disc and keeps a known disc for
     dbOps.updateSettings(originalSettings);
   });
   const track = (
-    mediumnumber: number,
-    trackposition: number,
-    trackname: string,
-    recordingid: string,
+    mediumNumber: number,
+    trackPosition: number,
+    title: string,
+    recordingId: string,
   ) => ({
-    id: `${recordingid}-${mediumnumber}`,
-    recordingid,
-    trackname,
-    trackposition,
-    mediumnumber,
-    durationms: 200000,
+    id: `${recordingId}-${mediumNumber}`,
+    recordingId,
+    title,
+    trackPosition,
+    mediumNumber,
+    durationMs: 200000,
   });
   vi.spyOn(http, "get").mockImplementation(async () => ({
     status: 200,
@@ -320,8 +320,8 @@ test("resolveTrackSearchContext learns a track's disc and keeps a known disc for
     data: {
       id: "sixteen-stone",
       title: "Sixteen Stone",
-      artistid: "bush",
-      artists: [{ id: "bush", artistname: "Bush" }],
+      artistId: "bush",
+      artists: [{ id: "bush", name: "Bush" }],
       releases: [
         {
           id: "deluxe",
@@ -384,7 +384,7 @@ test("resolveTrackSearchContext repairs a stored Last.fm release-track ID", asyn
     dbOps.updateSettings(originalSettings);
   });
   vi.spyOn(http, "get").mockImplementation(async (url) => {
-    assert.equal(new URL(url).pathname, "/album/legacy-album");
+    assert.equal(new URL(url).pathname, "/v1/album/legacy-album");
     return {
       status: 200,
       statusText: "OK",
@@ -392,8 +392,8 @@ test("resolveTrackSearchContext repairs a stored Last.fm release-track ID", asyn
       data: {
         id: "legacy-album",
         title: "ROCKISDEAD",
-        artistid: "legacy-artist",
-        artists: [{ id: "legacy-artist", artistname: "Dorothy" }],
+        artistId: "legacy-artist",
+        artists: [{ id: "legacy-artist", name: "Dorothy" }],
         releases: [
           {
             id: "legacy-release",
@@ -401,10 +401,10 @@ test("resolveTrackSearchContext repairs a stored Last.fm release-track ID", asyn
             tracks: [
               {
                 id: "be758dcb-9166-4c33-87ff-30ba2d32e501",
-                recordingid: "befc26a0-5403-4d73-b0f8-3f6a6fb0c292",
-                trackname: "What's Coming To Me",
-                trackposition: 1,
-                durationms: 203000,
+                recordingId: "befc26a0-5403-4d73-b0f8-3f6a6fb0c292",
+                title: "What's Coming To Me",
+                trackPosition: 1,
+                durationMs: 203000,
               },
             ],
           },
@@ -491,7 +491,7 @@ function stubMetadata(
 
 const artistEntry = (id: string, name: string, extra: { disambiguation?: string } = {}) => ({
   id,
-  artistname: name,
+  name,
   type: "Group",
   ...extra,
 });
@@ -504,7 +504,8 @@ const albumEntry = (
   id,
   title,
   type: "Album",
-  artistid: artist.id,
+  artistId: artist.id,
+  artistName: artist.name,
   artists: [artist],
   ...(tracks && {
     releases: [
@@ -512,11 +513,11 @@ const albumEntry = (
         id: `${id}-release`,
         status: "Official",
         tracks: tracks.map((name, index) => ({
-          trackname: name,
-          trackposition: index + 1,
-          mediumnumber: 1,
-          durationms: 200000,
-          recordingid: `${id}-${index + 1}`,
+          title: name,
+          trackPosition: index + 1,
+          mediumNumber: 1,
+          durationMs: 200000,
+          recordingId: `${id}-${index + 1}`,
         })),
       },
     ],
@@ -528,12 +529,14 @@ test("a download credited to an artist and a guest takes the lead artist, and no
   const namesake = artistEntry("andrew-dance", "Andrew Dance", { disambiguation: "techno artist" });
   const other = artistEntry("other-band", "Other Band");
   stubMetadata(t, (path, params) => {
-    if (path === "/search/artist") {
-      return params.query === "Dance Gavin Dance" ? [lead] : [lead, namesake];
+    if (path === "/v1/search/artist") {
+      return { artists: params.q === "Dance Gavin Dance" ? [lead] : [lead, namesake] };
     }
-    if (path === "/search/album")
-      return params.artist ? [] : [albumEntry("other-afterburner", "Afterburner", other)];
-    if (path === "/album/other-afterburner")
+    if (path === "/v1/search/album")
+      return {
+        albums: params.artist ? [] : [albumEntry("other-afterburner", "Afterburner", other)],
+      };
+    if (path === "/v1/album/other-afterburner")
       return albumEntry("other-afterburner", "Afterburner", other, ["Afterburner"]);
     return null;
   });
@@ -574,7 +577,7 @@ test("a download credited to an artist and a guest takes the lead artist, and no
 test('a download credited with "&" takes the artist MusicBrainz names with "and"', async (t) => {
   const band = artistEntry("belle-and-sebastian", "Belle and Sebastian");
   const namesake = artistEntry("sebastian", "Sebastian", { disambiguation: "French producer" });
-  stubMetadata(t, (path) => (path === "/search/artist" ? [namesake, band] : null));
+  stubMetadata(t, (path) => (path === "/v1/search/artist" ? { artists: [namesake, band] } : null));
 
   const resolved = await resolveTrackSearchContext({
     artistName: "Belle & Sebastian",
@@ -603,21 +606,25 @@ test("a download takes the album of its title that lists the song, over the albu
     requireFixture(deluxe.releases[0]),
   );
   stubMetadata(t, (path: string, params) => {
-    if (path === "/search/album") {
-      return Object.values(albums)
-        .filter((album) => album.title === params.query)
-        .map(({ releases, ...album }) => album);
+    if (path === "/v1/search/album") {
+      return {
+        albums: Object.values(albums)
+          .filter((album) => album.title === params.q)
+          .map(({ releases, ...album }) => album),
+      };
     }
-    if (path === "/artist/weezer") {
+    if (path === "/v1/artist/weezer") {
       return {
         ...weezer,
-        Albums: [
-          { Id: "blue", Title: "Weezer", Type: "Album" },
-          { Id: "teal", Title: "Weezer", Type: "Album" },
+        albums: [
+          { id: "blue", title: "Weezer", type: "Album" },
+          { id: "teal", title: "Weezer", type: "Album" },
         ],
       };
     }
-    return Object.values(albums).find((album) => album.id === path.replace("/album/", "")) || null;
+    return (
+      Object.values(albums).find((album) => album.id === path.replace("/v1/album/", "")) || null
+    );
   });
 
   const resolved = await resolveTrackSearchContext({
@@ -700,28 +707,31 @@ test("a download takes the album of its title from the year it names, when the a
   const albums = {
     "old-hits": {
       ...albumEntry("old-hits", "Greatest Hits", band, ["Africa"]),
-      releasedate: "1999-05-01",
+      releaseDate: "1999-05-01",
     },
     "new-hits": {
       ...albumEntry("new-hits", "Greatest Hits", band, ["Africa"]),
-      releasedate: "2005-05-01",
+      releaseDate: "2005-05-01",
     },
   };
   const fetched: string[] = [];
   stubMetadata(t, (path: string) => {
-    if (path === "/search/album" || path === "/ws/2/release-group") return [];
-    if (path === "/artist/hits-band") {
+    if (path === "/v1/search/album") return { albums: [] };
+    if (path === "/ws/2/release-group") return { "release-groups": [] };
+    if (path === "/v1/artist/hits-band") {
       return {
         ...band,
-        Albums: [
-          { Id: "old-hits", Title: "Greatest Hits", Type: "Album" },
-          { Id: "new-hits", Title: "Greatest Hits", Type: "Album" },
-          { Id: "other-album", Title: "Another Record", Type: "Album" },
+        albums: [
+          { id: "old-hits", title: "Greatest Hits", type: "Album", firstReleaseDate: "1999-05-01" },
+          { id: "new-hits", title: "Greatest Hits", type: "Album", firstReleaseDate: "2005-05-01" },
+          { id: "other-album", title: "Another Record", type: "Album" },
         ],
       };
     }
     fetched.push(path);
-    return Object.values(albums).find((album) => album.id === path.replace("/album/", "")) || null;
+    return (
+      Object.values(albums).find((album) => album.id === path.replace("/v1/album/", "")) || null
+    );
   });
 
   const resolved = await resolveTrackSearchContext({
@@ -732,38 +742,38 @@ test("a download takes the album of its title from the year it names, when the a
     releaseYear: "2005",
   });
   assert.equal(resolved.albumMbid, "new-hits");
-  assert.deepEqual(fetched.toSorted(), ["/album/new-hits", "/album/old-hits"]);
+  assert.deepEqual(fetched, ["/v1/album/new-hits"]);
 });
 
 const editionAlbum = () => {
   const band = artistEntry("edition-band", "Edition Band");
   const song = (
-    trackname: string,
-    recordingid: string,
-    trackposition: number,
-    durationms: number,
-    extra: { oldrecordingids?: string[] } = {},
+    title: string,
+    recordingId: string,
+    trackPosition: number,
+    durationMs: number,
+    extra: { oldRecordingIds?: string[] } = {},
   ) => ({
-    id: `${recordingid}-${trackposition}`,
-    trackname,
-    recordingid,
-    trackposition,
-    mediumnumber: 1,
-    durationms,
+    id: `${recordingId}-${trackPosition}`,
+    title,
+    recordingId,
+    trackPosition,
+    mediumNumber: 1,
+    durationMs,
     ...extra,
   });
   return {
     id: "edition-album",
     title: "Edition Album",
     type: "Album",
-    artistid: band.id,
+    artistId: band.id,
     artists: [band],
     releases: [
       {
         id: "edition-standard",
         status: "Official",
         tracks: [
-          song("Opener", "opener", 1, 200000, { oldrecordingids: ["opener-merged"] }),
+          song("Opener", "opener", 1, 200000, { oldRecordingIds: ["opener-merged"] }),
           song("Middle", "middle", 2, 210000),
         ],
       },
@@ -788,7 +798,7 @@ const editionAlbum = () => {
 
 test("a track's tracklist, place, and length all come from the edition its release ID pins, and a pin without the track stays", async (t) => {
   const album = editionAlbum();
-  stubMetadata(t, (path) => (path === "/album/edition-album" ? album : null));
+  stubMetadata(t, (path) => (path === "/v1/album/edition-album" ? album : null));
   const resolved = await resolveTrackSearchContext({
     artistName: "Edition Band",
     artistMbid: "edition-band",
@@ -829,17 +839,19 @@ test("a track's tracklist, place, and length all come from the edition its relea
 test("a track that names only its release and album title is searched on that release", async (t) => {
   const album = editionAlbum();
   stubMetadata(t, (path) => {
-    if (path === "/search/album")
-      return [
-        {
-          id: album.id,
-          title: album.title,
-          type: "Album",
-          artistid: album.artistid,
-          artists: album.artists,
-        },
-      ];
-    return path === "/album/edition-album" ? album : null;
+    if (path === "/v1/search/album")
+      return {
+        albums: [
+          {
+            id: album.id,
+            title: album.title,
+            type: "Album",
+            artistId: album.artistId,
+            artistName: album.artists[0]?.name ?? "",
+          },
+        ],
+      };
+    return path === "/v1/album/edition-album" ? album : null;
   });
   const resolved = await resolveTrackSearchContext({
     artistName: "Edition Band",
@@ -856,19 +868,21 @@ test("a track that names only its release and album title is searched on that re
 test("an album ID the metadata provider does not know is replaced by the album its title names", async (t) => {
   const album = editionAlbum();
   stubMetadata(t, (path) => {
-    if (path === "/search/album")
-      return [
-        {
-          id: album.id,
-          title: album.title,
-          type: "Album",
-          artistid: album.artistid,
-          artists: album.artists,
-        },
-      ];
-    if (path === "/album/edition-deluxe")
+    if (path === "/v1/search/album")
+      return {
+        albums: [
+          {
+            id: album.id,
+            title: album.title,
+            type: "Album",
+            artistId: album.artistId,
+            artistName: album.artists[0]?.name ?? "",
+          },
+        ],
+      };
+    if (path === "/v1/album/edition-deluxe")
       throw Object.assign(new Error("Not Found"), { response: { status: 404 } });
-    return path === "/album/edition-album" ? album : null;
+    return path === "/v1/album/edition-album" ? album : null;
   });
   const resolved = await resolveTrackSearchContext({
     artistName: "Edition Band",
@@ -884,9 +898,9 @@ test("an album ID is kept while the metadata provider is down, and its release i
   const album = { ...editionAlbum(), id: "outage-album" };
   let down = true;
   stubMetadata(t, (path: string) => {
-    if (down && path.startsWith("/album/"))
+    if (down && path.startsWith("/v1/album/"))
       throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
-    return path === "/album/outage-album" ? album : null;
+    return path === "/v1/album/outage-album" ? album : null;
   });
   const track = {
     artistName: "Edition Band",
@@ -914,7 +928,7 @@ test("an album ID is kept while the metadata provider is down, and its release i
 
 test("a merged recording ID is repaired to the current recording and kept as its alias", async (t) => {
   const album = editionAlbum();
-  stubMetadata(t, (path) => (path === "/album/edition-album" ? album : null));
+  stubMetadata(t, (path) => (path === "/v1/album/edition-album" ? album : null));
   const resolved = await resolveTrackSearchContext({
     artistName: "Edition Band",
     artistMbid: "edition-band",
@@ -937,11 +951,11 @@ test("a merged recording ID is repaired to the current recording and kept as its
     tracks: [
       {
         id: "middle-single",
-        trackname: "Middle",
-        recordingid: "middle",
-        trackposition: 1,
-        mediumnumber: 1,
-        durationms: 210000,
+        title: "Middle",
+        recordingId: "middle",
+        trackPosition: 1,
+        mediumNumber: 1,
+        durationMs: 210000,
       },
     ],
   });
@@ -964,7 +978,7 @@ test("a merged recording ID is repaired to the current recording and kept as its
 
 test("a song's other version never stands in for it on the album", async (t) => {
   const album = editionAlbum();
-  stubMetadata(t, (path) => (path === "/album/edition-album" ? album : null));
+  stubMetadata(t, (path) => (path === "/v1/album/edition-album" ? album : null));
   const resolved = await resolveTrackSearchContext({
     artistName: "Edition Band",
     artistMbid: "edition-band",
@@ -976,4 +990,40 @@ test("a song's other version never stands in for it on the album", async (t) => 
   assert.equal(resolved.trackMbid, "middle-acoustic");
   assert.equal(resolved.trackNumber, 4);
   assert.equal(resolved.releaseMbid, "edition-deluxe");
+});
+
+test("an album that lists the track's recording is the track's album whatever the source calls it, and the job takes its title", async (t) => {
+  const band = artistEntry("reissue-band", "Reissue Band");
+  const studio = {
+    ...albumEntry("studio", "Clear Computer", band, ["Opening", "Karma"]),
+    releaseDate: "1997-05-21",
+  };
+  const hits = albumEntry("hits", "Greatest Hits", band, ["Karma"]);
+  stubMetadata(t, (path) => {
+    if (path === "/v1/search/album") return { albums: [albumEntry("hits", "Greatest Hits", band)] };
+    if (path === "/v1/album/studio") return studio;
+    if (path === "/v1/album/hits") return hits;
+    return null;
+  });
+  const track = {
+    artistName: "Reissue Band",
+    artistMbid: "reissue-band",
+    trackName: "Karma",
+    albumName: "Greatest Hits",
+    albumMbid: "studio",
+    trackMbid: "studio-2",
+    releaseYear: "2017",
+  };
+
+  const listed = await resolveTrackSearchContext(track);
+  assert.equal(listed.albumMbid, "studio");
+  assert.equal(listed.albumName, "Clear Computer");
+  assert.equal(listed.releaseYear, "1997");
+  assert.equal(listed.trackMbid, "studio-2");
+  assert.equal(listed.trackNumber, 2);
+  assert.deepEqual(listed.albumTrackTitles, ["Opening", "Karma"]);
+
+  const unlisted = await resolveTrackSearchContext({ ...track, trackMbid: "hits-1" });
+  assert.equal(unlisted.albumMbid, "hits");
+  assert.equal(unlisted.albumName, "Greatest Hits");
 });

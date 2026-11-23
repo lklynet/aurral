@@ -5,7 +5,7 @@ import { isOwnKey } from "../../../lib/ownKey.ts";
 // keeps only what a source actually provides and
 // never fabricates values.
 
-import { foldDiacritics } from "../providers/brainzmashRanking.ts";
+import { foldDiacritics } from "../providers/metadataRanking.ts";
 import { isSilenceTrack } from "./titleText.ts";
 
 export const SOURCE_CAPABILITIES = {

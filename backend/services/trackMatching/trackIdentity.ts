@@ -6,7 +6,7 @@
 
 import { extractVariants } from "./semanticPolicy.ts";
 import type { ReleaseTrack } from "./semanticPolicy.ts";
-import { getYear } from "../providers/brainzmashRanking.ts";
+import { getYear } from "../providers/metadataRanking.ts";
 import { cleanText } from "./candidateNormalizer.ts";
 
 type TrackContext = {

@@ -263,3 +263,33 @@ test("a queued track is levelled only when its loudness arrives before it plays"
     assert.equal(active.volume, volume, answeredAt);
   }
 });
+
+test("Deezer preview URLs skip loudness HEAD checks and loudness fetches do not follow redirects", async (t) => {
+  vi.stubGlobal("window", {
+    location: { href: "https://aurral.test/", origin: "https://aurral.test" },
+  });
+  const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+    calls.push({ url, init });
+    return Promise.resolve(new Response(null));
+  });
+  t.onTestFinished(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const { engine } = setup();
+  engine.setLeveling(true);
+  engine.load({
+    src: "https://aurral.test/api/deezer/preview?artist=Illiterates&track=Chip+Away",
+    format: ["mp3"],
+  });
+  engine.preload({
+    src: "https://aurral.test/api/deezer/preview/12345",
+    format: ["mp3"],
+  });
+  assert.equal(calls.length, 0);
+
+  engine.load({ src: "https://aurral.test/api/library/stream/1/2", format: ["flac"] });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.init?.redirect, "manual");
+});

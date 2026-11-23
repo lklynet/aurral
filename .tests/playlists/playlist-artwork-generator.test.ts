@@ -9,10 +9,11 @@ import {
   renderPlaylistCover,
 } from "../../backend/services/playlistCoverTemplates.ts";
 
-const [state, generator, imageSource, imageProxy] = await setupIsolatedBackend(
+const [state, generator, artistMatch, imageService, imageProxy] = await setupIsolatedBackend(
   "cover-generator",
   () => import("../../backend/services/playlistArtworkGenerator.ts"),
-  () => import("../../backend/services/releaseGroupCoverService.ts"),
+  () => import("../../backend/services/artistMatch.ts"),
+  () => import("../../backend/services/imageService.ts"),
   () => import("../../backend/services/imageProxyService.ts"),
 );
 const source = await sharp({
@@ -23,9 +24,13 @@ const source = await sharp({
 const sourceMetadata = await sharp(source).metadata();
 const outputPath = path.join(state.dataDir, "cover.webp");
 beforeEach(() => {
-  vi.spyOn(imageSource, "fetchDeezerArtistImageUrl").mockImplementation(
-    async (input) => `https://images.example.test/${input?.artistName}.png`,
+  vi.spyOn(artistMatch, "guessArtistMbid").mockImplementation(async (name) =>
+    name ? `mbid-${name.toLowerCase()}` : null,
   );
+  vi.spyOn(imageService, "getArtistImage").mockImplementation(async (mbid) => {
+    const url = `https://images.example.test/${mbid}.png`;
+    return { url, images: [{ image: url, front: true, types: ["Artist"] }] };
+  });
   vi.spyOn(imageProxy, "fetchRemoteImage").mockResolvedValue({
     buffer: source,
     contentType: "image/png",
@@ -55,7 +60,7 @@ test("regeneration chooses a different playlist artist and advances the template
 });
 
 test("simple covers do not request any artist image", async () => {
-  const lookup = vi.mocked(imageSource.fetchDeezerArtistImageUrl);
+  const lookup = vi.mocked(imageService.getArtistImage);
   const result = await generator.writeGeneratedPlaylistArtwork({
     outputPath,
     title: "Focus",
@@ -72,7 +77,7 @@ test("simple covers do not request any artist image", async () => {
 });
 
 test("missing artist images produce a simple cover that can be retried", async () => {
-  vi.mocked(imageSource.fetchDeezerArtistImageUrl).mockRejectedValue(new Error("offline"));
+  vi.mocked(imageService.getArtistImage).mockRejectedValue(new Error("offline"));
   const result = await generator.writeGeneratedPlaylistArtwork({
     outputPath,
     title: "Offline",
@@ -122,7 +127,7 @@ test("every template renders a distinct cover with a long Unicode title", async 
 
 test("a pinned redraw keeps the existing cover when its artist photo is unavailable", async () => {
   await fs.writeFile(outputPath, "existing cover");
-  vi.mocked(imageSource.fetchDeezerArtistImageUrl).mockRejectedValue(new Error("offline"));
+  vi.mocked(imageService.getArtistImage).mockRejectedValue(new Error("offline"));
   await assert.rejects(
     generator.writeGeneratedPlaylistArtwork({
       outputPath,

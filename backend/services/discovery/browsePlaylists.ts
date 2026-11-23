@@ -30,7 +30,7 @@ import type { LibraryArtistsRow } from "../../db/rows.ts";
 import { communityPlaylist, communityProfile, communityShelf } from "../publicPlaylists.ts";
 import { requireImportList } from "../importLists/importPlaylist.ts";
 import type { ShareManifest } from "../../../lib/shareManifest.ts";
-import { deezerPreviewSearchPath } from "../apiClients/deezer.ts";
+import { deezerPreviewSearchPath } from "../../../lib/deezerPreview.ts";
 import { releaseGroupCoverImageUrl } from "../releaseGroupCoverService.ts";
 
 export const browseProviderSchema = v.picklist(BROWSE_PROVIDERS);
@@ -74,11 +74,11 @@ function mixCovers(mixes: Mix[]) {
 }
 
 const discoveryCover = (playlist: { id: string; name: string; tracks: CatalogTrack[] }) => {
-  const lead = playlist.tracks[0]?.artistName;
+  const lead = playlist.tracks[0];
   return {
     title: playlist.name,
     template: browseCoverTemplate("discovery", playlist.id),
-    artist: lead ? { artistName: lead, artistMbid: null } : null,
+    artist: lead ? { artistName: lead.artistName, artistMbid: lead.artistMbid ?? null } : null,
   } satisfies BrowseCover;
 };
 

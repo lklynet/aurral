@@ -1,7 +1,6 @@
 import { hasPermission } from "./auth.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import createCache from "./apiClients/simpleCache.ts";
-import { searchDeezerTracks } from "./apiClients/deezer.ts";
 import { searchDeezerPlaylists } from "./importLists/deezerPlaylists.ts";
 import { flowPlaylistConfig, type StaticPlaylist } from "./playlists/flowPlaylistConfig.ts";
 import { buildCustomArtworkUrl, getCustomArtworkMap } from "./customArtworkService.ts";
@@ -13,7 +12,7 @@ import {
   getLibraryTrackOwnershipBatch,
 } from "./libraryQueryService.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
-import { searchAlbums, searchArtists } from "./providers/brainzmashProvider.ts";
+import { searchUnifiedCatalog } from "./providers/metadataProvider.ts";
 import { parsePositiveInt } from "./searchService.ts";
 import { withCoverUrls } from "./releaseGroupCoverService.ts";
 import {
@@ -31,19 +30,19 @@ import {
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT = 30;
 const CATALOG_WINDOW = 30;
-const SONG_WINDOW = 10;
 const CATALOG_PLAYLIST_LIMIT = 12;
 const MIN_USER_PLAYLIST_TRACKS = 20;
 
 const catalogCache = createCache<Catalog>(60, 200);
 
-type ProviderArtist = Awaited<ReturnType<typeof searchArtists>>["items"][number];
-type ProviderAlbum = Awaited<ReturnType<typeof searchAlbums>>["items"][number];
-type DeezerTrack = Awaited<ReturnType<typeof searchDeezerTracks>>[number];
+type CatalogSearchResult = Awaited<ReturnType<typeof searchUnifiedCatalog>>;
+type ProviderArtist = CatalogSearchResult["artists"][number];
+type ProviderAlbum = CatalogSearchResult["albums"][number];
+type ProviderTrack = CatalogSearchResult["tracks"][number];
 
 export type ArtistSearchResult = {
   type: "artist";
-  source: "brainzmash" | "library";
+  source: "metadata" | "library";
   id: string;
   key: string;
   name: string;
@@ -57,7 +56,7 @@ export type ArtistSearchResult = {
 
 export type AlbumSearchResult = {
   type: "album";
-  source: "brainzmash" | "library";
+  source: "metadata" | "library";
   id: string | null;
   key: string;
   title: string;
@@ -74,7 +73,7 @@ export type AlbumSearchResult = {
 
 export type TrackSearchResult = {
   type: "track";
-  source: "library" | "deezer" | "mix" | "discovery";
+  source: "library" | "metadata" | "deezer" | "mix" | "discovery";
   id: string;
   key: string;
   title: string;
@@ -119,12 +118,10 @@ const bucketLimit = (limit: unknown) => Math.min(MAX_LIMIT, parsePositiveInt(lim
 
 const providerQuery = (query: string) => query.trim().replace(/\s+/g, " ").toLowerCase();
 
-const releaseKey = (title: unknown) => searchKey(String(title ?? "").replace(/[([].*?[)\]]/g, ""));
-
 function toArtist(item: ProviderArtist): ArtistSearchResult {
   return {
     type: "artist",
-    source: "brainzmash",
+    source: "metadata",
     id: item.id,
     key: item.id,
     name: item.name,
@@ -139,7 +136,7 @@ function toArtist(item: ProviderArtist): ArtistSearchResult {
 function toAlbum(item: ProviderAlbum): AlbumSearchResult {
   return {
     type: "album",
-    source: "brainzmash",
+    source: "metadata",
     id: item.id ?? null,
     key: item.id ?? "",
     title: item.title,
@@ -153,39 +150,23 @@ function toAlbum(item: ProviderAlbum): AlbumSearchResult {
   };
 }
 
-function toSong(
-  track: DeezerTrack,
-  artists: ArtistSearchResult[],
-  albums: AlbumSearchResult[],
-): TrackSearchResult {
-  const artistName = track.artist?.name || "Unknown Artist";
-  const artistKey = searchKey(artistName);
-  const songKey = releaseKey(track.title_short || track.title);
-  const albumKey = releaseKey(track.album?.title);
-  const byArtistTitle = (titleKey: string) =>
-    albums.find(
-      (entry) =>
-        entry.id &&
-        searchKey(entry.artistName) === artistKey &&
-        releaseKey(entry.title) === titleKey,
-    );
-  const album = byArtistTitle(albumKey) ?? byArtistTitle(songKey);
-  const artist = artists.find((entry) => searchKey(entry.name) === artistKey);
+function toSong(track: ProviderTrack): TrackSearchResult {
   return {
     type: "track",
-    source: "deezer",
-    id: `deezer:${track.id}`,
-    key: `deezer:${track.id}`,
-    title: track.title_short || track.title,
-    artistName,
-    albumTitle: track.album?.title || null,
-    albumMbid: album?.id ?? null,
+    source: "metadata",
+    id: track.recordingId,
+    key: track.recordingId,
+    title: track.title,
+    artistName: track.artistName,
+    albumTitle: track.albumTitle,
+    albumMbid: track.albumId,
     libraryAlbumId: null,
     streamPath: null,
-    artistMbid: album?.artistMbid || artist?.id || null,
-    durationMs: track.duration ? track.duration * 1000 : null,
-    coverUrl: track.album?.cover_medium || track.album?.cover_xl || null,
-    deezerAlbumId: track.album?.id ? String(track.album.id) : null,
+    trackMbid: track.recordingId,
+    artistMbid: track.artistId,
+    durationMs: track.durationMs,
+    coverUrl: track.cover,
+    deezerAlbumId: null,
     inLibrary: false,
   };
 }
@@ -193,54 +174,47 @@ function toSong(
 const byRank = <T>(left: Ranked<T>, right: Ranked<T>) =>
   Number(right.quality >= MATCH.prefix) - Number(left.quality >= MATCH.prefix) ||
   Number(right.popularity > 0) - Number(left.popularity > 0) ||
-  right.quality - left.quality;
+  right.quality - left.quality ||
+  right.popularity - left.popularity;
 
-function rankArtists(
-  query: SearchQuery,
-  artists: ProviderArtist[],
-  popularity: Map<string, number>,
-) {
+function rankArtists(query: SearchQuery, artists: ProviderArtist[]) {
   const names = new Set<string>();
   return artists
     .filter((artist) => !names.has(searchKey(artist.name)) && names.add(searchKey(artist.name)))
     .map((artist) => ({
       item: toArtist(artist),
       quality: bestMatch(query, artist.name, ...artist.aliases),
-      popularity: popularity.get(searchKey(artist.name)) ?? 0,
+      popularity: artist.listeners,
     }))
     .filter(({ quality }) => quality > MATCH.none)
     .sort(byRank);
 }
 
-function rankAlbums(query: SearchQuery, albums: ProviderAlbum[], popularity: Map<string, number>) {
+function rankAlbums(query: SearchQuery, albums: ProviderAlbum[]) {
   return albums
     .map((album) => ({
       item: toAlbum(album),
       quality: bestMatch(query, ...albumSearchTexts(album)),
-      popularity: popularity.get(searchKey(album.artistName)) ?? 0,
+      popularity: album.listeners,
     }))
-    .sort(
-      (left, right) =>
-        right.quality - left.quality || Number(right.popularity > 0) - Number(left.popularity > 0),
-    );
+    .sort((left, right) => right.quality - left.quality || right.popularity - left.popularity);
 }
 
 function pickTop(
-  query: SearchQuery,
   artists: Ranked<ArtistSearchResult>[],
   albums: Ranked<AlbumSearchResult>[],
-  songs: Ranked<TrackSearchResult>[] | null,
+  songs: Ranked<TrackSearchResult>[],
 ): UnifiedSearchItem | null {
   const [artist] = artists;
   const [album] = albums;
-  const [firstSong] = songs ?? [];
-  const [song] = (songs ?? [])
+  const [firstSong] = songs;
+  const [song] = songs
     .filter((entry) => entry.quality === MATCH.exact)
     .sort((left, right) => right.popularity - left.popularity);
   if (
     artist &&
     artist.quality >= MATCH.prefix &&
-    (artist.popularity > 0 || (!songs && artist.quality === MATCH.exact))
+    (artist.popularity > 0 || (!songs.length && artist.quality === MATCH.exact))
   ) {
     return artist.item;
   }
@@ -257,59 +231,32 @@ function pickTop(
   return artist?.item ?? album?.item ?? firstSong?.item ?? null;
 }
 
-async function settle<T>(source: string, request: Promise<T>, signal: AbortSignal | undefined) {
-  try {
-    return await request;
-  } catch (error) {
-    signal?.throwIfAborted();
-    logger.info("search", `${source} search failed`, { reason: safeLogDiagnostic(error) });
-    return null;
-  }
-}
-
 async function searchCatalog(text: string, signal: AbortSignal | undefined) {
   const query = parseSearchQuery(text);
   if (!query) return null;
-  const [artistResult, albumResult, songResult] = await Promise.all([
-    settle(
-      "Artist",
-      searchArtists(text, { limit: CATALOG_WINDOW, signal, throwOnFailure: true }),
-      signal,
-    ),
-    settle(
-      "Album",
-      searchAlbums(text, {
-        limit: CATALOG_WINDOW,
-        signal,
-        throwOnFailure: true,
-        musicbrainzFallback: false,
-      }),
-      signal,
-    ),
-    settle("Song", searchDeezerTracks(text, { limit: SONG_WINDOW, signal }), signal),
-  ]);
-  const popularity = new Map<string, number>();
-  for (const track of songResult ?? []) {
-    const key = searchKey(track.artist?.name);
-    popularity.set(key, Math.max(popularity.get(key) ?? 0, track.rank ?? 1));
+  let result: CatalogSearchResult | null = null;
+  try {
+    result = await searchUnifiedCatalog(text, { limit: CATALOG_WINDOW, signal });
+  } catch (error) {
+    signal?.throwIfAborted();
+    logger.info("search", "Catalog search failed", { reason: safeLogDiagnostic(error) });
+    return {
+      catalog: { top: null, artists: [], albums: [], tracks: [] },
+      complete: false,
+      available: false,
+    };
   }
-  const artists = rankArtists(query, artistResult?.items ?? [], popularity);
-  const albums = rankAlbums(query, albumResult?.items ?? [], popularity);
-  const songs = songResult
-    ? songResult.map((track) => {
-        const item = toSong(
-          track,
-          artists.map((entry) => entry.item),
-          albums.map((entry) => entry.item),
-        );
-        return {
-          item,
-          quality: bestMatch(query, ...albumSearchTexts(item)),
-          popularity: track.rank ?? 0,
-        };
-      })
-    : null;
-  const top = pickTop(query, artists, albums, songs);
+  const artists = rankArtists(query, result.artists);
+  const albums = rankAlbums(query, result.albums);
+  const songs = result.tracks.map((track) => {
+    const item = toSong(track);
+    return {
+      item,
+      quality: bestMatch(query, ...albumSearchTexts(item)),
+      popularity: track.listeners,
+    };
+  });
+  const top = pickTop(artists, albums, songs);
   const [lead] = artists;
   const clearArtist = top === lead?.item && lead.quality === MATCH.exact && lead.popularity > 0;
   const catalog: Catalog = {
@@ -318,12 +265,12 @@ async function searchCatalog(text: string, signal: AbortSignal | undefined) {
       .filter((entry) => !clearArtist || entry.quality === MATCH.exact || entry.popularity > 0)
       .map(({ item }) => item),
     albums: albums.map(({ item }) => item),
-    tracks: songs?.map(({ item }) => item) ?? [],
+    tracks: songs.map(({ item }) => item),
   };
   return {
     catalog,
-    complete: Boolean(artistResult && albumResult && songResult),
-    available: Boolean(artistResult && albumResult),
+    complete: true,
+    available: true,
   };
 }
 
@@ -349,11 +296,16 @@ function withLibraryState(catalog: Catalog, limit: number): Catalog {
     (item?.type === "track" && ownedSongKeys.has(item.key))
       ? { ...item, inLibrary: true }
       : item;
-  const [top = null] = catalog.top?.type === "album" ? withCoverUrls([catalog.top]) : [catalog.top];
+  const listed = (album: AlbumSearchResult) => ({
+    artistName: album.artistName,
+    albumTitle: album.title,
+  });
+  const [top = null] =
+    catalog.top?.type === "album" ? withCoverUrls([catalog.top], listed) : [catalog.top];
   return {
     top: mark(top),
     artists: artists.map(mark),
-    albums: withCoverUrls(catalog.albums.slice(0, limit)),
+    albums: withCoverUrls(catalog.albums.slice(0, limit), listed),
     tracks: tracks.map(mark),
   };
 }

@@ -15,7 +15,7 @@ import type { FlowConfig } from "../playlists/flowPlaylistConfig.ts";
 import { getBlockedArtistKeys } from "../discovery/feedback.ts";
 import { getBlockedTagKeys, hasBlockedTag, withoutBlockedTags } from "../discovery/blockedTags.ts";
 import { buildArtistMatchKeySet, getArtistMatchKeys } from "../discovery/artistKeys.ts";
-import { getYear } from "../providers/brainzmashRanking.ts";
+import { getYear } from "../providers/metadataRanking.ts";
 import { buildLibraryReadModel } from "../libraryReadModel.ts";
 import {
   getLibraryForArtistReferences,
@@ -24,10 +24,10 @@ import {
 import { getRecentListeningArtists } from "./flowTemplates.ts";
 import BoundedMap from "../boundedMap.ts";
 import type { ArtistMatchFields } from "../discovery/artistKeys.ts";
-import type { NormalizedTrack } from "../providers/brainzmashMappers.ts";
+import type { NormalizedTrack } from "../providers/metadataMappers.ts";
 import type { getRecentMissingReleases } from "../discovery/recentReleases.ts";
 import { shuffle } from "../../../lib/shuffle.ts";
-import { getAlbumTracksByAlbumMbid } from "../providers/brainzmashProvider.ts";
+import { getAlbumTracksByAlbumMbid, getArtistByMbid } from "../providers/metadataProvider.ts";
 
 type ArtistTopTrack = {
   name: string;
@@ -256,9 +256,13 @@ export class FlowTrackSource {
     return Math.min(72, Math.max(Number(count || 0) * 3, 16));
   }
 
-  async _getArtistTopTrackList(artistName: string): Promise<ArtistTopTrack[]> {
+  async _getArtistTopTrackList(
+    artistName: string,
+    artistMbid: string | null = null,
+  ): Promise<ArtistTopTrack[]> {
     const name = String(artistName || "").trim();
-    const cacheKey = this._artistKey(name);
+    const mbid = artistMbid && UUID_REGEX.test(artistMbid) ? artistMbid : null;
+    const cacheKey = mbid || this._artistKey(name);
     if (!cacheKey) return [];
     const cached = this.artistTopTracksCache.get(cacheKey);
     if (cached?.trackList && cached.expiresAt > Date.now()) {
@@ -267,7 +271,7 @@ export class FlowTrackSource {
     if (cached?.promise) return cached.promise;
     const promise = (async () => {
       const trackList: ArtistTopTrack[] = await musicData.getArtistTopTracks(
-        { name },
+        { name, mbid },
         { limit: 25 },
       );
       this.artistTopTracksCache.set(cacheKey, {
@@ -533,17 +537,42 @@ export class FlowTrackSource {
     });
   }
 
-  async _releasesInYears(artistName: string, filters: FlowFilters, owned: Ownership | null) {
-    const artist = await getDeezerArtist(artistName);
-    if (!artist) return [];
-    const earliest = new Map<string, { id: number; title: string; year: number }>();
-    for (const album of await getDeezerAlbumsForArtist(artist)) {
-      const year = Number(album["first-release-date"]);
-      if (!Number.isFinite(year) || year <= 0) continue;
-      const key = this._releaseKey(album.title);
+  async _releasesInYears(
+    artistName: string,
+    filters: FlowFilters,
+    owned: Ownership | null,
+    artistMbid: string | null = null,
+  ) {
+    type YearRelease = {
+      albumMbid: string | null;
+      deezerId: number | null;
+      title: string;
+      year: number;
+    };
+    const earliest = new Map<string, YearRelease>();
+    const addRelease = (candidate: YearRelease) => {
+      const key = this._releaseKey(candidate.title);
       const known = earliest.get(key);
-      if (!known || year < known.year) {
-        earliest.set(key, { id: album.id, title: album.title, year });
+      if (!known || candidate.year < known.year) {
+        earliest.set(key, candidate);
+      }
+    };
+    if (artistMbid) {
+      const metadataArtist = await getArtistByMbid(artistMbid).catch(() => null);
+      for (const album of metadataArtist?.albums ?? []) {
+        const year = Number(getYear(album.firstReleaseDate));
+        if (!Number.isFinite(year) || year <= 0 || !album.title) continue;
+        addRelease({ albumMbid: album.id, deezerId: null, title: album.title, year });
+      }
+    }
+    if (earliest.size === 0) {
+      const artist = await getDeezerArtist(artistName);
+      if (artist) {
+        for (const album of await getDeezerAlbumsForArtist(artist)) {
+          const year = Number(album["first-release-date"]);
+          if (!Number.isFinite(year) || year <= 0) continue;
+          addRelease({ albumMbid: null, deezerId: album.id, title: album.title, year });
+        }
       }
     }
     return [...earliest.values()].filter(
@@ -558,13 +587,14 @@ export class FlowTrackSource {
     filters: FlowFilters,
     deepDive: boolean,
     owned: Ownership | null = null,
+    artistMbid: string | null = null,
   ): Promise<TrackPick | null> {
-    const releases = await this._releasesInYears(artistName, filters, owned);
+    const releases = await this._releasesInYears(artistName, filters, owned, artistMbid);
     if (releases.length === 0) return null;
     const byTitle = new Map(releases.map((release) => [this._releaseKey(release.title), release]));
     const isOwned = (title: string) => owned?.ownedTitles.has(title.trim().toLowerCase()) === true;
     const hit = this._pickTrackFromRanges(
-      await this._getArtistTopTrackList(artistName),
+      await this._getArtistTopTrackList(artistName, artistMbid),
       this._deepDiveRanges(deepDive),
       (track) =>
         Boolean(track.albumName && byTitle.has(this._releaseKey(track.albumName))) &&
@@ -582,7 +612,22 @@ export class FlowTrackSource {
     }
     const release = shuffle(releases)[0];
     if (!release) return null;
-    const albumTracks = (await deezerGetAlbumTracks(release.id)).filter(
+    if (release.albumMbid) {
+      const albumTracks = (
+        await getAlbumTracksByAlbumMbid(release.albumMbid).catch(() => [])
+      ).filter((track) => track.title && !isOwned(track.title));
+      const track = shuffle(albumTracks)[0];
+      if (!track) return null;
+      return {
+        trackName: track.title,
+        albumName: release.title,
+        trackMbid: track.recordingId || null,
+        durationMs: track.durationMs ?? null,
+        releaseYear: String(release.year),
+      };
+    }
+    if (release.deezerId == null) return null;
+    const albumTracks = (await deezerGetAlbumTracks(release.deezerId)).filter(
       (track) => !isOwned(track.trackName),
     );
     const track = [...albumTracks].sort((left, right) => right.rank - left.rank)[0];
@@ -600,9 +645,11 @@ export class FlowTrackSource {
     filters: FlowFilters,
     deepDive: boolean,
     owned: Ownership | null = null,
+    artistMbid: string | null = null,
   ): Promise<TrackPick | null> {
-    if (this._hasYears(filters)) return this._pickTrackInYears(name, filters, deepDive, owned);
-    const trackList = await this._getArtistTopTrackList(name);
+    if (this._hasYears(filters))
+      return this._pickTrackInYears(name, filters, deepDive, owned, artistMbid);
+    const trackList = await this._getArtistTopTrackList(name, artistMbid);
     const ranges = this._deepDiveRanges(deepDive);
     if (owned) {
       const picked = this._pickTrackFromRangesWithOwnedAlbums(
@@ -811,7 +858,7 @@ export class FlowTrackSource {
       filters,
       excludeArtistKeys,
       blockedTags,
-      pick: (_artist, name) => this._pickTrack(name, filters, deepDive),
+      pick: (artist, name) => this._pickTrack(name, filters, deepDive, null, artistMbidOf(artist)),
     });
   }
 
@@ -920,7 +967,13 @@ export class FlowTrackSource {
           this._isFiltered(filters) ? FILTERED_ARTIST_LIMIT : LIBRARY_ARTIST_LIMIT,
         ),
         pick: async (artist, name) =>
-          this._pickTrack(name, filters, deepDive, await this._getLibraryOwnership(artist.id)),
+          this._pickTrack(
+            name,
+            filters,
+            deepDive,
+            await this._getLibraryOwnership(artist.id),
+            artistMbidOf(artist),
+          ),
       },
     );
   }
@@ -970,7 +1023,7 @@ export class FlowTrackSource {
       filters,
       excludeArtistKeys,
       blockedTags,
-      pick: (_artist, name) => this._pickTrack(name, filters, deepDive),
+      pick: (artist, name) => this._pickTrack(name, filters, deepDive, null, artistMbidOf(artist)),
     });
   }
 

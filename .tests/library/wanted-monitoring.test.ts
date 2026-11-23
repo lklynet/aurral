@@ -20,8 +20,6 @@ const [
   { downloadTracker },
   { downloadWorker },
   { api },
-  { getMetadataBaseUrl },
-  { setMetadataProviderCooldown },
 ] = await setupIsolatedBackend(
   "aurral-wanted-monitoring",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -31,12 +29,7 @@ const [
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/routes/api.ts"),
-  () => import("../../backend/services/providers/brainzmashProvider.ts"),
-  () => import("../../backend/services/metadataProviderBudget.ts"),
 );
-// Unit tests are offline, so the default metadata provider refuses lookups up front
-// instead of making each one wait its turn in the provider's rate limit.
-setMetadataProviderCooldown(getMetadataBaseUrl(), 403, Number.MAX_SAFE_INTEGER);
 
 const server = await listen(
   signedInAs({ id: 1, username: "test", role: "admin", permissions: {} }).route("/api", api),

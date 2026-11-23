@@ -58,9 +58,10 @@ export function levelingGain(lufs: number) {
 
 function isOwnStream(src: string) {
   try {
+    const url = new URL(src, window.location.href);
     return (
-      new URL(src, window.location.href).origin ===
-      new URL(API_BASE_URL, window.location.href).origin
+      url.origin === new URL(API_BASE_URL, window.location.href).origin &&
+      !/\/deezer\/preview(?:\/|$)/i.test(url.pathname)
     );
   } catch {
     return false;
@@ -81,7 +82,12 @@ function sameSource(
 
 function fetchLoudness(src: string): Loudness {
   const controller = new AbortController();
-  const lufs = fetch(src, { method: "HEAD", credentials: "same-origin", signal: controller.signal })
+  const lufs = fetch(src, {
+    method: "HEAD",
+    credentials: "same-origin",
+    redirect: "manual",
+    signal: controller.signal,
+  })
     .then((response) => {
       const value = Number.parseFloat(response.headers.get(LOUDNESS_HEADER) ?? "");
       return Number.isFinite(value) ? value : null;

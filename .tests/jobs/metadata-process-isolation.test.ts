@@ -38,23 +38,29 @@ test(
       mbid,
       name: "Process Isolation Artist",
     });
-    const server = await createMockHttpServer(async (_request, response) => {
+    const server = await createMockHttpServer(async (request, response) => {
+      if (!request.url?.startsWith("/v1/fresh-releases")) {
+        response.statusCode = 404;
+        response.end();
+        return;
+      }
       requested();
       await responseReleased;
       response.setHeader("content-type", "application/json");
       response.end(
         JSON.stringify({
-          payload: {
-            releases: [
-              {
-                release_group_mbid: randomUUID(),
-                release_name: "Isolated Release",
-                artist_mbids: [mbid],
-                release_group_primary_type: "Album",
-                release_date: new Date().toISOString().slice(0, 10),
-              },
-            ],
-          },
+          releases: [
+            {
+              id: randomUUID(),
+              title: "Isolated Release",
+              type: "Album",
+              secondaryTypes: [],
+              releaseDate: new Date().toISOString().slice(0, 10),
+              cover: null,
+              artistIds: [mbid],
+              artistName: "Process Isolation Artist",
+            },
+          ],
         }),
       );
     });
@@ -75,7 +81,7 @@ test(
           env: {
             ...process.env,
             AURRAL_BACKGROUND_WORKER_GROUP: group,
-            LISTENBRAINZ_MOCK_URL: server.url,
+            METADATA_BASE_URL: server.url,
           },
           stdio: ["ignore", "ignore", "pipe", "ipc"],
         },

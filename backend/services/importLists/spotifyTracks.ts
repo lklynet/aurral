@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import { buildPlaylistTrackIdentity, dedupePlaylistTracks } from "../playlists/playlistTracks.ts";
 import { lenient, lenientText } from "../integrationData.ts";
+import { catalogueTrackIds, isrcKey, NO_CATALOGUE_IDS } from "./catalogueIds.ts";
 
 const spotifyPlaylistTrackSchema = lenient(
   v.nullable(
@@ -10,6 +11,7 @@ const spotifyPlaylistTrackSchema = lenient(
       duration_ms: lenient(v.number()),
       artists: lenient(v.array(v.fallback(v.looseObject({ name: lenientText }), {}))),
       album: lenient(v.looseObject({ name: lenientText })),
+      external_ids: lenient(v.looseObject({ isrc: lenientText })),
     }),
   ),
 );
@@ -23,7 +25,15 @@ export const spotifyPlaylistItemSchema = v.fallback(
 
 export type SpotifyPlaylistItem = v.InferOutput<typeof spotifyPlaylistItemSchema>;
 
-export function parseSpotifyPlaylistItems(items: SpotifyPlaylistItem[] = []) {
+const spotifyTrack = (item: SpotifyPlaylistItem) => item?.item ?? item?.track;
+
+export const spotifyIdKeys = (items: SpotifyPlaylistItem[]) =>
+  items.map((item) => isrcKey(spotifyTrack(item)?.external_ids?.isrc));
+
+export function parseSpotifyPlaylistItems(
+  items: SpotifyPlaylistItem[] = [],
+  ids = NO_CATALOGUE_IDS,
+) {
   const stats = {
     sourceItems: items.length,
     itemOnly: 0,
@@ -38,7 +48,7 @@ export function parseSpotifyPlaylistItems(items: SpotifyPlaylistItem[] = []) {
   for (const [index, item] of items.entries()) {
     const position = index + 1;
     if (item?.item && !item?.track) stats.itemOnly += 1;
-    const track = item?.item ?? item?.track;
+    const track = spotifyTrack(item);
     if (!track) {
       stats.unavailable += 1;
       excluded.push({ position, reason: "unavailable" });
@@ -62,6 +72,7 @@ export function parseSpotifyPlaylistItems(items: SpotifyPlaylistItem[] = []) {
       trackName,
       albumName: albumName || null,
       durationMs: Number(track.duration_ms) > 0 ? Number(track.duration_ms) : null,
+      ...catalogueTrackIds(ids, [isrcKey(track.external_ids?.isrc)]),
     });
     positions.push(position);
   }

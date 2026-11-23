@@ -5,13 +5,14 @@ import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import type { DiscoveryRecommendation } from "../../../services/discovery/recommendationPipeline.ts";
 import { getDiscoveryStatus, getUserDiscovery } from "../../../services/discovery/userDiscovery.ts";
+import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
 
 const toDiscoveryArtist = (artist: DiscoveryRecommendation) => ({
   id: artist.id ?? null,
   navigateTo: artist.navigateTo ?? null,
   name: artist.name,
   type: artist.type || "Artist",
-  image: artist.image || null,
+  image: buildImageProxyUrl(artist.image) || null,
   tags: artist.tags || [],
   matchedTags: artist.matchedTags || [],
   sourceArtist: artist.sourceArtist || null,

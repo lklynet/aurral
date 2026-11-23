@@ -2,7 +2,8 @@ import { randomUUID } from "crypto";
 import { spotifyClient } from "../spotify/spotifyClient.ts";
 import { spotifyConnectionStore } from "../spotify/spotifyConnectionStore.ts";
 import { scrobbleConnectionStore } from "../scrobbleConnectionStore.ts";
-import { parseSpotifyPlaylistItems } from "./spotifyTracks.ts";
+import { parseSpotifyPlaylistItems, spotifyIdKeys } from "./spotifyTracks.ts";
+import { loadCatalogueIds } from "./catalogueIds.ts";
 import { listenbrainzPlaylistClient } from "./listenbrainzPlaylists.ts";
 import { lastfmStationClient } from "./lastfmStations.ts";
 import {
@@ -90,7 +91,8 @@ const nativeImportLists = {
       const artworkUrl = await spotifyClient
         .getPlaylistArtworkUrl(userId, externalId)
         .catch(() => null);
-      return { ...parseSpotifyPlaylistItems(items), id: externalId, artworkUrl };
+      const ids = await loadCatalogueIds(spotifyIdKeys(items));
+      return { ...parseSpotifyPlaylistItems(items, ids), id: externalId, artworkUrl };
     },
   },
   "listenbrainz-playlist": {
@@ -121,7 +123,10 @@ const nativeImportLists = {
       youtubeMusicPlaylistClient.getPlaylist(youtubePlaylistId(externalId), { forceRefresh }),
   },
   "deezer-playlist": {
-    fetch: async ({ externalId }) => ({ ...(await getDeezerPlaylist(externalId)), id: externalId }),
+    fetch: async ({ externalId }) => ({
+      ...(await getDeezerPlaylist(externalId, { catalogueIds: true })),
+      id: externalId,
+    }),
   },
   "aurral-discovery": {
     rotating: true,

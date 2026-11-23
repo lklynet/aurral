@@ -12,7 +12,7 @@ import {
   normalizeReleaseText as normalizeText,
   normalizeTitle,
   getYear,
-} from "../providers/brainzmashRanking.ts";
+} from "../providers/metadataRanking.ts";
 import {
   coreAlbumTitle,
   isVariousArtistsCredit,
@@ -25,6 +25,7 @@ import {
   prepareVariantRequest,
   type ReleaseTrack,
 } from "../trackMatching/semanticPolicy.ts";
+import { splitGluedSourceCodec } from "../qualityProfileModel.ts";
 
 const AUDIO_CATEGORY_MIN = 3000;
 const AUDIO_CATEGORY_MAX = 3999;
@@ -80,8 +81,8 @@ function hasConflictingYear(title: string, expectedYear: string | null) {
 }
 
 function scoreFormat(title: string) {
-  const text = normalizeText(title);
-  if (/\bflac\b|\blossless\b|\blossless\b|\b24bit\b|\b24 bit\b/.test(text)) {
+  const text = splitGluedSourceCodec(normalizeText(title));
+  if (/\bflac\b|\blossless\b|\b24bit\b|\b24 bit\b/.test(text)) {
     return 12;
   }
   if (/\bmp3\b|\b320\b|\bscene\b/.test(text)) return 7;
@@ -142,6 +143,8 @@ function releaseKey(release: UsenetRelease) {
     )
     .join("\0");
 }
+
+const SCENE_GROUP_AFTER_YEAR = /(-(?:19|20)\d{2})-[^\s-]+$/u;
 
 function titleWords(value: string) {
   return foldDiacritics(String(value || ""))
@@ -253,7 +256,7 @@ export function rankUsenetReleases<Release extends UsenetRelease>(
       indexer: release.indexer,
       guid: release.guid,
     };
-    const words = titleWords(title);
+    const words = titleWords(title.replace(SCENE_GROUP_AFTER_YEAR, "$1"));
 
     // Identity gate: the artist (any artist for a compilation) and the album
     // or track title appear in the release title.

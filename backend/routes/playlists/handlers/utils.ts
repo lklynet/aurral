@@ -133,6 +133,16 @@ export const canAccessPlaylistType = (
   return false;
 };
 
+export const canAccessJob = (user: RequestUser | undefined, job: DownloadJob) =>
+  canAccessPlaylistType(user, job.playlistType) ||
+  flowPlaylistConfig
+    .getStaticPlaylistsForUser(user)
+    .some((playlist) =>
+      playlist.tracks?.some(
+        (track) => String(track?.canonicalJobId || "") === String(job.id || ""),
+      ),
+    );
+
 export const canManagePlaylistType = (
   user: RequestUser | undefined,
   playlistType: string | null | undefined,

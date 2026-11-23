@@ -210,3 +210,55 @@ test("a hires copy is ineligible when flac-hires is disabled", () => {
     true,
   );
 });
+
+test("release titles that glue the source to the codec name the codec", () => {
+  // Scene names write WEBFLAC without the hyphen WEB-FLAC uses; both are FLAC.
+  assert.equal(classifyAdvertisedQuality("Artist-Album-24BIT-WEBFLAC-2025-GROUP"), "flac-hires");
+  assert.equal(classifyAdvertisedQuality("Artist-Album-24BIT-WEB-FLAC-2025-GROUP"), "flac-hires");
+  assert.equal(classifyAdvertisedQuality("Artist-Album-WEBFLAC-2025-GROUP"), "flac-standard");
+  assert.equal(classifyAdvertisedQuality("Artist-Album-WEB-FLAC-2025-GROUP"), "flac-standard");
+  assert.equal(classifyAdvertisedQuality("Artist-Album-16BIT-WEBFLAC-2025-GROUP"), "flac-standard");
+  assert.equal(classifyAdvertisedQuality("Artist-Album-CDFLAC-2000-GRP"), "flac-standard");
+  assert.equal(classifyAdvertisedQuality("Artist-Album-CD-FLAC-2000-GRP"), "flac-standard");
+  // The same glue for lossy codecs.
+  assert.equal(classifyAdvertisedQuality("Artist-Album-WEBMP3-320KBPS-2025-GROUP"), "mp3-320");
+  assert.equal(classifyAdvertisedQuality("Artist-Album-WEB-MP3-320KBPS-2025-GROUP"), "mp3-320");
+  assert.equal(classifyAdvertisedQuality("Artist-Album-WEBM4A-256KBPS-2025-GROUP"), "m4a-256");
+  assert.equal(classifyAdvertisedQuality("Artist-Album-WEB-AAC-128KBPS-2025-GROUP"), "m4a-128");
+  // A plain WEB (or WEBDL) names no codec and stays unclassified.
+  assert.equal(classifyAdvertisedQuality("Artist-Album-WEB-2025-GROUP"), null);
+  assert.equal(classifyAdvertisedQuality("Daft_Punk-Random_Access_Memories-WEB-2013-GRP"), null);
+  assert.equal(classifyAdvertisedQuality("Artist-Album-WEBDL-2025-GROUP"), null);
+});
+
+test("a glued WEBFLAC release is excluded when both FLAC tiers are disabled", () => {
+  const profile = normalizeQualityProfile({
+    enabled: ["mp3-320", "mp3-256", "mp3-192", "mp3-128", "m4a-320", "m4a-256"],
+    cutoff: "mp3-320",
+  });
+  for (const title of [
+    "Artist-Album-24BIT-WEBFLAC-2025-GROUP",
+    "Artist-Album-24BIT-WEB-FLAC-2025-GROUP",
+    "Artist-Album-WEBFLAC-2025-GROUP",
+    "Artist-Album-16BIT-WEB-FLAC-2025-GROUP",
+  ]) {
+    assert.equal(isAdvertisedQualityEligible(title, null, { profile }), false, title);
+  }
+  // A plain WEB release names no codec and stays eligible, as does an MP3.
+  assert.equal(isAdvertisedQualityEligible("Artist-Album-WEB-2025-GROUP", null, { profile }), true);
+  assert.equal(
+    isAdvertisedQualityEligible("Artist-Album-WEBMP3-320KBPS-2025-GROUP", null, { profile }),
+    true,
+  );
+  assert.deepEqual(
+    orderAdvertisedQualityCandidates(
+      [
+        "Artist-Album-24BIT-WEBFLAC-2025-GROUP",
+        "Artist-Album-WEBMP3-320KBPS-2025-GROUP",
+        "Artist-Album-WEB-2025-GROUP",
+      ],
+      { profile, readName: (entry) => entry },
+    ),
+    ["Artist-Album-WEBMP3-320KBPS-2025-GROUP", "Artist-Album-WEB-2025-GROUP"],
+  );
+});

@@ -819,6 +819,36 @@ test("Usenet matcher prefers matching audio releases and keeps fallback candidat
   assert.equal(ranked[0]?.releaseAdmissible, true);
   const selected = selectRankedUsenetCandidates(ranked, 2);
   assert.equal(selected.length, 2);
+
+  // Format-score rows: a glued WEBFLAC token must score like WEB-FLAC. The
+  // 16-bit title scores 0 on main, so it pins the glued-token fix itself.
+  const formatScoreOf = (title: string) =>
+    rankUsenetReleases(
+      [
+        {
+          title,
+          protocol: "usenet",
+          downloadUrl: "https://indexer/download/1",
+          indexerId: 1,
+          indexer: "Music",
+          categories: [3010],
+          size: 450 * 1024 * 1024,
+        },
+      ],
+      context,
+    )[0]?.scores.format;
+  const formatRows: Array<[string, number]> = [
+    ["Example Artist-Bright Static-WEBFLAC-2024-GRP", 12],
+    ["Example Artist-Bright Static-WEB-FLAC-2024-GRP", 12],
+    ["Example Artist-Bright Static-16BIT-WEBFLAC-2024-GRP", 12],
+    ["Example Artist-Bright Static-24BIT-WEBFLAC-2024-GRP", 12],
+    ["Example Artist-Bright Static-24BIT-WEB-FLAC-2024-GRP", 12],
+    ["Example Artist-Bright Static-WEB-2024-GRP", 0],
+    ["Example Artist-Bright Static-WEBDL-2024-GRP", 0],
+  ];
+  for (const [title, expected] of formatRows) {
+    assert.equal(formatScoreOf(title), expected, title);
+  }
 });
 
 for (const albumGrab of [false, true]) {
@@ -1141,6 +1171,18 @@ test("Usenet release titles match by their words, not by overall similarity", ()
   assert.deepEqual(
     otherAlbumByName.map(([title]) => title),
     ["New Found Glory-New Found Glory-CD-FLAC-2000-FATHEAD"],
+  );
+
+  const sceneGroup = admitted(
+    [
+      "Julien Baker-Little Oblivions-OLE1632CD-CD-FLAC-2021-HOUND",
+      "Julien Baker-Hound-WEB-FLAC-2026-ENRiCH",
+    ],
+    { artistName: "Julien Baker", albumName: "Hound", trackName: "Hound" },
+  );
+  assert.deepEqual(
+    sceneGroup.map(([title]) => title),
+    ["Julien Baker-Hound-WEB-FLAC-2026-ENRiCH"],
   );
 
   const namedInAlbum = admitted(["Queen II (1974) FLAC"], {

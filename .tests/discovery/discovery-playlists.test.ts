@@ -2,78 +2,105 @@ import assert from "node:assert/strict";
 import { beforeEach, test, vi } from "vite-plus/test";
 import { resetDatabase, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 
-vi.mock("../../backend/services/apiClients/rateLimiter.ts", async (importOriginal) => {
-  const { default: createRateLimiter } =
-    await importOriginal<typeof import("../../backend/services/apiClients/rateLimiter.ts")>();
-  return {
-    default: (_minTime: number, options: Parameters<typeof createRateLimiter>[1]) =>
-      createRateLimiter(0, options),
-  };
-});
+const ARTISTS = [
+  { name: "Mogwai", mbid: "11111111-1111-4111-8111-111111111111" },
+  { name: "Slowdive", mbid: "22222222-2222-4222-8222-222222222222" },
+  { name: "Low", mbid: "33333333-3333-4333-8333-333333333333" },
+  { name: "Lush", mbid: "44444444-4444-4444-8444-444444444444" },
+] as const;
+const ALBUM_MBID = (index: number) => `aaaa0000-0000-4000-8000-${String(index).padStart(12, "0")}`;
 
 vi.mock("../../backend/services/discovery/freshReleases.ts", () => ({
   refreshFreshReleases: async () => {},
   getFreshReleasesByArtists: () =>
     Array.from({ length: 12 }, (_, index) => ({
-      artistName: "Mogwai",
+      releaseGroupMbid: ALBUM_MBID(index),
+      artistMbid: ARTISTS[0].mbid,
+      artistName: ARTISTS[0].name,
       albumName: `Record ${index}`,
       albumType: "Album",
       releaseDate: "2026-10-01",
     })),
 }));
 
-const [, { db }, store, { buildDiscoveryPlaylists, getDiscoveryPlaylist }, deezer, { http }] =
+const [, { db }, store, { buildDiscoveryPlaylists, getDiscoveryPlaylist }, metadata, { http }] =
   await setupIsolatedBackend(
     "discovery-playlists",
     () => import("../../backend/config/db-sqlite.ts"),
     () => import("../../backend/services/libraryMediaStore.ts"),
     () => import("../../backend/services/discovery/discoveryPlaylists.ts"),
-    () => import("../../backend/services/apiClients/deezer.ts"),
+    () => import("../../backend/services/providers/metadataProvider.ts"),
     () => import("../../lib/http.ts"),
   );
 
-const ARTISTS = ["Mogwai", "Slowdive", "Low", "Lush"];
 const NOW = Date.UTC(2026, 10, 5, 12);
 
 const ok = (data: unknown) => ({ status: 200, statusText: "OK", headers: {}, data });
 
-function stubDeezer() {
-  vi.spyOn(http, "get").mockImplementation(async (url, config) => {
-    const path = String(url).replace("https://api.deezer.com", "");
-    if (path === "/search/artist") {
-      const name = String(config?.query?.q);
-      return ok({ data: [{ id: ARTISTS.indexOf(name) + 1, name }] });
-    }
-    if (/^\/artist\/\d+\/albums$/.test(path)) {
+function stubMetadata(hosts: string[] = []) {
+  vi.spyOn(http, "get").mockImplementation(async (rawUrl, config) => {
+    const url = new URL(String(rawUrl));
+    hosts.push(url.hostname);
+    if (url.hostname === "data.aurral.org" && url.pathname === "/v1/search/artist") {
+      const q = String(config?.query?.q || "");
+      const artist = ARTISTS.find((entry) => entry.name === q);
       return ok({
-        data: Array.from({ length: 12 }, (_, index) => ({
-          id: 500 + index,
-          title: `Record ${index}`,
-          record_type: "album",
-          release_date: "2026-10-01",
-        })),
+        artists: artist ? [{ id: artist.mbid, name: artist.name }] : [],
+        total: artist ? 1 : 0,
       });
     }
-    const albumTracks = /^\/album\/(\d+)\/tracks$/.exec(path);
-    if (albumTracks) {
-      const id = Number(albumTracks[1]);
-      return ok({ data: [{ id: id * 10, title: `Single ${id}`, rank: 1, preview: "x" }] });
+    if (url.hostname === "data.aurral.org" && url.pathname.startsWith("/v1/artist/")) {
+      const mbid = url.pathname.slice("/v1/artist/".length);
+      const artist = ARTISTS.find((entry) => entry.mbid === mbid);
+      if (artist) {
+        const albumId = ALBUM_MBID(100 + ARTISTS.indexOf(artist));
+        return ok({
+          id: artist.mbid,
+          name: artist.name,
+          albums: [{ id: albumId, title: "Album", type: "Album" }],
+          topTracks: Array.from({ length: 20 }, (_, index) => ({
+            recordingId: `rec-${artist.name.toLowerCase()}-${index}`,
+            title: `${artist.name} ${index}`,
+            albumId,
+            durationMs: 200_000,
+            listeners: 1000 - index,
+          })),
+        });
+      }
     }
-    const top = /^\/artist\/(\d+)\/top$/.exec(path);
-    if (top) {
-      const name = ARTISTS[Number(top[1]) - 1];
+    if (url.hostname === "data.aurral.org" && url.pathname.startsWith("/v1/album/")) {
+      const albumMbid = url.pathname.slice("/v1/album/".length);
       return ok({
-        data: Array.from({ length: 20 }, (_, index) => ({
-          id: Number(top[1]) * 100 + index,
-          title: `${name} ${index}`,
-          preview: "https://cdn.test/preview.mp3",
-          duration: 200,
-          artist: { name },
-          album: { id: 9, title: "Album" },
-        })),
+        id: albumMbid,
+        title: `Record ${albumMbid}`,
+        artistId: ARTISTS[0].mbid,
+        artists: [{ id: ARTISTS[0].mbid, name: ARTISTS[0].name }],
+        releases: [
+          {
+            id: `rel-${albumMbid}`,
+            title: `Record ${albumMbid}`,
+            status: "Official",
+            tracks: [
+              {
+                id: `trk-intro-${albumMbid}`,
+                recordingId: `rec-intro-${albumMbid}`,
+                title: "Intro",
+                trackNumber: 1,
+                durationMs: 25_000,
+              },
+              {
+                id: `trk-lead-${albumMbid}`,
+                recordingId: `rec-lead-${albumMbid}`,
+                title: `Single ${albumMbid.slice(-2)}`,
+                trackNumber: 2,
+                durationMs: 215_000,
+              },
+            ],
+          },
+        ],
       });
     }
-    return ok({ data: [] });
+    throw new Error(`Unexpected request: ${rawUrl}`);
   });
 }
 
@@ -102,8 +129,12 @@ let userId = 0;
 
 beforeEach(() => {
   resetDatabase(db);
-  deezer.clearDeezerCaches();
-  store.upsertLibraryArtist({ identityKey: "artist:releases", name: "Mogwai", mbid: "mbid-1" });
+  metadata.clearMetadataProviderCaches();
+  store.upsertLibraryArtist({
+    identityKey: "artist:releases",
+    name: ARTISTS[0].name,
+    mbid: ARTISTS[0].mbid,
+  });
   userId = db
     .prepare<[], { id: number }>(
       "INSERT INTO users (username, password_hash) VALUES ('listener', 'x') RETURNING id",
@@ -113,33 +144,45 @@ beforeEach(() => {
     INSERT INTO play_events (user_id, track_id, title, artist, played_at, source, created_at)
     VALUES (?, 'history:1', ?, ?, ?, 'test', 0)
   `);
-  for (const artist of ARTISTS) insertPlay.run(userId, "Song", artist, NOW);
+  for (const artist of ARTISTS) insertPlay.run(userId, "Song", artist.name, NOW);
 });
 
-test("Deep Cuts skips each artist's hits and songs already in the Library", async () => {
-  stubDeezer();
+test("Deep Cuts and New Releases build from data.aurral.org with MBIDs and lazy previews", async () => {
+  const hosts: string[] = [];
+  stubMetadata(hosts);
   own("Mogwai", "Mogwai 7");
 
   await buildDiscoveryPlaylists(userId, NOW);
 
-  const tracks = getDiscoveryPlaylist(userId, "deep-cuts")?.tracks ?? [];
-  assert.equal(tracks.length, 12);
+  assert.deepEqual([...new Set(hosts)], ["data.aurral.org"]);
+
+  const deepCuts = getDiscoveryPlaylist(userId, "deep-cuts")?.tracks ?? [];
+  assert.equal(deepCuts.length, 12);
   for (const artist of ARTISTS) {
-    assert.equal(tracks.filter((track) => track.artistName === artist).length, 3);
+    assert.equal(deepCuts.filter((track) => track.artistName === artist.name).length, 3);
   }
-  const titles = tracks.map((track) => track.trackName);
+  const titles = deepCuts.map((track) => track.trackName);
   assert.ok(!titles.includes("Mogwai 7"));
   assert.ok(titles.every((title) => Number(title.split(" ").at(-1)) >= 5));
+  assert.ok(deepCuts.every((track) => track.artistMbid && track.albumMbid && track.trackMbid));
+  assert.ok(deepCuts.every((track) => track.preview_url?.startsWith("/api/deezer/preview?")));
+
+  const newReleases = getDiscoveryPlaylist(userId, "new-releases")?.tracks ?? [];
+  assert.equal(newReleases.length, 12);
+  assert.ok(newReleases.every((track) => track.trackName.startsWith("Single ")));
+  assert.equal(newReleases[0]?.artistMbid, ARTISTS[0].mbid);
+  assert.equal(newReleases[0]?.albumMbid, ALBUM_MBID(0));
+  assert.equal(newReleases[0]?.trackMbid, `rec-lead-${ALBUM_MBID(0)}`);
 });
 
-test("a rebuild that can't reach Deezer keeps last week's playlist", async () => {
-  stubDeezer();
+test("a rebuild that can't reach metadata keeps last week's playlist", async () => {
+  stubMetadata();
   await buildDiscoveryPlaylists(userId, NOW);
   const before = ["deep-cuts", "new-releases"].map((id) => getDiscoveryPlaylist(userId, id));
   assert.ok(before.every(Boolean));
 
   vi.restoreAllMocks();
-  deezer.clearDeezerCaches();
+  metadata.clearMetadataProviderCaches();
   vi.spyOn(http, "get").mockRejectedValue(new Error("offline"));
   await buildDiscoveryPlaylists(userId, NOW + 7 * 24 * 60 * 60 * 1000);
 

@@ -19,7 +19,7 @@ const staleLocalUrl = `/api/image-proxy/${"a".repeat(64)}.webp`;
 const resolvedCoverUrls = new Map([
   [
     missingReleaseBytesMbid,
-    "https://imagecache.lidarr.audio/v1/caa/release-id/missing-bytes-1200.jpg",
+    "https://coverartarchive.org/release/release-id/missing-bytes-1200.jpg",
   ],
 ]);
 const imageLinks = [
@@ -44,7 +44,7 @@ const providerServer = await createMockHttpServer((request, response) => {
       JSON.stringify({
         id: coalescedMbid,
         title: "Coalesced Album",
-        images: [{ CoverType: "Cover", Url: "https://images.example/coalesced.jpg" }],
+        images: [{ kind: "Cover", url: "https://images.example/coalesced.jpg" }],
       }),
     );
     return;
@@ -57,7 +57,7 @@ const providerServer = await createMockHttpServer((request, response) => {
       JSON.stringify({
         id: resolvedCover[0],
         title: "Resolved Album",
-        images: [{ CoverType: "Cover", Url: resolvedCover[1] }],
+        images: [{ kind: "Cover", url: resolvedCover[1] }],
       }),
     );
     return;
@@ -68,14 +68,14 @@ const providerServer = await createMockHttpServer((request, response) => {
       name: "Cold Artist",
       images: [coldMbid, missingArtistBytesMbid].some((id) => request.url?.includes(id))
         ? [
-            { CoverType: "Artist", Url: "https://images.example/cold-artist.jpg" },
-            { CoverType: "Banner", Url: "https://images.example/cold-artist-banner.jpg" },
+            { kind: "Artist", url: "https://images.example/cold-artist.jpg" },
+            { kind: "Banner", url: "https://images.example/cold-artist-banner.jpg" },
           ]
         : [],
     }),
   );
 });
-process.env.BRAINZMASH_BASE_URL = providerServer.url;
+process.env.METADATA_BASE_URL = providerServer.url;
 
 const [isolatedState, { dbOps }, { getArtistImage }, { fetchReleaseGroupCoverUrl }] =
   await setupIsolatedBackend(
@@ -101,7 +101,7 @@ const stubImageHost = (t: TestContext) =>
 afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
   await providerServer.close();
-  delete process.env.BRAINZMASH_BASE_URL;
+  delete process.env.METADATA_BASE_URL;
 });
 
 test("cached artist image links survive byte-cache eviction without metadata requests", async () => {

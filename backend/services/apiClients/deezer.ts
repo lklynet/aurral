@@ -4,10 +4,12 @@ import { readMany, readOne } from "../integrationData.ts";
 import createCache from "./simpleCache.ts";
 import createRateLimiter from "./rateLimiter.ts";
 import { createOutagePause } from "./outagePause.ts";
+const DEEZER_BLANK_ARTIST_IMAGE_PATTERN =
+  /\/images\/artist\/(?:(?:d41d8cd98f00b204e9800998ecf8427e|ebcf22e5c3a0eb3178b8a6f6bc1a5a6c)\/|\/)/i;
 
 const DEEZER_API_URL = "https://api.deezer.com";
 const DEEZER_NO_DATA_CODE = 800;
-export const DEEZER_HEADERS = { "Accept-Language": "en" };
+const DEEZER_HEADERS = { "Accept-Language": "en" };
 
 export const deezerErrorSchema = v.looseObject({
   error: v.looseObject({ code: v.optional(v.number()) }),
@@ -37,7 +39,7 @@ export const deezerTrackSchema = v.looseObject({
   rank: v.optional(v.number()),
   track_position: v.optional(v.number()),
   disk_number: v.optional(v.number()),
-  artist: v.optional(v.looseObject({ name: v.optional(v.string()) })),
+  artist: v.optional(v.looseObject({ id: v.optional(v.number()), name: v.optional(v.string()) })),
   album: v.optional(
     v.looseObject({
       id: v.optional(v.number()),
@@ -115,7 +117,7 @@ function createDeezerCache<Value>(ttlSeconds: number, maxEntries?: number) {
 
 const deezerArtistPhoto = (artist: DeezerArtist) => {
   const url = artist.picture_xl || artist.picture_big || artist.picture_medium;
-  return url && !url.includes("/images/artist//") ? url : null;
+  return url && !DEEZER_BLANK_ARTIST_IMAGE_PATTERN.test(url) ? url : null;
 };
 
 const toArtist = (artist: DeezerArtist) => ({
@@ -214,7 +216,7 @@ export function clearDeezerCaches() {
     cache.flushAll();
 }
 const deezerPause = createOutagePause("Deezer");
-export const deezerLimiter = createRateLimiter(110, {
+const deezerLimiter = createRateLimiter(110, {
   check: deezerPause.check,
   shared: DEEZER_API_URL,
 });
@@ -224,11 +226,7 @@ type DeezerRequest = Pick<HttpOptions, "query" | "signal"> & {
   priority?: number;
 };
 
-async function deezerGet<Schema extends v.GenericSchema>(
-  schema: Schema,
-  path: string,
-  { priority, ...config }: DeezerRequest,
-) {
+export async function deezerSend(path: string, { priority, ...config }: DeezerRequest) {
   const { data } = await deezerLimiter.schedule(
     () =>
       deezerPause.run(() =>
@@ -236,6 +234,15 @@ async function deezerGet<Schema extends v.GenericSchema>(
       ),
     { signal: config.signal, priority },
   );
+  return data;
+}
+
+async function deezerGet<Schema extends v.GenericSchema>(
+  schema: Schema,
+  path: string,
+  config: DeezerRequest,
+) {
+  const data = await deezerSend(path, config);
   const failure = v.safeParse(deezerErrorSchema, data);
   if (!failure.success) return readOne(schema, data, { service: "Deezer", endpoint: path });
   if (failure.output.error.code === DEEZER_NO_DATA_CODE) return null;
@@ -252,9 +259,6 @@ async function deezerList<Schema extends v.GenericSchema>(
 }
 
 export const deezerPreviewPath = (trackId: string | number) => `/api/deezer/preview/${trackId}.mp3`;
-
-export const deezerPreviewSearchPath = (artist: string, track: string) =>
-  `/api/deezer/preview?${new URLSearchParams({ artist, track })}`;
 
 export function getDeezerPreviewLink(trackId: string) {
   return previewLinkCache.load(trackId, async () => {

@@ -415,21 +415,6 @@ export interface ListenHistorySourcesRow {
   account: string;
 }
 
-export interface ListenbrainzArtistTagsRow {
-  mbid: string | null;
-  tags_json: string;
-  checked_at: number;
-}
-
-export interface ListenbrainzReleaseGroupsRow {
-  mbid: string | null;
-  first_release_date: string | null;
-  dates_checked_at: number | null;
-  listen_count: number | null;
-  listener_count: number | null;
-  popularity_checked_at: number | null;
-}
-
 export interface MetadataCallsRow {
   hour: number;
   server: string;
@@ -444,15 +429,6 @@ export interface MetadataProviderBudgetRow {
   next_request_at: number;
   forbidden_until: number;
   rate_limited_until: number;
-}
-
-export interface MetadataRequestStateRow {
-  cache_key: string | null;
-  failure_count: number;
-  retry_after: number;
-  lease_token: string | null;
-  lease_until: number;
-  updated_at: number;
 }
 
 export interface MetadataResponseCacheRow {

@@ -1,36 +1,24 @@
 import type { CachedArtistImage } from "../db/helpers/cache.ts";
 import { dbOps } from "../db/helpers/index.ts";
-import type { ArtistOverride } from "../db/helpers/overrides.ts";
 import { buildStableImageProxyUrl } from "./imageProxyService.ts";
 import { getArtistImageKindRank, getImageUrl, type ImageList } from "./imageRanking.ts";
-import type { NormalizedArtist } from "./providers/brainzmashMappers.ts";
-import { getArtistByMbid, listArtistAlbums } from "./providers/brainzmashProvider.ts";
-import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.ts";
-import { wikimediaGetArtistPhotoUrl } from "./apiClients/wikimedia.ts";
+import { getArtistByMbid } from "./providers/metadataProvider.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
-import {
-  fetchDeezerArtistImageUrl,
-  fetchReleaseGroupCoverUrl,
-  LEGACY_COVER_HOST_PATTERN,
-} from "./releaseGroupCoverService.ts";
+import { LEGACY_COVER_HOST_PATTERN } from "./releaseGroupCoverService.ts";
 
-type ReleaseGroupSummary = Awaited<ReturnType<typeof listArtistAlbums>>[number];
-type ArtistReleaseGroup = Pick<ReleaseGroupSummary, "id"> & { title?: string };
-type FoundReleaseGroupCover = { releaseGroupId: string; imageUrl: string; types: string[] };
-type GetArtistImageOptions = { forceRefresh?: boolean; artistName?: string | null };
+const DEEZER_ARTIST_IMAGE_PATTERN = /https?:\/\/(?:[\w-]+\.)?dzcdn\.net\/images\/artist\//i;
+
 type ArtistImageResult = {
   url: string | null;
   images: CachedArtistImage[];
   notFound?: boolean;
   transientError?: boolean;
 };
-type PendingImageRequest = { promise: Promise<ArtistImageResult>; forceRefresh: boolean };
 
 const MAX_NEGATIVE_CACHE = 1000;
 const NEGATIVE_CACHE_TTL_MS = 60 * 60 * 1000;
-const RELEASE_GROUP_CONCURRENCY = 4;
 const negativeImageCache = new Map<string, number>();
-const pendingImageRequests = new Map<string, PendingImageRequest>();
+const pendingImageRequests = new Map<string, Promise<ArtistImageResult>>();
 
 const toPublicImageUrl = (imageUrl: string | null | undefined) =>
   buildStableImageProxyUrl(imageUrl);
@@ -93,6 +81,24 @@ const buildDirectArtistImagePayload = (directImages: ImageList = []) => {
   return images;
 };
 
+export const getDirectOrCachedArtistImages = (
+  mbid: string,
+  directImages: ImageList = [],
+): CachedArtistImage[] => {
+  const direct = buildDirectArtistImagePayload(directImages);
+  if (direct.length > 0) return direct;
+  const cached = dbOps.getImage(mbid);
+  if (
+    cached?.imageUrl &&
+    cached.imageUrl !== "NOT_FOUND" &&
+    !LEGACY_COVER_HOST_PATTERN.test(cached.imageUrl) &&
+    !DEEZER_ARTIST_IMAGE_PATTERN.test(cached.imageUrl)
+  ) {
+    return buildCachedArtistImagePayload(buildStableImageProxyUrl(cached.imageUrl), cached.images);
+  }
+  return [];
+};
+
 const addToNegativeCache = (mbid: string) => {
   if (negativeImageCache.size >= MAX_NEGATIVE_CACHE) {
     const firstKey = negativeImageCache.keys().next().value;
@@ -117,99 +123,11 @@ export const invalidateArtistImage = (mbid: string) => {
   dbOps.deleteImage(mbid);
 };
 
-const getCachedUrl = (cacheKey: string) => {
-  const cached = dbOps.getImage(cacheKey);
-  if (
-    cached?.imageUrl &&
-    cached.imageUrl !== "NOT_FOUND" &&
-    LEGACY_COVER_HOST_PATTERN.test(cached.imageUrl)
-  ) {
-    dbOps.deleteImage(cacheKey);
-    return undefined;
-  }
-  if (cached?.imageUrl && cached.imageUrl !== "NOT_FOUND") {
-    const imageUrl = buildStableImageProxyUrl(cached.imageUrl);
-    if (imageUrl) return imageUrl;
-    dbOps.deleteImage(cacheKey);
-  }
-  if (cached?.imageUrl === "NOT_FOUND") {
-    return null;
-  }
-  return undefined;
-};
-
-const buildArtistCoverFromUrl = (imageUrl: string | null, types: string[] = ["Front"]) => ({
-  url: imageUrl,
-  images: [
-    {
-      image: imageUrl,
-      front: true,
-      types,
-    },
-  ],
-});
-
-const recoverArtistCoverFromCachedReleaseGroups = async (resolvedMbid: string) => {
-  const rgCacheKey = `artist_rg:${resolvedMbid}`;
-  const cachedRgId = dbOps.getDeezerMbidCache(rgCacheKey);
-  if (cachedRgId && cachedRgId !== "NOT_FOUND") {
-    const cachedUrl = getCachedUrl(`rg:${cachedRgId}`);
-    if (cachedUrl) {
-      return buildArtistCoverFromUrl(cachedUrl);
-    }
-  }
-
-  const albums: ArtistReleaseGroup[] = await listArtistAlbums(resolvedMbid, {
-    hydrateLimit: 0,
-  }).catch(() => []);
-
-  for (const rg of albums) {
-    const cachedUrl = getCachedUrl(`rg:${rg.id}`);
-    if (cachedUrl) {
-      dbOps.setDeezerMbidCache(rgCacheKey, rg.id);
-      return buildArtistCoverFromUrl(cachedUrl);
-    }
-  }
-
-  return null;
-};
-
-const normalizeGetArtistImageOptions = (
-  forceRefreshOrOptions: boolean | GetArtistImageOptions,
-  artistNameHint: string | null,
-) => {
-  if (
-    forceRefreshOrOptions &&
-    typeof forceRefreshOrOptions === "object" &&
-    !Array.isArray(forceRefreshOrOptions)
-  ) {
-    return {
-      forceRefresh: !!forceRefreshOrOptions.forceRefresh,
-      artistName:
-        typeof forceRefreshOrOptions.artistName === "string" &&
-        forceRefreshOrOptions.artistName.trim()
-          ? forceRefreshOrOptions.artistName.trim()
-          : null,
-    };
-  }
-
-  return {
-    forceRefresh: !!forceRefreshOrOptions,
-    artistName:
-      typeof artistNameHint === "string" && artistNameHint.trim() ? artistNameHint.trim() : null,
-  };
-};
-
 export const getArtistImage = async (
   mbid: string,
-  forceRefreshOrOptions: boolean | GetArtistImageOptions = false,
-  artistNameHint: string | null = null,
+  { forceRefresh = false }: { forceRefresh?: boolean } = {},
 ): Promise<ArtistImageResult> => {
   if (!mbid) return { url: null, images: [] };
-  const { forceRefresh, artistName } = normalizeGetArtistImageOptions(
-    forceRefreshOrOptions,
-    artistNameHint,
-  );
 
   const cachedImage = dbOps.getImage(mbid);
   if (
@@ -217,7 +135,8 @@ export const getArtistImage = async (
     cachedImage &&
     cachedImage.imageUrl &&
     cachedImage.imageUrl !== "NOT_FOUND" &&
-    !LEGACY_COVER_HOST_PATTERN.test(cachedImage.imageUrl)
+    !LEGACY_COVER_HOST_PATTERN.test(cachedImage.imageUrl) &&
+    !DEEZER_ARTIST_IMAGE_PATTERN.test(cachedImage.imageUrl)
   ) {
     const cachedUrl = buildStableImageProxyUrl(cachedImage.imageUrl);
     const images = buildCachedArtistImagePayload(cachedUrl, cachedImage.images);
@@ -231,166 +150,45 @@ export const getArtistImage = async (
   }
 
   const pending = pendingImageRequests.get(mbid);
-  if (pending && (pending.forceRefresh || !forceRefresh)) {
-    return pending.promise;
+  if (pending) return pending;
+
+  if (!forceRefresh && (cachedImage?.imageUrl === "NOT_FOUND" || hasFreshNegativeCache(mbid))) {
+    return { url: null, images: [], notFound: true };
   }
 
-  const recoverOnly =
-    !forceRefresh &&
-    ((cachedImage && cachedImage.imageUrl === "NOT_FOUND") || hasFreshNegativeCache(mbid));
-  const isCurrentRequest = () => pendingImageRequests.get(mbid)?.promise === fetchPromise;
+  const isCurrentRequest = () => pendingImageRequests.get(mbid) === fetchPromise;
   const fetchPromise: Promise<ArtistImageResult> = (async () => {
-    if (recoverOnly) {
-      const override = dbOps.getArtistOverride(mbid);
-      const resolvedMbid = override?.musicbrainzId || mbid;
-      const recovered = await recoverArtistCoverFromCachedReleaseGroups(resolvedMbid);
-      if (recovered?.url) {
-        if (isCurrentRequest()) {
-          negativeImageCache.delete(mbid);
-          dbOps.setImage(mbid, recovered.url, recovered.images);
-        }
-        return recovered;
-      }
-      return { url: null, images: [], notFound: true };
-    }
-
-    let metadataArtist: NormalizedArtist | null = null;
-    let resolvedMbid = mbid;
-    let override: ArtistOverride | null = null;
     try {
-      override = dbOps.getArtistOverride(mbid);
-      resolvedMbid = override?.musicbrainzId || mbid;
-      metadataArtist = await getArtistByMbid(resolvedMbid).catch(() => null);
-      const directArtistImages = sortArtistImages(metadataArtist?.images);
-      const images = buildDirectArtistImagePayload(directArtistImages);
-      const primaryImage = images.find((image) => image.front) || images[0];
-      if (primaryImage?.image) {
-        if (isCurrentRequest()) {
-          negativeImageCache.delete(mbid);
-          dbOps.setImage(mbid, primaryImage.image, images);
-        }
-        return {
-          url: primaryImage.image,
-          images,
-        };
-      }
+      const override = dbOps.getArtistOverride(mbid);
+      const artist = await getArtistByMbid(override?.musicbrainzId || mbid).catch(() => null);
+      if (!artist) return { url: null, images: [], transientError: true };
 
-      const resolvedArtistName = metadataArtist?.name || artistName || null;
-      let sawTransientError = false;
-      const deezerArtistId =
-        override?.deezerArtistId || getLinkedDeezerArtistId(metadataArtist?.links);
-      const photoSources = [
-        async () =>
-          deezerArtistId ? fetchDeezerArtistImageUrl({ deezerArtistId, throwOnError: true }) : null,
-        () => wikimediaGetArtistPhotoUrl(metadataArtist?.links),
-        async () =>
-          deezerArtistId
-            ? null
-            : fetchDeezerArtistImageUrl({
-                artistName: resolvedArtistName || "",
-                throwOnError: true,
-              }),
-      ];
-      let photo: string | null = null;
-      for (const source of photoSources) {
-        photo =
-          (await source().catch(() => {
-            sawTransientError = true;
-            return null;
-          })) ?? null;
-        if (photo) break;
-      }
-      if (photo) {
-        const result = buildArtistCoverFromUrl(buildStableImageProxyUrl(photo), ["Artist"]);
-        if (isCurrentRequest()) {
-          negativeImageCache.delete(mbid);
-          dbOps.setImage(mbid, result.url, result.images);
-        }
-        return result;
-      }
-
-      const rgCacheKey = `artist_rg:${resolvedMbid}`;
-      const cachedRg = forceRefresh ? null : dbOps.getDeezerMbidCache(rgCacheKey);
-      const albums: ArtistReleaseGroup[] = cachedRg
-        ? cachedRg === "NOT_FOUND"
-          ? []
-          : [{ id: cachedRg }]
-        : await listArtistAlbums(resolvedMbid, { hydrateLimit: 0 });
-
-      const ordered = albums.slice(0, 25);
-
-      let nextIndex = 0;
-      let foundCover = null as FoundReleaseGroupCover | null;
-      const workers = Array.from(
-        { length: Math.min(RELEASE_GROUP_CONCURRENCY, ordered.length) },
-        async () => {
-          while (nextIndex < ordered.length && !foundCover) {
-            const rg = ordered[nextIndex++];
-            if (!rg) break;
-            const cover = await fetchReleaseGroupCoverUrl(rg.id, {
-              artistName: resolvedArtistName || "",
-              albumTitle: rg.title || "",
-            });
-            if (cover?.imageUrl) {
-              foundCover = {
-                releaseGroupId: rg.id,
-                imageUrl: cover.imageUrl,
-                types: cover.types || ["Front"],
-              };
-              return;
-            }
-            if (cover?.transientError) {
-              sawTransientError = true;
-            }
-          }
-        },
+      const images = buildDirectArtistImagePayload(artist.images);
+      const albumCover = buildStableImageProxyUrl(
+        artist.albums.find((album) => album.cover)?.cover,
       );
-
-      await Promise.all(workers);
-
-      if (foundCover) {
-        const artistImageUrl = buildStableImageProxyUrl(foundCover.imageUrl);
-        const result = {
-          url: artistImageUrl,
-          images: [
-            {
-              image: artistImageUrl,
-              front: true,
-              types: foundCover.types,
-            },
-          ],
-        };
-        if (isCurrentRequest()) {
+      const found = images[0]
+        ? { url: images[0].image, images }
+        : albumCover
+          ? { url: albumCover, images: [{ image: albumCover, front: true, types: ["Front"] }] }
+          : null;
+      if (isCurrentRequest()) {
+        if (found) {
           negativeImageCache.delete(mbid);
-          dbOps.setImage(mbid, artistImageUrl, result.images);
+          dbOps.setImage(mbid, found.url, found.images);
+        } else {
+          addToNegativeCache(mbid);
+          dbOps.setImage(mbid, "NOT_FOUND");
         }
-        if (!cachedRg || forceRefresh) {
-          dbOps.setDeezerMbidCache(rgCacheKey, foundCover.releaseGroupId);
-        }
-        return result;
       }
-
-      if (sawTransientError) {
-        return { url: null, images: [], transientError: true };
-      }
-
-      if (!cachedRg || forceRefresh) {
-        dbOps.setDeezerMbidCache(rgCacheKey, "NOT_FOUND");
-      }
+      return found ?? { url: null, images: [], notFound: true };
     } catch (e) {
       logger.warn("images", "Artist image lookup failed", { mbid, reason: safeLogDiagnostic(e) });
       return { url: null, images: [], transientError: true };
     }
-
-    if (isCurrentRequest()) {
-      addToNegativeCache(mbid);
-      dbOps.setImage(mbid, "NOT_FOUND");
-    }
-
-    return { url: null, images: [], notFound: true };
   })();
 
-  pendingImageRequests.set(mbid, { promise: fetchPromise, forceRefresh });
+  pendingImageRequests.set(mbid, fetchPromise);
   try {
     return await fetchPromise;
   } finally {

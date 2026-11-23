@@ -1,10 +1,11 @@
-import { useMemo } from "react";
+import { useState } from "react";
 import { TrackPlaylistMenu } from "../../../components/TrackPlaylistMenu";
 import type {
   PlaylistSelection,
   PlaylistTrackIdentity,
 } from "../../../components/TrackPlaylistMenu";
 import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
+import { resolveAuthenticatedApiAssetUrl } from "../../../utils/api/core.ts";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
 import type { ArtistPreviewTrack } from "../hooks/usePreviewPlayer";
 import type { useStaticPlaylists } from "../../../hooks/useStaticPlaylists";
@@ -50,19 +51,31 @@ export function ArtistDetailsPreviewTracks({
   getDefaultPlaylistName?: (track: ArtistPreviewTrack) => string;
   onLoadPlaylists: () => Promise<unknown>;
 }) {
-  const popularTracks = useMemo(
-    () => (previewTracks || []).slice(0, POPULAR_TRACK_LIMIT),
-    [previewTracks],
-  );
+  const [expandedMbid, setExpandedMbid] = useState<string | null>(null);
+  const expanded = expandedMbid === mbid;
+  const canExpand = previewTracks.length > POPULAR_TRACK_LIMIT;
+  const popularTracks = expanded ? previewTracks : previewTracks.slice(0, POPULAR_TRACK_LIMIT);
   const getQueueItems = useQueueTrackActions();
 
-  if (!loadingPreview && (!previewTracks || previewTracks.length === 0)) {
+  if (!loadingPreview && previewTracks.length === 0) {
     return null;
   }
 
   return (
     <section className="artist-section artist-popular">
-      <h2 className="artist-section-title">Popular</h2>
+      <div className="artist-section-head">
+        <h2 className="artist-section-title">Popular</h2>
+        {!loadingPreview && canExpand ? (
+          <button
+            type="button"
+            className="section-show-all"
+            aria-expanded={expanded}
+            onClick={() => setExpandedMbid(expanded ? null : mbid)}
+          >
+            {expanded ? "Show less" : "Show all"}
+          </button>
+        ) : null}
+      </div>
       {loadingPreview ? (
         <div className="artist-loading">
           <DotLoader size="xl" label={null} />
@@ -78,7 +91,7 @@ export function ArtistDetailsPreviewTracks({
                 number={index + 1}
                 title={track.title}
                 subtitle={track.album || null}
-                artwork={track.artworkUrl || null}
+                artwork={resolveAuthenticatedApiAssetUrl(track.artworkUrl) || null}
                 duration={formatTrackDuration(track.duration_ms)}
                 active={active}
                 playing={active && isArtistPlaybackActive}

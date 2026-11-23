@@ -4,27 +4,21 @@ import {
   fetchRemoteImage,
   warmPublicImageUrl,
 } from "./imageProxyService.ts";
-import {
-  getDeezerArtist,
-  getDeezerArtistById,
-  resolveDeezerAlbumForPreview,
-} from "./apiClients/deezer.ts";
-import {
-  getAlbumByMbid,
-  isMetadataCircuitError,
-  isMetadataNotFoundError,
-} from "./providers/brainzmashProvider.ts";
-import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.ts";
+import { resolveDeezerAlbumForPreview } from "./apiClients/deezer.ts";
+import { getAlbumByMbid, isMetadataNotFoundError } from "./providers/metadataProvider.ts";
+import { getLinkedDeezerArtistId } from "./providers/metadataMappers.ts";
 import { selectAlbumCover } from "./imageRanking.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 
 export const LEGACY_COVER_HOST_PATTERN = /https?:\/\/(?:archive\.org|[\w-]+\.ca\.archive\.org)\//i;
 
-type DeezerArtistId = Parameters<typeof getDeezerArtistById>[0];
+type DeezerArtistId = string | number | null;
+type ListedAlbum = { artistName: string; albumTitle: string };
 type ReleaseGroupCoverOptions = {
   artistName?: string;
   albumTitle?: string;
   bypassCache?: boolean;
+  listedWithoutCover?: boolean;
 };
 const RG_CACHE_PREFIX = "rg:";
 const releaseGroupCoverRequests = new Map<
@@ -34,8 +28,16 @@ const releaseGroupCoverRequests = new Map<
 
 export { warmPublicImageUrl };
 
-export const releaseGroupCoverImageUrl = (releaseGroupMbid: string) =>
-  `/api/artists/release-group/${encodeURIComponent(releaseGroupMbid)}/cover/image`;
+// An artist file and a search answer take each album's cover from the same
+// build as its album file. A row they list without a cover names itself here,
+// so the redirect can ask Deezer before loading that file to find none again.
+// Only the album file can say an album has no cover at all.
+export const releaseGroupCoverImageUrl = (releaseGroupMbid: string, listed?: ListedAlbum) => {
+  const path = `/api/artists/release-group/${encodeURIComponent(releaseGroupMbid)}/cover/image`;
+  return listed?.albumTitle
+    ? `${path}?${new URLSearchParams({ artist: listed.artistName, title: listed.albumTitle })}`
+    : path;
+};
 
 const toPublicCoverUrl = (imageUrl: string | null) => {
   if (!imageUrl || imageUrl === "NOT_FOUND") return null;
@@ -97,32 +99,14 @@ const fetchDeezerAlbumCover = async ({
   }
 };
 
-export const fetchDeezerArtistImageUrl = async ({
-  artistName = "",
-  deezerArtistId = null,
-  throwOnError = false,
-}: {
-  artistName?: string;
-  deezerArtistId?: DeezerArtistId;
-  throwOnError?: boolean;
-} = {}) => {
-  try {
-    const artist = deezerArtistId
-      ? await getDeezerArtistById(deezerArtistId, { throwOnError })
-      : artistName
-        ? await getDeezerArtist(artistName, { throwOnError })
-        : null;
-    if (!artist?.imageUrl) return null;
-    return toPublicCoverUrl(artist.imageUrl);
-  } catch (error) {
-    if (throwOnError) throw error;
-    return null;
-  }
-};
-
 const fetchReleaseGroupCoverUncached = async (
   releaseGroupMbid: string,
-  { artistName = "", albumTitle = "", bypassCache = false }: ReleaseGroupCoverOptions = {},
+  {
+    artistName = "",
+    albumTitle = "",
+    bypassCache = false,
+    listedWithoutCover = false,
+  }: ReleaseGroupCoverOptions = {},
 ) => {
   const cacheKey = `${RG_CACHE_PREFIX}${releaseGroupMbid}`;
   const cached = bypassCache ? undefined : getCachedUrl(cacheKey);
@@ -138,26 +122,33 @@ const fetchReleaseGroupCoverUncached = async (
   let deezerArtistId = null;
   let deezerArtistName = artistName.trim();
   let deezerAlbumTitle = albumTitle.trim();
-  try {
-    const album = await getAlbumByMbid(releaseGroupMbid);
+  if (listedWithoutCover) {
+    const listedCover = await fetchDeezerAlbumCover({
+      artistName: deezerArtistName,
+      albumTitle: deezerAlbumTitle,
+    });
+    if (listedCover) return listedCover;
+  }
+  const album = await getAlbumByMbid(releaseGroupMbid).catch((error: unknown) => {
+    if (!isMetadataNotFoundError(error)) {
+      sawTransientError = true;
+      logger.warn("images", "Release-group cover metadata lookup failed", {
+        releaseGroupMbid,
+        reason: safeLogDiagnostic(error),
+      });
+    }
+    return null;
+  });
+  if (album) {
     deezerArtistId = getLinkedDeezerArtistId(album.artists[0]?.links);
     deezerArtistName ||= album.artists[0]?.name || "";
     deezerAlbumTitle ||= album.title;
-    const cover = foundCover(selectAlbumCover(album.images)?.url);
+    const cover = foundCover(album.cover || selectAlbumCover(album.images)?.url);
     if (cover && bypassCache && (await isDeadLink(cover.imageUrl))) {
       deadCover = cover;
     } else if (cover) {
       dbOps.setImage(cacheKey, cover.imageUrl);
       return cover;
-    }
-  } catch (error) {
-    if (!isMetadataNotFoundError(error)) {
-      sawTransientError = true;
-      if (!isMetadataCircuitError(error))
-        logger.warn("images", "Release-group cover metadata lookup failed", {
-          releaseGroupMbid,
-          reason: safeLogDiagnostic(error),
-        });
     }
   }
   const deezerCover = await fetchDeezerAlbumCover({
@@ -186,6 +177,7 @@ export const fetchReleaseGroupCoverUrl = (
     String(releaseGroupMbid || "").trim(),
     options.artistName?.trim() || "",
     options.albumTitle?.trim() || "",
+    options.listedWithoutCover === true,
   ]);
   const existing = releaseGroupCoverRequests.get(key);
   if (existing) return existing;
@@ -198,6 +190,7 @@ export const fetchReleaseGroupCoverUrl = (
 
 export const withCoverUrls = <T extends { id?: string | null; coverUrl?: string | null }>(
   releaseGroups: T[],
+  listed?: (releaseGroup: T) => ListedAlbum,
 ) => {
   if (!releaseGroups.length) return [];
   const cached = dbOps.getImages(
@@ -214,7 +207,7 @@ export const withCoverUrls = <T extends { id?: string | null; coverUrl?: string 
       coverUrl:
         imageUrl === "NOT_FOUND"
           ? null
-          : toPublicCoverUrl(imageUrl) || releaseGroupCoverImageUrl(id),
+          : toPublicCoverUrl(imageUrl) || releaseGroupCoverImageUrl(id, listed?.(releaseGroup)),
     };
   });
 };

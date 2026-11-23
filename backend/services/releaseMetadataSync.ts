@@ -18,7 +18,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const feedDay = (at: number) => new Date(at).toISOString().slice(0, 10);
 
 async function fetchFeed() {
-  const releases = (await fetchFreshReleases(FEED_DAYS, { timeoutMs: 60_000 })).filter((release) =>
+  const releases = (await fetchFreshReleases(FEED_DAYS)).filter((release) =>
     releaseMatchesRules(
       {
         id: release.releaseGroupMbid,
@@ -30,7 +30,7 @@ async function fetchFeed() {
       FACTORY_MONITOR_RULES,
     ),
   );
-  if (releases.length === 0) throw new Error("ListenBrainz listed no fresh releases");
+  if (releases.length === 0) throw new Error("AurralBrainz listed no fresh releases");
   return releases;
 }
 
