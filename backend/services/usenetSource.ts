@@ -137,6 +137,7 @@ function nzbSource(id: NzbSourceId) {
   const tidarr = id === "tidarr";
   const label = tidarr ? "Tidarr" : "Usenet";
   const searchLabel = tidarr ? "Tidarr" : "Prowlarr";
+  const Failed = tidarr ? DownloadSourceError : DownloadFailedError;
 
   async function search(
     album: AlbumQuery,
@@ -283,9 +284,7 @@ function nzbSource(id: NzbSourceId) {
       const state = historyState(item);
       if (state === "pending") return { done: false };
       if (state === "failed")
-        throw new DownloadFailedError(
-          `${label} download failed: ${item.Status || item.status || "failed"}`,
-        );
+        throw new Failed(`${label} download failed: ${item.Status || item.status || "failed"}`);
       const files = await handOver(item, client.key, directory);
       await client
         .deleteHistoryItem(nzbId, { deleteFiles: true, historyItem: item })
