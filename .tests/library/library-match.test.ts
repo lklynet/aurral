@@ -440,9 +440,10 @@ test("rematching an artist and album Aurral added leaves their old MBIDs behind"
     (await albumsFor(REMATCHED_MBID)).map((entry) => [entry.id, entry.foreignAlbumId]),
     [[album.id, REMATCHED_GROUP]],
   );
-  assert.deepEqual(Object.keys(v.parse(v.record(v.string(), v.unknown()), await albumLookup.json())), [
-    REMATCHED_GROUP,
-  ]);
+  assert.deepEqual(
+    Object.keys(v.parse(v.record(v.string(), v.unknown()), await albumLookup.json())),
+    [REMATCHED_GROUP],
+  );
   assert.equal(lookup.artist?.foreignArtistId, REMATCHED_MBID);
 });
 

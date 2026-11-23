@@ -413,11 +413,12 @@ export function setLibraryArtistMbid(artistId: number, mbid: string | null) {
       };
     }
     moveLibraryArtistMarks(artist.identity_key, key);
+    const { id: _addedId, foreignArtistId: _addedMbid, ...kept } = metadata;
     db.prepare<[string | null, string | null, string | null, number, number]>(
       `UPDATE library_artists
        SET identity_key = ?, mbid = ?, metadata_json = ?, updated_at = ?
        WHERE id = ?`,
-    ).run(key, mbid || null, stringify({ ...metadata, mbidSource: "manual" }), now(), artist.id);
+    ).run(key, mbid || null, stringify({ ...kept, mbidSource: "manual" }), now(), artist.id);
     return {
       artist: db
         .prepare<[number], LibraryArtistsRow>("SELECT * FROM library_artists WHERE id = ?")
@@ -1598,17 +1599,18 @@ export function setLibraryAlbumReleaseGroup(albumId: number, releaseGroupMbid: s
         : fallbackKey;
     const kept = rekeyLibraryAlbum(album.id, key);
     if (kept == null) return { error: "not_found" } as const;
-    db.prepare<[string | null, number, number]>(
+    db.prepare<[string | null, string | null, number, number]>(
       `UPDATE library_albums
-       SET release_group_mbid = ?,
+       SET mbid = CASE WHEN release_group_mbid IS ? THEN mbid END,
+         release_group_mbid = ?,
          metadata_json = json_remove(
            json_set(
              CASE WHEN NOT json_valid(metadata_json) THEN '{}' WHEN json_type(metadata_json) = 'object' THEN metadata_json ELSE '{}' END,
              '$.releaseGroupSource', 'manual'),
-           '$.trackList', '$.releaseGroupLookup'),
+           '$.trackList', '$.releaseGroupLookup', '$.id', '$.foreignAlbumId'),
          updated_at = ?
        WHERE id = ?`,
-    ).run(releaseGroupMbid, now(), kept);
+    ).run(releaseGroupMbid, releaseGroupMbid, now(), kept);
     const keptAlbum = db
       .prepare<[number], LibraryAlbumsRow>("SELECT * FROM library_albums WHERE id = ?")
       .get(kept);
