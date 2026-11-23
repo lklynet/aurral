@@ -36,6 +36,7 @@ export async function refreshPlaylistShares(now = Date.now()) {
       const manifest = resolveShareManifest(
         { kind: "playlist", targetRef: row.target_ref, albumRef: null },
         null,
+        { includeFiles: filesLive },
       );
       if (!manifest) {
         logger.warn("share", "Shared playlist is too large to update", { title: row.title });

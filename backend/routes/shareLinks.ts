@@ -354,7 +354,9 @@ export default new Hono<AppEnv>()
       return playlistNotFound(c);
     }
     const shareFiles = hosted ? input.shareFiles === true : true;
-    let manifest = hosted ? resolveShareManifest(target, input.manifest) : null;
+    let manifest = hosted
+      ? resolveShareManifest(target, input.manifest, { includeFiles: shareFiles })
+      : null;
     if (hosted && (!manifest || manifest.kind !== target.kind)) {
       return c.json(
         {
