@@ -1107,7 +1107,16 @@ test("imported playlist sync preserves enriched jobs while replacing removed tra
       albumName: "Album",
       albumMbid: "22222222-2222-2222-2222-222222222222",
     };
-    const removed = { artistName: "Artist", trackName: "Removed", albumName: "Album" };
+    const removed = {
+      artistName: "Artist",
+      trackName: "Switched Recording",
+      albumName: "Album",
+      trackMbid: "33333333-3333-4333-8333-333333333333",
+    };
+    const replacement = {
+      ...removed,
+      trackMbid: "44444444-4444-4444-8444-444444444444",
+    };
     const retitled = { artistName: "Artist", trackName: "Retitled", albumName: "Album" };
     const [pendingJobId, completedJobId, removedJobId, retitledJobId] = [
       pending,
@@ -1145,7 +1154,7 @@ test("imported playlist sync preserves enriched jobs while replacing removed tra
       tracks: [
         { artistName: "Artist", trackName: "Pending", albumName: "Album" },
         { artistName: "Artist", trackName: "Completed", albumName: "Album" },
-        { artistName: "Artist", trackName: "New", albumName: "Album" },
+        replacement,
         { artistName: "Artist", trackName: "Retitled", albumName: "Album" },
       ],
       hasTracksUpdate: true,
@@ -1159,7 +1168,7 @@ test("imported playlist sync preserves enriched jobs while replacing removed tra
     assert.equal(downloadTracker.getJob(completedJobId)?.status, "done");
     await fs.access(completedPath);
     assert.equal(downloadTracker.getJob(removedJobId), null);
-    assert.ok(playlistJobs(playlist.id).some((job) => job.trackName === "New"));
+    assert.ok(playlistJobs(playlist.id).some((job) => job.trackMbid === replacement.trackMbid));
   } finally {
     downloadWorker.start = originalStart;
     downloadWorker.stop();

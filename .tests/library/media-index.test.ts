@@ -27,6 +27,8 @@ import {
   withLibraryScan,
 } from "../../backend/services/libraryMediaStore.ts";
 import {
+  applyMetadataEnrichment,
+  buildMetadataRecord,
   createPathScopeMatcher,
   scanMusicRoot,
   scanMusicRoots,
@@ -3485,6 +3487,38 @@ test("scanMusicRoot reads Aurral identity markers from portable comments", async
     if (filePath) deleteIndexedFile(source, filePath);
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("scan metadata keeps recording, release-track, release group, and edition IDs distinct", () => {
+  const file = "/music/Artist/Album/01 Track.flac";
+  const group = "11111111-1111-4111-8111-111111111111";
+  const edition = "22222222-2222-4222-8222-222222222222";
+  const releaseTrack = "33333333-3333-4333-8333-333333333333";
+  const recording = "44444444-4444-4444-8444-444444444444";
+  const metadata = { common: { musicbrainz_trackid: releaseTrack }, format: {} };
+  const groupOnly = buildMetadataRecord(
+    applyMetadataEnrichment(metadata, { albumMbid: group }),
+    file,
+    "/music",
+  );
+  assert.deepEqual(
+    [groupOnly.releaseGroupMbid, groupOnly.albumMbid, groupOnly.trackMbid],
+    [group, null, null],
+  );
+
+  const matched = buildMetadataRecord(
+    applyMetadataEnrichment(metadata, {
+      albumMbid: group,
+      releaseMbid: edition,
+      trackMbid: recording,
+    }),
+    file,
+    "/music",
+  );
+  assert.deepEqual(
+    [matched.releaseGroupMbid, matched.albumMbid, matched.trackMbid],
+    [group, edition, recording],
+  );
 });
 
 test("scanMusicRoot reads Aurral identity markers from grouping tags", async () => {
