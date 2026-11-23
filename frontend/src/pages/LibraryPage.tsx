@@ -743,8 +743,7 @@ function LibraryPage() {
   };
 
   const artistMbidMenuItems = (artist: LibraryArtist | null | undefined) =>
-    actions.canEditArtistMbid &&
-    (artist && "providerId" in artist ? artist.providerId : undefined) == null
+    actions.canEditArtistMbid
       ? [
           {
             id: "mbid",
