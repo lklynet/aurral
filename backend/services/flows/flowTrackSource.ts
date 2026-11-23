@@ -889,17 +889,17 @@ export class FlowTrackSource {
         pick: async (_artist, name) => {
           const track = chartTracks.get(name);
           if (!track) return null;
-          if (!this._hasYears(filters)) {
-            return { trackName: track.trackName, albumName: track.albumName };
-          }
-          const release = track.albumName
+          const { trackName, albumName, durationMs } = track;
+          if (!this._hasYears(filters)) return { trackName, albumName, durationMs };
+          const release = albumName
             ? (await this._releasesInYears(name, filters, null)).find(
-                (entry) => normalizeTitle(entry.title) === normalizeTitle(track.albumName),
+                (entry) => normalizeTitle(entry.title) === normalizeTitle(albumName),
               )
             : null;
           return release
             ? {
-                trackName: track.trackName,
+                trackName,
+                durationMs,
                 albumName: release.title,
                 releaseYear: String(release.year),
               }

@@ -212,6 +212,7 @@ test("trending follows the main charts, then each genre chart in turn", async ()
     ["Song 1", "Song 2", "Song 3", "Song 601", "Song 501"],
   );
   assert.equal(getChartTracks(4).length, 4);
+  assert.equal(getChartTracks(1)[0]?.durationMs, 180000);
 });
 
 test("a region without its own charts falls back to worldwide songs and US albums", async () => {
