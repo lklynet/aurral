@@ -21,6 +21,7 @@ export type WrappedPlay = {
   trackMbid?: string | null;
   artistMbid?: string | null;
   albumMbid?: string | null;
+  releaseMbid?: string | null;
   durationMs?: number | null;
   listenedMs?: number | null;
   genres?: string[];
@@ -120,6 +121,7 @@ export function mergeWrappedPlays(input: WrappedPlay[]) {
     mirror.trackMbid ||= play.trackMbid;
     mirror.artistMbid ||= play.artistMbid;
     mirror.albumMbid ||= play.albumMbid;
+    mirror.releaseMbid ||= play.releaseMbid;
     mirror.artwork ||= play.artwork;
     if (mirror.libraryTrackId == null) {
       mirror.libraryTrackId = play.libraryTrackId;
