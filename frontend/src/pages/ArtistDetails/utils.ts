@@ -298,6 +298,7 @@ export const mergeReleaseDetails = <T extends ReleaseGroup | undefined>(
         ? details["secondary-types"]
         : base["secondary-types"],
     rating: details.rating || base.rating || null,
+    listenerCount: details.listenerCount || base.listenerCount || null,
     _coverUrl: details.coverUrl || base._coverUrl || "",
   };
 };

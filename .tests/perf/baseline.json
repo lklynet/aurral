@@ -223,6 +223,20 @@
       }
     }
   },
+  "unified search": {
+    "queries": {
+      "cold": 6,
+      "warm": 3
+    },
+    "bytes": 78,
+    "scans": [],
+    "calls": {
+      "metadata": {
+        "cold": 1,
+        "warm": 0
+      }
+    }
+  },
   "similar artists": {
     "queries": {
       "cold": 7,

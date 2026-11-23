@@ -29,7 +29,7 @@ async function lookupArt(key: string, artist: string, album: string | undefined)
     } else {
       const mbid = await guessArtistMbid(artist);
       if (mbid) {
-        const result = await getArtistImage(mbid, { artistName: artist });
+        const result = await getArtistImage(mbid);
         if (result.transientError) return null;
         found = result.url;
       }

@@ -1,20 +1,11 @@
 import * as v from "valibot";
 import createCache from "./simpleCache.ts";
-import {
-  getArtistByMbid as getMetadataArtistByMbid,
-  getArtistNameByMbid as getMetadataArtistNameByMbid,
-  listArtistAlbums as listMetadataArtistAlbums,
-} from "../providers/metadataProvider.ts";
-import { getLinkedArtistProviderIds } from "../providers/metadataMappers.ts";
+import { getArtistNameByMbid as getMetadataArtistNameByMbid } from "../providers/metadataProvider.ts";
 import { scoreTextMatch } from "../providers/metadataRanking.ts";
-import { buildStableImageProxyUrl } from "../imageProxyService.ts";
 import { artistCreditSchema, musicbrainzGet, releaseGroupSchema } from "./musicbrainzHttp.ts";
 import { readMany } from "../integrationData.ts";
 
-type ArtistAlbum = Awaited<ReturnType<typeof listMetadataArtistAlbums>>[number];
-
 const musicbrainzArtistNameCache = createCache<string | null>(3600);
-const musicbrainzReleaseGroupsCache = createCache<ReturnType<typeof toReleaseGroup>[]>(300);
 const musicbrainzTagArtistsCache = createCache<{
   total: number;
   nextOffset: number;
@@ -60,48 +51,6 @@ const recordingSchema = v.looseObject({
 type MusicBrainzArtistCredit = v.InferOutput<typeof artistCreditSchema>;
 
 type MusicBrainzRelease = v.InferOutput<typeof releaseSchema>;
-
-const toReleaseGroup = (item: ArtistAlbum) => ({
-  id: item.id,
-  title: item.title || "",
-  "first-release-date": item.firstReleaseDate || null,
-  "primary-type": item.type || "Album",
-  "secondary-types": Array.isArray(item.secondaryTypes) ? item.secondaryTypes : [],
-  rating: item.rating || null,
-  listenerCount: item.listeners > 0 ? item.listeners : null,
-  coverUrl: buildStableImageProxyUrl(item.cover),
-  "artist-credit": item.artistName
-    ? [
-        {
-          name: item.artistName,
-          artist: item.artistId
-            ? { id: item.artistId, name: item.artistName }
-            : { name: item.artistName },
-        },
-      ]
-    : [],
-});
-
-export async function musicbrainzGetArtistReleaseGroups(
-  mbid: string,
-  selectedReleaseTypes: string[] | null = null,
-  { signal }: { signal?: AbortSignal } = {},
-) {
-  const cacheKey = `full:${mbid}:${JSON.stringify(selectedReleaseTypes || [])}`;
-  const cached = musicbrainzReleaseGroupsCache.get(cacheKey);
-  if (cached) return cached;
-  try {
-    const items = await listMetadataArtistAlbums(mbid, {
-      releaseTypes: selectedReleaseTypes || [],
-      signal,
-    });
-    const mapped = items.map(toReleaseGroup);
-    musicbrainzReleaseGroupsCache.set(cacheKey, mapped);
-    return mapped;
-  } catch {
-    return [];
-  }
-}
 
 const artistCreditIncludesMbid = (
   artistCredit: MusicBrainzArtistCredit,
@@ -210,29 +159,9 @@ export async function musicbrainzGetArtistNameByMbid(
   }
 }
 
-export async function musicbrainzGetArtistIdentityByMbid(
-  mbid: string | null | undefined,
-  { signal }: { signal?: AbortSignal } = {},
-) {
-  const normalizedMbid = String(mbid || "").trim();
-  if (!normalizedMbid) return null;
-  try {
-    const artist = await getMetadataArtistByMbid(normalizedMbid, { signal });
-    return {
-      mbid: normalizedMbid,
-      name: artist.name || null,
-      aliases: [...new Set(artist.aliases)],
-      providerIds: getLinkedArtistProviderIds(artist.links),
-    };
-  } catch {
-    return null;
-  }
-}
-
 export {
   PRIMARY_RELEASE_TYPES,
   SECONDARY_RELEASE_TYPES,
   musicbrainzArtistNameCache,
-  musicbrainzReleaseGroupsCache,
   musicbrainzTagArtistsCache,
 };

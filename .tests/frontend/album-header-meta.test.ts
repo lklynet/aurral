@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
-import { buildAlbumHeaderMeta } from "../../frontend/src/pages/ArtistDetails/utils.ts";
+import {
+  buildAlbumHeaderMeta,
+  mergeReleaseDetails,
+} from "../../frontend/src/pages/ArtistDetails/utils.ts";
 
 const text = (segments: ReturnType<typeof buildAlbumHeaderMeta>) =>
   segments.map((segment) => segment.text).join(" · ");
@@ -18,6 +21,19 @@ test("the album header prefers MusicBrainz metadata and counts tracks properly",
     durationMs: 3_725_000,
   });
   assert.equal(text(meta), "2001 · Album · Live · 1 track · 1 hr 2 min · 1.2K listeners");
+});
+
+test("the album header keeps the listener count from the release details", () => {
+  const meta = buildAlbumHeaderMeta({
+    release: mergeReleaseDetails(
+      { title: "Double Figure" },
+      { "first-release-date": "2001", "primary-type": "Album", listenerCount: 5000 },
+    ),
+    libraryAlbum: null,
+    trackCount: 0,
+    durationMs: 0,
+  });
+  assert.equal(text(meta), "2001 · Album · 5K listeners");
 });
 
 test("a library album without MusicBrainz details still shows its own metadata", () => {

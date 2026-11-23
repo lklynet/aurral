@@ -161,6 +161,7 @@ export const scenarios: Scenario[] = [
     requests: () => [`/api/artists/release-group/${DISCOVER_ALBUM}/editions`],
   },
   { name: "discover search", requests: () => ["/api/search?q=perf&scope=artist"] },
+  { name: "unified search", requests: () => ["/api/search/unified?q=perf"] },
   { name: "similar artists", requests: () => [`/api/artists/${SIMILAR_ARTIST}/similar`] },
   { name: "playlists", requests: () => ["/api/playlists/status"] },
   {

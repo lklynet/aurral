@@ -9,7 +9,7 @@ const DEEZER_BLANK_ARTIST_IMAGE_PATTERN =
 
 const DEEZER_API_URL = "https://api.deezer.com";
 const DEEZER_NO_DATA_CODE = 800;
-export const DEEZER_HEADERS = { "Accept-Language": "en" };
+const DEEZER_HEADERS = { "Accept-Language": "en" };
 
 export const deezerErrorSchema = v.looseObject({
   error: v.looseObject({ code: v.optional(v.number()) }),
@@ -39,7 +39,7 @@ export const deezerTrackSchema = v.looseObject({
   rank: v.optional(v.number()),
   track_position: v.optional(v.number()),
   disk_number: v.optional(v.number()),
-  artist: v.optional(v.looseObject({ name: v.optional(v.string()) })),
+  artist: v.optional(v.looseObject({ id: v.optional(v.number()), name: v.optional(v.string()) })),
   album: v.optional(
     v.looseObject({
       id: v.optional(v.number()),
@@ -216,7 +216,7 @@ export function clearDeezerCaches() {
     cache.flushAll();
 }
 const deezerPause = createOutagePause("Deezer");
-export const deezerLimiter = createRateLimiter(110, {
+const deezerLimiter = createRateLimiter(110, {
   check: deezerPause.check,
   shared: DEEZER_API_URL,
 });
@@ -226,11 +226,7 @@ type DeezerRequest = Pick<HttpOptions, "query" | "signal"> & {
   priority?: number;
 };
 
-async function deezerGet<Schema extends v.GenericSchema>(
-  schema: Schema,
-  path: string,
-  { priority, ...config }: DeezerRequest,
-) {
+export async function deezerSend(path: string, { priority, ...config }: DeezerRequest) {
   const { data } = await deezerLimiter.schedule(
     () =>
       deezerPause.run(() =>
@@ -238,6 +234,15 @@ async function deezerGet<Schema extends v.GenericSchema>(
       ),
     { signal: config.signal, priority },
   );
+  return data;
+}
+
+async function deezerGet<Schema extends v.GenericSchema>(
+  schema: Schema,
+  path: string,
+  config: DeezerRequest,
+) {
+  const data = await deezerSend(path, config);
   const failure = v.safeParse(deezerErrorSchema, data);
   if (!failure.success) return readOne(schema, data, { service: "Deezer", endpoint: path });
   if (failure.output.error.code === DEEZER_NO_DATA_CODE) return null;

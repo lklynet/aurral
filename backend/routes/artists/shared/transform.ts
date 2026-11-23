@@ -73,6 +73,14 @@ export function toAppearsOnReleaseGroup(album: NormalizedAppearsOnAlbum): Appear
   };
 }
 
+export const listedReleaseGroup = ({
+  title,
+  "artist-credit": credits,
+}: Pick<AppearsOnReleaseGroup, "title" | "artist-credit">) => ({
+  artistName: credits[0]?.name ?? "",
+  albumTitle: title,
+});
+
 export function toLegacyRelations(metadataArtist: NormalizedArtist | null) {
   return Array.isArray(metadataArtist?.links)
     ? metadataArtist.links
@@ -94,21 +102,9 @@ export function getArtistTagPayload(metadataArtist: NormalizedArtist | null = nu
 
 export async function getSimilarArtistCards(
   mbid: string,
-  {
-    artistName = "",
-    limit = 10,
-    resolveArtistName,
-  }: {
-    artistName?: string;
-    limit?: number;
-    resolveArtistName?: () => Promise<string | null>;
-  } = {},
+  { artistName = "", limit = 10 }: { artistName?: string; limit?: number } = {},
 ) {
-  let artists = await getSimilarArtists({ mbid, name: artistName }, { limit });
-  if (artists.length === 0 && !artistName && resolveArtistName) {
-    const name = await resolveArtistName().catch(() => null);
-    if (name) artists = await getSimilarArtists({ name }, { limit });
-  }
+  const artists = await getSimilarArtists({ mbid, name: artistName }, { limit });
   const cards = await mapWithConcurrency(artists.slice(0, limit), 4, async (artist) => ({
     id: artist.mbid || (await guessArtistMbid(artist.name)),
     name: artist.name,
@@ -118,7 +114,7 @@ export async function getSimilarArtistCards(
   return cards.filter((card) => card.id);
 }
 
-export function toDirectSimilarArtists(metadataArtist: NormalizedArtist | null, limit = 10) {
+export function toDirectSimilarArtists(metadataArtist: NormalizedArtist | null, limit = 30) {
   return (metadataArtist?.similar ?? [])
     .filter((entry) => Boolean(entry.id))
     .slice(0, limit)
@@ -133,7 +129,7 @@ export function toDirectSimilarArtists(metadataArtist: NormalizedArtist | null, 
 export function toArtistTopTracks(
   metadataArtist: NormalizedArtist | null,
   fallbackArtistName = "",
-  limit = 10,
+  limit = 20,
 ) {
   if (!metadataArtist?.topTracks.length) return [];
   const artistName = metadataArtist.name || fallbackArtistName;
@@ -177,6 +173,7 @@ export function buildArtistBase(
     links: Array.isArray(metadataArtist?.links) ? metadataArtist.links : [],
     relations: toLegacyRelations(metadataArtist),
     rating: metadataArtist?.rating || null,
+    listeners: metadataArtist?.listeners || null,
     ...(metadataArtist?.overview && { bio: metadataArtist.overview }),
   };
 }

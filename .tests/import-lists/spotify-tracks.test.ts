@@ -1,9 +1,12 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { parseSpotifyPlaylistItems } from "../../backend/services/importLists/spotifyTracks.ts";
+import {
+  parseSpotifyPlaylistItems,
+  spotifyIdKeys,
+} from "../../backend/services/importLists/spotifyTracks.ts";
 
 test("parseSpotifyPlaylistItems maps spotify playlist entries to aurral tracks", () => {
-  const { tracks } = parseSpotifyPlaylistItems([
+  const items = [
     {
       track: {
         type: "track",
@@ -11,6 +14,7 @@ test("parseSpotifyPlaylistItems maps spotify playlist entries to aurral tracks",
         duration_ms: 215000,
         artists: [{ name: "Artist A" }],
         album: { name: "Album A" },
+        external_ids: { isrc: "gb-aye-06-01498" },
       },
     },
     { track: null },
@@ -21,12 +25,23 @@ test("parseSpotifyPlaylistItems maps spotify playlist entries to aurral tracks",
         artists: [{ name: "Podcast" }],
       },
     },
-  ]);
+  ];
+  assert.deepEqual(spotifyIdKeys(items), ["isrc:GBAYE0601498", null, null]);
+
+  const { tracks } = parseSpotifyPlaylistItems(
+    items,
+    new Map([
+      ["isrc:GBAYE0601498", { trackMbid: "recording", albumMbid: "album", artistMbid: "artist" }],
+    ]),
+  );
   assert.equal(tracks.length, 1);
   assert.equal(tracks[0]?.artistName, "Artist A");
   assert.equal(tracks[0]?.trackName, "Track One");
   assert.equal(tracks[0]?.albumName, "Album A");
   assert.equal(tracks[0]?.durationMs, 215000);
+  assert.equal(tracks[0]?.trackMbid, "recording");
+  assert.equal(tracks[0]?.artistMbid, "artist");
+  assert.equal(tracks[0]?.albumMbid, "album");
 });
 
 test("parseSpotifyPlaylistItems keeps tracks when spotify fields omit type", () => {

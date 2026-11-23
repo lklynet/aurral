@@ -20,6 +20,7 @@ test("artist details return release listener counts and dates from the v1 artist
         id: mbid,
         name: "Plaid",
         sortName: "Plaid",
+        listeners: 300000,
         genres: ["Electronic"],
         images: [{ kind: "poster", url: "https://images.example/plaid.jpg" }],
         similar: [
@@ -101,6 +102,7 @@ test("artist details return release listener counts and dates from the v1 artist
       { title: "Double Figure", type: "Single", date: null, listenerCount: null },
     ],
   );
+  assert.equal(artist.listeners, 300000);
   assert.equal(artist.images.length, 1);
   assert.equal(artist.similar[0]?.name, "Autechre");
   assert.equal(artist.topTracks[0]?.title, "Eyen");

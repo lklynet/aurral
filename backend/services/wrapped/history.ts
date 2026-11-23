@@ -317,9 +317,7 @@ async function artistPhoto({
       )
       .get(name)?.mbid ||
     (await guessArtistMbid(name, { album }));
-  const photo = known
-    ? (await getArtistImage(known, { artistName: name }).catch(() => null))?.url
-    : null;
+  const photo = known ? (await getArtistImage(known).catch(() => null))?.url : null;
   return cachedImage(photo);
 }
 

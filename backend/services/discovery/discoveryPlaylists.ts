@@ -11,6 +11,7 @@ import {
   isMetadataNotFoundError,
   searchArtists,
 } from "../providers/metadataProvider.ts";
+import { buildImageProxyUrl } from "../imageProxyService.ts";
 import { releaseGroupCoverImageUrl } from "../releaseGroupCoverService.ts";
 import { resolveLibraryTracks } from "../libraryTrackLookup.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
@@ -106,7 +107,9 @@ async function topTracks(artist: { name: string; mbid?: string | null }, limit: 
         albumName: album?.title || null,
         durationMs: track.durationMs ?? null,
         preview_url: deezerPreviewSearchPath(artistName, trackName),
-        artworkUrl: track.albumId ? releaseGroupCoverImageUrl(track.albumId) : null,
+        artworkUrl:
+          buildImageProxyUrl(album?.cover) ||
+          (track.albumId ? releaseGroupCoverImageUrl(track.albumId) : null),
         deezerAlbumId: null,
         artistMbid: metadata.id,
         albumMbid: track.albumId || null,

@@ -104,30 +104,28 @@ async function startFakeMetadata() {
               ? { tracks: [] }
               : pathname.startsWith("/search/")
                 ? []
-                : pathname === "/v1/genres"
-                  ? { genres: [] }
-                  : kind === "artist" && id
-                    ? {
-                        id,
-                        name: "Perf Metadata Artist",
-                        genres: ["Rock"],
-                        albums: [],
-                        appearsOn: [],
-                        topTracks: [],
-                        similar: [
-                          {
-                            id: "90000000-0000-4000-8000-000000000010",
-                            name: "Perf Similar Artist",
-                            score: 1.2,
-                            image: null,
-                          },
-                        ],
-                      }
-                    : kind === "album" && id
-                      ? { id, title: "Perf Metadata Album", releases: [] }
-                      : kind === "genre" && id
-                        ? { name: id, artists: [] }
-                        : null;
+                : kind === "artist" && id
+                  ? {
+                      id,
+                      name: "Perf Metadata Artist",
+                      genres: ["Rock"],
+                      albums: [],
+                      appearsOn: [],
+                      topTracks: [],
+                      similar: [
+                        {
+                          id: "90000000-0000-4000-8000-000000000010",
+                          name: "Perf Similar Artist",
+                          score: 1.2,
+                          image: null,
+                        },
+                      ],
+                    }
+                  : kind === "album" && id
+                    ? { id, title: "Perf Metadata Album", releases: [] }
+                    : kind === "genre" && id
+                      ? { name: id, artists: [] }
+                      : null;
     response.statusCode = body ? 200 : 404;
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify(body ?? { error: "Not found" }));

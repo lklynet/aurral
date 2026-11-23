@@ -44,7 +44,6 @@ import {
 import type { LibraryReleaseGroup, ReleaseGroup, ReleaseListViewMode } from "./utils";
 import { albumPath } from "../../../../lib/albumPath.ts";
 import { getAlbumAddAction } from "../../utils/albumAddAction";
-import { getReleaseGroupRatingsBatch } from "../../utils/api/endpoints/artists.ts";
 import TooltipButton from "../../components/TooltipButton";
 import Tooltip from "../../components/Tooltip";
 import StatePanel from "../../components/StatePanel";
@@ -53,8 +52,6 @@ import { useClampPage, usePageParam } from "../../hooks/usePageParam.ts";
 import "./ArtistDetailsPage.css";
 
 const RELEASE_PAGE_SIZE = 24;
-
-type ReleaseGroupRatings = Awaited<ReturnType<typeof getReleaseGroupRatingsBatch>>["ratings"];
 
 const sortOptions = [
   { value: "date", label: "Date", defaultDirection: "desc" },
@@ -137,9 +134,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   const [viewMode, setViewMode] = useState(() => readReleaseListViewMode());
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [pageIndex, setPageIndex] = usePageParam();
-  const [ratings, setRatings] = useState<ReleaseGroupRatings>({});
   const toolbarRef = useRef<HTMLDivElement>(null);
-  const requestedRatingIdsRef = useRef(new Set<string>());
   const fetchingAppearancesRef = useRef(false);
   const canAddAlbum = hasPermission("addAlbum");
 
@@ -173,20 +168,8 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   });
 
   const releaseGroups = useMemo(
-    () =>
-      (artist?.[isAppearsOn ? "appears-on-release-groups" : "release-groups"] || []).map(
-        (releaseGroup) => {
-          const update = ratings[releaseGroup.id];
-          if (!update) return releaseGroup;
-          return {
-            ...releaseGroup,
-            rating: update.rating || releaseGroup.rating || null,
-            "first-release-date":
-              releaseGroup["first-release-date"] || update.firstReleaseDate || null,
-          };
-        },
-      ),
-    [artist, isAppearsOn, ratings],
+    () => artist?.[isAppearsOn ? "appears-on-release-groups" : "release-groups"] ?? [],
+    [artist, isAppearsOn],
   );
   const { libraryReleaseGroups } = library;
   const libraryTab = !isAppearsOn && selectedTab === "library";
@@ -241,31 +224,6 @@ function ArtistReleaseListPage({ mode = "releases" }) {
       : undefined,
     setPageIndex,
   );
-
-  useEffect(() => {
-    requestedRatingIdsRef.current = new Set();
-  }, [isAppearsOn, mbid]);
-
-  useEffect(() => {
-    if (isAppearsOn || loadingReleases) return;
-    const ids = renderedReleaseGroups
-      .filter((item) => !item.libraryAlbumId)
-      .map((item) => item.id)
-      .filter((id) => id && !requestedRatingIdsRef.current.has(id));
-    if (!ids.length) return;
-    ids.forEach((id) => requestedRatingIdsRef.current.add(id));
-    let cancelled = false;
-    getReleaseGroupRatingsBatch(ids)
-      .then((data) => {
-        if (!cancelled) setRatings((previous) => ({ ...previous, ...data?.ratings }));
-      })
-      .catch(() => {
-        ids.forEach((id) => requestedRatingIdsRef.current.delete(id));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isAppearsOn, loadingReleases, renderedReleaseGroups]);
 
   const { fetchNextPage } = appearsOn;
   const fetchMoreAppearances = useCallback(async () => {
@@ -365,7 +323,6 @@ function ArtistReleaseListPage({ mode = "releases" }) {
       library.requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id);
     const releaseTypeLabel = getReleaseTypeLabel(releaseGroup);
     const artistCredit = isAppearsOn ? releaseGroup["artist-credit"]?.[0]?.name || "" : "";
-    const detail = artistCredit || releaseTypeLabel;
 
     if (viewMode === "list") {
       return (
@@ -389,7 +346,11 @@ function ArtistReleaseListPage({ mode = "releases" }) {
           >
             <h2 className="artist-release-card__title artist-truncate">{releaseGroup.title}</h2>
             <p className="artist-release-card__meta artist-truncate">
-              <ReleaseMeta releaseGroup={releaseGroup} detail={detail} />
+              <ReleaseMeta
+                releaseGroup={releaseGroup}
+                credit={artistCredit}
+                type={releaseTypeLabel}
+              />
             </p>
           </OptionalLink>
           <div className="artist-row-actions">
@@ -429,7 +390,8 @@ function ArtistReleaseListPage({ mode = "releases" }) {
         coverUrl={cover}
         fallbackCoverUrl={artistCoverImage}
         link={releaseLink(releaseGroup, cover || artistCoverImage || "")}
-        detail={detail}
+        credit={artistCredit}
+        type={releaseTypeLabel}
         status={status}
         busy={albumBusy}
         onDownload={

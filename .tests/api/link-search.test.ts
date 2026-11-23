@@ -129,6 +129,7 @@ test("a Spotify album link resolves through song.link to MusicBrainz ids and is 
   const pinkFloydArtist = artist(pinkFloyd, "Pink Floyd");
   metadataRoutes = {
     "/v1/search/artist": { artists: [pinkFloydArtist] },
+    [`/v1/artist/${pinkFloyd}`]: pinkFloydArtist,
     "/v1/search/album": {
       albums: [albumSearchResult(darkSide, "The Dark Side of the Moon", pinkFloydArtist)],
     },
@@ -166,6 +167,7 @@ test("Apple Music links resolve the artist, album, and recording without reusing
   const daftPunkArtist = artist(daftPunk, "Daft Punk");
   metadataRoutes = {
     "/v1/search/artist": { artists: [daftPunkArtist] },
+    [`/v1/artist/${daftPunk}`]: daftPunkArtist,
     "/v1/search/album": { albums: [albumSearchResult(discovery, "Discovery", daftPunkArtist)] },
     [`/v1/album/${discovery}`]: {
       ...albumSearchResult(discovery, "Discovery", daftPunkArtist),

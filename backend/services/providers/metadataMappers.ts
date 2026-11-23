@@ -44,6 +44,7 @@ const similarArtistSchema = v.looseObject({
   name: text,
   score: v.nullish(v.number()),
   image: text,
+  genres: texts,
 });
 
 export const artistSchema = v.looseObject({
@@ -87,6 +88,7 @@ const trackSchema = v.looseObject({
   durationMs: v.nullish(v.number()),
   artistId: text,
   credits: v.nullish(v.array(trackCreditSchema)),
+  popular: v.nullish(v.boolean()),
 });
 
 const releaseSchema = v.looseObject({
@@ -136,10 +138,23 @@ export const genreSchema = v.looseObject({
   artists: v.nullish(v.array(genreArtistSchema)),
 });
 
-export const genresIndexSchema = v.looseObject({
-  genres: v.nullish(
-    v.array(v.looseObject({ key: v.string(), name: text, artists: v.nullish(v.number()) })),
-  ),
+const freshReleaseSchema = v.looseObject({
+  id: v.string(),
+  title: text,
+  type: text,
+  secondaryTypes: texts,
+  releaseDate: v.string(),
+  cover: text,
+  artistIds: v.array(v.string()),
+  artistName: text,
+});
+
+export const freshReleasesSchema = v.looseObject({
+  releases: v.array(freshReleaseSchema),
+});
+
+export const idLookupSchema = v.looseObject({
+  ids: v.record(v.string(), v.looseObject({ recordingId: text, albumId: text, artistId: text })),
 });
 
 export const searchArtistItemSchema = v.looseObject({
@@ -290,9 +305,15 @@ export function getLinkedArtistProviderIds(links: { target: string }[] = []) {
   return [...new Set(providerIds)];
 }
 
+// An artist can link more than one Deezer page. Deezer numbers pages in the
+// order it makes them, so the lowest is the oldest. The later ones tend to be
+// empty copies: Radiohead links 399, with its albums, and 323887691, with none.
 export function getLinkedDeezerArtistId(links: { target: string }[] = []) {
-  const providerId = getLinkedArtistProviderIds(links).find((id) => id.endsWith("@deezer"));
-  return providerId?.split("@")[0] ?? null;
+  const [original = null] = getLinkedArtistProviderIds(links)
+    .filter((id) => id.endsWith("@deezer"))
+    .map((id) => id.slice(0, id.indexOf("@")))
+    .sort((left, right) => left.length - right.length || left.localeCompare(right));
+  return original;
 }
 
 export function toNormalizedArtistAlbum(raw: v.InferOutput<typeof artistAlbumSchema>) {
@@ -334,6 +355,7 @@ export function toNormalizedSimilarArtist(raw: v.InferOutput<typeof similarArtis
     name: clean(raw.name),
     score: typeof raw.score === "number" && Number.isFinite(raw.score) ? raw.score : 0,
     image: clean(raw.image) || null,
+    genres: raw.genres ? cleanList(raw.genres) : null,
   };
 }
 
@@ -415,6 +437,7 @@ export function toNormalizedTrack(raw: v.InferOutput<typeof trackSchema>) {
     mediumNumber: raw.mediumNumber ?? null,
     durationMs: raw.durationMs ?? null,
     artistId: clean(raw.artistId) || null,
+    ...(raw.popular && { popular: true }),
     ...(credits.length > 0 && { credits }),
   };
 }
@@ -474,6 +497,19 @@ export function toNormalizedGenre(raw: v.InferOutput<typeof genreSchema>) {
       }))
       .filter((artist) => artist.id && artist.name),
   };
+}
+
+export function toNormalizedFreshReleases(raw: v.InferOutput<typeof freshReleasesSchema>) {
+  return raw.releases.map((release) => ({
+    releaseGroupMbid: release.id,
+    title: clean(release.title),
+    type: normalizeType(release.type),
+    secondaryTypes: cleanList(release.secondaryTypes),
+    releaseDate: release.releaseDate,
+    coverUrl: clean(release.cover) || null,
+    artistMbids: release.artistIds,
+    artistName: clean(release.artistName) || "Unknown Artist",
+  }));
 }
 
 export function toLegacyReleaseGroupSummary(

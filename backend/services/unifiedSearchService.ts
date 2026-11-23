@@ -296,11 +296,16 @@ function withLibraryState(catalog: Catalog, limit: number): Catalog {
     (item?.type === "track" && ownedSongKeys.has(item.key))
       ? { ...item, inLibrary: true }
       : item;
-  const [top = null] = catalog.top?.type === "album" ? withCoverUrls([catalog.top]) : [catalog.top];
+  const listed = (album: AlbumSearchResult) => ({
+    artistName: album.artistName,
+    albumTitle: album.title,
+  });
+  const [top = null] =
+    catalog.top?.type === "album" ? withCoverUrls([catalog.top], listed) : [catalog.top];
   return {
     top: mark(top),
     artists: artists.map(mark),
-    albums: withCoverUrls(catalog.albums.slice(0, limit)),
+    albums: withCoverUrls(catalog.albums.slice(0, limit), listed),
     tracks: tracks.map(mark),
   };
 }

@@ -5,38 +5,38 @@ import {
   getFreshReleasesByArtists,
   refreshFreshReleases,
 } from "../../backend/services/discovery/freshReleases.ts";
+import { clearMetadataProviderCaches } from "../../backend/services/providers/metadataProvider.ts";
 
 const mbid = (index: number) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
 const RECOMMENDED = mbid(1);
 const OTHER = mbid(2);
 
 const release = (index: number, artist: string, type: string, date: string) => ({
-  release_group_mbid: mbid(100 + index),
-  release_name: `Release ${index}`,
-  artist_credit_name: artist === RECOMMENDED ? "Recommended Artist" : "Other Artist",
-  artist_mbids: [artist],
-  release_group_primary_type: type,
-  release_date: date,
+  id: mbid(100 + index),
+  title: `Release ${index}`,
+  artistName: artist === RECOMMENDED ? "Recommended Artist" : "Other Artist",
+  artistIds: [artist],
+  type,
+  releaseDate: date,
 });
 
-test("new releases come from ListenBrainz in the background and list only the given artists' albums, EPs and singles", async () => {
+test("new releases come from AurralBrainz in the background and list only the given artists' releases from the last and next 30 days", async () => {
+  vi.setSystemTime(Date.parse("2026-11-01T12:00:00Z"));
+  clearMetadataProviderCaches();
   const requests: string[] = [];
-  vi.spyOn(http, "get").mockImplementation(async (url, config) => {
-    const query = Object.entries(config?.query || {}).map(([key, value]) => `${key}=${value}`);
-    requests.push(`${new URL(url).pathname}?${query.join("&")}`);
+  vi.spyOn(http, "get").mockImplementation(async (url) => {
+    requests.push(new URL(url).pathname);
     return {
       status: 200,
       statusText: "OK",
       headers: {},
       data: {
-        payload: {
-          releases: [
-            release(1, RECOMMENDED, "Album", "2026-10-20"),
-            release(2, RECOMMENDED, "Broadcast", "2026-10-21"),
-            release(3, OTHER, "Album", "2026-10-22"),
-            release(4, RECOMMENDED, "Single", "2026-11-05"),
-          ],
-        },
+        releases: [
+          release(1, RECOMMENDED, "Album", "2026-10-20"),
+          release(2, RECOMMENDED, "Album", "2026-09-01"),
+          release(3, OTHER, "Album", "2026-10-22"),
+          release(4, RECOMMENDED, "Single", "2026-11-05"),
+        ],
       },
     };
   });
@@ -56,5 +56,5 @@ test("new releases come from ListenBrainz in the background and list only the gi
       [mbid(104), "Single", RECOMMENDED, "Recommended Artist"],
     ],
   );
-  assert.deepEqual(requests, ["/1/explore/fresh-releases/?days=30&past=true&future=true"]);
+  assert.deepEqual(requests, ["/v1/fresh-releases"]);
 });

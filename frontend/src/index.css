@@ -8303,7 +8303,8 @@ button.native-library-card__artist:focus-visible {
   --native-library-track-columns: 2rem 2rem 2.35rem minmax(12rem, 1.4fr) minmax(8rem, 1fr)
     minmax(8rem, 1fr) var(--native-library-track-reason-column,)
     var(--native-library-track-added-by-column,) var(--native-library-track-year-column,)
-    var(--native-library-track-time-column, 4.5rem) 1.7rem 1.7rem 1.7rem;
+    var(--native-library-track-popular-column,) var(--native-library-track-time-column, 4.5rem)
+    1.7rem 1.7rem 1.7rem;
 
   display: grid;
   min-width: 44rem;
@@ -8629,6 +8630,21 @@ button.native-library-card__artist:focus-visible {
 
 .native-library-track-list--wide-time {
   --native-library-track-time-column: 7rem;
+}
+
+.native-library-track-list--popular {
+  --native-library-track-popular-column: 1rem;
+}
+
+.native-library-track__popular {
+  display: inline-flex;
+  justify-content: center;
+  color: var(--aurral-text-muted);
+}
+
+.native-library-track__popular svg {
+  width: var(--aurral-icon-sm);
+  height: var(--aurral-icon-sm);
 }
 
 .native-library-track__reason,
@@ -9251,7 +9267,8 @@ button.native-library-genre-row:focus-visible {
 }
 
 .native-library-track-list--release .native-library-track {
-  --native-library-track-columns: 2rem 2rem minmax(10rem, 1fr) 4.5rem 1.7rem 1.7rem 1.7rem;
+  --native-library-track-columns: 2rem 2rem minmax(10rem, 1fr)
+    var(--native-library-track-popular-column,) 4.5rem 1.7rem 1.7rem 1.7rem;
 
   min-width: 0;
 }
@@ -9610,11 +9627,13 @@ button.native-library-genre-row:focus-visible {
     --native-library-track-columns: 2.75rem 2.2rem 2.75rem minmax(12rem, 1.4fr) minmax(8rem, 1fr)
       minmax(8rem, 1fr) var(--native-library-track-reason-column,)
       var(--native-library-track-added-by-column,) var(--native-library-track-year-column,)
-      var(--native-library-track-time-column, 4.5rem) 2.75rem 2.75rem 2.75rem;
+      var(--native-library-track-popular-column,) var(--native-library-track-time-column, 4.5rem)
+      2.75rem 2.75rem 2.75rem;
   }
 
   .native-library-track-list--release .native-library-track {
-    --native-library-track-columns: 2.75rem 2.2rem minmax(10rem, 1fr) 4.5rem 2.75rem 2.75rem 2.75rem;
+    --native-library-track-columns: 2.75rem 2.2rem minmax(10rem, 1fr)
+      var(--native-library-track-popular-column,) 4.5rem 2.75rem 2.75rem 2.75rem;
   }
 }
 
@@ -9623,7 +9642,8 @@ button.native-library-genre-row:focus-visible {
 }
 
 .native-library-track-list--compact .native-library-track {
-  --native-library-track-columns: 2rem 2.35rem minmax(0, 1fr) 3rem 1.7rem 1.7rem 1.7rem;
+  --native-library-track-columns: 2rem 2.35rem minmax(0, 1fr)
+    var(--native-library-track-popular-column,) 3rem 1.7rem 1.7rem 1.7rem;
 
   min-width: 0;
 }
@@ -9756,7 +9776,8 @@ button.native-library-genre-row:focus-visible {
   }
 
   .native-library-track-list--compact .native-library-track {
-    --native-library-track-columns: 2.75rem 2.75rem minmax(0, 1fr) 3rem 2.75rem 2.75rem 2.75rem;
+    --native-library-track-columns: 2.75rem 2.75rem minmax(0, 1fr)
+      var(--native-library-track-popular-column,) 3rem 2.75rem 2.75rem 2.75rem;
   }
 }
 
@@ -9847,7 +9868,8 @@ button.native-library-genre-row:focus-visible {
 
   .native-library-track {
     --native-library-track-columns: 2.75rem 2.2rem 2.75rem minmax(10rem, 1fr)
-      var(--native-library-track-time-column, 4.5rem) 2.75rem 2.75rem 2.75rem;
+      var(--native-library-track-popular-column,) var(--native-library-track-time-column, 4.5rem)
+      2.75rem 2.75rem 2.75rem;
 
     min-width: 32rem;
   }

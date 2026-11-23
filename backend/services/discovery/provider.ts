@@ -133,13 +133,11 @@ const resolveArtistMbids = (items: DiscoveryRecommendation[]) =>
     },
   );
 
-const resolveRecommendationCandidates = async (
+const rankMatchedRecommendations = (
   recommendations: DiscoveryRecommendation[],
   existingArtistKeys: Set<string>,
-) => {
-  const perRefresh = DISCOVERY_RECOMMENDATIONS_PER_REFRESH;
-  await resolveArtistMbids(recommendations.slice(0, perRefresh));
-  return mergeResolvedRecommendations(recommendations, existingArtistKeys)
+) =>
+  mergeResolvedRecommendations(recommendations, existingArtistKeys)
     .filter((item) => item?.id || item?.navigateTo)
     .sort((left, right) => {
       const leftScore = left.scoreTotal || left.score || 0;
@@ -150,8 +148,7 @@ const resolveRecommendationCandidates = async (
       }
       return String(left.name || "").localeCompare(String(right.name || ""));
     })
-    .slice(0, Math.max(120, perRefresh * 2));
-};
+    .slice(0, Math.max(120, DISCOVERY_RECOMMENDATIONS_PER_REFRESH * 2));
 
 const fetchTrendingArtists = async (existingArtistKeys: Set<string>) => {
   const { getChartArtists } = await import("./trendingCharts.ts");
@@ -394,9 +391,15 @@ const buildUserRecommendations = async ({
     discoveryMode,
   });
 
-  progress("resolving_artists", "Matching artists to MusicBrainz", 75);
+  const unmatched = rawRecommendations
+    .slice(0, DISCOVERY_RECOMMENDATIONS_PER_REFRESH)
+    .filter((item) => !item.id && item.name);
+  if (unmatched.length > 0) {
+    progress("resolving_artists", "Matching artists", 75);
+    await resolveArtistMbids(unmatched);
+  }
   const freshRecommendations = rerankCachedRecommendations({
-    recommendations: await resolveRecommendationCandidates(rawRecommendations, existingArtistKeys),
+    recommendations: rankMatchedRecommendations(rawRecommendations, existingArtistKeys),
     discoveryMode,
   });
   const recommendations = mergeRetainedRecommendationPool({

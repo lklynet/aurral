@@ -18,7 +18,7 @@ const [
   { default: search },
   { default: similar },
   { FlowTrackSource },
-  { getArtistTagLists },
+  { getArtistTagLists, getSimilarArtists },
 ] = await setupIsolatedBackend(
   "listenbrainz-discovery",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -94,7 +94,13 @@ const respond = (url: URL) => {
         links: [],
         albums: [],
         similar: [
-          { id: SIMILAR_PICK.mbid, name: SIMILAR_PICK.name, score: 1.4, image: SIMILAR_PICK.image },
+          {
+            id: SIMILAR_PICK.mbid,
+            name: SIMILAR_PICK.name,
+            score: 1.4,
+            image: SIMILAR_PICK.image,
+            genres: ["Slowcore"],
+          },
         ],
       });
     }
@@ -174,12 +180,10 @@ const respond = (url: URL) => {
     });
   }
   if (url.hostname === "data.aurral.org" && url.pathname === "/v1/search/artist") {
-    return json({
-      artists:
-        url.searchParams.get("q") === RELATED.name
-          ? [{ id: RELATED.mbid, name: RELATED.name }]
-          : [],
-    });
+    const found = [RELATED, SIMILAR_SEED].find(
+      (artist) => artist.name === url.searchParams.get("q"),
+    );
+    return json({ artists: found ? [{ id: found.mbid, name: found.name }] : [] });
   }
   if (url.hostname === "api.deezer.com" && url.pathname === "/artist/7/top") {
     return json({
@@ -320,6 +324,17 @@ test("artist tags come from cached v1 artist metadata and refresh in the backgro
   assert.deepEqual(await loadTags(), expected);
   await vi.runAllTimersAsync();
   assert.equal(lookups(), 2);
+
+  await getSimilarArtists(SIMILAR_SEED);
+  requests = [];
+  assert.deepEqual(await getArtistTagLists([{ mbid: SIMILAR_PICK.mbid }, { mbid: mbid(43) }]), [
+    [{ name: "slowcore", count: 100 }],
+    ["seen live", "shoegaze", "dream pop"].map((name) => ({ name, count: 100 })),
+  ]);
+  assert.deepEqual(
+    requests.map((url) => url.pathname),
+    [`/v1/artist/${mbid(43)}`],
+  );
 });
 
 test("artist pages list Deezer's related artists that MusicBrainz knows", async () => {
@@ -355,6 +370,19 @@ test("flows take Deezer's related artists by name without looking each one up", 
     requests.some((url) => url.hostname === "data.aurral.org"),
     false,
   );
+});
+
+test("a seed known only by name takes its similar list from the ID its genres lookup found", async () => {
+  await getArtistTagLists([{ name: SIMILAR_SEED.name }]);
+  requests = [];
+
+  const artists = await getSimilarArtists({ name: SIMILAR_SEED.name });
+
+  assert.deepEqual(
+    artists.map((artist) => [artist.mbid, artist.name]),
+    [[SIMILAR_PICK.mbid, SIMILAR_PICK.name]],
+  );
+  assert.deepEqual(requests, []);
 });
 
 test("artist pages and genre search use v1 static similar artists and genre lists before falling back", async () => {

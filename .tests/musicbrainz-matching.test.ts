@@ -37,6 +37,8 @@ const [isolatedState, { db }, { dbOps }, libraryStore, provider, indexService, a
 const GRUNGE = "66666666-6666-4666-8666-666666666601";
 const SIXTIES = "66666666-6666-4666-8666-666666666602";
 const NEVERMIND = "66666666-6666-4666-8666-666666666611";
+const NEVERMIND_SINGLE = "66666666-6666-4666-8666-666666666612";
+const albumIds = new Map([["Nevermind", NEVERMIND]]);
 
 const grunge = { id: GRUNGE, name: "Nirvana", albums: ["Nevermind", "In Utero"] };
 const sixties = {
@@ -94,15 +96,36 @@ const server = await createMockHttpServer((request, response) => {
       ],
     });
   }
+  if (url.pathname === `/v1/album/${NEVERMIND_SINGLE}`) {
+    return reply(200, {
+      id: NEVERMIND_SINGLE,
+      title: "Nevermind",
+      type: "Single",
+      artistId: GRUNGE,
+      artists: [grunge],
+      releases: [
+        {
+          id: `${NEVERMIND_SINGLE}-release`,
+          status: "Official",
+          tracks: [
+            { id: "single-track-1", title: "Nevermind", trackPosition: 1, artistId: GRUNGE },
+          ],
+        },
+      ],
+    });
+  }
   const artist = artists.get(url.pathname.replace(/^\/v1\/artist\//, ""));
   if (!artist) return reply(404);
   return reply(200, {
     ...artist,
-    albums: artist.albums.map((title, index) => ({
-      id: `${artist.id}-album-${index}`,
-      title,
-      type: "Album",
-    })),
+    albums: [
+      ...(artist === grunge ? [{ id: NEVERMIND_SINGLE, title: "Nevermind", type: "Single" }] : []),
+      ...artist.albums.map((title, index) => ({
+        id: albumIds.get(title) ?? `${artist.id}-album-${index}`,
+        title,
+        type: "Album",
+      })),
+    ],
   });
 });
 
@@ -280,10 +303,26 @@ test("an album title that names an edition matches the album", async () => {
   );
 });
 
+test("a known artist's own albums answer without a search, an album ahead of a single of its title", async () => {
+  const lookup = {
+    artistName: "Nirvana",
+    artistMbid: GRUNGE,
+    albumTitle: "Nevermind (Remastered)",
+  };
+
+  assert.equal(await provider.resolveAlbumByArtistAndTitle(lookup), NEVERMIND);
+  assert.equal(
+    await provider.resolveAlbumByArtistAndTitle({ ...lookup, holds: (id) => id !== NEVERMIND }),
+    NEVERMIND_SINGLE,
+  );
+  assert.equal(albumSearches, 0);
+});
+
 test("an untagged album of a linked artist takes the release group that holds its songs", async () => {
   const albumId = untaggedAlbum("Nevermind (Remastered)", ["Smells Like Teen Spirit", "In Bloom"]);
 
   await scan();
+  assert.equal(albumSearches, 0);
 
   assert.deepEqual(albumRow(albumId), {
     identity_key: `release-group:${NEVERMIND}`,

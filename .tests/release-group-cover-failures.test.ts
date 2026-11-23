@@ -148,6 +148,35 @@ test("an album metadata has no cover for takes Deezer's, however long the discog
   assert.equal(result.imageUrl, cover);
   assert.deepEqual(requests, [`/v1/album/${mbid}`]);
   assert.equal(dbOps.getImage(`rg:${mbid}`), null);
+
+  requests.length = 0;
+  const rows = withCoverUrls([{ id: mbid, title: "Covered" }], ({ title }) => ({
+    artistName: "Cover Artist",
+    albumTitle: title,
+  }));
+  assert.equal(
+    rows[0]?.coverUrl,
+    `/api/artists/release-group/${mbid}/cover/image?artist=Cover+Artist&title=Covered`,
+  );
+  const listed = await testClient(releaseGroupRoutes).artists["release-group"][
+    ":mbid"
+  ].cover.image.$get({ param: { mbid }, query: { artist: "Cover Artist", title: "Covered" } });
+  assert.equal(listed.headers.get("location"), cover);
+  assert.deepEqual(requests, []);
+
+  const own = "https://images.example/own.jpg";
+  clearMetadataProviderCaches();
+  replies.set(`/v1/album/${mbid}`, {
+    status: 200,
+    body: { id: mbid, images: [{ kind: "Cover", url: own }] },
+  });
+  const mislisted = await fetchReleaseGroupCoverUrl(mbid, {
+    artistName: "Cover Artist",
+    albumTitle: "Not On Deezer",
+    listedWithoutCover: true,
+  });
+  assert.equal(mislisted.imageUrl, buildStableImageProxyUrl(own));
+  assert.deepEqual(requests, [`/v1/album/${mbid}`]);
 });
 
 test("a refresh swaps a cover link that no longer loads for Deezer's on the album page too, and keeps it when Deezer has none", async (t) => {

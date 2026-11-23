@@ -26,7 +26,12 @@ import {
   writeAudioMetadata,
 } from "../downloadUtils.ts";
 import { logger } from "../logger.ts";
-import { albumGrabJobs, deniedAlbumSources, finishAlbumGrab } from "../albumGrab.ts";
+import {
+  albumGrabJobs,
+  blockAlbumGrabSource,
+  deniedAlbumSources,
+  finishAlbumGrab,
+} from "../albumGrab.ts";
 import { selectSoulseekAlbumFolder } from "../albumReleaseSearch.ts";
 import { getQualityProfile } from "../qualityProfile.ts";
 import { isAudioFile } from "../downloadJobs/usenetReleaseSearch.ts";
@@ -47,6 +52,7 @@ import {
   validateDownloadedTrackFile,
 } from "../trackMatching/index.ts";
 import {
+  DownloadFailedError,
   DownloadSourceError,
   NATIVE_SOURCE_IDS,
   statusResult,
@@ -429,6 +435,15 @@ async function keepFiles(payload: SourcePayload, source: DownloadSource, job: Do
   return checked;
 }
 
+function denyFailedRelease(payload: SourcePayload, source: DownloadSource, job: DownloadJob) {
+  if (payload.albumGrab === true) return blockAlbumGrabSource(payload, albumGrabJobs(payload));
+  downloadTracker.recordDeniedSource(
+    job.id,
+    source.id,
+    deniedKey(payload, source, getPayloadCandidate(payload)?.raw.id),
+  );
+}
+
 async function downloadFailed(
   payload: SourcePayload,
   source: DownloadSource,
@@ -438,6 +453,7 @@ async function downloadFailed(
 ) {
   await discardSourceWork(payload, source);
   if (!isPipelinePayloadActive(payload)) return null;
+  if (error instanceof DownloadFailedError) denyFailedRelease(payload, source, job);
   logger.warn(source.id, "Download failed", {
     jobId: job.id,
     result: payload.candidates?.[Number(payload.candidateIndex || 0)]?.raw.id ?? null,

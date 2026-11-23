@@ -17,9 +17,10 @@ const [
   metadataProvider,
   { listMetadataCalls, reserveMetadataProviderRequest },
   { db },
-  { http },
+  { http, HttpError },
   { readAppSettings, saveAppSettings },
   { trackWork },
+  { resolveDeezerAlbumToMbid },
 ] = await setupIsolatedBackend(
   "metadata-providers",
   () => import("../backend/db/helpers/index.ts"),
@@ -29,6 +30,7 @@ const [
   () => import("../lib/http.ts"),
   () => import("../backend/services/appSettings.ts"),
   () => import("../backend/services/eventLoopWatch.ts"),
+  () => import("../backend/services/apiClients/crossProvider.ts"),
 );
 
 const {
@@ -571,7 +573,9 @@ test("missing artist and album MBIDs fill gaps straight from MusicBrainz", async
   const previousSettings = dbOps.getSettings();
   const missingArtistMbid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const missingAlbumMbid = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  let providerRequests = 0;
   const server = await createMockHttpServer((_request, response) => {
+    providerRequests += 1;
     response.statusCode = 404;
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify({ error: "Not found" }));
@@ -646,6 +650,10 @@ test("missing artist and album MBIDs fill gaps straight from MusicBrainz", async
     const album = await getAlbumByMbid(missingAlbumMbid);
     assert.equal(album.title, "Debut LP");
     assert.equal(album.artistId, missingArtistMbid);
+
+    assert.equal((await getArtistByMbid(missingArtistMbid)).name, "Brand New Artist");
+    assert.equal((await getAlbumByMbid(missingAlbumMbid)).title, "Debut LP");
+    assert.equal(providerRequests, 2);
     assert.deepEqual(mbPaths, [
       `/ws/2/artist/${missingArtistMbid}`,
       `/ws/2/release-group/${missingAlbumMbid}`,
@@ -891,6 +899,54 @@ test("search metadata coalesces concurrent misses and shares fresh cache entries
   }
 });
 
+test("search pages come out of one full answer", async () => {
+  const previousSettings = dbOps.getSettings();
+  const limits: string[] = [];
+  const row = (index: number) => ({
+    id: `id-${index}`,
+    name: `Name ${index}`,
+    title: `Name ${index}`,
+  });
+  const rows = Array.from({ length: 30 }, (_value, index) => row(index));
+  const server = await createMockHttpServer((request, response) => {
+    const url = new URL(request.url || "/", "http://provider.test");
+    limits.push(`${url.pathname} ${url.searchParams.get("limit")}`);
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ artists: rows, albums: rows }));
+  });
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: { ...(previousSettings.integrations?.metadata || {}), baseUrl: server.url },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    await trackWork(
+      () => "GET /api/search",
+      async () => {
+        for (const search of [
+          (offset: number) => searchArtists("name", { limit: 24, offset }),
+          (offset: number) => searchAlbums("name", { limit: 24, offset, sort: "titleAsc" }),
+        ]) {
+          const first = await search(0);
+          const second = await search(24);
+          assert.deepEqual([first.count, first.items.length, second.items.length], [30, 24, 6]);
+        }
+      },
+      undefined,
+      { request: true },
+    );
+    assert.deepEqual(limits, ["/v1/search/artist 50", "/v1/search/album 50"]);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
 test("album search shows no results when its MusicBrainz fallback is down", async () => {
   const previousSettings = dbOps.getSettings();
   const server = await createMockHttpServer((_request, response) => {
@@ -915,10 +971,159 @@ test("album search shows no results when its MusicBrainz fallback is down", asyn
     });
     clearMetadataProviderCaches();
 
-    assert.deepEqual((await searchAlbums("Missing Album")).items, []);
+    const result = await trackWork(
+      () => "GET /api/search",
+      () => searchAlbums("Missing Album"),
+      undefined,
+      { request: true },
+    );
+    assert.deepEqual(result.items, []);
   } finally {
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
     await server.close();
+  }
+});
+
+test("an album search AurralBrainz answers empty asks MusicBrainz once, unless MusicBrainz failed", async () => {
+  const previousSettings = dbOps.getSettings();
+  const server = await createMockHttpServer((_request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ albums: [] }));
+  });
+  const providerGet = http.get.bind(http);
+  let asked = 0;
+  vi.spyOn(http, "get").mockImplementation(async (url, options) => {
+    if (!url.startsWith("https://musicbrainz.org/")) return providerGet(url, options);
+    asked += 1;
+    if (asked === 1) throw new Error("MusicBrainz unavailable");
+    return {
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      data: { "release-groups": [{ id: "fallback-album", title: "Missing Album" }] },
+    };
+  });
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: { ...(previousSettings.integrations?.metadata || {}), baseUrl: server.url },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    const titles = [];
+    for (let search = 0; search < 3; search += 1) {
+      const result = await trackWork(
+        () => "GET /api/search",
+        () => searchAlbums("Missing Album"),
+        undefined,
+        { request: true },
+      );
+      titles.push(result.items.map((item) => item.title));
+    }
+    assert.deepEqual(titles, [[], ["Missing Album"], ["Missing Album"]]);
+    assert.equal(asked, 2);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("an ID lookup asks for 100 keys at a time, and a Deezer album resolves by its ID alone", async () => {
+  const previousSettings = dbOps.getSettings();
+  const linked = { recordingId: null, albumId: "linked-album", artistId: "linked-artist" };
+  const asked: string[][] = [];
+  const server = await createMockHttpServer((request, response) => {
+    const keys = new URL(request.url ?? "", "http://metadata").searchParams.get("keys")!.split(",");
+    asked.push(keys);
+    response.setHeader("content-type", "application/json");
+    response.end(
+      JSON.stringify({
+        ids: Object.fromEntries(
+          keys.filter((key) => key.startsWith("deezer-album:")).map((key) => [key, linked]),
+        ),
+      }),
+    );
+  });
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: { ...(previousSettings.integrations?.metadata || {}), baseUrl: server.url },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    const isrcs = Array.from({ length: 150 }, (_, index) => `isrc:GBAYE06${10000 + index}`);
+    const found = await metadataProvider.lookupIds([...isrcs, "deezer-album:1", ...isrcs]);
+    assert.deepEqual(
+      asked.map((keys) => keys.length),
+      [100, 51],
+    );
+    assert.deepEqual(
+      [...found],
+      [
+        [
+          "deezer-album:1",
+          { trackMbid: null, albumMbid: "linked-album", artistMbid: "linked-artist" },
+        ],
+      ],
+    );
+
+    assert.equal(await resolveDeezerAlbumToMbid("", "", 302127), "linked-album");
+    assert.deepEqual(asked.at(-1), ["deezer-album:302127"]);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("a rate limited search waits out Retry-After in the background and fails at once for a request", async () => {
+  const sentAt: number[] = [];
+  const get = vi.spyOn(http, "get").mockImplementation(async (url) => {
+    sentAt.push(Date.now());
+    if (sentAt.length > 2) {
+      return { status: 200, statusText: "OK", headers: {}, data: { artists: [] } };
+    }
+    throw new HttpError(
+      "Too many requests",
+      { method: "GET", url },
+      {
+        response: {
+          status: 429,
+          statusText: "Too Many Requests",
+          headers: { "retry-after": "30" },
+          data: {},
+        },
+      },
+    );
+  });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  vi.setTimerTickMode("nextTimerAsync");
+  try {
+    clearMetadataProviderCaches();
+    await assert.rejects(
+      trackWork(
+        () => "GET /api/search",
+        () => searchArtists("typed", { throwOnFailure: true }),
+        undefined,
+        { request: true },
+      ),
+    );
+    assert.equal(sentAt.length, 1);
+
+    assert.deepEqual((await searchArtists("scanned", { throwOnFailure: true })).items, []);
+    assert.equal(sentAt.length, 3);
+    assert.ok(sentAt[2]! - sentAt[1]! >= 30_000, `retried after ${sentAt[2]! - sentAt[1]!}ms`);
+  } finally {
+    vi.useRealTimers();
+    get.mockRestore();
+    clearMetadataProviderCaches();
   }
 });

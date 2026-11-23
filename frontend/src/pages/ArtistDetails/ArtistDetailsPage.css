@@ -532,6 +532,7 @@ button.artist-track__text {
 .artist-release-tile {
   position: relative;
   min-width: 0;
+  container-type: inline-size;
   scroll-snap-align: start;
 }
 
@@ -580,18 +581,45 @@ button.artist-track__text {
   white-space: nowrap;
 }
 
-.artist-release-tile__meta,
-.artist-release-tile__metric {
+.artist-release-tile__meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
   margin: 0.1875rem 0 0;
-  overflow: hidden;
   color: var(--aurral-text-subtle);
   font-size: var(--aurral-font-xs);
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.artist-release-tile__meta > .artist-release-meta__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@container (width < 10rem) {
+  .artist-release-tile__meta:has(> .library-check):has(.artist-release-meta__metric)
+    .artist-release-meta__type,
+  .artist-release-tile__meta:has(.is-partial, .is-scheduled) .artist-release-meta__metric {
+    display: none;
+  }
+}
+
+.artist-release-meta__metric {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: 0.25rem;
+}
+
+.artist-release-tile__meta .artist-release-meta__metric svg {
+  margin-right: 0;
 }
 
 .artist-release-tile__meta svg {
   display: inline-block;
+  flex: none;
   width: 0.875rem;
   height: 0.875rem;
   margin-right: 0.25rem;
@@ -608,12 +636,6 @@ button.artist-track__text {
 
 .artist-release-tile__meta .is-scheduled {
   color: var(--aurral-scheduled);
-}
-
-.artist-release-tile__metric {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
 }
 
 .artist-release-metric-icon {

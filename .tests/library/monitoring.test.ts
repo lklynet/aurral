@@ -122,8 +122,10 @@ const metadataState: {
   albumGate: MetadataGate | null;
   artistGate: MetadataGate | null;
   albumRequests: string[];
+  artistRequests: string[];
 } = {
   albumRequests: [],
+  artistRequests: [],
   artistFails: false,
   extraReleases: [],
   otherReleases: [],
@@ -204,6 +206,7 @@ function albumPayload(release: ReleaseFixture) {
 const metadataServer = await createMockHttpServer(async (request, response) => {
   const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
   response.setHeader("content-type", "application/json");
+  if (pathname.startsWith("/v1/artist/")) metadataState.artistRequests.push(pathname.slice(11));
   if (pathname === `/v1/artist/${artistMbid}`) {
     if (metadataState.artistFails) {
       response.writeHead(503);
@@ -356,6 +359,7 @@ beforeEach(() => {
   metadataState.albumGate = null;
   metadataState.artistGate = null;
   metadataState.albumRequests = [];
+  metadataState.artistRequests = [];
   clearMetadataProviderCaches();
   clearMonitoringTasks();
   downloadTracker.clearAll();
@@ -767,16 +771,40 @@ test("daily reconciliation queues new releases once, saves upcoming ones for rel
   };
   metadataState.extraReleases = [newRelease, newSingle];
   metadataState.otherReleases = [upcoming, olderRelease];
-  clearMetadataProviderCaches();
+  const providerGet = http.get.bind(http);
+  vi.spyOn(http, "get").mockImplementation(async (url, options) =>
+    url.endsWith("/v1/fresh-releases")
+      ? {
+          status: 200,
+          statusText: "OK",
+          headers: {},
+          data: {
+            releases: [{ ...newRelease, artistMbid }, { ...newSingle, artistMbid }, upcoming].map(
+              (release) => ({
+                id: release.id,
+                title: release.title,
+                type: release.type,
+                releaseDate: release.date,
+                artistIds: [release.artistMbid],
+              }),
+            ),
+          },
+        }
+      : providerGet(url, options),
+  );
+  metadataState.artistRequests = [];
 
   await processSystemTask({ kind: "aurral-monitoring-reconcile" });
+  assert.deepEqual(metadataState.artistRequests.sort(), [artistMbid, otherArtistMbid]);
   assert.deepEqual(queuedAlbumMbids(), [...defaultIds, newRelease.id].sort());
   assert.ok(savedAlbumMbids().includes(upcoming.id));
   const afterFirstRun = downloadTracker.getAll().length;
   assert.equal(afterFirstRun, initialJobs + 2);
 
+  metadataState.artistRequests = [];
   await processSystemTask({ kind: "aurral-monitoring-reconcile" });
   assert.equal(downloadTracker.getAll().length, afterFirstRun);
+  assert.deepEqual(metadataState.artistRequests, []);
 
   metadataState.artistFails = true;
   metadataState.otherReleases = [

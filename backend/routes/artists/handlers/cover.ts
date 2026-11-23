@@ -15,7 +15,7 @@ import { queryText } from "../utils.ts";
 
 const NEGATIVE_COVER_CACHE_MS = 7 * 24 * 60 * 60 * 1000;
 
-const resolveArtistImage = async (mbid: string, artistName: string | null, refresh = false) => {
+const resolveArtistImage = async (mbid: string, refresh = false) => {
   const cached = dbOps.getImage(mbid);
   const notFound = cached?.imageUrl === "NOT_FOUND";
   if (
@@ -26,7 +26,7 @@ const resolveArtistImage = async (mbid: string, artistName: string | null, refre
   ) {
     return { url: null, images: [], notFound: true };
   }
-  return getArtistImage(mbid, { forceRefresh: refresh || notFound, artistName });
+  return getArtistImage(mbid, { forceRefresh: refresh || notFound });
 };
 
 const sizedImageUrl = (url: string, width: number) =>
@@ -45,11 +45,7 @@ export default new Hono<AppEnv>()
     }
 
     try {
-      const result = await resolveArtistImage(
-        mbid,
-        query.artistName || null,
-        Boolean(query.refresh),
-      );
+      const result = await resolveArtistImage(mbid, Boolean(query.refresh));
       const images = result.images || [];
       if (images.length > 0) {
         c.header("Cache-Control", "public, max-age=31536000, immutable");
@@ -83,7 +79,7 @@ export default new Hono<AppEnv>()
       return sent || imageNotFound();
     }
 
-    const result = await resolveArtistImage(mbid, null).catch(() => null);
+    const result = await resolveArtistImage(mbid).catch(() => null);
     if (!result?.url) {
       c.header("Cache-Control", result?.notFound ? "private, max-age=3600" : "no-store");
       return imageNotFound();
