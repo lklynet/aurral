@@ -82,6 +82,11 @@ function fields(value: Record<string, unknown>, contract: Record<string, string>
   }
 }
 
+const albumIds = v.object({
+  mbid: v.nullable(v.string()),
+  releaseGroupMbid: v.nullable(v.string()),
+});
+
 async function call(
   route: string,
   {
@@ -513,6 +518,12 @@ test("library pages, lookups, album requests, and track requests preserve their 
       genres: "array",
     });
     fields(collection.items[0], { id: "number", identityKey: "string", [name]: "string" });
+    if (kind === "albums") {
+      const {
+        items: [entry],
+      } = v.parse(v.object({ items: v.tuple([albumIds]) }), collection);
+      assert.deepEqual([entry.mbid, entry.releaseGroupMbid], [null, albumMbid]);
+    }
   }
   fields(await call("/api/library?kind=genres&pageSize=10"), {
     kind: "string",
@@ -535,6 +546,18 @@ test("library pages, lookups, album requests, and track requests preserve their 
     libraryArtistId: "string|null",
   });
   assert.equal(lookup.exists, true);
+  const identified = v.parse(
+    v.object({
+      artist: v.object({ id: v.string() }),
+      albums: v.array(v.object({ id: v.number(), ...albumIds.entries })),
+    }),
+    lookup,
+  );
+  assert.equal(identified.artist.id, String(artist.id));
+  assert.deepEqual(
+    identified.albums.map((entry) => [entry.id, entry.mbid, entry.releaseGroupMbid]),
+    [[album.id, null, albumMbid]],
+  );
   const artists = await call("/api/library/lookup/batch", {
     method: "POST",
     body: { mbids: [artistMbid, "absent"] },

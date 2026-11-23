@@ -1072,7 +1072,6 @@ test("library responses do not expose filesystem paths", () => {
             Parameters<typeof readArtist>[0]
           >["metadata"],
         }),
-        providerId: null,
         managed: false,
         monitorMode: null,
         monitored: false,

@@ -19,7 +19,6 @@ export type ReleaseGroup = Partial<
 > & {
   "artist-credit"?: { name?: string; artist?: { id?: string; name?: string } }[];
   mbid?: string | null;
-  foreignAlbumId?: string | null;
   releaseDate?: string | null;
   firstReleaseDate?: string | null;
   listenerCount?: number | null;
@@ -68,7 +67,8 @@ export type ReleaseGroupStatusLookup = (
   releaseGroupId: string,
 ) => { status?: string | null } | null | undefined;
 
-interface LibraryAlbum extends Pick<ReleaseGroup, "mbid" | "foreignAlbumId"> {
+interface LibraryAlbum {
+  releaseGroupMbid?: string | null;
   id?: string | number | null;
   artistId?: string | number | null;
   monitored?: boolean;
@@ -107,10 +107,7 @@ export const isVisibleLibraryAlbum = (
 ) => {
   if (!album || String(album.id ?? "").startsWith("pending-")) return false;
   if (album.monitored) return true;
-  return (
-    !!requestingAlbum &&
-    (album.mbid === requestingAlbum || album.foreignAlbumId === requestingAlbum)
-  );
+  return !!requestingAlbum && album.releaseGroupMbid === requestingAlbum;
 };
 
 export const ownedAlbumKey = (album: Pick<OwnedAlbum, "releaseGroupMbid" | "libraryId">) =>
@@ -149,7 +146,7 @@ export const buildLibraryReleaseGroups = ({
     });
   }
   for (const album of libraryAlbums) {
-    const id = album.mbid || album.foreignAlbumId;
+    const id = album.releaseGroupMbid;
     if (!id) continue;
     if (!isVisibleLibraryAlbum(album, { requestingAlbum }) || isLibraryAlbumComplete(album)) {
       continue;

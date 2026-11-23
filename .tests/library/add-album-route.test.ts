@@ -21,8 +21,7 @@ test("adding an album answers 201 once the album is in the library", async () =>
     artistId: "7",
     artistName: "Route Artist",
     albumName: "Route Album",
-    mbid: "72222222-2222-4222-8222-222222222222",
-    foreignAlbumId: "72222222-2222-4222-8222-222222222222",
+    releaseGroupMbid: "72222222-2222-4222-8222-222222222222",
     statistics: { trackCount: 0, sizeOnDisk: 0, percentOfTracks: 0 },
   } as Awaited<ReturnType<typeof libraryManager.addAlbum>>);
   const response = await app.request("/library/albums", {

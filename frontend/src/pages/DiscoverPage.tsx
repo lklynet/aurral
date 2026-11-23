@@ -386,10 +386,7 @@ function DiscoverPage() {
         >
           <>
             {recentReleases.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((album) => (
-              <div
-                key={album.id || album.mbid || album.foreignAlbumId}
-                className="artist-discover-shelf-card"
-              >
+              <div key={album.id || album.releaseGroupMbid} className="artist-discover-shelf-card">
                 <AlbumCard
                   album={album}
                   canAddAlbum={releaseAction.canAddAlbum}

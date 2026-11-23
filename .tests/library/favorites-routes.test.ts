@@ -193,7 +193,6 @@ test("library pages return bounded collection responses", async () => {
   assert.equal(tracks.total, 3);
   assert.equal(tracks.items.length, 1);
   assert.equal(tracks.items[0]?.artistName, "Favorite Artist");
-  assert.equal(tracks.items[0].providerId, null);
   assert.equal(tracks.items[0]?.source, "aurral");
   assert.equal(tracks.items[0]?.available, true);
   assert.equal(tracks.items[0].managed, false);

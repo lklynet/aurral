@@ -46,7 +46,7 @@ test("new releases come from AurralBrainz in the background and list only the gi
 
   assert.deepEqual(
     getFreshReleasesByArtists([RECOMMENDED]).map((album) => [
-      album.mbid,
+      album.releaseGroupMbid,
       album.albumType,
       album.artistMbid,
       album.artistName,

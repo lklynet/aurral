@@ -406,15 +406,13 @@ export const restoreLibraryFavorites = (
     parseResponse(libraryClient.favorites.restore.$post({ json: { favorites } })),
   );
 
-const fetchLibraryArtist = async (mbid: string | null, { signal }: SignalOptions = {}) => {
-  const artist = await parseResponse(
+const fetchLibraryArtist = (mbid: string | null, { signal }: SignalOptions = {}) =>
+  parseResponse(
     libraryArtistsClient.artists[":mbid"].$get(
       { param: { mbid: encodeURIComponent(String(mbid)) } },
       { init: { signal } },
     ),
   );
-  return artist && !artist.foreignArtistId ? { ...artist, foreignArtistId: artist.mbid } : artist;
-};
 
 export type LibraryArtist = Awaited<ReturnType<typeof fetchLibraryArtist>>;
 

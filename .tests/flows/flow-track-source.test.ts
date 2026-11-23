@@ -446,11 +446,9 @@ test("new releases try an artist's older release when the newest has no usable t
   const release = (albumName: string, releaseDate: string, artistMbid = band) => ({
     artistName: "Band",
     artistMbid,
-    foreignArtistId: null,
     releaseDate,
     albumName,
-    mbid: "",
-    foreignAlbumId: "",
+    releaseGroupMbid: "",
   });
   source._getRecentReleases = async () => [
     release("Newest", "2026-03-01"),

@@ -210,7 +210,7 @@ test("requestAlbumFromSearch preserves an addAlbum conflict status", async () =>
   vi.spyOn(libraryManager, "getArtist").mockReturnValue({
     id: "7",
     artistName: "Boards of Canada",
-    foreignArtistId: "artist-mbid",
+    mbid: "artist-mbid",
   } as ReturnType<typeof libraryManager.getArtist>);
   vi.spyOn(libraryManager, "addAlbum").mockImplementation(
     async () =>

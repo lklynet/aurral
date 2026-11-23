@@ -73,7 +73,6 @@ export default new Hono<AppEnv>()
       return c.json(
         albums.map((album) => ({
           ...album,
-          foreignAlbumId: album.foreignAlbumId || album.mbid,
           title: album.albumName,
           statistics: album.statistics || { trackCount: 0, sizeOnDisk: 0, percentOfTracks: 0 },
         })),
@@ -131,7 +130,7 @@ export default new Hono<AppEnv>()
           requestGroupId: album.requestGroupId,
           albumName: album.albumName || albumName,
           artistName: album.artistName,
-          artistMbid: album.mbid || album.foreignAlbumId,
+          artistMbid: album.artistMbid,
           user,
         });
         return c.json({ ...album, queued: false }, 201);

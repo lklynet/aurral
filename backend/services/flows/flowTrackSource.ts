@@ -117,13 +117,7 @@ type FlowFilters = {
 
 type RecentRelease = Pick<
   Awaited<ReturnType<typeof getRecentMissingReleases>>[number],
-  | "artistName"
-  | "artistMbid"
-  | "foreignArtistId"
-  | "releaseDate"
-  | "albumName"
-  | "mbid"
-  | "foreignAlbumId"
+  "artistName" | "artistMbid" | "releaseDate" | "albumName" | "releaseGroupMbid"
 >;
 
 type HarvestArtist = ArtistMatchFields & { tags?: string[] | null; reason?: string };
@@ -1143,7 +1137,7 @@ export class FlowTrackSource {
       album,
       artist: {
         name: album.artistName,
-        artistMbid: album.artistMbid || album.foreignArtistId || null,
+        artistMbid: album.artistMbid || null,
         reason: "New release",
       },
     }));
@@ -1161,7 +1155,7 @@ export class FlowTrackSource {
             const pick = await this._pickTrackFromRelease({
               artistName: album.artistName,
               albumTitle: album.albumName,
-              albumMbid: album.mbid || album.foreignAlbumId || null,
+              albumMbid: album.releaseGroupMbid || null,
               releaseYear,
             });
             if (pick) return pick;

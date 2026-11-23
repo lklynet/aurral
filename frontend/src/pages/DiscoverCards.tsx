@@ -189,8 +189,7 @@ export const AlbumCard = memo(
     isPending?: boolean;
     onAlbumAction: DiscoverAlbumAction;
   }) => {
-    const releaseGroupMbid = album.mbid || album.foreignAlbumId;
-    const artistMbid = album.artistMbid || album.foreignArtistId;
+    const { releaseGroupMbid, artistMbid } = album;
     const { isAlbumDownloading } = useActiveDownloads();
     const downloading = isPending || isAlbumDownloading(releaseGroupMbid);
     const [fetchedCover, setFetchedCover] = useState<string | null>(null);
@@ -326,10 +325,8 @@ export const AlbumCard = memo(
     );
   },
   (prevProps, nextProps) => {
-    const prevId = prevProps.album.mbid || prevProps.album.foreignAlbumId;
-    const nextId = nextProps.album.mbid || nextProps.album.foreignAlbumId;
     return (
-      prevId === nextId &&
+      prevProps.album.releaseGroupMbid === nextProps.album.releaseGroupMbid &&
       prevProps.album.albumName === nextProps.album.albumName &&
       prevProps.album.artistName === nextProps.album.artistName &&
       prevProps.album.coverUrl === nextProps.album.coverUrl &&

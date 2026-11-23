@@ -130,10 +130,8 @@ test("an album track page carries the album's provider id and monitored state", 
   const page = getLibraryPage({ kind: "tracks", albumId: album.id, availableOnly: false });
   const summaryAlbum = requireFixture(page.albums[0]);
   assert.equal(summaryAlbum.id, album.id);
-  assert.equal(summaryAlbum.providerId, 512);
   assert.equal(summaryAlbum.monitored, true);
   const summaryArtist = requireFixture(page.artists[0]);
-  assert.equal("providerId" in summaryArtist && summaryArtist.providerId, 41);
   assert.equal("monitored" in summaryArtist && summaryArtist.monitored, true);
 });
 

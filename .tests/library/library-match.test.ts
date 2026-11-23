@@ -424,7 +424,13 @@ test("rematching an artist and album Aurral added leaves their old MBIDs behind"
   const albumsFor = async (reference: string) => {
     const response = await app.request(`/library/albums?readPath=library&artistId=${reference}`);
     return v.parse(
-      v.array(v.looseObject({ id: v.number(), foreignAlbumId: v.string() })),
+      v.array(
+        v.looseObject({
+          id: v.number(),
+          mbid: v.nullable(v.string()),
+          releaseGroupMbid: v.nullable(v.string()),
+        }),
+      ),
       await response.json(),
     );
   };
@@ -433,18 +439,21 @@ test("rematching an artist and album Aurral added leaves their old MBIDs behind"
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ mbids: [ADDED_GROUP, REMATCHED_GROUP] }),
   });
-  const lookup = getArtistLibraryLookup(REMATCHED_MBID);
 
   assert.deepEqual(await albumsFor(ADDED_MBID), []);
   assert.deepEqual(
-    (await albumsFor(REMATCHED_MBID)).map((entry) => [entry.id, entry.foreignAlbumId]),
-    [[album.id, REMATCHED_GROUP]],
+    (await albumsFor(REMATCHED_MBID)).map((entry) => [
+      entry.id,
+      entry.mbid,
+      entry.releaseGroupMbid,
+    ]),
+    [[album.id, null, REMATCHED_GROUP]],
   );
   assert.deepEqual(
     Object.keys(v.parse(v.record(v.string(), v.unknown()), await albumLookup.json())),
     [REMATCHED_GROUP],
   );
-  assert.equal(lookup.artist?.foreignArtistId, REMATCHED_MBID);
+  assert.equal(getArtistLibraryLookup(ADDED_MBID).exists, false);
 });
 
 test("an album whose match was removed by hand stays out of automatic matching", async () => {
