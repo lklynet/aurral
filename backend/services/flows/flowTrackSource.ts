@@ -14,7 +14,12 @@ import { logger } from "../logger.ts";
 import type { FlowConfig } from "../playlists/flowPlaylistConfig.ts";
 import { getBlockedArtistKeys } from "../discovery/feedback.ts";
 import { getBlockedTagKeys, hasBlockedTag, withoutBlockedTags } from "../discovery/blockedTags.ts";
-import { buildArtistMatchKeySet, getArtistMatchKeys } from "../discovery/artistKeys.ts";
+import {
+  artistMatchKeys,
+  buildArtistMatchKeySet,
+  matchesArtistKeys,
+  type ArtistMatchFields,
+} from "../../../lib/artistMatch.ts";
 import { getYear } from "../providers/metadataRanking.ts";
 import { buildLibraryReadModel } from "../libraryReadModel.ts";
 import {
@@ -23,7 +28,6 @@ import {
 } from "../libraryQueryService.ts";
 import { getRecentListeningArtists } from "./flowTemplates.ts";
 import BoundedMap from "../boundedMap.ts";
-import type { ArtistMatchFields } from "../discovery/artistKeys.ts";
 import type { NormalizedTrack } from "../providers/metadataMappers.ts";
 import type { getRecentMissingReleases } from "../discovery/recentReleases.ts";
 import { shuffle } from "../../../lib/shuffle.ts";
@@ -693,7 +697,7 @@ export class FlowTrackSource {
         const name = String(artist?.name || artist?.artistName || "").trim();
         const key = this._artistKey(name);
         if (!key || seen.has(key)) continue;
-        if (getArtistMatchKeys(artist).some((entry) => excludeArtistKeys.has(entry))) continue;
+        if (matchesArtistKeys(artist, excludeArtistKeys)) continue;
         seen.add(key);
         batch.push({ artist, name });
       }
@@ -722,8 +726,8 @@ export class FlowTrackSource {
     const picked = [];
     for (const candidate of candidates) {
       if (picked.length >= count) break;
-      const artistKeys = getArtistMatchKeys(candidate);
-      if (artistKeys.length === 0 || artistKeys.some((key) => usedArtistKeys.has(key))) continue;
+      const artistKeys = artistMatchKeys(candidate);
+      if (artistKeys.length === 0 || matchesArtistKeys(candidate, usedArtistKeys)) continue;
       artistKeys.forEach((key) => usedArtistKeys.add(key));
       picked.push(candidate);
     }

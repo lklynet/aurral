@@ -4,6 +4,7 @@ import { listenbrainzRequest } from "../apiClients/index.ts";
 import { listenbrainzTopArtistsSchema } from "../apiClients/listenbrainz.ts";
 import { cachedArtistGuess, guessArtistMbid } from "../artistMatch.ts";
 import { asAppError } from "../../../lib/errors.ts";
+import { buildArtistMatchKeySet } from "../../../lib/artistMatch.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import {
   getListenHistory,
@@ -15,7 +16,6 @@ import {
   sampleLibraryArtistsForDiscovery,
 } from "../libraryQueryService.ts";
 import {
-  buildExistingArtistKeySet,
   mergeResolvedRecommendations,
   mergeRetainedRecommendationPool,
   rerankRecommendations as rerankRecs,
@@ -206,7 +206,7 @@ export const updateDiscoveryCache = async (options: { skipLock?: boolean } = {})
     });
     const runStartedAt = new Date().toISOString();
     const globalTop = await fetchTrendingArtists(
-      buildExistingArtistKeySet(getLibraryArtistKeyProjection()),
+      buildArtistMatchKeySet(getLibraryArtistKeyProjection()),
     );
     logger.info("discovery", `Found ${globalTop.length} trending artists.`);
 
@@ -325,7 +325,7 @@ const collectUserSeeds = async (user: DiscoveryUser, feedback: DiscoveryFeedback
     libraryArtists: interleaveLists(library.recent, library.random),
     starterArtists: getChartStarterArtists(limit),
     limit,
-    excludedKeys: buildExistingArtistKeySet([
+    excludedKeys: buildArtistMatchKeySet([
       ...feedbackArtists(feedback, "less_like_this"),
       ...feedbackArtists(feedback, "block_artist"),
     ]),
@@ -361,7 +361,7 @@ const buildUserRecommendations = async ({
   progress("collecting_seeds", "Collecting your seed artists", 10);
   const seeds = await collectUserSeeds(user, feedback);
   const blockedArtists = feedbackArtists(feedback, "block_artist");
-  const existingArtistKeys = buildExistingArtistKeySet([
+  const existingArtistKeys = buildArtistMatchKeySet([
     ...getLibraryArtistKeyProjection(),
     ...blockedArtists,
   ]);
@@ -381,7 +381,7 @@ const buildUserRecommendations = async ({
   const rawRecommendations = await buildRecommendationsFromSeeds({
     seeds,
     existingArtistKeys,
-    bridgeExclusionKeys: buildExistingArtistKeySet([
+    bridgeExclusionKeys: buildArtistMatchKeySet([
       ...feedbackArtists(feedback, "less_like_this"),
       ...blockedArtists,
     ]),

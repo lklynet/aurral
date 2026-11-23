@@ -1,3 +1,4 @@
+import { isSameArtist } from "../../../lib/artistMatch.ts";
 import type { ArtistFeedbackSource } from "./artistTaste.ts";
 import type { UnifiedSearchItem } from "../../../backend/services/unifiedSearchService.ts";
 
@@ -22,21 +23,12 @@ export function buildBlocklistArtistSuggestions(response: BlocklistSearchRespons
     ...(response.catalog?.artists ?? []),
     ...(response.library?.artists ?? []),
   ];
-  const seenIds = new Set();
-  const seenNames = new Set();
-  const suggestions = [];
+  const suggestions: ReturnType<typeof normalizeArtist>[] = [];
   const maxSuggestions = Math.max(1, Number(limit) || 6);
 
   for (const candidate of candidates) {
     const artist = normalizeArtist(candidate);
-    const idKey = String(artist.id || "")
-      .trim()
-      .toLowerCase();
-    const nameKey = artist.name.toLowerCase();
-    if (!nameKey || (idKey && seenIds.has(idKey)) || seenNames.has(nameKey)) continue;
-
-    if (idKey) seenIds.add(idKey);
-    seenNames.add(nameKey);
+    if (!artist.name || suggestions.some((seen) => isSameArtist(seen, artist))) continue;
     suggestions.push(artist);
     if (suggestions.length >= maxSuggestions) break;
   }

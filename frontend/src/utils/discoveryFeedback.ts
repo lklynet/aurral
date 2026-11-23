@@ -1,4 +1,10 @@
 import type { DiscoveryFeedbackEntry as BackendDiscoveryFeedbackEntry } from "../../../backend/services/discovery/feedback.ts";
+import {
+  artistMatchKeys,
+  isSameArtist,
+  matchesArtistKeys,
+  type ArtistMatchFields,
+} from "../../../lib/artistMatch.ts";
 
 export type DiscoveryFeedbackEntry = Partial<Omit<BackendDiscoveryFeedbackEntry, "artistId">> & {
   artistId?: string | number | null;
@@ -32,16 +38,6 @@ type DiscoveryFeedbackInput =
   | null
   | undefined;
 
-interface DiscoveryArtistRef {
-  id?: string | number | null;
-  mbid?: string | null;
-  foreignArtistId?: string | null;
-  artistMbid?: string | null;
-  name?: string | null;
-  artistName?: string | null;
-  artistAliases?: string[] | null;
-}
-
 const ARTIST_FEEDBACK_ACTIONS = new Set(["more_like_this", "less_like_this", "block_artist"]);
 
 export const DISCOVERY_FEEDBACK_LABELS: Partial<Record<string, string>> = {
@@ -59,47 +55,15 @@ export const normalizeDiscoveryFeedbackList = (
   return [];
 };
 
-const getArtistMatchKeys = (artist: DiscoveryArtistRef | null | undefined) => {
-  const keys: string[] = [];
-  for (const value of [artist?.id, artist?.mbid, artist?.foreignArtistId, artist?.artistMbid]) {
-    const artistId = String(value || "")
-      .trim()
-      .toLowerCase();
-    if (artistId) keys.push(`id:${artistId}`);
-  }
-  const aliases = Array.isArray(artist?.artistAliases) ? artist.artistAliases : [];
-  for (const value of [artist?.name, artist?.artistName, ...aliases]) {
-    const artistName = String(value || "")
-      .trim()
-      .toLowerCase();
-    if (artistName) keys.push(`name:${artistName}`);
-  }
-  return [...new Set(keys)];
-};
+const entryArtist = (entry: DiscoveryFeedbackEntry | null | undefined) => ({
+  id: entry?.artistId,
+  name: entry?.artistName,
+});
 
 const entryMatchesArtist = (
   entry: DiscoveryFeedbackEntry | null | undefined,
-  artist: DiscoveryArtistRef | null | undefined,
-) => {
-  const artistKeys = new Set(getArtistMatchKeys(artist));
-  const entryId = String(entry?.artistId || "")
-    .trim()
-    .toLowerCase();
-  const entryName = String(entry?.artistName || "")
-    .trim()
-    .toLowerCase();
-  if (entryId && artistKeys.has(`id:${entryId}`)) return true;
-  if (entryName && artistKeys.has(`name:${entryName}`)) return true;
-  return false;
-};
-
-export const artistsShareDiscoveryIdentity = (
-  left: DiscoveryArtistRef | null | undefined,
-  right: DiscoveryArtistRef | null | undefined,
-) => {
-  const leftKeys = new Set(getArtistMatchKeys(left));
-  return getArtistMatchKeys(right).some((key) => leftKeys.has(key));
-};
+  artist: ArtistMatchFields | null | undefined,
+) => isSameArtist(entryArtist(entry), artist);
 
 export const getOppositeRatingAction = (action: string | null | undefined) => {
   if (action === "more_like_this") return "less_like_this";
@@ -109,7 +73,7 @@ export const getOppositeRatingAction = (action: string | null | undefined) => {
 
 export const findArtistFeedbackEntryId = (
   feedbackList: DiscoveryFeedbackInput,
-  artist: DiscoveryArtistRef | null | undefined,
+  artist: ArtistMatchFields | null | undefined,
   action: string,
 ) => {
   for (const entry of normalizeDiscoveryFeedbackList(feedbackList)) {
@@ -126,39 +90,21 @@ export const buildArtistFeedbackLookup = (feedbackList: DiscoveryFeedbackInput) 
   for (const entry of normalizeDiscoveryFeedbackList(feedbackList)) {
     const action = String(entry?.action || "").trim();
     if (!ARTIST_FEEDBACK_ACTIONS.has(action)) continue;
-    const artistId = String(entry?.artistId || "")
-      .trim()
-      .toLowerCase();
-    const artistName = String(entry?.artistName || "")
-      .trim()
-      .toLowerCase();
-    const keys: string[] = [];
-    if (artistId) keys.push(`id:${artistId}`);
-    if (artistName) keys.push(`name:${artistName}`);
-    for (const key of keys) {
-      const existing = lookup.get(key);
-      if (existing) existing.add(action);
-      else lookup.set(key, new Set([action]));
-    }
+    const keys = lookup.get(action) ?? new Set<string>();
+    for (const key of artistMatchKeys(entryArtist(entry))) keys.add(key);
+    lookup.set(action, keys);
   }
   return lookup;
 };
 
 export const getArtistFeedbackFlags = (
   lookup: Map<string, Set<string>>,
-  artist: DiscoveryArtistRef | null | undefined,
-) => {
-  const actions = new Set<string>();
-  for (const key of getArtistMatchKeys(artist)) {
-    const entry = lookup.get(key);
-    if (entry) entry.forEach((action) => actions.add(action));
-  }
-  return {
-    more_like_this: actions.has("more_like_this"),
-    less_like_this: actions.has("less_like_this"),
-    block_artist: actions.has("block_artist"),
-  };
-};
+  artist: ArtistMatchFields | null | undefined,
+) => ({
+  more_like_this: matchesArtistKeys(artist, lookup.get("more_like_this") ?? new Set()),
+  less_like_this: matchesArtistKeys(artist, lookup.get("less_like_this") ?? new Set()),
+  block_artist: matchesArtistKeys(artist, lookup.get("block_artist") ?? new Set()),
+});
 
 export const getDiscoveryFeedbackLabel = (action: string) =>
   DISCOVERY_FEEDBACK_LABELS[action] || "";
@@ -173,7 +119,7 @@ export const applyArtistDiscoveryFeedback = async ({
   removeDiscoveryFeedback,
 }: {
   feedbackList: DiscoveryFeedbackInput;
-  artist: DiscoveryArtistRef | null | undefined;
+  artist: ArtistMatchFields | null | undefined;
   action: string;
   isSelected: boolean;
   payload: DiscoveryFeedbackEntry;
@@ -213,7 +159,7 @@ export const previewArtistDiscoveryFeedback = (
     isSelected,
     payload,
   }: {
-    artist: DiscoveryArtistRef | null | undefined;
+    artist: ArtistMatchFields | null | undefined;
     action: string;
     isSelected: boolean;
     payload: DiscoveryFeedbackEntry;
