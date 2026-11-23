@@ -2,7 +2,7 @@ import * as v from "valibot";
 import { isOwnKey } from "../../../lib/ownKey.ts";
 import { lenient, listOf } from "../../db/helpers/storedSchemas.ts";
 import { UUID_REGEX } from "../../../lib/uuid.ts";
-import { isSameArtist, matchesArtistKeys } from "../../../lib/artistMatch.ts";
+import { artistMatchKeys, artistProbeKeys, matchesArtistKeys } from "../../../lib/artistMatch.ts";
 
 export interface ArtistIdentity {
   id?: string | null;
@@ -796,7 +796,7 @@ const buildFeedbackSignals = (feedbackList: RecommendationFeedback[] = []) => {
     .filter((entry) => isActiveFeedback(entry, now))
     .map((entry) => ({
       action: entry.action,
-      artist: { id: entry.artistId, name: entry.artistName },
+      keys: new Set(artistMatchKeys({ id: entry.artistId, name: entry.artistName })),
       tags: new Set(normalizeTagList(entry.tagContext)),
       seeds: new Set(normalizeTagList(entry.seedContext)),
     }));
@@ -815,6 +815,7 @@ const feedbackAdjustmentForCandidate = (
   signals: ReturnType<typeof buildFeedbackSignals>,
 ) => {
   if (signals.length === 0) return { adjustment: 0, hidden: false };
+  const candidateKeys = artistProbeKeys(candidate);
   const candidateTags = [...new Set(normalizeTagList(candidate.matchedTags))];
   const candidateSeeds = (candidate.supportingSeeds || [])
     .map((seed) => normalizeText(seed?.artistName))
@@ -822,7 +823,7 @@ const feedbackAdjustmentForCandidate = (
   let adjustment = 0;
 
   for (const signal of signals) {
-    const exactMatch = isSameArtist(signal.artist, candidate);
+    const exactMatch = candidateKeys.some((key) => signal.keys.has(key));
     if (signal.action === "block_artist") {
       if (exactMatch) return { adjustment: adjustment - 100000, hidden: true };
       continue;

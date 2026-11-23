@@ -3,6 +3,7 @@ import { dbOps } from "../../db/helpers/index.ts";
 import { normalizeTextList } from "./helpers.ts";
 import {
   buildArtistMatchKeySet,
+  isSameArtist,
   matchesArtistKeys,
   type ArtistMatchFields,
 } from "../../../lib/artistMatch.ts";
@@ -122,12 +123,14 @@ export const addDiscoveryFeedback = (
     createdAt: now.toISOString(),
     expiresAt: null,
   };
-  const deduped = existing.filter((item) => {
-    const sameArtist =
-      (artistId && item.artistId && artistId === item.artistId) ||
-      (artistName && item.artistName && artistName.toLowerCase() === item.artistName.toLowerCase());
-    return !(sameArtist && item.action === action);
-  });
+  const deduped = existing.filter(
+    (item) =>
+      item.action !== action ||
+      !isSameArtist(
+        { id: artistId, name: artistName },
+        { id: item.artistId, name: item.artistName },
+      ),
+  );
   deduped.unshift(normalizedEntry);
   dbOps.setJSONSetting(getDiscoveryFeedbackKey(userId), deduped.slice(0, 200));
   return normalizedEntry;

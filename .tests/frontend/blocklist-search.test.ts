@@ -45,3 +45,21 @@ test("blocklist suggestions combine and deduplicate unified artist results", () 
     { id: "the-smile", name: "The Smile" },
   ]);
 });
+
+test("blocklist suggestions keep artists that share a name but not an MBID", () => {
+  const suggestions = buildBlocklistArtistSuggestions({
+    catalog: {
+      top: null,
+      artists: [
+        { id: "11111111-1111-1111-1111-111111111111", name: "Nirvana" },
+        { id: "22222222-2222-2222-2222-222222222222", name: "Nirvana" },
+      ],
+    },
+    library: { artists: [{ id: "12", name: "Nirvana" }] },
+  });
+
+  assert.deepEqual(
+    suggestions.map((artist) => artist.id),
+    ["11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"],
+  );
+});

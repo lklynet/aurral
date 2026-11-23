@@ -56,6 +56,16 @@ test("artist blocks are per-user and match ids, names, and track aliases, but no
     ],
   );
   assert.equal(discovery.filterBlockedArtistsForUser("8", [{ name: "Blocked Artist" }]).length, 1);
+
+  discovery.addDiscoveryFeedback("7", {
+    artistId: "22222222-2222-2222-2222-222222222222",
+    artistName: "Blocked Artist",
+    action: "block_artist",
+  });
+  assert.deepEqual(
+    discovery.getDiscoveryFeedback("7").map((entry) => entry.artistId),
+    ["22222222-2222-2222-2222-222222222222", "11111111-1111-1111-1111-111111111111"],
+  );
 });
 
 test("resetting discovery tastes preserves artist blocks", () => {

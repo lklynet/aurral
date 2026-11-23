@@ -40,19 +40,20 @@ export const artistMatchKeys = (artist: ArtistMatchFields | null | undefined) =>
   ];
 };
 
-export const matchesArtistKeys = (
-  artist: ArtistMatchFields | null | undefined,
-  keys: ReadonlySet<string>,
-) => {
-  if (keys.size === 0) return false;
+export const artistProbeKeys = (artist: ArtistMatchFields | null | undefined) => {
   const { mbids, ids, names } = identify(artist);
   const nameKey = mbids.length > 0 ? "unidentified" : "name";
   return [
     ...mbids.map((mbid) => `mbid:${mbid}`),
     ...ids.map((id) => `id:${id}`),
     ...names.map((name) => `${nameKey}:${name}`),
-  ].some((key) => keys.has(key));
+  ];
 };
+
+export const matchesArtistKeys = (
+  artist: ArtistMatchFields | null | undefined,
+  keys: ReadonlySet<string>,
+) => keys.size > 0 && artistProbeKeys(artist).some((key) => keys.has(key));
 
 export const buildArtistMatchKeySet = (artists: readonly ArtistMatchFields[]) =>
   new Set(artists.flatMap(artistMatchKeys));
