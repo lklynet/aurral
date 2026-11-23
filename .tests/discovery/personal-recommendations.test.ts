@@ -1,7 +1,7 @@
 import { testUser } from "../helpers/userFixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import type { DiscoveryRecommendation } from "../../backend/services/discovery/recommendationPipeline.ts";
-import type { ArtistMatchFields } from "../../backend/services/discovery/artistKeys.ts";
+import type { ArtistMatchFields } from "../../lib/artistMatch.ts";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {

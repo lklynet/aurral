@@ -2,7 +2,7 @@ import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import { db } from "../../config/db-sqlite.ts";
 import BoundedMap from "../boundedMap.ts";
 import { buildRadio } from "../radio.ts";
-import { matchesArtistKeys } from "./artistKeys.ts";
+import { matchesArtistKeys } from "../../../lib/artistMatch.ts";
 import { getBlockedArtistKeys } from "./feedback.ts";
 import {
   BLEND_MIX_PREFIX,

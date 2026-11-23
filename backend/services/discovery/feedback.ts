@@ -1,7 +1,11 @@
 import * as v from "valibot";
 import { dbOps } from "../../db/helpers/index.ts";
 import { normalizeTextList } from "./helpers.ts";
-import { buildArtistMatchKeySet, matchesArtistKeys, type ArtistMatchFields } from "./artistKeys.ts";
+import {
+  buildArtistMatchKeySet,
+  matchesArtistKeys,
+  type ArtistMatchFields,
+} from "../../../lib/artistMatch.ts";
 
 const feedbackEntrySchema = v.looseObject({
   createdAt: v.nullish(v.union([v.string(), v.number()])),

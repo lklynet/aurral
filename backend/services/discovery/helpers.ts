@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import pMap, { pMapSkip } from "p-map";
 import * as v from "valibot";
 import { dbOps } from "../../db/helpers/index.ts";
-import type { ArtistMatchFields } from "./artistKeys.ts";
+import type { ArtistMatchFields } from "../../../lib/artistMatch.ts";
 
 export const DISCOVERY_QUALITY_INITIAL = "initial";
 export const DISCOVERY_QUALITY_ENRICHING = "enriching";

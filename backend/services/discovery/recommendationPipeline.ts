@@ -2,6 +2,7 @@ import * as v from "valibot";
 import { isOwnKey } from "../../../lib/ownKey.ts";
 import { lenient, listOf } from "../../db/helpers/storedSchemas.ts";
 import { UUID_REGEX } from "../../../lib/uuid.ts";
+import { isSameArtist, matchesArtistKeys } from "../../../lib/artistMatch.ts";
 
 export interface ArtistIdentity {
   id?: string | null;
@@ -269,7 +270,7 @@ const mergeTags = (target: Set<string>, sourceTags: string[] = []) => {
 const normalizeTagList = (tags: string[] = []) =>
   (Array.isArray(tags) ? tags : []).map(normalizeText).filter(Boolean);
 
-export const normalizeArtistIdentityKeys = (artist: ArtistIdentity) => {
+const normalizeArtistIdentityKeys = (artist: ArtistIdentity) => {
   const keys: string[] = [];
   const mbids = [artist?.id, artist?.mbid, artist?.foreignArtistId]
     .map(normalizeMbid)
@@ -282,16 +283,6 @@ export const normalizeArtistIdentityKeys = (artist: ArtistIdentity) => {
     keys.push(`name:${name}`);
   }
   return [...new Set(keys)];
-};
-
-export const buildExistingArtistKeySet = (artists: ArtistIdentity[] = []) => {
-  const keys = new Set<string>();
-  for (const artist of Array.isArray(artists) ? artists : []) {
-    for (const key of normalizeArtistIdentityKeys(artist)) {
-      keys.add(key);
-    }
-  }
-  return keys;
 };
 
 export const applyHydratedCandidateTags = (
@@ -469,8 +460,7 @@ export const selectDiscoverySeeds = ({
   limit?: number;
   excludedKeys?: Set<string>;
 } = {}) => {
-  const isAllowed = (artist: SeedArtistInput) =>
-    !normalizeArtistIdentityKeys(artist).some((key) => excludedKeys.has(key));
+  const isAllowed = (artist: SeedArtistInput) => !matchesArtistKeys(artist, excludedKeys);
   const liked = likedArtists.filter(isAllowed);
   const history = historyArtists.filter(isAllowed);
   const library = libraryArtists.filter(isAllowed);
@@ -503,7 +493,9 @@ export const selectDiscoverySeeds = ({
   const starters = starterArtists
     .filter((artist) => {
       const keys = normalizeArtistIdentityKeys(artist);
-      if (keys.some((key) => takenKeys.has(key) || excludedKeys.has(key))) return false;
+      if (keys.some((key) => takenKeys.has(key)) || matchesArtistKeys(artist, excludedKeys)) {
+        return false;
+      }
       keys.forEach((key) => takenKeys.add(key));
       return true;
     })
@@ -567,11 +559,7 @@ export const addRecommendationCandidate = (
   const mbid = normalizeMbid(candidate?.mbid);
   if (!name && !mbid) return;
 
-  const candidateKeys = normalizeArtistIdentityKeys({
-    id: mbid,
-    name,
-  });
-  if (candidateKeys.some((key) => existingArtistKeys.has(key))) return;
+  if (matchesArtistKeys({ mbid, name }, existingArtistKeys)) return;
 
   const candidateKey = mbid || `name:${normalizeText(name)}`;
   if (!candidateKey) return;
@@ -808,11 +796,7 @@ const buildFeedbackSignals = (feedbackList: RecommendationFeedback[] = []) => {
     .filter((entry) => isActiveFeedback(entry, now))
     .map((entry) => ({
       action: entry.action,
-      keys: normalizeArtistIdentityKeys({
-        id: entry.artistId,
-        mbid: entry.artistId,
-        name: entry.artistName,
-      }),
+      artist: { id: entry.artistId, name: entry.artistName },
       tags: new Set(normalizeTagList(entry.tagContext)),
       seeds: new Set(normalizeTagList(entry.seedContext)),
     }));
@@ -831,7 +815,6 @@ const feedbackAdjustmentForCandidate = (
   signals: ReturnType<typeof buildFeedbackSignals>,
 ) => {
   if (signals.length === 0) return { adjustment: 0, hidden: false };
-  const candidateKeys = new Set(normalizeArtistIdentityKeys(candidate));
   const candidateTags = [...new Set(normalizeTagList(candidate.matchedTags))];
   const candidateSeeds = (candidate.supportingSeeds || [])
     .map((seed) => normalizeText(seed?.artistName))
@@ -839,7 +822,7 @@ const feedbackAdjustmentForCandidate = (
   let adjustment = 0;
 
   for (const signal of signals) {
-    const exactMatch = signal.keys.some((key) => candidateKeys.has(key));
+    const exactMatch = isSameArtist(signal.artist, candidate);
     if (signal.action === "block_artist") {
       if (exactMatch) return { adjustment: adjustment - 100000, hidden: true };
       continue;
@@ -1169,8 +1152,7 @@ export const mergeResolvedRecommendations = (
   const aliases = new Map<string | null, string | null>();
 
   for (const recommendation of Array.isArray(recommendations) ? recommendations : []) {
-    const keys = normalizeArtistIdentityKeys(recommendation);
-    if (keys.some((key) => existingArtistKeys.has(key))) continue;
+    if (matchesArtistKeys(recommendation, existingArtistKeys)) continue;
     const recommendationMbid =
       normalizeMbid(recommendation?.id) || normalizeMbid(recommendation?.navigateTo);
 

@@ -36,7 +36,7 @@ import { withPlaylistMutation } from "../downloadJobs/mutationGuards.ts";
 import { withLock } from "../jobs/queue.ts";
 import { flowRunSpec } from "../flows/flowTrackSource.ts";
 import type { DownloadJob } from "../downloadJobs/downloadTracker.ts";
-import type { ArtistMatchFields } from "../discovery/artistKeys.ts";
+import type { ArtistMatchFields } from "../../../lib/artistMatch.ts";
 import type { FlowConfig, StaticPlaylist } from "./flowPlaylistConfig.ts";
 import type { PlaylistTrack, PlaylistTrackInput } from "./playlistTracks.ts";
 import { schedulePlaylistMbidEnrichment } from "../playlistMbidEnrichmentService.ts";

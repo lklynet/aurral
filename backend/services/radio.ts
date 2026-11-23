@@ -1,7 +1,7 @@
 import { db } from "../config/db-sqlite.ts";
 import type { LibraryArtistsRow } from "../db/rows.ts";
 import * as musicData from "./musicDataSource/index.ts";
-import { matchesArtistKeys } from "./discovery/artistKeys.ts";
+import { matchesArtistKeys } from "../../lib/artistMatch.ts";
 import { getBlockedArtistKeys } from "./discovery/feedback.ts";
 import { getBlockedTagKeys, hasBlockedTag } from "./discovery/blockedTags.ts";
 
