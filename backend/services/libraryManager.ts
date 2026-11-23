@@ -1570,8 +1570,8 @@ export class LibraryManager {
     return { artists: monitoredArtists.length, queuedAlbums, queuedTracks, failedArtists };
   }
 
-  _resolveAlbum(canonicalId: unknown) {
-    const reference = String(canonicalId ?? "").trim();
+  _resolveAlbum(albumId: unknown) {
+    const reference = String(albumId ?? "").trim();
     const id = Number(reference);
     if (!/^\d+$/.test(reference) || !Number.isSafeInteger(id) || id <= 0) {
       return {
@@ -1611,7 +1611,7 @@ export class LibraryManager {
     };
   }
 
-  async setAlbumMonitoring(canonicalId: unknown, { monitored }: { monitored?: unknown } = {}) {
+  async setAlbumMonitoring(albumId: unknown, { monitored }: { monitored?: unknown } = {}) {
     if (typeof monitored !== "boolean") {
       return {
         error: "monitored must be true or false",
@@ -1619,8 +1619,8 @@ export class LibraryManager {
         code: "invalid_monitored",
       };
     }
-    return serializeMonitoringUpdate(_albumMonitoringUpdates, Number(canonicalId), async () => {
-      const resolved = this._resolveAlbum(canonicalId);
+    return serializeMonitoringUpdate(_albumMonitoringUpdates, Number(albumId), async () => {
+      const resolved = this._resolveAlbum(albumId);
       if (failed(resolved)) return resolved;
       const { album, mappedAlbum } = resolved;
       this._setAlbumMonitored(album, monitored);
@@ -1662,13 +1662,13 @@ export class LibraryManager {
     invalidateLibraryQueryCache({ persistedGenres: false });
   }
 
-  getAlbumStatus(canonicalId: string | number) {
-    const [status] = this.getAlbumStatuses([canonicalId]);
+  getAlbumStatus(albumId: string | number) {
+    const [status] = this.getAlbumStatuses([albumId]);
     return status ?? { error: "Album was not found in the library", statusCode: 404 };
   }
 
-  getAlbumStatuses(canonicalIds: (string | number)[]) {
-    const resolved = canonicalIds.map((canonicalId) => this._resolveAlbum(canonicalId));
+  getAlbumStatuses(albumIds: (string | number)[]) {
+    const resolved = albumIds.map((albumId) => this._resolveAlbum(albumId));
     const jobsForAlbum = indexAlbumJobs(
       resolved.flatMap((entry) => (failed(entry) ? [] : albumJobKeys(entry.album))),
     );
@@ -1683,7 +1683,7 @@ export class LibraryManager {
   }
 
   async setTrackMonitoring(
-    canonicalId: unknown,
+    libraryTrackId: unknown,
     { monitored, albumMbid = null }: { monitored?: unknown; albumMbid?: string | null } = {},
   ) {
     if (typeof monitored !== "boolean") {
@@ -1693,7 +1693,7 @@ export class LibraryManager {
         code: "invalid_monitored",
       } as const;
     }
-    const reference = String(canonicalId ?? "").trim();
+    const reference = String(libraryTrackId ?? "").trim();
     const trackId = Number(reference);
     if (!/^\d+$/.test(reference) || !Number.isSafeInteger(trackId) || trackId <= 0) {
       return {
@@ -1804,18 +1804,17 @@ export class LibraryManager {
     return result?.error || result?.albumManaged === false ? null : result;
   }
 
-  async searchAlbumMissingTracks(canonicalId: string | number) {
-    const albumId = Number(canonicalId);
-    return serializeMonitoringUpdate(_albumMonitoringUpdates, albumId, () =>
-      this._finishAlbum(albumId, {
+  async searchAlbumMissingTracks(albumId: string | number) {
+    return serializeMonitoringUpdate(_albumMonitoringUpdates, Number(albumId), () =>
+      this._finishAlbum(Number(albumId), {
         skipCancelledTracks: true,
         cause: { kind: "missing", playlistId: null },
       }),
     );
   }
 
-  async cancelAlbum(canonicalId: unknown) {
-    const resolved = this._resolveAlbum(canonicalId);
+  async cancelAlbum(albumId: unknown) {
+    const resolved = this._resolveAlbum(albumId);
     if (failed(resolved)) return resolved;
     const { album, mappedAlbum } = resolved;
     const result = await cancelAlbumJobs(albumJobKeys(album));
@@ -1862,8 +1861,8 @@ export class LibraryManager {
     return { success: true, releaseMbid: release.id };
   }
 
-  async deleteAlbum(canonicalId: unknown, deleteFiles = false) {
-    const resolved = this._resolveAlbum(canonicalId);
+  async deleteAlbum(albumId: unknown, deleteFiles = false) {
+    const resolved = this._resolveAlbum(albumId);
     if (failed(resolved)) return resolved;
     const { album, artist, library, mappedAlbum } = resolved;
     const artistState = getLibraryManagementEntry("artist", Number(album.artistId));

@@ -60,7 +60,7 @@ export function parseLastfmStation(payload: unknown) {
       trackName,
       albumName: getAlbumName(track),
       // Last.fm's track MBID can identify a release track rather than a
-      // recording. Leave recording identity to BrainzMash resolution.
+      // recording. Leave recording identity to metadata resolution.
       trackMbid: null,
       artistMbid: String(track.artist?.mbid || track.artists?.[0]?.mbid || "").trim() || null,
       albumMbid: String(track.primary_album?.mbid || track.album?.mbid || "").trim() || null,
