@@ -35,7 +35,7 @@ import { scanConfiguredLibrary } from "../../backend/services/libraryIndexServic
 import { libraryManager } from "../../backend/services/libraryManager.ts";
 import { setLibraryManagement } from "../../backend/services/libraryManagementStore.ts";
 import { dbOps } from "../../backend/db/helpers/index.ts";
-import { clearMetadataProviderCaches } from "../../backend/services/providers/brainzmashProvider.ts";
+import { clearMetadataProviderCaches } from "../../backend/services/providers/metadataProvider.ts";
 import { createMockHttpServer } from "../helpers/backendTestHarness.ts";
 import { writeFlacFixture as makeTrack } from "../helpers/flacFixture.ts";
 
@@ -750,24 +750,24 @@ test("a configured scan resolves untagged artists only on one unambiguous MusicB
   let offlineAvailable = false;
   const server = await createMockHttpServer((request, response) => {
     const url = new URL(requireValue(request.url), "http://mock");
-    if (url.pathname.startsWith("/artist/")) {
+    if (url.pathname.startsWith("/v1/artist/")) {
       response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({ id: url.pathname.slice("/artist/".length), Albums: [] }));
+      response.end(JSON.stringify({ id: url.pathname.slice("/v1/artist/".length), albums: [] }));
       return;
     }
-    const query = url.searchParams.get("query") ?? "";
+    const query = url.searchParams.get("q") ?? "";
     const results =
       {
-        [names.renamed]: [{ id: mbids.renamed, artistname: `The Bravery${suffix}` }],
+        [names.renamed]: [{ id: mbids.renamed, name: `The Bravery${suffix}` }],
         [names.merged]: [
-          { id: mbids.merged, artistname: `The Pumpkins${suffix}`, artistaliases: [names.merged] },
-          { id: "44444444-4444-4444-8444-444444444449", artistname: `Pumpkins${suffix} Tribute` },
+          { id: mbids.merged, name: `The Pumpkins${suffix}`, aliases: [names.merged] },
+          { id: "44444444-4444-4444-8444-444444444449", name: `Pumpkins${suffix} Tribute` },
         ],
         [names.ambiguous]: [
-          { id: mbids.ambiguousOne, artistname: names.ambiguous },
-          { id: mbids.ambiguousTwo, artistname: names.ambiguous },
+          { id: mbids.ambiguousOne, name: names.ambiguous },
+          { id: mbids.ambiguousTwo, name: names.ambiguous },
         ],
-        [names.offline]: [{ id: mbids.offline, artistname: names.offline }],
+        [names.offline]: [{ id: mbids.offline, name: names.offline }],
       }[query] || [];
     if (query === names.offline && !offlineAvailable) {
       response.writeHead(500);
@@ -775,7 +775,7 @@ test("a configured scan resolves untagged artists only on one unambiguous MusicB
       return;
     }
     response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify(results));
+    response.end(JSON.stringify({ artists: results }));
   });
   const originalSettings = dbOps.getSettings();
   dbOps.updateSettings({
@@ -878,7 +878,7 @@ type TestReleaseGroup = {
   artistMbid: string;
   recordings: Record<string, string>;
   releases: TestRelease[];
-  credits?: { id: string; artistname: string }[];
+  credits?: { id: string; name: string }[];
 };
 
 async function withReleaseGroups(
@@ -908,8 +908,8 @@ async function withReleaseGroups(
       JSON.stringify({
         id,
         title: group.title,
-        artistid: group.artistMbid,
-        artists: [{ id: group.artistMbid, artistname: group.artist }, ...(group.credits || [])],
+        artistId: group.artistMbid,
+        artists: [{ id: group.artistMbid, name: group.artist }, ...(group.credits || [])],
         releases: group.releases.map(
           ({
             id: releaseId,
@@ -924,11 +924,11 @@ async function withReleaseGroups(
             status: "Official",
             tracks: titles.map((title, index) => ({
               id: `${releaseId}-${index}`,
-              recordingid: recordings[title],
-              oldrecordingids: merged[title] || [],
-              trackname: title,
-              trackposition: (index % perDisc) + 1,
-              mediumnumber: Math.floor(index / perDisc) + 1,
+              recordingId: recordings[title],
+              oldRecordingIds: merged[title] || [],
+              title,
+              trackPosition: (index % perDisc) + 1,
+              mediumNumber: Math.floor(index / perDisc) + 1,
             })),
           }),
         ),
@@ -955,9 +955,6 @@ async function withReleaseGroups(
     await server.close();
   }
 }
-
-const expireMetadataRequestCooldowns = () =>
-  db.prepare("UPDATE metadata_request_state SET retry_after = 0").run();
 
 const albumListing = (title: string) =>
   db
@@ -1063,7 +1060,6 @@ test("an album lists every track of the edition its files come from, including t
       ]);
 
       provider.up = true;
-      expireMetadataRequestCooldowns();
       await scan();
       const listed = [
         ["One", "have"],
@@ -1189,7 +1185,6 @@ test("a song an album keeps after its untagged file is gone is listed once", asy
     ]);
 
     provider.up = true;
-    expireMetadataRequestCooldowns();
     await scan();
     assert.deepEqual(albumListing(title), [
       ["One", "have"],
@@ -1893,7 +1888,6 @@ test("a second file of a song, tagged with a recording its album's release does 
     await taggedTrack(root, artist, title, album, "Sex & Candy", 4, uuid("c5c5c5c5", 4));
     await scan();
     provider.up = true;
-    expireMetadataRequestCooldowns();
     await scan();
 
     assert.deepEqual(albumListing(title).sort(), listed);
@@ -1971,7 +1965,7 @@ test("an album lists its release group only when the group holds one of its file
       [credited.releaseGroup]: {
         ...credited.group,
         ...other,
-        credits: [{ id: artistMbid, artistname: artist }],
+        credits: [{ id: artistMbid, name: artist }],
       },
     },
     async () => {

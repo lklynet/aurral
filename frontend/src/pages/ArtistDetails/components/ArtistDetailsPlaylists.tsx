@@ -94,7 +94,11 @@ export function ArtistDetailsPlaylists({ mbid, artistName }: { mbid: string; art
                 </RouteLink>
               </h3>
               {playlist.curator ? (
-                <p className="artist-release-tile__meta">{curatorLabel(playlist.curator)}</p>
+                <p className="artist-release-tile__meta">
+                  <span className="artist-release-meta__text">
+                    {curatorLabel(playlist.curator)}
+                  </span>
+                </p>
               ) : null}
             </article>
           );

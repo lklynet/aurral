@@ -435,6 +435,30 @@ const forgetSavedRelayAddress: Migration = (db) =>
         IN ('https://lidarrapi.brainzmash.cc', 'http://lidarrapi.brainzmash.cc');
   `);
 
+// Aurral moved to static v1 files on data.aurral.org, which replace BrainzMash's
+// entity shapes, so old BrainzMash cache rows and saved defaults are cleared.
+const moveMetadataToDataAurral: Migration = (db) =>
+  db.exec(`
+    UPDATE settings SET value = json_set(value, '$.metadata.baseUrl', '')
+    WHERE key = 'integrations' AND json_valid(value)
+      AND rtrim(lower(value ->> '$.metadata.baseUrl'), '/')
+        IN ('https://brainzmash.kell.ly', 'http://brainzmash.kell.ly');
+    DELETE FROM metadata_response_cache
+    WHERE substr(cache_key, 1, 26) = 'https://brainzmash.kell.ly';
+    DROP TABLE IF EXISTS metadata_request_state;
+    DROP TABLE IF EXISTS listenbrainz_release_groups;
+    DROP TABLE IF EXISTS listenbrainz_artist_tags;
+  `);
+
+const forgetArtistCoverAlbums: Migration = (db) =>
+  db.exec("DELETE FROM deezer_mbid_cache WHERE cache_key LIKE 'artist_rg:%'");
+
+const indexPlaysByArtistId: Migration = (db) =>
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_play_events_user_artist_mbid
+      ON play_events(user_id, artist_mbid);
+  `);
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -464,6 +488,9 @@ export const migrations: Migration[] = [
   storeReleaseFeedCovers,
   moveMetadataToMaintainersServer,
   forgetSavedRelayAddress,
+  moveMetadataToDataAurral,
+  forgetArtistCoverAlbums,
+  indexPlaysByArtistId,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

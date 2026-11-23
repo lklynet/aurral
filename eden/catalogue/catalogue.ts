@@ -2,8 +2,12 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import * as v from "valibot";
-import { toNormalizedAlbum } from "../../backend/services/providers/brainzmashMappers.ts";
-import { selectAlbumRelease } from "../../backend/services/providers/brainzmashRanking.ts";
+import { selectAlbumCover } from "../../backend/services/imageRanking.ts";
+import {
+  albumSchema as v1AlbumSchema,
+  toNormalizedAlbum,
+} from "../../backend/services/providers/metadataMappers.ts";
+import { selectAlbumRelease } from "../../backend/services/providers/metadataRanking.ts";
 
 const text = v.nullish(v.string());
 const count = v.nullish(v.number());
@@ -115,10 +119,101 @@ export function loadCatalogue(directory = CATALOGUE_DIR) {
 
 export type Catalogue = ReturnType<typeof loadCatalogue>;
 
+export const toV1Images = (images: CatalogueArtist["images"]) =>
+  (images ?? []).flatMap((image) => {
+    const url = image.Url?.trim();
+    return url ? [{ kind: image.CoverType?.trim() || "Cover", url }] : [];
+  });
+
+export const toV1Links = (links: CatalogueArtist["links"]) =>
+  (links ?? []).flatMap((link) => {
+    const target = link.target?.trim();
+    return target ? [{ type: link.type?.trim() || "external", target }] : [];
+  });
+
+export const toV1Rating = (rating: CatalogueArtist["rating"]) =>
+  rating?.Value != null ? { count: rating.Count ?? 0, value: rating.Value } : null;
+
+export function shownListeners(rating: CatalogueArtist["rating"]) {
+  const listeners = (rating?.Count ?? 0) * 300;
+  if (listeners < 10) return listeners;
+  const magnitude = 10 ** Math.floor(Math.log10(listeners));
+  return Math.floor(listeners / magnitude) * magnitude;
+}
+
+export function toV1Album(album: CatalogueAlbum, catalogue?: Catalogue) {
+  const images = toV1Images(album.images);
+  const albumArtistId = album.artistid ?? album.artists?.[0]?.id ?? null;
+  const listeners = shownListeners(album.rating);
+  return {
+    id: album.id,
+    title: album.title,
+    artistId: albumArtistId,
+    artists: (album.artists ?? []).map((artist) => ({
+      id: artist.id,
+      name: artist.artistname,
+      sortName: artist.sortname ?? artist.artistname,
+      aliases: artist.artistaliases ?? [],
+      disambiguation: artist.disambiguation ?? "",
+      links: toV1Links(artist.links),
+    })),
+    type: album.type ?? "Album",
+    secondaryTypes: album.secondarytypes ?? [],
+    releaseDate: album.releasedate ?? null,
+    disambiguation: album.disambiguation ?? "",
+    genres: album.genres ?? [],
+    aliases: [],
+    overview: album.overview ?? "",
+    images,
+    cover: selectAlbumCover(images)?.url ?? null,
+    links: [],
+    releases: (album.releases ?? []).map((release) => ({
+      id: release.id,
+      title: release.title ?? "",
+      status: release.status ?? null,
+      country: release.country ?? [],
+      label: release.label ?? [],
+      media: (release.media ?? []).map((medium) => ({
+        format: medium.Format ?? "",
+        name: medium.Name ?? "",
+        position: medium.Position ?? null,
+      })),
+      trackCount: release.track_count ?? null,
+      tracks: (release.tracks ?? []).map((track) => {
+        const credited =
+          track.artistid && track.artistid !== albumArtistId
+            ? catalogue?.artists.get(track.artistid)
+            : undefined;
+        return {
+          id: track.id,
+          recordingId: track.recordingid ?? "",
+          oldRecordingIds: track.oldrecordingids ?? [],
+          title: track.trackname ?? "",
+          trackNumber: track.trackposition ?? null,
+          trackPosition: track.trackposition ?? null,
+          mediumNumber: track.mediumnumber ?? null,
+          durationMs: track.durationms ?? null,
+          artistId: track.artistid ?? null,
+          ...(listeners > 0 &&
+            (track.mediumnumber ?? 1) === 1 &&
+            (track.trackposition === 5 || track.trackposition === 10) && { popular: true }),
+          ...(credited && {
+            credits: [{ id: credited.id, name: credited.artistname, joinPhrase: "" }],
+          }),
+        };
+      }),
+      releaseDate: release.releasedate ?? null,
+      disambiguation: release.disambiguation ?? "",
+    })),
+    rating: toV1Rating(album.rating),
+    listeners,
+  };
+}
+
 // The edition Aurral takes an album to be, with the length it expects of each track.
 // Eden's files have to be that edition, or Aurral rejects them as the wrong album.
 export function albumEdition(album: CatalogueAlbum) {
-  const chosen = selectAlbumRelease(toNormalizedAlbum(album));
+  const chosen = selectAlbumRelease(toNormalizedAlbum(v.parse(v1AlbumSchema, toV1Album(album))));
   const release = album.releases?.find((entry) => entry.id === chosen?.id);
   if (!chosen || !release) return undefined;
   const lengths = new Map(chosen.tracks.map((track) => [track.id, track.durationMs ?? 0]));

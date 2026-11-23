@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import * as v from "valibot";
-import { musicbrainzGetArtistNameByMbid } from "../../../services/apiClients/index.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { getSimilarArtistCards } from "../shared/transform.ts";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
@@ -28,10 +27,6 @@ export default new Hono<AppEnv>()
 
     const { limit, artistName } = c.req.valid("query");
     const resolvedMbid = dbOps.getArtistOverride(mbid)?.musicbrainzId || mbid;
-    const artists = await getSimilarArtistCards(resolvedMbid, {
-      artistName,
-      limit,
-      resolveArtistName: () => musicbrainzGetArtistNameByMbid(resolvedMbid),
-    });
+    const artists = await getSimilarArtistCards(resolvedMbid, { artistName, limit });
     return c.json({ artists }, 200);
   });

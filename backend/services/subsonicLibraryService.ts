@@ -76,7 +76,7 @@ import {
   releaseLibraryJobs,
 } from "./playlists/playlistLibrary.ts";
 import type { QueueEntry } from "./queueEntry.ts";
-import { getCachedArtistByMbid } from "./providers/brainzmashProvider.ts";
+import { getCachedArtistByMbid } from "./providers/metadataProvider.ts";
 import {
   getCustomArtwork,
   getCustomArtworkMap,

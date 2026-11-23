@@ -11,18 +11,18 @@ import {
   savedReleaseGroupCoverUrl,
 } from "../../../services/releaseGroupCoverService.ts";
 import { selectAlbumCover } from "../../../services/imageRanking.ts";
+import { deezerPreviewSearchPath } from "../../../../lib/deezerPreview.ts";
 import { enrichTracksWithDeezerPreviews } from "../../../services/apiClients/index.ts";
 import {
   getArtistByMbid,
   getAlbumByMbid,
   getAlbumTracksByAlbumMbid,
-  getMetadataCooldownMs,
   isMetadataNotFoundError,
-} from "../../../services/providers/brainzmashProvider.ts";
+} from "../../../services/providers/metadataProvider.ts";
 import {
   getLinkedDeezerArtistId,
   toLegacyReleaseGroupSummary,
-} from "../../../services/providers/brainzmashMappers.ts";
+} from "../../../services/providers/metadataMappers.ts";
 import { logger } from "../../../services/logger.ts";
 import {
   albumEditions,
@@ -32,17 +32,14 @@ import {
 } from "../../../services/releaseResolver.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { queryText } from "../utils.ts";
-import { musicbrainzGetReleaseTrackCredits } from "../../../services/apiClients/musicbrainz.ts";
-
-type ReleaseGroupAlbum = Awaited<ReturnType<typeof getAlbumByMbid>>;
-
-const ratingsBody = v.object({ ids: v.optional(v.array(v.string()), []) });
 
 const coverQuery = v.object({
   refresh: v.optional(v.string()),
   artistName: queryText,
   albumTitle: queryText,
 });
+
+const coverImageQuery = v.object({ artist: queryText, title: queryText });
 
 const editionQuery = v.object({ release: queryText });
 
@@ -52,66 +49,13 @@ const previewsQuery = v.object({
   release: queryText,
 });
 
-const waitText = (ms: number) => {
-  const minutes = Math.ceil(ms / 60_000);
-  if (minutes <= 1) return "a minute";
-  if (minutes < 90) return `${minutes} minutes`;
-  const hours = Math.round(minutes / 60);
-  return hours < 48 ? `${hours} hours` : `${Math.round(hours / 24)} days`;
-};
-
 const metadataUnavailable = <E extends AppEnv>(c: Context<E>, error: unknown) => {
   c.header("Cache-Control", "no-store");
-  const cooldownMs = getMetadataCooldownMs(error);
-  if (cooldownMs === null) {
-    return c.json({ error: "Metadata unavailable", message: asAppError(error)?.message }, 502);
-  }
-  c.header("Retry-After", String(Math.ceil(cooldownMs / 1000)));
-  return c.json(
-    {
-      error: "Metadata unavailable",
-      message: `Couldn’t reach the metadata service. Try again in ${waitText(cooldownMs)}.`,
-    },
-    503,
-  );
+  return c.json({ error: "Metadata unavailable", message: asAppError(error)?.message }, 502);
 };
 
 export default new Hono<AppEnv>()
   .basePath("/artists")
-  .post("/release-groups/ratings", validate("json", ratingsBody), async (c) => {
-    const ids = [...new Set(c.req.valid("json").ids)]
-      .map((id) => id.trim())
-      .filter((id) => UUID_REGEX.test(id))
-      .slice(0, 24);
-    const ratings: Record<
-      string,
-      { rating: ReleaseGroupAlbum["rating"]; firstReleaseDate: ReleaseGroupAlbum["releaseDate"] }
-    > = {};
-    if (!ids.length) return c.json({ ratings }, 200);
-
-    const { signal } = c.req.raw;
-    try {
-      for (let index = 0; index < ids.length; index += 6) {
-        signal.throwIfAborted();
-        const batch = ids.slice(index, index + 6);
-        const results = await Promise.allSettled(batch.map((id) => getAlbumByMbid(id, { signal })));
-        batch.forEach((id, batchIndex) => {
-          const result = results[batchIndex];
-          if (result?.status !== "fulfilled") return;
-          ratings[id] = {
-            rating: result.value?.rating || null,
-            firstReleaseDate: result.value?.releaseDate || null,
-          };
-        });
-      }
-      return c.json({ ratings }, 200);
-    } catch (error) {
-      return c.json(
-        { error: "Failed to load release ratings", message: asAppError(error)?.message },
-        502,
-      );
-    }
-  })
   .get("/release-group/:mbid", cacheFor(3600), async (c) => {
     const mbid = c.req.param("mbid");
     try {
@@ -126,7 +70,11 @@ export default new Hono<AppEnv>()
           ...toLegacyReleaseGroupSummary(album, primaryArtist),
           genres: Array.isArray(album?.genres) ? album.genres : [],
           overview: album?.overview || "",
-          coverUrl: savedReleaseGroupCoverUrl(mbid) || selectAlbumCover(album.images)?.url || null,
+          coverUrl:
+            savedReleaseGroupCoverUrl(mbid) ||
+            album.cover ||
+            selectAlbumCover(album.images)?.url ||
+            null,
         },
         200,
       );
@@ -183,26 +131,27 @@ export default new Hono<AppEnv>()
       return c.json({ images: [], notFound: false, transientError: true }, 200);
     }
   })
-  .get("/release-group/:mbid/cover/image", requireStreamAuth, async (c) => {
-    const mbid = c.req.param("mbid");
-    if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
-    const cover = await fetchReleaseGroupCoverUrl(mbid).catch(() => null);
-    if (!cover?.imageUrl) {
-      c.header("Cache-Control", cover?.notFound ? "private, max-age=3600" : "no-store");
-      return c.json({ error: "Cover not found" }, 404);
-    }
-    c.header("Cache-Control", "private, max-age=86400");
-    return c.redirect(cover.imageUrl, 302);
-  })
-  .get("/release/:mbid/credits", async (c) => {
-    const mbid = c.req.param("mbid");
-    if (!UUID_REGEX.test(mbid)) {
-      return c.json({ error: "Invalid MBID format" }, 400);
-    }
-    const credits = await musicbrainzGetReleaseTrackCredits(mbid, { signal: c.req.raw.signal });
-    c.header("Cache-Control", credits.size ? "private, max-age=86400" : "no-store");
-    return c.json({ credits: Object.fromEntries(credits) }, 200);
-  })
+  .get(
+    "/release-group/:mbid/cover/image",
+    requireStreamAuth,
+    validate("query", coverImageQuery),
+    async (c) => {
+      const mbid = c.req.param("mbid");
+      if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
+      const { artist, title } = c.req.valid("query");
+      const cover = await fetchReleaseGroupCoverUrl(mbid, {
+        artistName: artist,
+        albumTitle: title,
+        listedWithoutCover: Boolean(title),
+      }).catch(() => null);
+      if (!cover?.imageUrl) {
+        c.header("Cache-Control", cover?.notFound ? "private, max-age=3600" : "no-store");
+        return c.json({ error: "Cover not found" }, 404);
+      }
+      c.header("Cache-Control", "private, max-age=86400");
+      return c.redirect(cover.imageUrl, 302);
+    },
+  )
   .get("/release-group/:mbid/editions", noCache, async (c) => {
     const mbid = c.req.param("mbid");
     if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
@@ -238,22 +187,35 @@ export default new Hono<AppEnv>()
     if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
     const { release } = c.req.valid("query");
     try {
-      const tracks = await getAlbumTracksByAlbumMbid(mbid, {
-        chooseRelease: (group) => chooseAlbumEdition(group, release),
-      });
+      const [album, tracks] = await Promise.all([
+        getAlbumByMbid(mbid, { withFallbackReleases: true }).catch(() => null),
+        getAlbumTracksByAlbumMbid(mbid, {
+          chooseRelease: (group) => chooseAlbumEdition(group, release),
+        }),
+      ]);
+      const albumArtist = album?.artists[0]?.name?.trim() || "";
       return c.json(
-        tracks.map((track) => ({
-          id: track.recordingId || track.id,
-          mbid: track.recordingId || track.id,
-          title: track.title,
-          trackName: track.title,
-          trackNumber: track.trackPosition || track.trackNumber || 0,
-          discNumber: track.mediumNumber || 1,
-          discTitle: track.discTitle,
-          position: track.trackPosition || track.trackNumber || 0,
-          releaseMbid: track.releaseMbid || null,
-          length: track.durationMs || null,
-        })),
+        tracks.map((track) => {
+          const previewArtist = track.credits?.[0]?.name?.trim() || albumArtist;
+          return {
+            id: track.recordingId || track.id,
+            mbid: track.recordingId || track.id,
+            title: track.title,
+            trackName: track.title,
+            trackNumber: track.trackPosition || track.trackNumber || 0,
+            discNumber: track.mediumNumber || 1,
+            discTitle: track.discTitle,
+            position: track.trackPosition || track.trackNumber || 0,
+            releaseMbid: track.releaseMbid || null,
+            length: track.durationMs || null,
+            popular: track.popular ?? false,
+            preview_url:
+              previewArtist && track.title
+                ? deezerPreviewSearchPath(previewArtist, track.title)
+                : null,
+            ...(track.credits && { credits: track.credits }),
+          };
+        }),
         200,
       );
     } catch (error) {

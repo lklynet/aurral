@@ -1,11 +1,10 @@
 import * as v from "valibot";
 import { buildPlaylistTrackIdentity, dedupePlaylistTracks } from "../playlists/playlistTracks.ts";
 import {
-  DEEZER_HEADERS,
   deezerErrorSchema,
-  deezerLimiter,
   deezerPageSchema,
   deezerPreviewPath,
+  deezerSend,
   deezerTrackSchema,
 } from "../apiClients/deezer.ts";
 import { readMany, readOne } from "../integrationData.ts";
@@ -13,8 +12,9 @@ import { dbOps } from "../../db/helpers/index.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import createCache from "../apiClients/simpleCache.ts";
 import { asAppError } from "../../../lib/errors.ts";
+import { HttpError } from "../../../lib/http.ts";
+import { catalogueTrackIds, isrcKey, loadCatalogueIds, NO_CATALOGUE_IDS } from "./catalogueIds.ts";
 
-const DEEZER_API_URL = "https://api.deezer.com";
 const REQUEST_TIMEOUT_MS = 10_000;
 const TRACK_PAGE_SIZE = 500;
 const MAX_TRACKS = 2_000;
@@ -125,30 +125,21 @@ export async function deezerRequest<Schema extends v.GenericSchema>(
   path: string,
   params: Record<string, string | number> = {},
 ) {
-  const url = new URL(`${DEEZER_API_URL}${path}`);
-  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, String(value));
-  let response;
-  try {
-    response = await deezerLimiter.schedule(() =>
-      fetch(url, {
-        headers: { Accept: "application/json", ...DEEZER_HEADERS },
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      }),
-    );
-  } catch {
-    throw providerError("Deezer could not be reached", 502, "DEEZER_UNAVAILABLE");
-  }
-  if (response.status === 429) {
-    throw providerError(
-      "Deezer is rate limiting requests; try again later",
-      429,
-      "DEEZER_RATE_LIMITED",
-    );
-  }
-  if (!response.ok) {
-    throw providerError(`Deezer request failed (${response.status})`, 502, "DEEZER_UNAVAILABLE");
-  }
-  const body: unknown = await response.json().catch(() => null);
+  const body = await deezerSend(path, { query: params, timeoutMs: REQUEST_TIMEOUT_MS }).catch(
+    (error: unknown) => {
+      const status = error instanceof HttpError ? error.response?.status : undefined;
+      if (status === 429) {
+        throw providerError(
+          "Deezer is rate limiting requests; try again later",
+          429,
+          "DEEZER_RATE_LIMITED",
+        );
+      }
+      throw status
+        ? providerError(`Deezer request failed (${status})`, 502, "DEEZER_UNAVAILABLE")
+        : providerError("Deezer could not be reached", 502, "DEEZER_UNAVAILABLE");
+    },
+  );
   if (!body || typeof body !== "object") {
     throw providerError("Deezer returned an unreadable response", 502, "DEEZER_UNAVAILABLE");
   }
@@ -212,7 +203,12 @@ const storedPlaylistsSchema: v.GenericSchema<unknown, PlaylistSummary[]> = v.arr
 
 type DeezerTrack = v.InferOutput<typeof deezerTrackSchema>;
 
-const normalizeTracks = (rows: DeezerTrack[]) => {
+const deezerIdKeys = (row: DeezerTrack) => [
+  isrcKey(row.isrc),
+  row.artist?.id ? `deezer-artist:${row.artist.id}` : null,
+];
+
+const normalizeTracks = (rows: DeezerTrack[], ids = NO_CATALOGUE_IDS) => {
   const stats = {
     sourceItems: rows.length,
     unavailable: 0,
@@ -240,6 +236,7 @@ const normalizeTracks = (rows: DeezerTrack[]) => {
       preview_url: deezerPreviewPath(row.id),
       artworkUrl: row?.album?.cover_medium || null,
       deezerAlbumId: row?.album?.id ? String(row.album.id) : null,
+      ...catalogueTrackIds(ids, deezerIdKeys(row)),
     });
     positions.push(position);
   }
@@ -275,7 +272,7 @@ const normalizeTracks = (rows: DeezerTrack[]) => {
   return { tracks, stats, excluded };
 };
 
-export async function getDeezerPlaylist(value: unknown) {
+export async function getDeezerPlaylist(value: unknown, { catalogueIds = false } = {}) {
   const id = validateDeezerPlaylistId(value);
   const playlist = await deezerRequest(deezerPlaylistSchema, `/playlist/${id}`);
   const summary = normalizePlaylistSummary(playlist);
@@ -293,10 +290,14 @@ export async function getDeezerPlaylist(value: unknown) {
     index += page.received;
     if (page.received === 0 || !page.next) break;
   }
+  const tracks = rows.slice(0, MAX_TRACKS);
+  const ids = catalogueIds
+    ? await loadCatalogueIds(tracks.flatMap(deezerIdKeys))
+    : NO_CATALOGUE_IDS;
   return {
     ...summary,
     artworkUrl: playlist.picture_xl || summary.artworkUrl,
-    ...normalizeTracks(rows.slice(0, MAX_TRACKS)),
+    ...normalizeTracks(tracks, ids),
   };
 }
 

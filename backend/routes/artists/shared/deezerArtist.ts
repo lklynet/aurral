@@ -1,7 +1,7 @@
 import { getDeezerArtist } from "../../../services/apiClients/index.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
-import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.ts";
-import { getLinkedDeezerArtistId } from "../../../services/providers/brainzmashMappers.ts";
+import { getArtistByMbid } from "../../../services/providers/metadataProvider.ts";
+import { getLinkedDeezerArtistId } from "../../../services/providers/metadataMappers.ts";
 
 export async function resolveDeezerArtistId(mbid: string, artistName: string) {
   const override = dbOps.getArtistOverride(mbid);

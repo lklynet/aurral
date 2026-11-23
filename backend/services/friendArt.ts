@@ -1,7 +1,9 @@
 import * as v from "valibot";
 import { db } from "../config/db-sqlite.ts";
 import { dbOps } from "../db/helpers/index.ts";
-import { findDeezerAlbumCover, getDeezerArtist } from "./apiClients/deezer.ts";
+import { findDeezerAlbumCover } from "./apiClients/deezer.ts";
+import { guessArtistMbid } from "./artistMatch.ts";
+import { getArtistImage } from "./imageService.ts";
 import { getLibraryArtwork } from "./libraryArtwork.ts";
 import { wrappedKey } from "./wrapped/metrics.ts";
 
@@ -19,11 +21,19 @@ const libraryArtist = db.prepare<[string], { id: number }>(
 
 const lookups = new Map<string, Promise<string | null>>();
 
-async function deezerArt(key: string, artist: string, album: string | undefined) {
+async function lookupArt(key: string, artist: string, album: string | undefined) {
   try {
-    const found = album
-      ? await findDeezerAlbumCover(artist, album)
-      : ((await getDeezerArtist(artist, { throwOnError: true }))?.imageUrl ?? null);
+    let found: string | null = null;
+    if (album) {
+      found = await findDeezerAlbumCover(artist, album);
+    } else {
+      const mbid = await guessArtistMbid(artist);
+      if (mbid) {
+        const result = await getArtistImage(mbid);
+        if (result.transientError) return null;
+        found = result.url;
+      }
+    }
     dbOps.setImage(key, found ?? NOT_FOUND);
     return found;
   } catch {
@@ -42,7 +52,7 @@ export async function friendArt(artist: string, album: string | undefined) {
   if (cached) return { url: cached === NOT_FOUND ? null : cached };
   let lookup = lookups.get(key);
   if (!lookup) {
-    lookup = deezerArt(key, artist, album).finally(() => lookups.delete(key));
+    lookup = lookupArt(key, artist, album).finally(() => lookups.delete(key));
     lookups.set(key, lookup);
   }
   return { url: await lookup };

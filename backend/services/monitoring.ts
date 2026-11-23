@@ -1,5 +1,9 @@
-import type { toNormalizedArtistAlbum } from "./providers/brainzmashMappers.ts";
-import { listArtistAlbums } from "./providers/brainzmashProvider.ts";
+import type { toNormalizedArtistAlbum } from "./providers/metadataMappers.ts";
+import {
+  getArtistByMbid,
+  getCachedArtistByMbid,
+  listArtistAlbums,
+} from "./providers/metadataProvider.ts";
 
 export const RELEASE_TYPES = ["album", "ep", "single"];
 export const EXTRA_RELEASE_TYPES = [
@@ -272,7 +276,14 @@ export function legacyMonitorMode(effective: { rules: MonitorRules } | null | un
 
 export async function listArtistReleases(artistMbid: string, rules: MonitorRules) {
   return listArtistAlbums(artistMbid, {
-    hydrateLimit: 100,
     only: (release) => releaseMatchesRules(release, rules),
   });
+}
+
+export async function refreshArtistMissingReleases(artistMbid: string, announced: string[]) {
+  const artist = await getCachedArtistByMbid(artistMbid);
+  if (!artist) return;
+  const listed = new Set([...artist.albums, ...artist.appearsOn].map((album) => album.id));
+  if (announced.every((releaseGroupMbid) => listed.has(releaseGroupMbid))) return;
+  await getArtistByMbid(artistMbid, { forceRefresh: true }).catch(() => {});
 }

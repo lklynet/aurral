@@ -7,14 +7,7 @@ export {
   DEFAULT_NEWS_GROUPS,
 } from "./config.ts";
 
-export {
-  musicbrainzGetArtistReleaseGroups,
-  musicbrainzGetArtistAppearsOnReleaseGroups,
-  getMusicbrainzAppearsOnScanState,
-  musicbrainzGetArtistNameByMbid,
-  musicbrainzGetArtistIdentityByMbid,
-  musicbrainzSearchArtistsByTag,
-} from "./musicbrainz.ts";
+export { musicbrainzGetArtistNameByMbid, musicbrainzSearchArtistsByTag } from "./musicbrainz.ts";
 
 export {
   listenbrainzRequest,

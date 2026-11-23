@@ -21,7 +21,7 @@ const libraryAlbum = {
 };
 const catalogAlbum = (id: string, title: string, primaryType = "Album") => ({
   type: "album",
-  source: "brainzmash",
+  source: "metadata",
   id,
   key: id,
   title,
@@ -50,7 +50,7 @@ describe("buildSearchSections", () => {
       sections.albums.map((album) => [album.title, album.source, album.primaryType]),
       [
         ["OK Computer", "library", "Album"],
-        ["Kid A", "brainzmash", "Album"],
+        ["Kid A", "metadata", "Album"],
       ],
     );
   });
@@ -110,7 +110,7 @@ describe("buildSearchSections", () => {
       type: "artist",
       id: "mbid-radiohead",
       name: "Radiohead",
-      source: "brainzmash",
+      source: "metadata",
       inLibrary: false,
     };
     const sections = buildSearchSections<SearchItem>({

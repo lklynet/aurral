@@ -6,9 +6,9 @@ import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { AURRAL_IDENTITY_TAG, writeAudioTags } from "./audioTags.ts";
-import { getAlbumByMbid } from "./providers/brainzmashProvider.ts";
+import { getAlbumByMbid } from "./providers/metadataProvider.ts";
+import type { NormalizedAlbum } from "./providers/metadataMappers.ts";
 import { isNzbSource } from "./usenetClientCommon.ts";
-import { musicbrainzGetReleaseTrackCredits } from "./apiClients/musicbrainz.ts";
 import { formatArtistCredit } from "../../lib/artistCredit.ts";
 
 const AURRAL_IDENTITY_PREFIX = `${AURRAL_IDENTITY_TAG}=`;
@@ -287,7 +287,16 @@ export async function commitDownloadedFile(
       throw new Error("Imported file copy did not match source size");
     }
     await fs.rename(tempTarget, resolvedTarget);
-    await fs.rm(sourcePath, { force: true });
+    // The copy is already in place. Failing here would retry the import and
+    // add the same file again beside it, so a source Aurral may not delete,
+    // as in a download client's folder owned by another user, stays behind.
+    await fs.rm(sourcePath, { force: true }).catch((error: unknown) => {
+      logger.warn(
+        "downloads",
+        "Imported a download but could not remove the original from the download folder. Check that Aurral may delete files there.",
+        { sourcePath, reason: safeLogDiagnostic(error) },
+      );
+    });
   }
   return resolvedTarget;
 }
@@ -313,23 +322,36 @@ export async function writeImportedFileMetadata(
   }
 }
 
-const albumInfo = async (albumMbid: string | null | undefined) =>
-  albumMbid ? getAlbumByMbid(albumMbid).catch(() => null) : null;
+const albumInfo = async (
+  albumMbid: string | null | undefined,
+  { withFallbackReleases = false } = {},
+) => (albumMbid ? getAlbumByMbid(albumMbid, { withFallbackReleases }).catch(() => null) : null);
 
-async function trackCredit({ releaseMbid, trackMbid, recordingMbidAliases }: DownloadTrackFields) {
-  if (!releaseMbid || !trackMbid) return null;
-  const credits = await musicbrainzGetReleaseTrackCredits(releaseMbid);
-  for (const mbid of [trackMbid, ...(recordingMbidAliases ?? [])]) {
-    const credit = credits.get(mbid);
-    if (credit) return credit;
-  }
-  return null;
+function creditFromAlbum(
+  album: NormalizedAlbum | null,
+  { releaseMbid, trackMbid, recordingMbidAliases }: DownloadTrackFields,
+) {
+  if (!album || !releaseMbid || !trackMbid) return null;
+  const release = album.releases.find((entry) => entry.id === releaseMbid);
+  if (!release) return null;
+  const wanted = new Set([trackMbid, ...(recordingMbidAliases ?? [])]);
+  const track = release.tracks.find(
+    (entry) =>
+      wanted.has(entry.recordingId) || entry.oldRecordingIds.some((alias) => wanted.has(alias)),
+  );
+  if (!track) return null;
+  if (track.credits?.length) return track.credits;
+  const artist = album.artists.find((entry) => entry.id === track.artistId);
+  return artist ? [{ name: artist.name, mbid: artist.id, joinPhrase: "" }] : null;
 }
 
 // A compilation's tracks keep their own performer as the artist. The download
 // job knows which track it fetched, so its identity replaces the uploader's.
 export async function writeAudioMetadata(filePath: string, metadata: DownloadTrackFields = {}) {
-  const [credit, album] = await Promise.all([trackCredit(metadata), albumInfo(metadata.albumMbid)]);
+  const album = await albumInfo(metadata.albumMbid, {
+    withFallbackReleases: Boolean(metadata.releaseMbid && metadata.trackMbid),
+  });
+  const credit = creditFromAlbum(album, metadata);
   const performer = isVariousArtistsCredit(metadata.artistName, metadata.artistMbid)
     ? metadata.artistAliases?.[0]
     : null;

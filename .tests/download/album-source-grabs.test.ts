@@ -1383,7 +1383,7 @@ test("the upgrade check queues each album's upgrades for the worker before it ad
     ),
     {
       missing: (pathname) => {
-        if (pathname === "/album/started-second") {
+        if (pathname === "/v1/album/started-second") {
           seen.queuedWhenSecondRead ??= downloadTracker
             .peekPending()
             .filter((job) => job.upgradeForJobId).length;

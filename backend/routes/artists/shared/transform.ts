@@ -1,13 +1,85 @@
 import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
-import { listenbrainzGetReleaseGroupStats } from "../../../services/apiClients/listenbrainz.ts";
-import { getArtistTagLists, getSimilarArtists } from "../../../services/musicDataSource/index.ts";
-import { isKnownGenre } from "../../../services/musicGenres.ts";
+import { deezerPreviewSearchPath } from "../../../../lib/deezerPreview.ts";
+import { getSimilarArtists } from "../../../services/musicDataSource/index.ts";
 import { guessArtistMbid } from "../../../services/artistMatch.ts";
 import { mapWithConcurrency } from "../../../services/discovery/helpers.ts";
-import type { musicbrainzGetArtistReleaseGroups } from "../../../services/apiClients/index.ts";
-import type { NormalizedArtist } from "../../../services/providers/brainzmashMappers.ts";
+import { releaseGroupCoverImageUrl } from "../../../services/releaseGroupCoverService.ts";
+import {
+  similarScoreToMatch,
+  type NormalizedAppearsOnAlbum,
+  type NormalizedArtist,
+  type NormalizedArtistAlbum,
+} from "../../../services/providers/metadataMappers.ts";
 
-type ReleaseGroupSummary = Awaited<ReturnType<typeof musicbrainzGetArtistReleaseGroups>>[number];
+export function toArtistReleaseGroup(
+  album: NormalizedArtistAlbum,
+  artist: Pick<NormalizedArtist, "id" | "name">,
+) {
+  return {
+    id: album.id,
+    title: album.title || "",
+    "first-release-date": album.firstReleaseDate || null,
+    "primary-type": album.type || "Album",
+    "secondary-types": Array.isArray(album.secondaryTypes) ? album.secondaryTypes : [],
+    rating: album.rating || null,
+    listenerCount: album.listeners > 0 ? album.listeners : null,
+    coverUrl: buildImageProxyUrl(album.cover),
+    "artist-credit": artist.name
+      ? [
+          {
+            name: artist.name,
+            artist: artist.id ? { id: artist.id, name: artist.name } : { name: artist.name },
+          },
+        ]
+      : [],
+  };
+}
+
+export type AppearsOnReleaseGroup = {
+  id: string;
+  title: string;
+  "first-release-date": string | null;
+  "primary-type": string;
+  "secondary-types": string[];
+  rating: { count: number; value: number } | null;
+  listenerCount?: number | null;
+  coverUrl?: string | null;
+  "artist-credit": { name?: string; artist?: { id?: string; name?: string } }[];
+  releases: { id: string; status: string | null; date: string | null; title: string }[];
+};
+
+export function toAppearsOnReleaseGroup(album: NormalizedAppearsOnAlbum): AppearsOnReleaseGroup {
+  const artistName = album.artistName || "";
+  return {
+    id: album.id,
+    title: album.title || "Untitled release",
+    "first-release-date": album.firstReleaseDate || null,
+    "primary-type": album.type || "Album",
+    "secondary-types": Array.isArray(album.secondaryTypes) ? album.secondaryTypes : [],
+    rating: album.rating || null,
+    listenerCount: album.listeners > 0 ? album.listeners : null,
+    coverUrl: buildImageProxyUrl(album.cover),
+    "artist-credit": artistName
+      ? [
+          {
+            name: artistName,
+            artist: album.artistId
+              ? { id: album.artistId, name: artistName }
+              : { name: artistName },
+          },
+        ]
+      : [],
+    releases: [],
+  };
+}
+
+export const listedReleaseGroup = ({
+  title,
+  "artist-credit": credits,
+}: Pick<AppearsOnReleaseGroup, "title" | "artist-credit">) => ({
+  artistName: credits[0]?.name ?? "",
+  albumTitle: title,
+});
 
 export function toLegacyRelations(metadataArtist: NormalizedArtist | null) {
   return Array.isArray(metadataArtist?.links)
@@ -20,47 +92,19 @@ export function toLegacyRelations(metadataArtist: NormalizedArtist | null) {
     : [];
 }
 
-export async function getArtistTagPayload(
-  mbid: string,
-  artistName = "",
-  metadataArtist: NormalizedArtist | null = null,
-) {
-  const metadataGenres = Array.isArray(metadataArtist?.genres)
-    ? metadataArtist.genres.filter(Boolean)
-    : [];
-  if (metadataGenres.length > 0) {
-    return {
-      tags: metadataGenres.map((genre) => ({ name: genre, count: 0 })),
-      genres: metadataGenres,
-    };
-  }
-  const [sourceTags = []]: { name: string; count: number }[][] = await getArtistTagLists([
-    { mbid, name: artistName },
-  ]);
-  const tags = sourceTags.filter((tag) => isKnownGenre(tag.name));
+export function getArtistTagPayload(metadataArtist: NormalizedArtist | null = null) {
+  const genres = Array.isArray(metadataArtist?.genres) ? metadataArtist.genres.filter(Boolean) : [];
   return {
-    tags,
-    genres: tags.map((tag) => tag.name),
+    tags: genres.map((genre) => ({ name: genre, count: 0 })),
+    genres,
   };
 }
 
 export async function getSimilarArtistCards(
   mbid: string,
-  {
-    artistName = "",
-    limit = 10,
-    resolveArtistName,
-  }: {
-    artistName?: string;
-    limit?: number;
-    resolveArtistName?: () => Promise<string | null>;
-  } = {},
+  { artistName = "", limit = 10 }: { artistName?: string; limit?: number } = {},
 ) {
-  let artists = await getSimilarArtists({ mbid, name: artistName }, { limit });
-  if (artists.length === 0 && !artistName && resolveArtistName) {
-    const name = await resolveArtistName().catch(() => null);
-    if (name) artists = await getSimilarArtists({ name }, { limit });
-  }
+  const artists = await getSimilarArtists({ mbid, name: artistName }, { limit });
   const cards = await mapWithConcurrency(artists.slice(0, limit), 4, async (artist) => ({
     id: artist.mbid || (await guessArtistMbid(artist.name)),
     name: artist.name,
@@ -70,28 +114,45 @@ export async function getSimilarArtistCards(
   return cards.filter((card) => card.id);
 }
 
-const LISTENBRAINZ_WAIT_MS = 2000;
+export function toDirectSimilarArtists(metadataArtist: NormalizedArtist | null, limit = 30) {
+  return (metadataArtist?.similar ?? [])
+    .filter((entry) => Boolean(entry.id))
+    .slice(0, limit)
+    .map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      image: buildImageProxyUrl(entry.image),
+      match: Math.round(similarScoreToMatch(entry.score) * 100),
+    }));
+}
 
-export async function withListenBrainzStats(releaseGroups: ReleaseGroupSummary[]) {
-  const { records, pending } = await listenbrainzGetReleaseGroupStats(releaseGroups, {
-    waitMs: LISTENBRAINZ_WAIT_MS,
+export function toArtistTopTracks(
+  metadataArtist: NormalizedArtist | null,
+  fallbackArtistName = "",
+  limit = 20,
+) {
+  if (!metadataArtist?.topTracks.length) return [];
+  const artistName = metadataArtist.name || fallbackArtistName;
+  const albumsById = new Map(metadataArtist.albums.map((album) => [album.id, album]));
+  return metadataArtist.topTracks.slice(0, limit).flatMap((track) => {
+    const title = track.title.trim();
+    if (!title) return [];
+    const album = track.albumId ? albumsById.get(track.albumId) : undefined;
+    return [
+      {
+        id: track.recordingId || `${metadataArtist.id}:${title}`,
+        title,
+        duration_ms: track.durationMs ?? null,
+        album: album?.title || null,
+        albumMbid: track.albumId || null,
+        trackMbid: track.recordingId || null,
+        artworkUrl:
+          buildImageProxyUrl(album?.cover) ||
+          (track.albumId ? releaseGroupCoverImageUrl(track.albumId) : null),
+        preview_url: artistName ? deezerPreviewSearchPath(artistName, title) : null,
+      },
+    ];
   });
-  return {
-    pending,
-    releaseGroups: releaseGroups.map((releaseGroup) => {
-      const record = records.get(releaseGroup.id);
-      return {
-        ...releaseGroup,
-        ...(record?.listen_count &&
-          record.listener_count && {
-            listenCount: record.listen_count,
-            listenerCount: record.listener_count,
-          }),
-        "first-release-date":
-          releaseGroup["first-release-date"] || record?.first_release_date || null,
-      };
-    }),
-  };
 }
 
 export function buildArtistBase(
@@ -112,6 +173,7 @@ export function buildArtistBase(
     links: Array.isArray(metadataArtist?.links) ? metadataArtist.links : [],
     relations: toLegacyRelations(metadataArtist),
     rating: metadataArtist?.rating || null,
+    listeners: metadataArtist?.listeners || null,
     ...(metadataArtist?.overview && { bio: metadataArtist.overview }),
   };
 }

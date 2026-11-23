@@ -12,45 +12,46 @@ const mbid = "10101010-1010-4010-8010-101010101010";
 const photo = "https://cdn.deezer.test/recovered-artist.jpg";
 const missingArtist = { error: { type: "DataException", message: "no data", code: 800 } };
 let artistLinked = true;
-let wikidataLinked = false;
 let albumCount = 0;
+let artistStatus = 200;
+let artistImages: Array<{ kind: string; url: string }> = [];
 const providerRequests: string[] = [];
 const provider = await createMockHttpServer((req, res) => {
   const path = requireFixture(req.url);
   providerRequests.push(path);
   res.setHeader("content-type", "application/json");
-  if (path.startsWith("/album/")) {
-    const id = path.slice("/album/".length);
-    const images = [{ CoverType: "Cover", Url: `https://images.example/${id}.jpg` }];
+  if (path.startsWith("/v1/album/")) {
+    const id = path.slice("/v1/album/".length);
+    const images = [{ kind: "Cover", url: `https://images.example/${id}.jpg` }];
     res.end(JSON.stringify({ id, title: id, images }));
+    return;
+  }
+  if (path.startsWith("/v1/artist/") && artistStatus !== 200) {
+    res.statusCode = artistStatus;
+    res.end(JSON.stringify({ error: "unavailable" }));
     return;
   }
   res.end(
     JSON.stringify(
-      path.startsWith("/artist/")
+      path.startsWith("/v1/artist/")
         ? {
             id: mbid,
-            artistname: "Provider Artist",
-            images: [],
-            Albums: Array.from({ length: albumCount }, (_, index) => ({
-              Id: `album-${index + 1}`,
-              Title: `Album ${index + 1}`,
-              Type: "Album",
+            name: "Provider Artist",
+            images: artistImages,
+            albums: Array.from({ length: albumCount }, (_, index) => ({
+              id: `album-${index + 1}`,
+              title: `Album ${index + 1}`,
+              type: "Album",
             })),
-            links: [
-              ...(artistLinked
-                ? [{ type: "deezer", target: "https://www.deezer.com/artist/101" }]
-                : []),
-              ...(wikidataLinked
-                ? [{ type: "wikidata", target: "https://www.wikidata.org/wiki/Q101" }]
-                : []),
-            ],
+            links: artistLinked
+              ? [{ type: "deezer", target: "https://www.deezer.com/artist/101" }]
+              : [],
           }
         : [],
     ),
   );
 });
-process.env.BRAINZMASH_BASE_URL = provider.url;
+process.env.METADATA_BASE_URL = provider.url;
 const [
   state,
   { http },
@@ -67,14 +68,15 @@ const [
   () => import("../backend/services/imageService.ts"),
   () => import("../backend/db/helpers/index.ts"),
   () => import("../backend/config/db-sqlite.ts"),
-  () => import("../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../backend/services/providers/metadataProvider.ts"),
   () => import("../backend/services/musicDataSource/index.ts"),
 );
 
 beforeEach(() => {
   artistLinked = true;
-  wikidataLinked = false;
   albumCount = 0;
+  artistStatus = 200;
+  artistImages = [];
   providerRequests.length = 0;
   resetDatabase(db);
   clearMetadataProviderCaches();
@@ -83,7 +85,7 @@ beforeEach(() => {
 afterAll(async () => {
   await cleanupIsolatedState(state);
   await provider.close();
-  delete process.env.BRAINZMASH_BASE_URL;
+  delete process.env.METADATA_BASE_URL;
 });
 
 function responses(
@@ -116,49 +118,6 @@ test("an artist name search accepts only the same name, and the one with the mos
   assert.equal((await deezer.getDeezerArtist("sigur ros"))?.imageUrl, photo);
   assert.equal((await deezer.getDeezerArtist("Avatar"))?.id, 10);
 });
-
-test.each([
-  { deezerLink: "no linked Deezer artist", linked: false },
-  { deezerLink: "a linked Deezer artist without a photo", linked: true },
-])(
-  "an artist with no provider photo and $deezerLink uses its Wikidata photo",
-  async ({ linked }) => {
-    artistLinked = linked;
-    wikidataLinked = true;
-    const commonsPhoto =
-      "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a1/Provider.jpg/960px-Provider.jpg";
-    const realGet = http.get.bind(http);
-    const asked: string[] = [];
-    vi.spyOn(http, "get").mockImplementation(async (url, options) => {
-      if (String(url).startsWith(provider.url)) return realGet(url, options);
-      const host = new URL(url).hostname;
-      asked.push(host);
-      const data =
-        host === "api.deezer.com"
-          ? {
-              id: 101,
-              name: "Provider Artist",
-              picture: "https://api.deezer.com/artist/101/image",
-              picture_xl: "https://cdn-images.dzcdn.net/images/artist//1000x1000-000000-80-0-0.jpg",
-            }
-          : host === "www.wikidata.org"
-            ? { P18: [{ rank: "normal", value: { content: "Provider.jpg" } }] }
-            : {
-                query: {
-                  pages: [{ imageinfo: [{ thumburl: `${commonsPhoto}?utm_source=test` }] }],
-                },
-              };
-      return { status: 200, statusText: "OK", headers: {}, data };
-    });
-
-    assert.equal((await getArtistImage(mbid, { forceRefresh: true })).url, commonsPhoto);
-    assert.deepEqual(asked, [
-      ...(linked ? ["api.deezer.com"] : []),
-      "www.wikidata.org",
-      "commons.wikimedia.org",
-    ]);
-  },
-);
 
 test("a failed artist ID lookup can recover without clearing its cache", async (t) => {
   let failed = true;
@@ -364,73 +323,44 @@ test("a catalog error in HTTP 200 remains retryable instead of caching an empty 
   assert.equal((await deezer.getDeezerAlbumsForArtist({ id: 101 }))[0]?.title, "Recovered Album");
 });
 
-for (const origin of ["relationship", "override", "name search"] as const) {
-  test("a failed " + origin + " artist image remains transient until recovery", async (t) => {
-    artistLinked = origin === "relationship";
-    if (origin === "override") dbOps.setArtistOverride(mbid, { deezerArtistId: "101" });
-    let failed = true;
-    responses(t, (url: string) => {
-      if (url.endsWith("/search/artist")) {
-        if (failed) throw new Error("Provider unavailable");
-        return {
-          status: 200,
-          statusText: "OK",
-          headers: {},
-          data: [{ id: 101, name: "Provider Artist", picture_big: photo }],
-        };
-      }
-      if (url.endsWith("/artist/101")) {
-        if (failed) throw new Error("Provider unavailable");
-        return { id: 101, name: "Provider Artist", picture_big: photo };
-      }
-      return { status: 200, statusText: "OK", headers: {}, data: [] };
-    });
-    const first = await getArtistImage(mbid, { forceRefresh: true });
-    assert.equal(first.transientError, true);
-    assert.notEqual(dbOps.getImage(mbid)?.imageUrl, "NOT_FOUND");
-    failed = false;
-    assert.equal((await getArtistImage(mbid)).url, photo);
-  });
-}
-
-test("an artist with no photo takes an album cover without loading every album", async (t) => {
-  artistLinked = false;
-  albumCount = 8;
-  responses(t, () => ({ data: [] }));
-
-  const image = await getArtistImage(mbid, { forceRefresh: true });
-
-  assert.match(String(image.url), /^https:\/\/images\.example\/album-[1-4]\.jpg$/);
-  assert.deepEqual(providerRequests.toSorted(), [
-    "/album/album-1",
-    "/album/album-2",
-    "/album/album-3",
-    "/album/album-4",
-    `/artist/${mbid}`,
-  ]);
+test("an artist file that fails, or is missing with MusicBrainz unreachable, stays transient until recovery", async () => {
+  for (const status of [503, 404]) {
+    artistStatus = status;
+    clearMetadataProviderCaches();
+    const failed = await getArtistImage(mbid, { forceRefresh: true });
+    assert.equal(failed.transientError, true);
+    assert.equal(dbOps.getImage(mbid), null);
+  }
+  artistStatus = 200;
+  artistImages = [{ kind: "Artist", url: "https://images.example/artist.jpg" }];
+  clearMetadataProviderCaches();
+  assert.equal((await getArtistImage(mbid)).url, "https://images.example/artist.jpg");
 });
 
-for (const origin of ["relationship", "override"] as const) {
-  test("a missing " + origin + " artist ID allows the image absence to be cached", async (t) => {
-    artistLinked = origin === "relationship";
-    if (origin === "override") dbOps.setArtistOverride(mbid, { deezerArtistId: "101" });
-    let requests = 0;
-    responses(t, (url: unknown) => {
-      assert.equal(url, "https://api.deezer.com/artist/101");
-      requests++;
-      return missingArtist;
-    });
-    assert.deepEqual(await getArtistImage(mbid, { forceRefresh: true }), {
-      url: null,
-      images: [],
-      notFound: true,
-    });
-    assert.equal(dbOps.getImage(mbid)?.imageUrl, "NOT_FOUND");
-    assert.equal(dbOps.getDeezerMbidCache(`artist_rg:${mbid}`), "NOT_FOUND");
-    assert.deepEqual(await getArtistImage(mbid), { url: null, images: [], notFound: true });
-    assert.equal(requests, 1);
+test("cached Deezer artist photos are replaced by metadata or Cover Art Archive artwork", async () => {
+  dbOps.setImage(
+    mbid,
+    "https://cdn-images.dzcdn.net/images/artist/e56cfe122b2c0f175e3a8afb4ec7cdb9/1000x1000-000000-80-0-0.jpg",
+  );
+  artistImages = [{ kind: "Artist", url: "https://images.example/wikimedia-artist.jpg" }];
+  assert.equal((await getArtistImage(mbid)).url, "https://images.example/wikimedia-artist.jpg");
+});
+
+test("an artist with no photo and no listed album cover caches NOT_FOUND from its own file alone", async (t) => {
+  artistLinked = false;
+  albumCount = 8;
+  responses(t, () => {
+    throw new Error("Deezer should not be called for artist images");
   });
-}
+  assert.deepEqual(await getArtistImage(mbid, { forceRefresh: true }), {
+    url: null,
+    images: [],
+    notFound: true,
+  });
+  assert.deepEqual(providerRequests, [`/v1/artist/${mbid}`]);
+  assert.equal(dbOps.getImage(mbid)?.imageUrl, "NOT_FOUND");
+  assert.deepEqual(await getArtistImage(mbid), { url: null, images: [], notFound: true });
+});
 
 test("album previews Deezer failed to list are asked for again", async (t) => {
   let failed = true;

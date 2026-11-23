@@ -1,5 +1,4 @@
 import * as v from "valibot";
-import { http } from "../../lib/http.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
 import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
@@ -34,7 +33,7 @@ const [
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
-  () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../../backend/services/providers/metadataProvider.ts"),
   () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
@@ -152,9 +151,9 @@ test(
   "a disconnected unified search cancels metadata requests and does not cache empty results",
   { timeout: 4000 },
   async () => {
-    const bothRequestsArrived = new Promise<void>((resolve) => {
+    const requestArrived = new Promise<void>((resolve) => {
       metadataHandler = () => {
-        if (metadataRequests.length === 2) resolve();
+        if (metadataRequests.length === 1) resolve();
       };
     });
     const client = new AbortController();
@@ -162,7 +161,7 @@ test(
       signal: client.signal,
     }).catch((error) => error);
 
-    await bothRequestsArrived;
+    await requestArrived;
     const upstreamClosed = Promise.all(
       metadataRequests.map(
         ({ response }) => new Promise<void>((resolve) => response.on("close", resolve)),
@@ -174,11 +173,17 @@ test(
 
     metadataHandler = (request, response) => {
       response.setHeader("content-type", "application/json");
-      if (request.url?.startsWith("/search/artist")) {
-        response.end(JSON.stringify([{ id: "lantern-artist-mbid", artistname: "Lantern" }]));
+      if (request.url?.startsWith("/v1/search")) {
+        response.end(
+          JSON.stringify({
+            artists: [{ id: "lantern-artist-mbid", name: "Lantern" }],
+            albums: [],
+            tracks: [],
+          }),
+        );
         return;
       }
-      response.end(JSON.stringify([]));
+      response.end(JSON.stringify({}));
     };
     const retry = await fetch(`${app.url}/api/search/unified?q=lantern`);
     assert.equal(retry.status, 200);
@@ -338,49 +343,35 @@ test("playlist search lists matching editor playlists before full user playlists
   );
 });
 
-type DeezerSong = { title: string; artist: string; album: string; rank: number };
+type CatalogSearchPayload = {
+  artists?: { id: string; name: string; listeners?: number }[];
+  albums?: { id: string; title: string; type: string; artistName: string; listeners?: number }[];
+  tracks?: {
+    recordingId: string;
+    title: string;
+    artistId?: string;
+    artistName: string;
+    albumId?: string;
+    albumTitle?: string;
+    cover?: string;
+    listeners?: number;
+  }[];
+};
 
-function stubDeezerSongs(songs: DeezerSong[]) {
-  const realGet = http.get.bind(http);
-  vi.spyOn(http, "get").mockImplementation((url, config) => {
-    if (!String(url).startsWith("https://api.deezer.com/search/track")) return realGet(url, config);
-    const data = songs.map((song, index) => ({
-      id: index + 1,
-      title: song.title,
-      rank: song.rank,
-      artist: { name: song.artist },
-      album: {
-        id: index + 100,
-        title: song.album,
-        cover_medium: `https://cdn.test/${index + 1}.jpg`,
-      },
-    }));
-    return Promise.resolve({
-      status: 200,
-      statusText: "OK",
-      headers: {},
-      config: {},
-      data: { data },
-    });
-  });
-}
-
-function serveCatalogAlbums(albums: { id: string; title: string; type: string; artist: string }[]) {
+function serveCatalogSearch(payload: CatalogSearchPayload) {
   metadataHandler = (request, response) => {
     response.setHeader("content-type", "application/json");
-    response.end(
-      JSON.stringify(
-        request.url?.startsWith("/search/album")
-          ? albums.map((album) => ({
-              id: album.id,
-              title: album.title,
-              type: album.type,
-              artistid: album.artist,
-              artists: [{ id: album.artist, artistname: album.artist }],
-            }))
-          : [],
-      ),
-    );
+    if (request.url?.startsWith("/v1/search")) {
+      response.end(
+        JSON.stringify({
+          artists: payload.artists ?? [],
+          albums: payload.albums ?? [],
+          tracks: payload.tracks ?? [],
+        }),
+      );
+      return;
+    }
+    response.writeHead(404).end();
   };
 }
 
@@ -392,31 +383,51 @@ const unifiedSearch = async (q: string) => {
   return body;
 };
 
-test("unified search folds Deezer songs into the results with their catalog album", async () => {
-  stubDeezerSongs([
-    { title: "As Long As You Love Me", artist: "Justin Bieber", album: "Believe", rank: 415068 },
-    {
-      title: "As Long As You Love Me",
-      artist: "Backstreet Boys",
-      album: "Backstreet's Back",
-      rank: 717064,
-    },
-  ]);
-  serveCatalogAlbums([
-    {
-      id: "bsb-single",
-      title: "As Long as You Love Me",
-      type: "Single",
-      artist: "Backstreet Boys",
-    },
-    { id: "bsb-album", title: "Backstreet's Back", type: "Album", artist: "Backstreet Boys" },
-  ]);
+test("unified search returns metadata songs with their album MBID and ranks the top song by listeners", async () => {
+  serveCatalogSearch({
+    albums: [
+      {
+        id: "bsb-single",
+        title: "As Long as You Love Me",
+        type: "Single",
+        artistName: "Backstreet Boys",
+        listeners: 5000,
+      },
+      {
+        id: "bsb-album",
+        title: "Backstreet's Back",
+        type: "Album",
+        artistName: "Backstreet Boys",
+        listeners: 20000,
+      },
+    ],
+    tracks: [
+      {
+        recordingId: "rec-jb",
+        title: "As Long As You Love Me",
+        artistName: "Justin Bieber",
+        albumId: "jb-album",
+        albumTitle: "Believe",
+        cover: "https://cdn.test/1.jpg",
+        listeners: 41000,
+      },
+      {
+        recordingId: "rec-bsb",
+        title: "As Long As You Love Me",
+        artistName: "Backstreet Boys",
+        albumId: "bsb-album",
+        albumTitle: "Backstreet's Back",
+        cover: "https://cdn.test/2.jpg",
+        listeners: 71000,
+      },
+    ],
+  });
 
   const body = await unifiedSearch("as long as you love me");
   assert.equal(body.status, "ok");
   assert.deepEqual(
-    [body.top.type, body.top.artistName, body.top.albumMbid],
-    ["track", "Backstreet Boys", "bsb-album"],
+    [body.top.type, body.top.artistName, body.top.albumMbid, body.top.trackMbid],
+    ["track", "Backstreet Boys", "bsb-album", "rec-bsb"],
   );
   assert.deepEqual(
     body.tracks.map((track) => [track.artistName, track.coverUrl]),
@@ -427,13 +438,28 @@ test("unified search folds Deezer songs into the results with their catalog albu
   );
 });
 
-test("unified search marks Deezer songs the Library already has", async () => {
+test("unified search marks catalog songs the Library already has", async () => {
   seedLibraryAlbum();
-  stubDeezerSongs([
-    { title: "Lantern Song", artist: "Harbor Collective", album: "Quiet Harbor", rank: 2000 },
-    { title: "Lantern Song", artist: "Another Harbor", album: "Elsewhere", rank: 1000 },
-  ]);
-  serveCatalogAlbums([]);
+  serveCatalogSearch({
+    tracks: [
+      {
+        recordingId: "rec-harbor",
+        title: "Lantern Song",
+        artistName: "Harbor Collective",
+        albumId: "search-routes-release-group",
+        albumTitle: "Quiet Harbor",
+        listeners: 2000,
+      },
+      {
+        recordingId: "rec-other",
+        title: "Lantern Song",
+        artistName: "Another Harbor",
+        albumId: "other-rg",
+        albumTitle: "Elsewhere",
+        listeners: 1000,
+      },
+    ],
+  });
 
   const body = await unifiedSearch("lantern song");
   assert.deepEqual(
@@ -446,35 +472,38 @@ test("unified search marks Deezer songs the Library already has", async () => {
 });
 
 test("unified search tops an exact album by a famous artist over an obscure exact song", async () => {
-  stubDeezerSongs([
-    { title: "Ok Computer", artist: "Lemaitre", album: "Ok Computer", rank: 73239 },
-    { title: "Karma Police", artist: "Radiohead", album: "OK Computer", rank: 898957 },
-  ]);
-  serveCatalogAlbums([
-    { id: "ok-computer", title: "OK Computer", type: "Album", artist: "Radiohead" },
-  ]);
+  serveCatalogSearch({
+    albums: [
+      {
+        id: "ok-computer",
+        title: "OK Computer",
+        type: "Album",
+        artistName: "Radiohead",
+        listeners: 250000,
+      },
+    ],
+    tracks: [
+      {
+        recordingId: "rec-lemaitre",
+        title: "Ok Computer",
+        artistName: "Lemaitre",
+        albumTitle: "Ok Computer",
+        listeners: 7300,
+      },
+    ],
+  });
 
   const body = await unifiedSearch("ok computer");
   assert.deepEqual([body.top.type, body.top.id], ["album", "ok-computer"]);
 });
 
 test("unified search drops near-miss artists once a famous artist is the clear match", async () => {
-  stubDeezerSongs([
-    { title: "Thriller", artist: "Michael Jackson", album: "Thriller", rank: 927235 },
-  ]);
-  metadataHandler = (request, response) => {
-    response.setHeader("content-type", "application/json");
-    response.end(
-      JSON.stringify(
-        request.url?.startsWith("/search/artist")
-          ? [
-              { id: "mj", artistname: "Michael Jackson" },
-              { id: "mj-doctor", artistname: "Michael Jackson's Doctor" },
-            ]
-          : [],
-      ),
-    );
-  };
+  serveCatalogSearch({
+    artists: [
+      { id: "mj", name: "Michael Jackson", listeners: 920000 },
+      { id: "mj-doctor", name: "Michael Jackson's Doctor", listeners: 0 },
+    ],
+  });
 
   const body = await unifiedSearch("michael jackson");
   assert.equal(body.top.id, "mj");
@@ -493,19 +522,12 @@ test("unified search reports an unreachable catalog, does not cache it, and list
   assert.equal(failed.status, 200);
   assert.equal((await failed.json()).status, "unavailable");
 
-  metadataHandler = (request, response) => {
-    response.setHeader("content-type", "application/json");
-    response.end(
-      JSON.stringify(
-        request.url?.startsWith("/search/artist")
-          ? [
-              { id: "harbor-lights-mbid", artistname: "Harbor Lights" },
-              { id: "harbor-lights-other-mbid", artistname: "Harbor Lights" },
-            ]
-          : [],
-      ),
-    );
-  };
+  serveCatalogSearch({
+    artists: [
+      { id: "harbor-lights-mbid", name: "Harbor Lights", listeners: 500 },
+      { id: "harbor-lights-other-mbid", name: "Harbor Lights", listeners: 10 },
+    ],
+  });
   const recovered = await fetch(`${app.url}/api/search/unified?q=harbor+lights`);
   const body: { status: string; artists: SearchItem[] } = await recovered.json();
   assert.equal(body.status, "ok");

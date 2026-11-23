@@ -45,7 +45,7 @@ const [
   () => import("../../backend/services/libraryFiles/operations.ts"),
   () => import("../../backend/services/libraryFiles/operationStore.ts"),
   () => import("../../backend/services/downloadPaths.ts"),
-  () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../../backend/services/providers/metadataProvider.ts"),
   () => import("../../backend/services/audioTags.ts"),
 );
 
@@ -69,17 +69,16 @@ const edition = (
 ) => ({
   id,
   status: "Official",
-  tracks: titles.map((trackname, index) => ({
+  tracks: titles.map((title, index) => ({
     id: `${id}-track-${index + 1}`,
-    recordingid: recording(
-      ({ "Song One": 1, "Song Two": 2, "Bonus Intro": 9 } as Record<string, number>)[trackname] ??
-        0,
+    recordingId: recording(
+      ({ "Song One": 1, "Song Two": 2, "Bonus Intro": 9 } as Record<string, number>)[title] ?? 0,
     ),
-    trackname,
-    artistid: artists[trackname] || artistMbid,
-    durationms: lengths[trackname] || 200,
-    trackposition: index + 1,
-    mediumnumber: 1,
+    title,
+    artistId: artists[title] || artistMbid,
+    durationMs: lengths[title] || 200,
+    trackPosition: index + 1,
+    mediumNumber: 1,
   })),
 });
 let sources = 0;
@@ -87,9 +86,9 @@ let sources = 0;
 const album = {
   id: releaseGroup,
   title: "Fill Album",
-  artistid: artistMbid,
-  artists: [{ id: artistMbid, artistname: "Fill Artist" }],
-  releasedate: "2011-05-20",
+  artistId: artistMbid,
+  artists: [{ id: artistMbid, name: "Fill Artist" }],
+  releaseDate: "2011-05-20",
   genres: ["dream pop", "shoegaze"],
   releases: [
     edition(release, ["Song One", "Song Two"], { lengths: { "Song Two": 600000 } }),
@@ -105,7 +104,7 @@ const laterReleaseGroup = "4f4f4f4f-0000-4000-8000-000000000002";
 const laterAlbum = {
   ...album,
   id: laterReleaseGroup,
-  releasedate: "2020-01-10",
+  releaseDate: "2020-01-10",
   genres: ["slowcore"],
   releases: [
     {
@@ -114,12 +113,12 @@ const laterAlbum = {
       tracks: [
         {
           id: "later-track-1",
-          recordingid: recording(7),
-          trackname: "Song Three",
-          artistid: artistMbid,
-          durationms: 200,
-          trackposition: 1,
-          mediumnumber: 1,
+          recordingId: recording(7),
+          title: "Song Three",
+          artistId: artistMbid,
+          durationMs: 200,
+          trackPosition: 1,
+          mediumNumber: 1,
         },
       ],
     },
@@ -131,9 +130,9 @@ const twoDiscRecording = "4f4f4f4f-0000-4000-8000-0000000000c1";
 const twoDiscAlbum = {
   id: twoDiscGroup,
   title: "Two Disc Album",
-  artistid: artistMbid,
-  artists: [{ id: artistMbid, artistname: "Fill Artist" }],
-  releasedate: "1992-08-04",
+  artistId: artistMbid,
+  artists: [{ id: artistMbid, name: "Fill Artist" }],
+  releaseDate: "1992-08-04",
   genres: [],
   releases: [
     {
@@ -142,12 +141,12 @@ const twoDiscAlbum = {
       tracks: [
         {
           id: "two-disc-track",
-          recordingid: twoDiscRecording,
-          trackname: "Hey Jealousy",
-          artistid: artistMbid,
-          durationms: 200,
-          trackposition: 1,
-          mediumnumber: 2,
+          recordingId: twoDiscRecording,
+          title: "Hey Jealousy",
+          artistId: artistMbid,
+          durationMs: 200,
+          trackPosition: 1,
+          mediumNumber: 2,
         },
       ],
     },
@@ -163,32 +162,33 @@ const metadataServer = await createMockHttpServer((request, response) => {
   response.setHeader("content-type", "application/json");
   if (
     providerDown &&
-    (pathname === `/album/${outageReleaseGroup}` ||
-      url.searchParams.get("query")?.includes("Outage"))
+    (pathname === `/v1/album/${outageReleaseGroup}` ||
+      url.searchParams.get("q")?.includes("Outage"))
   ) {
     response.writeHead(503);
     return response.end(JSON.stringify({ error: "unavailable" }));
   }
-  if (pathname === `/album/${outageReleaseGroup}`) {
+  if (pathname === `/v1/album/${outageReleaseGroup}`) {
     return response.end(
       JSON.stringify({ ...album, id: outageReleaseGroup, title: "Outage Album" }),
     );
   }
-  if (pathname === `/album/${releaseGroup}`) return response.end(JSON.stringify(album));
-  if (pathname === `/album/${laterReleaseGroup}`) return response.end(JSON.stringify(laterAlbum));
-  if (pathname === `/album/${twoDiscGroup}`) return response.end(JSON.stringify(twoDiscAlbum));
-  if (pathname === "/search/album") {
+  if (pathname === `/v1/album/${releaseGroup}`) return response.end(JSON.stringify(album));
+  if (pathname === `/v1/album/${laterReleaseGroup}`)
+    return response.end(JSON.stringify(laterAlbum));
+  if (pathname === `/v1/album/${twoDiscGroup}`) return response.end(JSON.stringify(twoDiscAlbum));
+  if (pathname === "/v1/search/album") {
     return response.end(
-      JSON.stringify(
-        [album, laterAlbum].map((entry) => ({
+      JSON.stringify({
+        albums: [album, laterAlbum].map((entry) => ({
           id: entry.id,
           title: entry.title,
-          artistid: artistMbid,
-          artists: entry.artists,
-          releasedate: entry.releasedate,
+          artistId: artistMbid,
+          artistName: entry.artists[0]?.name ?? "",
+          releaseDate: entry.releaseDate,
           type: "Album",
         })),
-      ),
+      }),
     );
   }
   response.writeHead(404);
@@ -700,7 +700,6 @@ test("clean up says the metadata provider was unreachable instead of calling an 
   assert.deepEqual(await readFile(tagged), taggedBytes);
 
   providerDown = false;
-  db.prepare("UPDATE metadata_request_state SET retry_after = 0").run();
   const retried = await checkAndRun(await operations.startCleanup());
 
   assert.equal(

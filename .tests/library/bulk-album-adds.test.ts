@@ -20,7 +20,7 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/libraryManager.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
-  () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../../backend/services/providers/metadataProvider.ts"),
 );
 
 const artistMbid = "11111111-1111-4111-8111-111111111111";
@@ -39,18 +39,18 @@ test("adding more albums at once than the metadata queue holds adds every album"
   const server = await createMockHttpServer((request, response) => {
     const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
     response.setHeader("content-type", "application/json");
-    if (pathname === `/artist/${artistMbid}`) {
-      response.end(JSON.stringify({ id: artistMbid, artistname: "Bulk Artist" }));
+    if (pathname === `/v1/artist/${artistMbid}`) {
+      response.end(JSON.stringify({ id: artistMbid, name: "Bulk Artist" }));
       return;
     }
-    const albumMbid = pathname.match(/^\/album\/(.+)$/)?.[1];
+    const albumMbid = pathname.match(/^\/v1\/album\/(.+)$/)?.[1];
     if (albumMbid) {
       response.end(
         JSON.stringify({
           id: albumMbid,
           title: `Album ${albumMbid}`,
-          artistid: artistMbid,
-          artists: [{ id: artistMbid, artistname: "Bulk Artist" }],
+          artistId: artistMbid,
+          artists: [{ id: artistMbid, name: "Bulk Artist" }],
           releases: [
             {
               id: `${albumMbid}-release`,
@@ -58,10 +58,10 @@ test("adding more albums at once than the metadata queue holds adds every album"
               tracks: [
                 {
                   id: `${albumMbid}-track`,
-                  recordingid: `${albumMbid}-recording`,
-                  trackname: "Track 1",
-                  trackposition: 1,
-                  mediumnumber: 1,
+                  recordingId: `${albumMbid}-recording`,
+                  title: "Track 1",
+                  trackPosition: 1,
+                  mediumNumber: 1,
                 },
               ],
             },

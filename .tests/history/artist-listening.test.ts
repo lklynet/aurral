@@ -25,7 +25,11 @@ let userId = 0;
 const play = (
   title: string,
   playedAt: number,
-  { artist = "Radiohead", mbid = MBID as string | null, album = "In Rainbows" } = {},
+  {
+    artist = "Radiohead",
+    mbid = artist === "Radiohead" ? MBID : null,
+    album = "In Rainbows",
+  }: { artist?: string; mbid?: string | null; album?: string } = {},
 ) => insert.run(userId, title, title, artist, album, mbid, playedAt);
 
 beforeEach(() => {
@@ -44,23 +48,24 @@ test("summarizes a user's plays of one artist by week, rank, and top tracks", ()
   play("reckoner", NOW - 60 * WEEK, { artist: "RADIOHEAD", mbid: null });
   play("Creep", NOW - 2.5 * WEEK, { album: "Pablo Honey" });
   play("Creep", NOW, { mbid: "00000000-0000-4000-8000-000000000000" });
+  play("Nude", NOW - WEEK / 2, { artist: "Radiohead feat. Someone", mbid: MBID });
   for (let index = 0; index < 20; index += 1) play("Song", NOW - index, { artist: "Busier" });
 
   const listening = getArtistListening(userId, MBID, "Radiohead", NOW);
 
   assert.ok(listening);
-  assert.equal(listening.plays, 11);
-  assert.equal(listening.durationMs, 11 * 200000);
+  assert.equal(listening.plays, 12);
+  assert.equal(listening.durationMs, 12 * 200000);
   assert.equal(listening.firstPlayedAt, NOW - 60 * WEEK);
   assert.equal(listening.rank, 2);
   assert.equal(listening.weeks.length, 52);
-  assert.equal(listening.weeks[51], 6);
+  assert.equal(listening.weeks[51], 7);
   assert.equal(listening.weeks[49], 1);
   assert.equal(listening.weeks[48], 3);
   assert.deepEqual(
     listening.topTracks.map(({ title, plays, queueTrack }) => [title, plays, queueTrack]),
     [
-      ["Nude", 6, null],
+      ["Nude", 7, null],
       ["Reckoner", 4, null],
       ["Creep", 1, null],
     ],
@@ -94,8 +99,9 @@ test("counts a Library artist's plays, matching any MusicBrainz id when the arti
   play("Nude", NOW, { artist: "RADIOHEAD", mbid: null });
   play("Creep", NOW, { mbid: "00000000-0000-4000-8000-000000000000" });
   play("Song", NOW, { artist: "Busier" });
+  play("Nude", NOW, { artist: "Radiohead feat. Someone", mbid: MBID });
 
-  assert.equal(getLibraryArtistPlays(userId, matched), 2);
+  assert.equal(getLibraryArtistPlays(userId, matched), 3);
   assert.equal(getLibraryArtistPlays(userId, unmatched), 3);
   assert.equal(getLibraryArtistPlays(userId + 1, matched), 0);
   assert.equal(getLibraryArtistPlays(userId, -1), null);

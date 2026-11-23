@@ -76,16 +76,18 @@ const respond = (url: URL) => {
     const similar = similarBySeed.get(seedNames[Number(related[1]) - 1] ?? "") ?? [];
     return { data: similar.map((artist, index) => ({ id: 100 + index, name: artist.name })) };
   }
-  if (url.hostname === "brainzmash.kell.ly" && url.pathname === "/search/artist") {
-    const artist = knownArtists.find(({ name }) => name === url.searchParams.get("query"));
-    return artist ? [{ id: artist.mbid, artistname: artist.name }] : [];
+  if (url.hostname === "data.aurral.org" && url.pathname === "/v1/search/artist") {
+    const artist = knownArtists.find(({ name }) => name === url.searchParams.get("q"));
+    return { artists: artist ? [{ id: artist.mbid, name: artist.name }] : [] };
   }
-  if (url.hostname === "api.listenbrainz.org" && url.pathname === "/1/metadata/artist/") {
-    return (url.searchParams.get("artist_mbids") ?? "").split(",").map((artist_mbid) => ({
-      artist_mbid,
-      tag: { artist: TAGS.map((tag) => ({ tag, count: 100 })) },
-    }));
+  if (url.hostname === "data.aurral.org" && url.pathname.startsWith("/v1/artist/")) {
+    const id = url.pathname.slice("/v1/artist/".length);
+    const artist = knownArtists.find((entry) => entry.mbid === id);
+    return artist
+      ? { id: artist.mbid, name: artist.name, genres: TAGS, links: [], albums: [] }
+      : null;
   }
+  if (url.hostname === "data.aurral.org") return null;
   if (url.hostname === "musicbrainz.org" && url.pathname === "/ws/2/artist") {
     return {
       count: SHOEGAZE_TOP_ARTISTS.length,
@@ -107,11 +109,13 @@ const play = (userId: number, artist: string, index: number) =>
 beforeAll(() => {
   resetDatabase(db);
   dbOps.invalidateSettingsCache();
-  globalThis.fetch = async (url) =>
-    new Response(JSON.stringify(respond(new URL(String(url)))), {
-      status: 200,
+  globalThis.fetch = async (url) => {
+    const body = respond(new URL(String(url)));
+    return new Response(JSON.stringify(body ?? {}), {
+      status: body === null ? 404 : 200,
       headers: { "content-type": "application/json" },
     });
+  };
   db.prepare(
     `INSERT INTO library_artists (identity_key, mbid, name, created_at, updated_at)
      VALUES ('library-one', ?, ?, 1, 1)`,

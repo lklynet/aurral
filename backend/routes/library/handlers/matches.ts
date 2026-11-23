@@ -8,6 +8,7 @@ import { noCache } from "../../../middleware/cacheHeaders.ts";
 import { requireAuth, requirePermission } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
+import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
 import { selectBestArtistImage } from "../../../services/imageRanking.ts";
 import {
   setLibraryAlbumReleaseGroup,
@@ -20,7 +21,7 @@ import {
   listArtistAlbums,
   searchAlbums,
   searchArtists,
-} from "../../../services/providers/brainzmashProvider.ts";
+} from "../../../services/providers/metadataProvider.ts";
 import { withCoverUrls } from "../../../services/releaseGroupCoverService.ts";
 import { listTrackMatches, matchLibraryTrack } from "../../../services/libraryFiles/trackMatch.ts";
 
@@ -74,8 +75,13 @@ async function albumMatches(
   query: string,
 ) {
   const candidates = album.artist_mbid
-    ? withCoverUrls(await listArtistAlbums(album.artist_mbid, { hydrateLimit: 0 })).map(
-        (entry) => ({ ...entry, releaseDate: null }),
+    ? withCoverUrls(
+        (await listArtistAlbums(album.artist_mbid)).map((entry) => ({
+          ...entry,
+          releaseDate: entry.firstReleaseDate,
+          coverUrl: buildImageProxyUrl(entry.cover),
+        })),
+        (entry) => ({ artistName: entry.artistName, albumTitle: entry.title }),
       )
     : (
         await searchAlbums(query || album.title, {

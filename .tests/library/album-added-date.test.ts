@@ -23,7 +23,7 @@ const [
   () => import("../../backend/services/libraryManager.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
-  () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../../backend/services/providers/metadataProvider.ts"),
 );
 
 const artistMbid = "11111111-1111-4111-8111-111111111111";
@@ -38,20 +38,20 @@ test("re-adding an Aurral album keeps the date it was first added", async () => 
   const server = await createMockHttpServer((request, response) => {
     const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
     response.setHeader("content-type", "application/json");
-    if (pathname === `/artist/${artistMbid}`) {
+    if (pathname === `/v1/artist/${artistMbid}`) {
       response.end(
-        JSON.stringify({ id: artistMbid, artistname: "Aurral Artist", sortname: "Aurral Artist" }),
+        JSON.stringify({ id: artistMbid, name: "Aurral Artist", sortName: "Aurral Artist" }),
       );
       return;
     }
-    if (pathname === `/album/${albumMbid}`) {
+    if (pathname === `/v1/album/${albumMbid}`) {
       response.end(
         JSON.stringify({
           id: albumMbid,
           title: "Aurral Album",
-          artistid: artistMbid,
-          artists: [{ id: artistMbid, artistname: "Aurral Artist" }],
-          releasedate: "2026-01-02",
+          artistId: artistMbid,
+          artists: [{ id: artistMbid, name: "Aurral Artist" }],
+          releaseDate: "2026-01-02",
           releases: [
             {
               id: `${albumMbid}-release`,
@@ -59,11 +59,11 @@ test("re-adding an Aurral album keeps the date it was first added", async () => 
               tracks: [
                 {
                   id: `${trackMbid}-recording`,
-                  recordingid: trackMbid,
-                  trackname: "Track 1",
-                  trackposition: 1,
-                  mediumnumber: 1,
-                  durationms: 180000,
+                  recordingId: trackMbid,
+                  title: "Track 1",
+                  trackPosition: 1,
+                  mediumNumber: 1,
+                  durationMs: 180000,
                 },
               ],
             },

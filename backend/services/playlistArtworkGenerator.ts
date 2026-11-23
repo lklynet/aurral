@@ -1,8 +1,8 @@
 import { createHash, randomInt } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { guessArtistMbid } from "./artistMatch.ts";
 import { getArtistImage } from "./imageService.ts";
-import { fetchDeezerArtistImageUrl } from "./releaseGroupCoverService.ts";
 import { buildStableImageProxyUrl, fetchRemoteImage, warmImageProxy } from "./imageProxyService.ts";
 import {
   PLAYLIST_COVER_TEMPLATES,
@@ -62,14 +62,12 @@ function uniqueArtists(artists: PlaylistArtworkArtist[]) {
 
 async function loadArtistImage(artist: PlaylistArtworkArtist) {
   try {
-    let url: string | null = null;
-    if (artist.artistMbid) {
-      const image = await getArtistImage(artist.artistMbid, { artistName: artist.artistName });
-      url =
-        image.images.find((entry) => !entry.types?.some((type) => /front|album|cover/i.test(type)))
-          ?.image || null;
-    }
-    url ||= await fetchDeezerArtistImageUrl({ artistName: artist.artistName });
+    const mbid = artist.artistMbid || (await guessArtistMbid(artist.artistName));
+    if (!mbid) return null;
+    const image = await getArtistImage(mbid);
+    const url =
+      image.images.find((entry) => !entry.types?.some((type) => /front|album|cover/i.test(type)))
+        ?.image || null;
     return url ? await readPlaylistImageBuffer(url) : null;
   } catch {
     return null;

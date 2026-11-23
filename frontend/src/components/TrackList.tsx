@@ -15,6 +15,7 @@ import {
   ArrowDown,
   ArrowUp,
   Clock,
+  Flame,
   GripVertical,
   Heart,
   Pause,
@@ -76,6 +77,7 @@ export type TrackListRow = {
   trailing?: ReactNode;
   active?: boolean;
   missing?: boolean;
+  popular?: boolean;
   status?: { label: string; kind: "active" | "queued" | "missing" } | null;
   playing?: boolean;
   loading?: boolean;
@@ -323,6 +325,7 @@ export function TrackList({
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const isCollection = variant === "collection";
   const hasCover = variant !== "release";
+  const showPopular = rows.some((row) => row.popular);
 
   const [flashKey, setFlashKey] = useState<string | null>(null);
   const scrolledKey = useRef<string | null>(null);
@@ -462,6 +465,19 @@ export function TrackList({
         {showReason ? <span className="native-library-track__reason">{row.reason}</span> : null}
         {showAddedBy ? <span className="native-library-track__added-by">{row.addedBy}</span> : null}
         {showYear ? <span className="native-library-track__year">{row.year}</span> : null}
+        {!showPopular ? null : row.popular ? (
+          <Tooltip content="Popular on this album">
+            <span
+              className="native-library-track__popular"
+              role="img"
+              aria-label="Popular on this album"
+            >
+              <Flame aria-hidden="true" />
+            </span>
+          </Tooltip>
+        ) : (
+          <span className="native-library-track__popular" />
+        )}
         <span className={"native-library-track__time" + (row.timeMissing ? " is-missing" : "")}>
           {row.time}
         </span>
@@ -517,7 +533,7 @@ export function TrackList({
 
   return (
     <div
-      className={`native-library-track-list native-library-track-list--${variant}${showYear ? " native-library-track-list--year" : ""}${showReason ? " native-library-track-list--reason" : ""}${showAddedBy ? " native-library-track-list--added-by" : ""}${wideTime ? " native-library-track-list--wide-time" : ""}`}
+      className={`native-library-track-list native-library-track-list--${variant}${showYear ? " native-library-track-list--year" : ""}${showReason ? " native-library-track-list--reason" : ""}${showAddedBy ? " native-library-track-list--added-by" : ""}${wideTime ? " native-library-track-list--wide-time" : ""}${showPopular ? " native-library-track-list--popular" : ""}`}
     >
       {variant === "compact" ? null : (
         <div
@@ -551,6 +567,7 @@ export function TrackList({
               className="native-library-track__year"
             />
           ) : null}
+          {showPopular ? <span /> : null}
           <span className="native-library-track__time">Time</span>
           <span />
           <span />

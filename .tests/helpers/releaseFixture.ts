@@ -31,7 +31,7 @@ type GroupFixture = {
   }[];
 };
 
-// A release group as BrainzMash serves it. A track is a title, or a title
+// A release group as data.aurral.org serves it. A track is a title, or a title
 // with its place, length, recording, and credit; a track credited to someone
 // else names one of `trackArtists`.
 export function brainzmashGroup({
@@ -46,35 +46,35 @@ export function brainzmashGroup({
   return {
     id,
     title,
-    artistid: artistId,
+    artistId,
     artists: [{ id: artistId, name: artist }, ...trackArtists].map((entry) => ({
       id: entry.id,
-      artistname: entry.name,
+      name: entry.name,
     })),
-    secondarytypes: secondaryTypes,
+    secondaryTypes,
     releases: releases.map((release) => ({
       id: release.id,
       title: release.title || title,
       status: release.status || "Official",
-      ...(release.trackCount && { track_count: release.trackCount }),
+      ...(release.trackCount && { trackCount: release.trackCount }),
       ...(release.discTitles && {
         media: release.discTitles.map((name, index) => ({
-          Format: "CD",
-          Name: name,
-          Position: index + 1,
+          format: "CD",
+          name,
+          position: index + 1,
         })),
       }),
       tracks: release.tracks.map((entry, index) => {
         const track = typeof entry === "string" ? { title: entry } : entry;
         return {
           id: `${release.id}-track-${index + 1}`,
-          trackname: track.title,
-          recordingid: track.recordingId || `${release.id}-recording-${index + 1}`,
-          oldrecordingids: track.oldRecordingIds || [],
-          trackposition: track.position ?? index + 1,
-          mediumnumber: track.disc ?? 1,
-          durationms: track.durationMs ?? 200000,
-          artistid: track.artistId || artistId,
+          title: track.title,
+          recordingId: track.recordingId || `${release.id}-recording-${index + 1}`,
+          oldRecordingIds: track.oldRecordingIds || [],
+          trackPosition: track.position ?? index + 1,
+          mediumNumber: track.disc ?? 1,
+          durationMs: track.durationMs ?? 200000,
+          artistId: track.artistId || artistId,
         };
       }),
     })),
@@ -85,7 +85,14 @@ export function brainzmashGroup({
 // a release loads by its ID through the real metadata path. An unavailable
 // path answers 503, and a missing one 404, as a provider that does not know it.
 // A searchable provider also finds a group by its exact title.
-export async function serveGroups<Group extends { id: string; title?: string; releases?: unknown }>(
+export async function serveGroups<
+  Group extends {
+    id: string;
+    title?: string;
+    artists?: { id?: string; name?: string }[];
+    releases?: unknown;
+  },
+>(
   t: TestContext,
   groups: Group[],
   {
@@ -113,20 +120,23 @@ export async function serveGroups<Group extends { id: string; title?: string; re
   });
   clearApiCaches();
   t.onTestFinished(() => clearApiCaches());
-  const byPath = new Map(groups.map((group) => [`/album/${group.id}`, group]));
+  const byPath = new Map(groups.map((group) => [`/v1/album/${group.id}`, group]));
   const original = http.get;
   return vi.spyOn(http, "get").mockImplementation(async (url, ...rest) => {
     const parsed = new URL(url);
     if (parsed.hostname !== METADATA_HOST) return original.call(http, url, ...rest);
     const down = unavailable(parsed.pathname);
-    const query = String(
-      rest[0]?.query?.query ?? parsed.searchParams.get("query") ?? "",
-    ).toLowerCase();
+    const query = String(rest[0]?.query?.q ?? parsed.searchParams.get("q") ?? "").toLowerCase();
     const found =
-      searchable && parsed.pathname === "/search/album"
-        ? groups
-            .filter((group) => String(group.title || "").toLowerCase() === query)
-            .map(({ releases, ...group }) => group)
+      searchable && parsed.pathname === "/v1/search/album"
+        ? {
+            albums: groups
+              .filter((group) => String(group.title || "").toLowerCase() === query)
+              .map(({ releases, ...group }) => ({
+                ...group,
+                artistName: group.artists?.[0]?.name ?? "",
+              })),
+          }
         : null;
     const data = down || missing(parsed.pathname) ? null : found || byPath.get(parsed.pathname);
     if (data)
@@ -145,8 +155,7 @@ export async function serveGroups<Group extends { id: string; title?: string; re
 // The manifest the resolver builds for a group's first release, for callers
 // that take one directly.
 export async function releaseManifest(spec: GroupFixture) {
-  const { toNormalizedAlbum } =
-    await import("../../backend/services/providers/brainzmashMappers.ts");
+  const { toNormalizedAlbum } = await import("../../backend/services/providers/metadataMappers.ts");
   const { toReleaseManifest } = await import("../../backend/services/releaseManifest.ts");
   const group = toNormalizedAlbum(brainzmashGroup(spec));
   const release = group.releases[0];

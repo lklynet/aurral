@@ -33,11 +33,13 @@ function PlayButton({
   label,
   playing,
   loading = false,
+  text = playing ? "Pause" : "Play",
   onPlay,
 }: {
   label: string;
   playing: boolean;
   loading?: boolean;
+  text?: string;
   onPlay: () => void;
 }) {
   return (
@@ -55,7 +57,7 @@ function PlayButton({
       ) : (
         <Play aria-hidden="true" />
       )}
-      {playing ? "Pause" : "Play"}
+      {text}
     </button>
   );
 }
@@ -110,16 +112,20 @@ function AlbumAction({
 function SongAction({ song, canDownload }: { song: SearchItem; canDownload: boolean }) {
   const playback = useSongPlayback(song);
   const title = song.title || "";
-  if (playback) {
-    return (
-      <PlayButton
-        label={`${playback.playing ? "Pause" : "Play"} ${title}`}
-        playing={playback.playing}
-        onPlay={playback.toggle}
-      />
-    );
-  }
-  return canDownload && !song.inLibrary ? <SongDownload song={song} showLabel /> : null;
+  return (
+    <>
+      {playback ? (
+        <PlayButton
+          label={`${playback.verb} ${title}`}
+          playing={playback.playing}
+          loading={playback.loading}
+          text={playback.verb}
+          onPlay={playback.toggle}
+        />
+      ) : null}
+      {canDownload && !song.inLibrary ? <SongDownload song={song} showLabel /> : null}
+    </>
+  );
 }
 
 function artistImageProps(item: SearchItem) {
@@ -158,9 +164,9 @@ export default function SearchTopResult({
       <ArtistPlay item={item} />
     ) : item.type === "album" && isSearchAlbum(item) ? (
       <AlbumAction album={item} {...albumProps} />
-    ) : (
+    ) : item.type === "track" ? (
       <SongAction song={item} canDownload={albumProps.canAddAlbum} />
-    );
+    ) : null;
 
   return (
     <article className={`search-top${item.type === "artist" ? " search-top--artist" : ""}`}>

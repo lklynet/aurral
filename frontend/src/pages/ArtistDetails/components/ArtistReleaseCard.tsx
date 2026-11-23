@@ -13,13 +13,36 @@ import { ReleaseMetric } from "./ReleaseMetric";
 
 type AlbumStatus = ReturnType<ArtistDetailsLibrary["getAlbumStatus"]>;
 
+function MetaMetric({
+  metric,
+  separated,
+}: {
+  metric: ReleaseMetricValue | null;
+  separated: boolean;
+}) {
+  if (!metric?.label) return null;
+  return (
+    <Tooltip content={metric.title}>
+      <span className="artist-release-meta__metric">
+        {separated ? <span aria-hidden="true">·</span> : null}
+        <ReleaseMetric metric={metric} />
+      </span>
+    </Tooltip>
+  );
+}
+
 export function ReleaseMeta({
   releaseGroup,
-  detail,
+  credit = null,
+  type,
+  metric = null,
 }: {
   releaseGroup: ReleaseGroup;
-  detail: string | null | undefined;
+  credit?: string | null;
+  type: string | null | undefined;
+  metric?: ReleaseMetricValue | null;
 }) {
+  const detail = credit || type;
   const lead = isNewReleaseGroup(releaseGroup) ? (
     <span className="artist-release-new">New</span>
   ) : (
@@ -27,9 +50,18 @@ export function ReleaseMeta({
   );
   return (
     <>
-      {lead}
-      {lead && detail ? " · " : null}
-      {detail}
+      <span className="artist-release-meta__text">
+        {lead}
+        {lead && detail ? (
+          <span className={credit ? undefined : "artist-release-meta__type"}>
+            {" · "}
+            {detail}
+          </span>
+        ) : (
+          detail
+        )}
+      </span>
+      <MetaMetric metric={metric} separated={Boolean(lead || detail)} />
     </>
   );
 }
@@ -38,20 +70,31 @@ function ReleaseStatusLine({
   status,
   busy,
   meta,
+  metric,
 }: {
   status: AlbumStatus;
   busy: boolean;
   meta: ReactNode;
+  metric: ReleaseMetricValue | null;
 }) {
-  if (busy) return <p className="artist-release-tile__meta is-busy">Downloading</p>;
+  const statusMetric = <MetaMetric metric={metric} separated />;
+  if (busy) {
+    return (
+      <p className="artist-release-tile__meta is-busy">
+        <span className="artist-release-meta__text">Downloading</span>
+        {statusMetric}
+      </p>
+    );
+  }
   if (status?.status === "available" && status.partial) {
     const { trackCount = 0, trackFileCount = 0 } = status;
     return (
       <p className="artist-release-tile__meta">
         <SearchLibraryCheck size="sm" className="library-check--partial" aria-hidden="true" />
-        <span className="is-partial">
+        <span className="artist-release-meta__text is-partial">
           {trackCount > 0 ? `${trackFileCount} of ${trackCount} tracks` : "Incomplete"}
         </span>
+        {statusMetric}
       </p>
     );
   }
@@ -67,7 +110,8 @@ function ReleaseStatusLine({
     return (
       <p className="artist-release-tile__meta">
         <Clock className="is-scheduled" aria-hidden="true" />
-        <span className="is-scheduled">{status.label}</span>
+        <span className="artist-release-meta__text is-scheduled">{status.label}</span>
+        {statusMetric}
       </p>
     );
   }
@@ -79,7 +123,8 @@ export function ArtistReleaseCard({
   coverUrl,
   fallbackCoverUrl = null,
   link,
-  detail,
+  credit = null,
+  type,
   status,
   busy,
   onDownload,
@@ -90,7 +135,8 @@ export function ArtistReleaseCard({
   coverUrl: string | null | undefined;
   fallbackCoverUrl?: string | null;
   link: ComponentProps<typeof OptionalLink>["link"];
-  detail: string | null | undefined;
+  credit?: string | null;
+  type: string | null | undefined;
   status: AlbumStatus;
   busy: boolean;
   onDownload: (() => void) | null;
@@ -137,15 +183,11 @@ export function ArtistReleaseCard({
       <ReleaseStatusLine
         status={status}
         busy={busy}
-        meta={<ReleaseMeta releaseGroup={releaseGroup} detail={detail} />}
+        meta={
+          <ReleaseMeta releaseGroup={releaseGroup} credit={credit} type={type} metric={metric} />
+        }
+        metric={metric}
       />
-      {metric?.label ? (
-        <Tooltip content={metric.title}>
-          <p className="artist-release-tile__metric">
-            <ReleaseMetric metric={metric} />
-          </p>
-        </Tooltip>
-      ) : null}
     </article>
   );
 }

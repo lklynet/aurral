@@ -27,9 +27,9 @@ import {
   getAlbumByMbid,
   getCachedAlbumByMbid,
   resolveAlbumByArtistAndTitle,
-} from "./providers/brainzmashProvider.ts";
-import { selectAlbumRelease } from "./providers/brainzmashRanking.ts";
-import type { NormalizedAlbum } from "./providers/brainzmashMappers.ts";
+} from "./providers/metadataProvider.ts";
+import { selectAlbumRelease } from "./providers/metadataRanking.ts";
+import type { NormalizedAlbum } from "./providers/metadataMappers.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
@@ -236,7 +236,6 @@ async function matchUntaggedLibraryAlbums(retry: boolean) {
           holdsMostSongs(album, await getAlbumByMbid(id, { withFallbackReleases: true })),
       });
     } catch (error) {
-      if (asAppError(error)?.code === "ERR_METADATA_COOLDOWN") continue;
       logProviderUnavailable(
         "Stopped matching untagged albums; metadata provider unavailable",
         error,
@@ -267,7 +266,6 @@ async function completeLibraryTrackLists() {
       if (!metadata && !album.filesChanged) return;
     } catch (error) {
       const failure = asAppError(error);
-      if (failure?.code === "ERR_METADATA_COOLDOWN") return;
       if (failure?.response?.status !== 404) {
         unavailable ??= error;
         return;

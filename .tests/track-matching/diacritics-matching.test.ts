@@ -6,7 +6,7 @@ import {
   getNormalizedText,
   normalizeTitle,
   scoreTextMatch,
-} from "../../backend/services/providers/brainzmashRanking.ts";
+} from "../../backend/services/providers/metadataRanking.ts";
 
 const matcher = { extended: true };
 

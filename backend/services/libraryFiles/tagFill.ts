@@ -4,13 +4,13 @@ import {
   getAlbumByMbid,
   isMetadataNotFoundError,
   resolveAlbumByArtistAndTitle,
-} from "../providers/brainzmashProvider.ts";
-import { selectAlbumRelease } from "../providers/brainzmashRanking.ts";
+} from "../providers/metadataProvider.ts";
+import { selectAlbumRelease } from "../providers/metadataRanking.ts";
 import type {
   NormalizedAlbum,
   NormalizedRelease,
   NormalizedTrack,
-} from "../providers/brainzmashMappers.ts";
+} from "../providers/metadataMappers.ts";
 
 interface TagFillAlbum {
   releaseGroupMbid: string | null;

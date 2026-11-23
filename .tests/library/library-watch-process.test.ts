@@ -227,3 +227,26 @@ test(
     );
   },
 );
+
+test(
+  "an error the child does not catch reaches the parent instead of only its exit code",
+  { timeout: 5_000 },
+  async (t: import("vite-plus/test").TestContext) => {
+    const root = await mkdtemp(path.join(tmpdir(), "aurral-watch-throwing-"));
+    t.onTestFinished(() => rm(root, { recursive: true, force: true }));
+    const watcher = createIsolatedLibraryWatcher(root, {}, () => {}, {
+      forkImpl: ((...[_module, args, options]: Parameters<typeof fork>) =>
+        fork(
+          new URL("../fixtures/throwing-library-watch-child.ts", import.meta.url),
+          args,
+          options,
+        )) as typeof fork,
+    });
+    t.onTestFinished(() => watcher.close());
+    const error = await new Promise<NodeJS.ErrnoException>((resolve) =>
+      watcher.once("error", resolve),
+    );
+    assert.equal(error.message, "Stale file handle");
+    assert.equal(error.code, "ESTALE");
+  },
+);
