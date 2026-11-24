@@ -273,8 +273,13 @@ test("a failed Soulseek poll moves on to the next query", async () => {
 });
 
 test("a search step that stopped the downloads worker twice gives up on that source", async (t) => {
+  const settings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...settings,
+    integrations: { ...settings.integrations, ytdlp: { enabled: false } },
+  });
+  t.onTestFinished(() => dbOps.updateSettings(settings));
   const { polled } = mockSearch(t, [{ state: "InProgress", responses: [] }]);
-  const deleted = vi.mocked(client.deleteSearch);
   const jobId = createTrackedJob(
     downloadTracker,
     { artistName: "Hanging Band", trackName: "Heavy Song", durationMs: 200000 },
@@ -289,20 +294,11 @@ test("a search step that stopped the downloads worker twice gives up on that sou
   assert.equal(polling.workerExits, 1);
   assert.equal(polled.mock.calls.length, 1);
 
-  const next = await processPipelinePayload({ ...polling, workerExits: 2 });
-  assert.ok(next != null);
-  assert.equal(next.phase, "search");
-  assert.notEqual(next.source, "slskd");
-  assert.equal(next.workerExits, 0);
-  assert.deepEqual(
-    next.sourceErrors?.map((error) => error.source),
-    ["slskd"],
-  );
+  assert.equal(await processPipelinePayload({ ...polling, workerExits: 2 }), null);
   assert.equal(polled.mock.calls.length, 1);
-  assert.deepEqual(
-    deleted.mock.calls.map(([id]) => id),
-    [polling.activeSearch!.id],
-  );
+  const failed = trackedJob(downloadTracker, jobId);
+  assert.equal(failed.status, "failed");
+  assert.match(String(failed.error), /stopped twice/);
 });
 
 test("a running search keeps going after a restart lost the queries before it", async (t) => {
