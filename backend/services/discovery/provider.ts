@@ -40,7 +40,7 @@ import {
 } from "./helpers.ts";
 import { getDiscoveryFeedback, type DiscoveryFeedbackEntry } from "./feedback.ts";
 import { getBlockedTagKeys } from "./blockedTags.ts";
-import { genreKey } from "../musicGenres.ts";
+import { genreKey } from "../../../lib/genreKey.ts";
 import {
   discoveryCache,
   markDiscoveryRefreshFinished,

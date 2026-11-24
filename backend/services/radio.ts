@@ -134,7 +134,7 @@ function resolveSeed(seed: RadioSeed) {
   const requestedArtistIds = matchedArtists.map((artist) => artist.id);
   const genreRows = db
     .prepare<number[], { kind: string; id: number; genre: string }>(
-      `SELECT entity_kind AS kind, entity_id AS id, lower(name) AS genre FROM library_entity_genres
+      `SELECT entity_kind AS kind, entity_id AS id, genre_key AS genre FROM library_entity_genres
        WHERE (entity_kind = 'artists' AND entity_id IN (${placeholders(artistIds)}))
           OR (entity_kind = 'albums' AND entity_id IN (${placeholders(albumIds)}))
           OR (entity_kind = 'albums' AND entity_id IN (
@@ -217,7 +217,7 @@ const untagged = (kind: string, id: string) =>
 
 const taggedWith = (kind: string, genres: string[]) =>
   `SELECT entity_id FROM library_entity_genres
-   WHERE entity_kind = '${kind}' AND lower(name) IN (${placeholders(genres)})`;
+   WHERE entity_kind = '${kind}' AND genre_key IN (${placeholders(genres)})`;
 
 function genreArtistScores(genres: string[]) {
   const scores = new Map<number, number>();
@@ -225,20 +225,20 @@ function genreArtistScores(genres: string[]) {
   const rows = db
     .prepare<unknown[], { artistId: number; overlap: number }>(
       `SELECT artistId, COUNT(*) AS overlap FROM (
-         SELECT album.artist_id AS artistId, lower(genres.name) AS genre
+         SELECT album.artist_id AS artistId, genres.genre_key AS genre
          FROM library_entity_genres AS genres
          JOIN library_album_tracks AS link ON link.track_id = genres.entity_id
          JOIN library_albums AS album ON album.id = link.album_id
-         WHERE genres.entity_kind = 'tracks' AND lower(genres.name) IN (${placeholders(genres)})
+         WHERE genres.entity_kind = 'tracks' AND genres.genre_key IN (${placeholders(genres)})
          UNION
-         SELECT album.artist_id, lower(genres.name) FROM library_entity_genres AS genres
+         SELECT album.artist_id, genres.genre_key FROM library_entity_genres AS genres
          JOIN library_albums AS album ON album.id = genres.entity_id
-         WHERE genres.entity_kind = 'albums' AND lower(genres.name) IN (${placeholders(genres)})
+         WHERE genres.entity_kind = 'albums' AND genres.genre_key IN (${placeholders(genres)})
            AND EXISTS (SELECT 1 FROM library_album_tracks AS link
              WHERE link.album_id = album.id AND ${untagged("tracks", "link.track_id")})
          UNION
-         SELECT genres.entity_id, lower(genres.name) FROM library_entity_genres AS genres
-         WHERE genres.entity_kind = 'artists' AND lower(genres.name) IN (${placeholders(genres)})
+         SELECT genres.entity_id, genres.genre_key FROM library_entity_genres AS genres
+         WHERE genres.entity_kind = 'artists' AND genres.genre_key IN (${placeholders(genres)})
            AND EXISTS (SELECT 1 FROM library_albums AS album
              JOIN library_album_tracks AS link ON link.album_id = album.id
              WHERE album.artist_id = genres.entity_id

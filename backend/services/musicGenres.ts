@@ -1,11 +1,7 @@
 import fs from "fs";
+import { genreKey } from "../../lib/genreKey.ts";
 
 const BROAD_TAG_GENRES = ["alternative", "indie", "rap", "rnb"];
-
-export const genreKey = (value: unknown) =>
-  String(value || "")
-    .toLowerCase()
-    .replace(/[\s_-]+/g, "");
 
 const musicbrainzGenres = fs
   .readFileSync(new URL("./musicbrainzGenres.txt", import.meta.url), "utf8")

@@ -176,11 +176,17 @@ test("startup backfills existing genres, repairs missed updates, and leaves libr
     JSON.stringify({ genre: "Blues; Soul" }),
     track.id,
   );
-  db.prepare("DELETE FROM library_entity_genres WHERE entity_id = ?").run(track.id);
+  db.exec(`DROP TABLE library_entity_genres;
+    CREATE TABLE library_entity_genres (
+      entity_kind TEXT NOT NULL,
+      entity_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      PRIMARY KEY (entity_kind, entity_id, name)
+    ) WITHOUT ROWID`);
   db.prepare(
     "INSERT INTO library_entity_genres (entity_kind, entity_id, name) VALUES ('tracks', ?, 'Blues; Soul')",
   ).run(track.id);
-  db.prepare("UPDATE settings SET value = '2' WHERE key = 'libraryGenreIndexVersion'").run();
+  db.prepare("UPDATE settings SET value = '3' WHERE key = 'libraryGenreIndexVersion'").run();
   initializeLibraryGenreIndex(db);
   query.invalidateLibraryQueryCache({ persistedGenres: false });
   assert.deepEqual(
@@ -236,6 +242,61 @@ test("genre filters split semicolon tags and keep other separators intact", () =
       .items.filter((genre) => expected.includes(genre.name) || /[;,/]/.test(genre.name))
       .map((genre) => genre.name),
     expected,
+  );
+  db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  query.invalidateLibraryQueryCache();
+});
+
+test("genre spellings that differ only by case, spaces, hyphens or underscores are one genre", () => {
+  const artist = store.upsertLibraryArtist({
+    identityKey: "genre:spelling-artist",
+    name: "Spelling Artist",
+    metadata: { genre: "Hip-Hop" },
+  });
+  const albums = [["hip_hop"], ["Hip-Hop", "hip hop"]].map((genres, index) => {
+    const album = store.upsertLibraryAlbum({
+      identityKey: `genre:spelling-album-${index}`,
+      artistId: artist.id,
+      title: `Spelling ${index}`,
+      metadata: { genres },
+    });
+    const track = store.upsertLibraryTrack({
+      identityKey: `genre:spelling-track-${index}`,
+      title: `Spelling ${index}`,
+    });
+    store.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+    store.upsertLibraryMediaFile({
+      trackId: track.id,
+      albumId: album.id,
+      source: "aurral",
+      path: `/genre/spelling-${index}.flac`,
+    });
+    return album.id;
+  });
+  store.upsertLibraryArtist({
+    identityKey: "genre:spelling-artist",
+    name: "Spelling Artist",
+    metadata: { genres: ["Hip-Hop", "hip hop"] },
+  });
+  for (const genre of ["Hip Hop", "hip-hop", "HIPHOP"]) {
+    assert.deepEqual(
+      query
+        .getLibraryPage({ kind: "albums", genre, pageSize: 100 })
+        .items.map((item) => item.id)
+        .sort(),
+      albums,
+    );
+  }
+  const spelled = (name: string) => /^hip.?hop$/i.test(name);
+  assert.deepEqual(
+    query
+      .getLibraryPage({ kind: "genres", pageSize: 100 })
+      .items.filter((genre) => spelled(genre.name)),
+    [{ name: "Hip-Hop", artists: 1, albums: 2, tracks: 0 }],
+  );
+  assert.deepEqual(
+    query.getLibraryGenres().filter((genre) => spelled(genre.value)),
+    [{ value: "Hip-Hop", albumCount: 2, songCount: 2 }],
   );
   db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   query.invalidateLibraryQueryCache();

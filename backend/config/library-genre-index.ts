@@ -1,20 +1,31 @@
 import type Database from "better-sqlite3";
 
-const GENRE_INDEX_VERSION = "3";
+const GENRE_INDEX_VERSION = "4";
 const entities = ["artists", "albums", "tracks"];
+
+export const genreKeySql = (value: string) =>
+  `lower(${["' '", "'-'", "'_'", "char(9)", "char(10)", "char(13)"].reduce(
+    (sql, separator) => `replace(${sql}, ${separator}, '')`,
+    value,
+  )})`;
+
+export const genreNameSql = (key: string) =>
+  `(SELECT spelling.name FROM library_entity_genres AS spelling WHERE spelling.genre_key = ${key}
+    GROUP BY spelling.name ORDER BY COUNT(*) DESC, spelling.name LIMIT 1)`;
 
 function genreValues(kind: string, id: string, metadata: string, entityFrom = "") {
   const valid = `CASE WHEN json_valid(${metadata}) THEN ${metadata} ELSE '{}' END`;
   const parts = "'[' || replace(json_quote(CAST(genre_value.value AS TEXT)), ';', '\",\"') || ']'";
-  return ["$.genres", "$.genre", "$.common.genre", "$.tags.genre"]
+  const names = ["$.genres", "$.genre", "$.common.genre", "$.tags.genre"]
     .map(
       (path) =>
-        `SELECT '${kind}', ${id}, TRIM(genre_part.value)
+        `SELECT '${kind}' AS kind, ${id} AS id, TRIM(genre_part.value) AS name
      FROM ${entityFrom ? `${entityFrom}, ` : ""}json_each(${valid}, '${path}') AS genre_value,
-       json_each(${parts}) AS genre_part
-     WHERE TRIM(genre_part.value) <> ''`,
+       json_each(${parts}) AS genre_part`,
     )
     .join(" UNION ");
+  return `SELECT kind, id, name, ${genreKeySql("name")} AS genre_key FROM (${names})
+    WHERE genre_key <> ''`;
 }
 
 export function initializeLibraryGenreIndex(db: Database.Database) {
@@ -51,14 +62,14 @@ export function initializeLibraryGenreIndex(db: Database.Database) {
         entity_kind TEXT NOT NULL,
         entity_id INTEGER NOT NULL,
         name TEXT NOT NULL,
+        genre_key TEXT NOT NULL,
         PRIMARY KEY (entity_kind, entity_id, name)
       ) WITHOUT ROWID;
-      CREATE INDEX idx_library_genres_name
-        ON library_entity_genres (lower(name), entity_kind, entity_id);
+      CREATE INDEX idx_library_genres_key ON library_entity_genres (genre_key, name);
       DELETE FROM settings WHERE key LIKE 'libraryGenreStats:%';
     `);
     for (const kind of entities) {
-      const insert = `INSERT OR IGNORE INTO library_entity_genres (entity_kind, entity_id, name)
+      const insert = `INSERT OR IGNORE INTO library_entity_genres (entity_kind, entity_id, name, genre_key)
         ${genreValues(kind, "NEW.id", "NEW.metadata_json")};`;
       db.exec(`
         CREATE TRIGGER library_genres_${kind}_insert
@@ -73,7 +84,7 @@ export function initializeLibraryGenreIndex(db: Database.Database) {
         AFTER DELETE ON library_${kind} BEGIN
           DELETE FROM library_entity_genres WHERE entity_kind = '${kind}' AND entity_id = OLD.id;
         END;
-        INSERT OR IGNORE INTO library_entity_genres (entity_kind, entity_id, name)
+        INSERT OR IGNORE INTO library_entity_genres (entity_kind, entity_id, name, genre_key)
         ${genreValues(kind, "entity.id", "entity.metadata_json", `library_${kind} AS entity`)};
       `);
     }

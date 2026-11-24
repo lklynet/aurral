@@ -289,6 +289,7 @@ export interface LibraryEntityGenresRow {
   entity_kind: string;
   entity_id: number;
   name: string;
+  genre_key: string;
 }
 
 export interface LibraryFileOperationItemsRow {

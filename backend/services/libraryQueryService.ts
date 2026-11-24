@@ -1,5 +1,6 @@
 import * as v from "valibot";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
+import { genreKeySql, genreNameSql } from "../config/library-genre-index.ts";
 import { lenient } from "../db/helpers/storedSchemas.ts";
 import { readLibraryMetadata, type LibraryMetadata } from "./libraryMetadata.ts";
 import { albumIsBeingFetched, albumIsMonitored, isAlbumMonitored } from "./albumOwnership.ts";
@@ -1972,7 +1973,7 @@ const genrePredicate = (aliases: string[], genre: string): PageSql => {
   aliases.forEach((alias) => {
     clauses.push(`${alias}.id IN (
       SELECT entity_id FROM library_entity_genres
-      WHERE entity_kind = '${alias}s' AND lower(name) = lower(?)
+      WHERE entity_kind = '${alias}s' AND genre_key = ${genreKeySql("?")}
     )`);
     parameters.push(genre);
   });
@@ -2683,24 +2684,24 @@ function computeLibraryGenres(sourceFilter: string | null, availableOnly: Librar
        SELECT DISTINCT album_id, artist_id FROM eligible_tracks
      ),
      direct_genres AS (
-       SELECT eligible.album_id, genres.name AS genre
+       SELECT eligible.album_id, genres.genre_key AS genre
        FROM eligible_albums AS eligible
        JOIN library_entity_genres AS genres
          ON genres.entity_kind = 'artists' AND genres.entity_id = eligible.artist_id
        UNION
-       SELECT eligible.album_id, genres.name AS genre
+       SELECT eligible.album_id, genres.genre_key AS genre
        FROM eligible_albums AS eligible
        JOIN library_entity_genres AS genres
          ON genres.entity_kind = 'albums' AND genres.entity_id = eligible.album_id
      ),
      track_genres AS (
-       SELECT DISTINCT eligible.album_id, eligible.track_id, genres.name AS genre
+       SELECT DISTINCT eligible.album_id, eligible.track_id, genres.genre_key AS genre
        FROM eligible_tracks AS eligible
        CROSS JOIN library_entity_genres AS genres
        WHERE genres.entity_kind = 'tracks' AND genres.entity_id = eligible.track_id
          AND NOT EXISTS (
            SELECT 1 FROM direct_genres AS direct
-           WHERE direct.album_id = eligible.album_id AND direct.genre = genres.name
+           WHERE direct.album_id = eligible.album_id AND direct.genre = genres.genre_key
          )
      ),
      track_counts AS (
@@ -2717,10 +2718,11 @@ function computeLibraryGenres(sourceFilter: string | null, availableOnly: Librar
        FROM track_genres AS track
        GROUP BY track.album_id, track.genre
      )
-     SELECT genre AS value, COUNT(*) AS albumCount, SUM(song_count) AS songCount
+     SELECT ${genreNameSql("album_genres.genre")} AS value, COUNT(*) AS albumCount,
+       SUM(song_count) AS songCount
      FROM album_genres
      GROUP BY genre
-     ORDER BY genre COLLATE NOCASE`,
+     ORDER BY value COLLATE NOCASE`,
     )
     .all(...parameters)
     .map((row) => ({
