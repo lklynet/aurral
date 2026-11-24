@@ -577,7 +577,7 @@ async function processSourcePayload(payload: PipelinePayload): Promise<PipelineP
       if (job) await failJob(job, getNoSourceMessage(job));
       return null;
     }
-    return processSourcePayload(nextPayload);
+    return processSourcePayload({ ...nextPayload, workerExits: payload.workerExits });
   }
   const { source, jobId } = payload;
   if (payload.albumGrab === true && ["search", "finalize"].includes(payload.phase) && currentJob) {

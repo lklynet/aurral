@@ -281,9 +281,10 @@ test("a search step that stopped the downloads worker twice gives up on that sou
     "library",
   );
 
-  const started = await processPipelinePayload({ phase: "search", source: "slskd", jobId });
-  assert.ok(started != null);
-  const polling = await processPipelinePayload({ ...started, workerExits: 1 });
+  const started = await processPipelinePayload({ phase: "search", jobId, workerExits: 1 });
+  assert.ok(isStepFrom(started, "slskd"));
+  assert.equal(started.workerExits, 1);
+  const polling = await processPipelinePayload(started);
   assert.ok(isStepFrom(polling, "slskd"));
   assert.equal(polling.workerExits, 1);
   assert.equal(polled.mock.calls.length, 1);
