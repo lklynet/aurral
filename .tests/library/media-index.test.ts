@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import Database from "better-sqlite3";
 import { db } from "../../backend/config/db-sqlite.ts";
 import {
   getLibrary,
@@ -21,6 +22,7 @@ import {
 import {
   buildFallbackIdentityKey,
   linkLibraryAlbumTrack,
+  reconcileLibraryAlbums,
   removeLibraryTrackIfNoAvailableMedia,
   upsertLibraryAlbum,
   upsertLibraryArtist,
@@ -2884,6 +2886,20 @@ test("an untagged file joins the one of an artist's same-titled releases that li
   } finally {
     for (const filePath of Object.keys(tags)) deleteIndexedFile(source, filePath);
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a Library tidy with nothing to change never waits for another process's write", () => {
+  reconcileLibraryAlbums();
+  const other = new Database(db.name);
+  db.pragma("busy_timeout = 0");
+  try {
+    other.exec("BEGIN IMMEDIATE");
+    reconcileLibraryAlbums();
+  } finally {
+    other.exec("ROLLBACK");
+    other.close();
+    db.pragma("busy_timeout = 5000");
   }
 });
 

@@ -1297,19 +1297,24 @@ function chooseLibraryAlbum(albums: LibraryAlbumsRow[], titles: string[]) {
 // A file names the album it was filed under. One naming an album its track
 // is not on shows nowhere, so it takes the track's album, or none when the
 // track is on several.
+const MISFILED_FILE = `album_id IS NOT NULL AND NOT EXISTS (
+  SELECT 1 FROM library_album_tracks AS link
+  WHERE link.track_id = library_media_files.track_id AND link.album_id = library_media_files.album_id
+)`;
+const hasMisfiledFileStmt = db.prepare<[], { 1: number }>(
+  `SELECT 1 FROM library_media_files WHERE ${MISFILED_FILE} LIMIT 1`,
+);
+const repairFileAlbumsStmt = db.prepare<[]>(
+  `UPDATE library_media_files SET album_id = (
+     SELECT CASE WHEN COUNT(DISTINCT link.album_id) = 1 THEN MIN(link.album_id) END
+     FROM library_album_tracks AS link WHERE link.track_id = library_media_files.track_id
+   )
+   WHERE ${MISFILED_FILE}`,
+);
+
 function repairLibraryFileAlbums() {
-  return db
-    .prepare<[]>(
-      `UPDATE library_media_files SET album_id = (
-       SELECT CASE WHEN COUNT(DISTINCT link.album_id) = 1 THEN MIN(link.album_id) END
-       FROM library_album_tracks AS link WHERE link.track_id = library_media_files.track_id
-     )
-     WHERE album_id IS NOT NULL AND NOT EXISTS (
-       SELECT 1 FROM library_album_tracks AS link
-       WHERE link.track_id = library_media_files.track_id AND link.album_id = library_media_files.album_id
-     )`,
-    )
-    .run().changes;
+  if (!hasMisfiledFileStmt.get()) return 0;
+  return db.transaction(() => repairFileAlbumsStmt.run().changes)();
 }
 
 const unlinkAlbumTrackStmt = db.prepare<[number, number]>(
@@ -1409,27 +1414,32 @@ function removeEmptyLibraryAlbum(album: LibraryAlbumsRow, tracks: LibraryAlbumTr
 // somebody asked for keeps the songs saved to it, and lets go of a song it
 // does not list once that song's files are gone, as when a file is retagged
 // as another recording. A song scanned from a file keeps the file's tags.
-function dropUnfiledAlbumTracks() {
-  const links = db
-    .prepare<[], { albumId: number; trackId: number }>(
-      `SELECT link.album_id AS albumId, link.track_id AS trackId
-     FROM library_album_tracks AS link
-     JOIN library_albums AS album ON album.id = link.album_id
-     JOIN library_tracks AS track ON track.id = link.track_id
-     WHERE (NOT ${albumIsOwned("album")} OR (json_valid(album.metadata_json)
-         AND json_extract(album.metadata_json, '$.trackList.release') IS NOT NULL
-         AND json_valid(track.metadata_json)
-         AND json_type(track.metadata_json, '$.tags') IS NOT NULL))
-       AND NOT EXISTS (
-         SELECT 1 FROM library_media_files AS media
-         WHERE media.track_id = link.track_id AND (media.album_id = link.album_id OR media.album_id IS NULL)
-       )
-       AND NOT ${TRACK_IS_LISTED}`,
-    )
-    .all();
-  for (const { albumId, trackId } of links) unlinkFilelessAlbumTrack(albumId, trackId);
-  for (const albumId of new Set(links.map((link) => link.albumId))) touchLibraryAlbum(albumId);
-  return links.length;
+const UNFILED_ALBUM_TRACKS = `FROM library_album_tracks AS link
+   JOIN library_albums AS album ON album.id = link.album_id
+   JOIN library_tracks AS track ON track.id = link.track_id
+   WHERE (NOT ${albumIsOwned("album")} OR (json_valid(album.metadata_json)
+       AND json_extract(album.metadata_json, '$.trackList.release') IS NOT NULL
+       AND json_valid(track.metadata_json)
+       AND json_type(track.metadata_json, '$.tags') IS NOT NULL))
+     AND NOT EXISTS (
+       SELECT 1 FROM library_media_files AS media
+       WHERE media.track_id = link.track_id AND (media.album_id = link.album_id OR media.album_id IS NULL)
+     )
+     AND NOT ${TRACK_IS_LISTED}`;
+const unfiledAlbumsStmt = db
+  .prepare<[], number>(`SELECT DISTINCT link.album_id ${UNFILED_ALBUM_TRACKS} ORDER BY 1`)
+  .pluck();
+const unfiledAlbumTracksStmt = db
+  .prepare<[number], number>(`SELECT link.track_id ${UNFILED_ALBUM_TRACKS} AND link.album_id = ?`)
+  .pluck();
+
+function planUnfiledTrackDrops(albumId: number) {
+  const trackIds = unfiledAlbumTracksStmt.all(albumId);
+  if (trackIds.length === 0) return null;
+  return () => {
+    for (const trackId of trackIds) unlinkFilelessAlbumTrack(albumId, trackId);
+    touchLibraryAlbum(albumId);
+  };
 }
 
 // The rules an album's track list was chosen by. An album listed by older
@@ -1896,8 +1906,46 @@ export function chooseLibraryAlbumEdition(
   return chosen;
 }
 
-type LibraryTrackCopy = Pick<LibraryAlbumTracksRow, "album_id" | "disc_number" | "track_number"> &
-  Pick<LibraryTracksRow, "id" | "title" | "identity_key"> & { has_files: number; listed: number };
+type LibraryTrackCopy = Pick<LibraryAlbumTracksRow, "disc_number" | "track_number"> &
+  Pick<LibraryTracksRow, "id" | "title" | "identity_key"> & {
+    has_files: number;
+    listed: number;
+    release_listed: number;
+  };
+
+const trackCopyAlbumsStmt = db
+  .prepare<[], number>(
+    `SELECT named.album_id FROM library_album_tracks AS named
+     JOIN library_tracks AS untagged ON untagged.id = named.track_id AND untagged.identity_key LIKE 'name:%'
+     INTERSECT
+     SELECT known.album_id FROM library_album_tracks AS known
+     JOIN library_tracks AS tagged ON tagged.id = known.track_id AND tagged.identity_key NOT LIKE 'name:%'
+     UNION
+     SELECT copy.album_id FROM library_album_tracks AS copy
+     JOIN library_albums AS album ON album.id = copy.album_id
+       AND CASE WHEN json_valid(album.metadata_json) THEN json_extract(album.metadata_json, '$.trackList.release') END IS NOT NULL
+     JOIN library_tracks AS track ON track.id = copy.track_id AND track.identity_key NOT LIKE 'name:%'
+     WHERE NOT ${TRACK_IS_LISTED} AND EXISTS (
+       SELECT 1 FROM library_media_files AS media
+       WHERE media.track_id = track.id AND (media.album_id = copy.album_id OR media.album_id IS NULL)
+     )
+     ORDER BY 1`,
+  )
+  .pluck();
+
+const albumTrackCopiesStmt = db.prepare<[number], LibraryTrackCopy>(
+  `SELECT link.disc_number, link.track_number, track.id, track.title, track.identity_key,
+     EXISTS (
+       SELECT 1 FROM library_media_files AS media
+       WHERE media.track_id = track.id AND (media.album_id = link.album_id OR media.album_id IS NULL)
+     ) AS has_files,
+     ${TRACK_IS_LISTED} AS listed,
+     CASE WHEN json_valid(album.metadata_json) THEN json_extract(album.metadata_json, '$.trackList.release') END IS NOT NULL AS release_listed
+   FROM library_album_tracks AS link
+   JOIN library_albums AS album ON album.id = link.album_id
+   JOIN library_tracks AS track ON track.id = link.track_id
+   WHERE link.album_id = ?`,
+);
 
 // An untagged copy of a track its album already lists with MusicBrainz IDs
 // is that track: the one at its place, else, for copies numbered another way,
@@ -1905,73 +1953,44 @@ type LibraryTrackCopy = Pick<LibraryAlbumTracksRow, "album_id" | "disc_number" |
 // no file, when no other copy left has that title. A copy tagged with a
 // recording the album's release does not list, as a song downloaded twice
 // carries, is the song the release lists at its place.
-function foldLibraryTrackCopies() {
-  const links = db
-    .prepare<[], LibraryTrackCopy>(
-      `SELECT link.album_id, link.disc_number, link.track_number, track.id, track.title, track.identity_key,
-       EXISTS (
-         SELECT 1 FROM library_media_files AS media
-         WHERE media.track_id = track.id AND (media.album_id = link.album_id OR media.album_id IS NULL)
-       ) AS has_files,
-       ${TRACK_IS_LISTED} AS listed
-     FROM library_album_tracks AS link
-     JOIN library_albums AS album ON album.id = link.album_id
-     JOIN library_tracks AS track ON track.id = link.track_id
-     WHERE link.album_id IN (
-       SELECT named.album_id FROM library_album_tracks AS named
-       JOIN library_tracks AS untagged ON untagged.id = named.track_id AND untagged.identity_key LIKE 'name:%'
-       INTERSECT
-       SELECT known.album_id FROM library_album_tracks AS known
-       JOIN library_tracks AS tagged ON tagged.id = known.track_id AND tagged.identity_key NOT LIKE 'name:%'
-     ) OR link.album_id IN (
-       SELECT copy.album_id FROM library_album_tracks AS copy
-       JOIN library_albums AS album ON album.id = copy.album_id
-         AND CASE WHEN json_valid(album.metadata_json) THEN json_extract(album.metadata_json, '$.trackList.release') END IS NOT NULL
-       JOIN library_tracks AS track ON track.id = copy.track_id AND track.identity_key NOT LIKE 'name:%'
-       WHERE NOT ${TRACK_IS_LISTED} AND EXISTS (
-         SELECT 1 FROM library_media_files AS media
-         WHERE media.track_id = track.id AND (media.album_id = copy.album_id OR media.album_id IS NULL)
-       )
-     )
-     ORDER BY link.album_id`,
-    )
-    .all();
+function planTrackCopyFolds(albumId: number) {
+  const tracks = albumTrackCopiesStmt.all(albumId);
+  const tagged = tracks.filter((track) => !isNameKey(track.identity_key));
+  const untagged = tracks.filter((track) => isNameKey(track.identity_key));
+  if (!(untagged.length > 0 && tagged.length > 0) && !tracks[0]?.release_listed) return null;
+  const listed = tagged.filter((track) => track.listed);
   const place = (track: LibraryTrackCopy) => ({
     title: track.title,
     discNumber: track.disc_number,
     trackNumber: track.track_number,
   });
-  let changed = 0;
-  for (const [albumId, tracks] of Map.groupBy(links, (link) => link.album_id)) {
-    const tagged = tracks.filter((track) => !isNameKey(track.identity_key));
-    const listed = tagged.filter((track) => track.listed);
-    const copies = tagged
-      .filter((track) => !track.listed && track.has_files)
-      .map((track) => [track, matchLibraryAlbumTrack(listed, place(track))] as const)
-      .filter(([, match]) => match);
-    const copied = new Set(copies.map(([track]) => track.id));
-    const targets = tagged.filter((track) => !copied.has(track.id));
-    const folds = tracks
-      .filter((track) => isNameKey(track.identity_key))
-      .map((track) => [track, matchLibraryAlbumTrack(targets, place(track))] as const);
-    const filled = new Set(folds.map(([, match]) => match?.id));
-    const left = folds.filter(([, match]) => !match).map(([track]) => track);
-    for (const track of left) {
-      const named = (entry: LibraryTrackCopy) => songKey(entry.title) === songKey(track.title);
-      const songs = new Set(targets.filter(named).map((entry) => entry.id));
-      const match =
-        songs.size === 1 &&
-        left.filter(named).length === 1 &&
-        targets.find((entry) => songs.has(entry.id) && !entry.has_files && !filled.has(entry.id));
-      if (match) folds.push([track, match]);
-    }
-    for (const [track, match] of [...copies, ...folds]) {
-      if (!match) continue;
-      becomeAlbumTrack(albumId, track, match);
-      changed += 1;
-    }
+  const copies = tagged
+    .filter((track) => !track.listed && track.has_files)
+    .map((track) => [track, matchLibraryAlbumTrack(listed, place(track))] as const)
+    .filter(([, match]) => match);
+  const copied = new Set(copies.map(([track]) => track.id));
+  const targets = tagged.filter((track) => !copied.has(track.id));
+  const folds = untagged.map(
+    (track) => [track, matchLibraryAlbumTrack(targets, place(track))] as const,
+  );
+  const filled = new Set(folds.map(([, match]) => match?.id));
+  const left = folds.filter(([, match]) => !match).map(([track]) => track);
+  for (const track of left) {
+    const named = (entry: LibraryTrackCopy) => songKey(entry.title) === songKey(track.title);
+    const songs = new Set(targets.filter(named).map((entry) => entry.id));
+    const match =
+      songs.size === 1 &&
+      left.filter(named).length === 1 &&
+      targets.find((entry) => songs.has(entry.id) && !entry.has_files && !filled.has(entry.id));
+    if (match) folds.push([track, match]);
   }
-  return changed;
+  const moves = [...copies, ...folds].filter(
+    (move): move is readonly [LibraryTrackCopy, LibraryTrackCopy] => Boolean(move[1]),
+  );
+  if (moves.length === 0) return null;
+  return () => {
+    for (const [track, match] of moves) becomeAlbumTrack(albumId, track, match);
+  };
 }
 
 // An artist's albums with one title are one album, and the Library holds no
@@ -1979,12 +1998,64 @@ function foldLibraryTrackCopies() {
 // into the album with its title, taking its files, favorites, and plays, as
 // does an album whose files all moved to another. One with no files and
 // nowhere to go is removed; its favorites and plays come back with it.
-const albumExistsStmt = db.prepare<[number], { 1: number }>(
-  "SELECT 1 FROM library_albums WHERE id = ?",
+const UNTIDY_ALBUM = `(album.identity_key LIKE 'name:%' OR (NOT ${ALBUM_HAS_FILES} AND NOT ${albumIsOwned("album")}))`;
+const untidyAlbumsStmt = db
+  .prepare<[], number>(
+    `SELECT album.id FROM library_albums AS album WHERE ${UNTIDY_ALBUM} ORDER BY album.id`,
+  )
+  .pluck();
+const untidyAlbumStmt = db.prepare<
+  [number],
+  LibraryAlbumsRow & { owned: number; has_files: number }
+>(
+  `SELECT album.*, ${albumIsOwned("album")} AS owned, ${ALBUM_HAS_FILES} AS has_files
+   FROM library_albums AS album WHERE album.id = ? AND ${UNTIDY_ALBUM}`,
 );
 const artistAlbumsStmt = db.prepare<[number, number], LibraryAlbumsRow>(
   "SELECT * FROM library_albums WHERE artist_id = ? AND id != ? ORDER BY id",
 );
+
+function planAlbumTidy(albumId: number) {
+  const album = untidyAlbumStmt.get(albumId);
+  if (!album || (!album.has_files && album.owned)) return null;
+  const siblings = artistAlbumsStmt
+    .all(album.artist_id, album.id)
+    .filter((sibling) => isSameLibraryName(sibling.title, album.title));
+  if (album.has_files && siblings.length === 0) return null;
+  const tracks = albumTracksStmt.all(album.id);
+  const hasFiles = tracks.some((track) => track.has_files);
+  const titles = (hasFiles ? tracks.filter((track) => track.has_files) : tracks).map(
+    (track) => track.title,
+  );
+  const target = chooseLibraryAlbum(siblings, titles);
+  if (!target && hasFiles) return null;
+  return () =>
+    target ? foldLibraryAlbum(album, tracks, target) : removeEmptyLibraryAlbum(album, tracks);
+}
+
+// A tidy reads the whole Library outside any write, so it never keeps other
+// processes waiting while it reads. Each album it changes is its own write,
+// which decides again, as a download may have changed the album since.
+function tidyAlbums(albumIds: number[], plan: (albumId: number) => (() => void) | null) {
+  let changed = 0;
+  for (const albumId of albumIds) {
+    if (!plan(albumId)) continue;
+    try {
+      const tidied = db.transaction(() => {
+        const write = plan(albumId);
+        write?.();
+        return Boolean(write);
+      })();
+      if (tidied) changed += 1;
+    } catch (error) {
+      logger.warn("library", "Could not tidy a Library album", {
+        albumId,
+        reason: safeLogDiagnostic(error),
+      });
+    }
+  }
+  return changed;
+}
 
 const markLibraryTidiedStmt = db.prepare<[number, number]>(
   "INSERT INTO library_scan_runs (source, status, started_at, completed_at) VALUES ('library-tidy', 'complete', ?, ?)",
@@ -1995,50 +2066,20 @@ const markLibraryTidiedStmt = db.prepare<[number, number]>(
 // asking whether the index changed keep what was removed.
 export function reconcileLibraryAlbums() {
   const indexedAt = getLibraryIndexLastModified() ?? 0;
-  if (db.transaction(reconcileAlbums).immediate() === 0) return;
-  const tidiedAt = Math.max(now(), indexedAt + 1);
-  markLibraryTidiedStmt.run(tidiedAt, tidiedAt);
-  invalidateLibraryManagementCache();
-  invalidateLibraryCache();
-}
-
-function reconcileAlbums() {
-  let changed = repairLibraryFileAlbums();
-  const albums = db
-    .prepare<[], LibraryAlbumsRow & { owned: number; has_files: number }>(
-      `SELECT album.*, ${albumIsOwned("album")} AS owned, ${ALBUM_HAS_FILES} AS has_files
-     FROM library_albums AS album
-     WHERE album.identity_key LIKE 'name:%' OR (NOT ${ALBUM_HAS_FILES} AND NOT ${albumIsOwned("album")})
-     ORDER BY album.id`,
-    )
-    .all();
-  for (const album of albums) {
-    if (!album.has_files && album.owned) continue;
-    const siblings = artistAlbumsStmt
-      .all(album.artist_id, album.id)
-      .filter((sibling) => isSameLibraryName(sibling.title, album.title));
-    if (album.has_files && siblings.length === 0) continue;
-    if (!albumExistsStmt.get(album.id)) continue;
-    const tracks = albumTracksStmt.all(album.id);
-    const hasFiles = tracks.some((track) => track.has_files);
-    const titles = (hasFiles ? tracks.filter((track) => track.has_files) : tracks).map(
-      (track) => track.title,
-    );
-    const target = chooseLibraryAlbum(siblings, titles);
-    if (!target && hasFiles) continue;
-    try {
-      db.transaction(() =>
-        target ? foldLibraryAlbum(album, tracks, target) : removeEmptyLibraryAlbum(album, tracks),
-      )();
-      changed += 1;
-    } catch (error) {
-      logger.warn("library", "Could not tidy a Library album", {
-        albumId: album.id,
-        reason: safeLogDiagnostic(error),
-      });
+  let changed = 0;
+  try {
+    changed += repairLibraryFileAlbums();
+    changed += tidyAlbums(untidyAlbumsStmt.all(), planAlbumTidy);
+    changed += tidyAlbums(trackCopyAlbumsStmt.all(), planTrackCopyFolds);
+    changed += tidyAlbums(unfiledAlbumsStmt.all(), planUnfiledTrackDrops);
+  } finally {
+    if (changed > 0) {
+      const tidiedAt = Math.max(now(), indexedAt + 1);
+      markLibraryTidiedStmt.run(tidiedAt, tidiedAt);
+      invalidateLibraryManagementCache();
+      invalidateLibraryCache();
     }
   }
-  return changed + foldLibraryTrackCopies() + dropUnfiledAlbumTracks();
 }
 
 // Downloads once took an album's release ID for its release group, and the
