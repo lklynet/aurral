@@ -4,6 +4,16 @@ import { randomBytes } from "node:crypto";
 import { test } from "vite-plus/test";
 import { migrate, migrations } from "../../backend/config/migrations.ts";
 import { decryptIntegrations, encryptWithKey } from "../../backend/config/encryption.ts";
+import { db as libraryDb } from "../../backend/config/db-sqlite.ts";
+import {
+  getLibraryAlbumsToList,
+  linkLibraryAlbumTrack,
+  storeLibraryAlbumTrackList,
+  upsertLibraryAlbum,
+  upsertLibraryArtist,
+  upsertLibraryMediaFile,
+  upsertLibraryTrack,
+} from "../../backend/services/libraryMediaStore.ts";
 
 const version = (db: Database.Database) => db.pragma("user_version", { simple: true });
 
@@ -671,4 +681,35 @@ test("upgrading stops treating an album's release group as its release", () => {
       [3, "release-c", null],
     ],
   );
+});
+
+test("upgrading keeps the track list of an album whose release group was stored as its release", () => {
+  const artist = upsertLibraryArtist({ identityKey: "artist:kept-list", name: "Kept List" });
+  const album = upsertLibraryAlbum({
+    identityKey: "release-group:kept-list",
+    mbid: "kept-list",
+    releaseGroupMbid: "kept-list",
+    artistId: artist.id,
+    title: "Kept List",
+  });
+  const track = upsertLibraryTrack({ identityKey: "track:kept-list", title: "Song" });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "aurral",
+    path: "/music/Kept List/01 Song.flac",
+    mtimeMs: 1,
+  });
+  const [listed] = getLibraryAlbumsToList();
+  storeLibraryAlbumTrackList(album.id, { release: null, basis: listed!.basis });
+  assert.deepEqual(getLibraryAlbumsToList(), []);
+
+  for (const step of migrations.slice(32, 34)) step(libraryDb);
+
+  assert.equal(
+    libraryDb.prepare("SELECT mbid FROM library_albums WHERE id = ?").pluck().get(album.id),
+    null,
+  );
+  assert.deepEqual(getLibraryAlbumsToList(), []);
 });
