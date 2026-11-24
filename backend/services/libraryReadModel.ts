@@ -1,7 +1,5 @@
 import {
-  getLibraryArtistPage,
   getLibraryForAlbumReferences,
-  getLibraryForArtistReferences,
   getLibraryForArtists,
   getLibraryTrackPath,
   type LibraryTrackFile,
@@ -222,28 +220,6 @@ export function buildLibraryReadModel(library: LibraryReadInput) {
   return { artists: readArtists, albums: readAlbums, tracks: readTracks };
 }
 
-export function getLibraryReadModelForArtistPage({
-  source = "all",
-  availableOnly = true,
-  limit = 10000,
-  offset = 0,
-}: { source?: unknown; availableOnly?: boolean; limit?: number; offset?: number } = {}) {
-  const library = getLibraryArtistPage({
-    source,
-    availableOnly,
-    limit,
-    offset,
-    includeStats: true,
-  });
-  return {
-    artists: (library.artists as LibraryArtistRecord[]).map((artist) =>
-      buildArtist(artist, new Map(), getManagementMap("artist")),
-    ),
-    albums: [],
-    tracks: [],
-  };
-}
-
 export function getLibraryReadModelForArtists({
   source = "all",
   availableOnly = true,
@@ -257,22 +233,6 @@ export function getLibraryReadModelForArtists({
 } = {}) {
   return buildLibraryReadModel(
     getLibraryForArtists({ source, availableOnly, mbids, includeSharedAlbums }),
-  );
-}
-
-export function getLibraryReadModelForArtistReferences({
-  source = "all",
-  availableOnly = false,
-  references = [],
-  includeSharedAlbums = false,
-}: {
-  source?: unknown;
-  availableOnly?: boolean;
-  references?: unknown[];
-  includeSharedAlbums?: boolean;
-} = {}) {
-  return buildLibraryReadModel(
-    getLibraryForArtistReferences({ source, availableOnly, references, includeSharedAlbums }),
   );
 }
 

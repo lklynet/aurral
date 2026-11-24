@@ -761,15 +761,14 @@ test("transcodes requested formats and bitrate limits while preserving raw strea
     assert.match(metadata.format.codec, /MPEG/);
     assert.ok(metadata.format.bitrate != null);
     assert.ok(metadata.format.bitrate <= 129000);
-    const [libraryTrack] = v.parse(
-      v.array(v.object({ streamPath: v.string() })),
-      await (
-        await apiFetch(
-          `/api/library/tracks?readPath=library&releaseGroupMbid=22222222-2222-4222-8222-222222222222`,
+    const libraryFile = requireFixture(
+      db
+        .prepare<[string], { albumId: number; trackId: number }>(
+          "SELECT album_id AS albumId, track_id AS trackId FROM library_media_files WHERE path = ?",
         )
-      ).json(),
+        .get(fixturePath),
     );
-    const libraryStream = `/api${requireFixture(libraryTrack).streamPath}`;
+    const libraryStream = `/api/library/stream/${libraryFile.albumId}/${libraryFile.trackId}`;
     for (const streamPath of [
       libraryStream,
       libraryStream.replace("/stream/", "/file-stream/"),
@@ -2074,19 +2073,23 @@ test("streams library files through the authenticated native route", async () =>
     `http://127.0.0.1:${aurral.port}/api/library?source=readonly&availableOnly=true&kind=tracks&page=1&pageSize=100`,
     { headers },
   );
-  const library = await canonical.json();
-  const albumId = library.tracks[0].albums[0].albumId;
-  const tracks = await fetch(
-    `http://127.0.0.1:${aurral.port}/api/library/tracks?readPath=library&source=readonly&albumId=${albumId}`,
-    { headers },
+  const {
+    tracks: [track],
+  } = v.parse(
+    v.object({
+      tracks: v.tuple([
+        v.object({ id: v.number(), albums: v.tuple([v.object({ albumId: v.number() })]) }),
+      ]),
+    }),
+    await canonical.json(),
   );
-  const track = (await tracks.json())[0];
-  const stream = await fetch(`http://127.0.0.1:${aurral.port}/api${track.streamPath}`, { headers });
+  const streamPath = `/library/stream/${track.albums[0].albumId}/${track.id}`;
+  const stream = await fetch(`http://127.0.0.1:${aurral.port}/api${streamPath}`, { headers });
   assert.equal(stream.status, 200);
   assert.equal(stream.headers.get("content-type"), "audio/flac");
   assert.equal(await stream.text(), "0123456789");
 
-  const unauthorized = await fetch(`http://127.0.0.1:${aurral.port}/api${track.streamPath}`);
+  const unauthorized = await fetch(`http://127.0.0.1:${aurral.port}/api${streamPath}`);
   assert.equal(unauthorized.status, 401);
 });
 

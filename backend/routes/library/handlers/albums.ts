@@ -6,7 +6,6 @@ import { requireAuth, requirePermission } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { logger } from "../../../services/logger.ts";
-import { getLibraryReadModelForArtistReferences } from "../../../services/libraryReadModel.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { isErrorStatus, isFailure } from "../../shared/errorStatus.ts";
@@ -27,8 +26,6 @@ const id = v.union([v.string(), v.number()]);
 
 const listQuery = v.object({
   artistId: v.optional(v.string()),
-  readPath: v.optional(v.string()),
-  source: v.optional(v.string()),
 });
 
 const addInput = v.object({
@@ -58,16 +55,6 @@ export default new Hono<AppEnv>()
     try {
       const { artistId } = query;
       if (!artistId) return c.json({ error: "artistId parameter is required" }, 400);
-
-      if (query.readPath === "library") {
-        const { albums } = getLibraryReadModelForArtistReferences({
-          source: query.source || "all",
-          availableOnly: true,
-          references: [artistId],
-          includeSharedAlbums: true,
-        });
-        return c.json(albums, 200);
-      }
 
       const albums = libraryManager.getAlbums(artistId);
       return c.json(

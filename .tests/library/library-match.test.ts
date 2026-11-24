@@ -422,11 +422,11 @@ test("rematching an artist and album Aurral added leaves their old MBIDs behind"
   assert.equal((await updateReleaseGroup(album.id, REMATCHED_GROUP)).status, 200);
 
   const albumsFor = async (reference: string) => {
-    const response = await app.request(`/library/albums?readPath=library&artistId=${reference}`);
+    const response = await app.request(`/library/albums?artistId=${reference}`);
     return v.parse(
       v.array(
         v.looseObject({
-          id: v.number(),
+          id: v.string(),
           mbid: v.nullable(v.string()),
           releaseGroupMbid: v.nullable(v.string()),
         }),
@@ -447,7 +447,7 @@ test("rematching an artist and album Aurral added leaves their old MBIDs behind"
       entry.mbid,
       entry.releaseGroupMbid,
     ]),
-    [[album.id, null, REMATCHED_GROUP]],
+    [[String(album.id), null, REMATCHED_GROUP]],
   );
   assert.deepEqual(
     Object.keys(v.parse(v.record(v.string(), v.unknown()), await albumLookup.json())),
