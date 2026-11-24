@@ -149,6 +149,26 @@ test("a failing job retries, then fails, and the log leaves out its payload", as
   assert.deepEqual([row?.state, row?.last_error], ["failed", "source unavailable"]);
 });
 
+test("starting a worker that is already running answers at once", async () => {
+  queue.enqueue({ kind: "wake" });
+  const answered = Promise.withResolvers<string>();
+  const worker = createJobWorker(queue, {
+    schema,
+    processJob: async () => {
+      answered.resolve(
+        await Promise.race([
+          Promise.resolve(worker.start()).then(() => "answered"),
+          new Promise<string>((resolve) => setImmediate(() => resolve("still waiting"))),
+        ]),
+      );
+    },
+  });
+  const loop = worker.start();
+  assert.equal(await answered.promise, "answered");
+  await worker.stop();
+  await loop;
+});
+
 test("a job Aurral can't read fails at once without running", async () => {
   using logs = captureLogs();
   const id = insertJob(db, queue.name, { kind: 7 });
