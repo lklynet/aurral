@@ -112,7 +112,8 @@ export function listenbrainzWrappedReader(username: string, period: Period, toke
         artistMbid:
           text(unknownList(additional.artist_mbids)[0]) ||
           text(unknownList(mapping.artist_mbids)[0]),
-        albumMbid: text(additional.release_mbid) || text(mapping.release_mbid),
+        albumMbid: text(additional.release_group_mbid) || text(mapping.release_group_mbid) || null,
+        releaseMbid: text(additional.release_mbid) || text(mapping.release_mbid) || null,
         durationMs:
           number(additional.duration_ms) || number(additional.duration) * 1000 || undefined,
       };
@@ -223,12 +224,21 @@ function enrichFromLibrary(plays: WrappedPlay[]) {
       (play.trackMbid ? byMbid.get(play.trackMbid) : undefined) ??
       (named?.length === 1 ? named[0] : undefined);
     if (!track) continue;
+    const linkedAlbums = track.albums
+      .map((link) => albums.get(link.albumId))
+      .filter((album): album is NonNullable<typeof album> => Boolean(album));
     const album =
-      track.albums
-        .map((link) => albums.get(link.albumId))
-        .find(
-          (album) => album && (!play.album || wrappedKey(album.title) === wrappedKey(play.album)),
-        ) ?? undefined;
+      (play.releaseMbid &&
+        linkedAlbums.find(
+          (entry) => entry.mbid?.toLowerCase() === play.releaseMbid?.toLowerCase(),
+        )) ||
+      (play.albumMbid &&
+        linkedAlbums.find(
+          (entry) => entry.releaseGroupMbid?.toLowerCase() === play.albumMbid?.toLowerCase(),
+        )) ||
+      linkedAlbums.find(
+        (entry) => !play.album || wrappedKey(entry.title) === wrappedKey(play.album),
+      );
     const file = track.files.find(
       (file) => file.available && (!album || !file.albumId || file.albumId === album.id),
     );
@@ -241,7 +251,7 @@ function enrichFromLibrary(plays: WrappedPlay[]) {
     }
     if (!album) continue;
     play.album ||= album.title;
-    play.albumMbid ||= album.releaseGroupMbid || album.mbid;
+    play.albumMbid ||= album.releaseGroupMbid || null;
     const cover = album.metadata?.images?.find((image) =>
       /^https?:/.test(image.remoteUrl || image.url || ""),
     );
