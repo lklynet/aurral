@@ -30,6 +30,13 @@ if (result.error || result.signal || ![0, 1].includes(result.status ?? -1)) {
   process.exit(1);
 }
 
+const outsideTests = findings.filter((line) => !line.startsWith(".tests/"));
+if (outsideTests.length > 0) {
+  for (const line of outsideTests) console.error(line);
+  console.error("\nOnly tests may have unsafe any uses. Narrow these values.");
+  process.exit(1);
+}
+
 const counts: Record<string, number> = {};
 for (const line of findings) {
   const file = line.slice(0, line.indexOf(":"));
