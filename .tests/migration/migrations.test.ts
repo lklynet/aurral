@@ -683,6 +683,28 @@ test("upgrading stops treating an album's release group as its release", () => {
   );
 });
 
+test("upgrading marks the files whose tags name their release", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, 35));
+  db.exec(`
+    INSERT INTO library_tracks (id, identity_key, title, metadata_json, created_at, updated_at)
+      VALUES (1, 'group', 'Group', '{"tags":{"musicbrainz_releasegroupid":"group-a"}}', 0, 0),
+        (2, 'release', 'Release', '{"tags":{"musicbrainz_albumid":"release-b"}}', 0, 0),
+        (3, 'untagged', 'Untagged', '{"tags":{"title":"Untagged"}}', 0, 0);
+    INSERT INTO library_media_files (track_id, source, path, created_at, updated_at)
+      VALUES (1, 'aurral', '/1.flac', 0, 0), (2, 'aurral', '/2.flac', 0, 0),
+        (3, 'aurral', '/3.flac', 0, 0);
+  `);
+
+  migrate(db);
+
+  assert.deepEqual(
+    db.prepare("SELECT release_tagged FROM library_media_files ORDER BY track_id").pluck().all(),
+    [1, 1, 0],
+  );
+});
+
 test("upgrading keeps the track lists stored for an album's release and files", () => {
   const artist = upsertLibraryArtist({ identityKey: "artist:kept-list", name: "Kept List" });
   const albums = ["kept-group", "kept-release"].map((name, index) => {

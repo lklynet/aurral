@@ -1,6 +1,5 @@
 import { buildCustomArtworkUrl, getCustomArtworkMap } from "./customArtworkService.ts";
 import { buildLibraryArtworkUrl, getLibraryArtworkVersions } from "./libraryArtwork.ts";
-import { hasReleaseTags } from "./libraryMetadata.ts";
 import type { getLibrary, getLibraryPage, LibraryArtist } from "./libraryQueryService.ts";
 
 const isFilesystemPathKey = (key: string) => key.toLowerCase().endsWith("path");
@@ -67,7 +66,6 @@ const publicAlbum = (
   return {
     ...album,
     metadata: summaryMetadata(album.metadata),
-    ...(hasReleaseTags(album.metadata) && { releaseTagged: true }),
     coverUrl: customArtworkUrl ?? defaultCoverUrl,
     ...(customArtworkUrl && { defaultCoverUrl, customArtworkUrl }),
     ...(favoriteKeys && { userFavorite: favoriteKeys.has(`album:${album.identityKey}`) }),

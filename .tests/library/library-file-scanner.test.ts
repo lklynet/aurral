@@ -4,11 +4,16 @@ import {
   applyMetadataEnrichment,
   buildMetadataRecord,
 } from "../../backend/services/libraryFileScanner.ts";
+import {
+  upsertLibraryAlbum,
+  upsertLibraryArtist,
+} from "../../backend/services/libraryMediaStore.ts";
 import { VARIOUS_ARTISTS_MBID } from "../../backend/services/trackMatching/titleText.ts";
 
 const RELEASE_GROUP = "11111111-1111-4111-8111-111111111111";
 const RELEASE = "22222222-2222-4222-8222-222222222222";
 const OTHER_GROUP = "33333333-3333-4333-8333-333333333333";
+const GROUPLESS_RELEASE = "44444444-4444-4444-8444-444444444444";
 
 test("an untagged download files under its job's release group and release, never one as the other, and a file tagged with another group keeps no job release", () => {
   const record = (releaseMbid: string | null) =>
@@ -36,6 +41,23 @@ test("an untagged download files under its job's release group and release, neve
     "/music",
   );
   assert.deepEqual([retagged.releaseGroupMbid, retagged.albumMbid], [OTHER_GROUP, null]);
+
+  const artist = upsertLibraryArtist({ identityKey: "artist:groupless", name: "Artist" });
+  upsertLibraryAlbum({
+    identityKey: `album:${GROUPLESS_RELEASE}`,
+    mbid: GROUPLESS_RELEASE,
+    artistId: artist.id,
+    title: "Album",
+  });
+  const keyedByRelease = buildMetadataRecord(
+    applyMetadataEnrichment({ common: {} }, { albumMbid: GROUPLESS_RELEASE }),
+    "/music/Artist/Album/01 Song.flac",
+    "/music",
+  );
+  assert.deepEqual(
+    [keyedByRelease.releaseGroupMbid, keyedByRelease.albumMbid],
+    [null, GROUPLESS_RELEASE],
+  );
 });
 
 test("a Various Artists album files under Various Artists when only its tracks carry artist IDs", () => {

@@ -12,7 +12,7 @@ import {
 } from "./trackMatching/titleText.ts";
 import { isSameSongAtPlace } from "./trackMatching/nativeMatcher.ts";
 import { clearLibraryManagement } from "./libraryManagementStore.ts";
-import { hasReleaseTags, readRawLibraryMetadata } from "./libraryMetadata.ts";
+import { readRawLibraryMetadata } from "./libraryMetadata.ts";
 import { albumIsOwned } from "./albumOwnership.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { asAppError } from "../../lib/errors.ts";
@@ -103,11 +103,12 @@ const upsertLibraryMediaFileStmt = db.prepare<
     number,
     number,
     number,
+    number,
   ]
 >(
   `INSERT INTO library_media_files
-    (track_id, album_id, source, path, format, size, mtime_ms, duration_ms, quality_json, artist_tag, available, last_seen_scan_id, created_at, updated_at)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (track_id, album_id, source, path, format, size, mtime_ms, duration_ms, quality_json, artist_tag, release_tagged, available, last_seen_scan_id, created_at, updated_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
    ON CONFLICT(source, path) DO UPDATE SET
      track_id = excluded.track_id,
      album_id = COALESCE(excluded.album_id, library_media_files.album_id),
@@ -118,6 +119,7 @@ const upsertLibraryMediaFileStmt = db.prepare<
      duration_ms = excluded.duration_ms,
      quality_json = COALESCE(excluded.quality_json, library_media_files.quality_json),
      artist_tag = excluded.artist_tag,
+     release_tagged = excluded.release_tagged,
      available = excluded.available,
      last_seen_scan_id = excluded.last_seen_scan_id,
      updated_at = excluded.updated_at`,
@@ -1371,6 +1373,13 @@ function foldLibraryAlbum(
   for (const trackId of dropped) unlinkFilelessAlbumTrack(target.id, trackId);
 }
 
+const releaseTaggedAlbumStmt = db.prepare<[number], { 1: number }>(
+  `SELECT 1 FROM library_album_tracks AS link
+   JOIN library_media_files AS media ON media.track_id = link.track_id
+     AND (media.album_id = link.album_id OR media.album_id IS NULL)
+   WHERE link.album_id = ? AND media.available = 1 AND media.release_tagged = 1
+   LIMIT 1`,
+);
 const filelessAlbumTracksStmt = db
   .prepare<[number], number>(
     `SELECT link.track_id FROM library_album_tracks AS link
@@ -1572,8 +1581,7 @@ export function setLibraryAlbumReleaseGroup(albumId: number, releaseGroupMbid: s
       )
       .get(albumId);
     if (!album) return { error: "not_found" } as const;
-    const metadata = readRawLibraryMetadata(album.metadata_json);
-    if (hasReleaseTags(metadata)) return { error: "tagged" } as const;
+    if (releaseTaggedAlbumStmt.get(album.id)) return { error: "tagged" } as const;
     const fallbackKey = buildFallbackIdentityKey("album", album.artist_key, album.title);
     const fallbackTaken =
       !releaseGroupMbid &&
@@ -2629,6 +2637,7 @@ export function upsertLibraryMediaFile({
   durationMs = null,
   quality = null,
   artistTag = null,
+  releaseTagged = false,
   available = true,
   scanId,
 }: {
@@ -2642,6 +2651,7 @@ export function upsertLibraryMediaFile({
   durationMs?: number | null;
   quality?: unknown;
   artistTag?: string | null;
+  releaseTagged?: boolean;
   available?: boolean;
   scanId?: number;
 }) {
@@ -2670,6 +2680,7 @@ export function upsertLibraryMediaFile({
     normalizedDurationMs === existing.duration_ms &&
     (qualityText == null || qualityText === existing.quality_json) &&
     normalizedArtistTag === existing.artist_tag &&
+    Number(releaseTagged) === existing.release_tagged &&
     normalizedAvailable === existing.available
   ) {
     return existing;
@@ -2686,6 +2697,7 @@ export function upsertLibraryMediaFile({
     normalizedDurationMs,
     qualityText,
     normalizedArtistTag,
+    Number(releaseTagged),
     normalizedAvailable,
     Number(scanId),
     timestamp,

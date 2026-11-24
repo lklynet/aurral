@@ -36,6 +36,7 @@ import {
   readAurralIdentity,
   type AurralIdentity,
   type DownloadTrackFields,
+  withJobRelease,
 } from "./downloadUtils.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { isPathWithin } from "./libraryFolders.ts";
@@ -131,7 +132,7 @@ const applyMetadataEnrichment = (
   if ((!enrichment || typeof enrichment !== "object") && Object.keys(embedded).length === 0) {
     return metadata;
   }
-  const trusted: DownloadTrackFields = { ...embedded, ...(enrichment || {}) };
+  const trusted = withJobRelease<DownloadTrackFields>({ ...embedded, ...(enrichment || {}) });
   const taggedGroup = normalizeMbid(common.musicbrainz_releasegroupid);
   const otherGroup = taggedGroup !== null && taggedGroup !== normalizeMbid(trusted.albumMbid);
   const fallbackFields = {
@@ -568,6 +569,7 @@ export async function scanMusicRoot({
             durationMs: record.durationMs,
             quality: record.quality,
             artistTag: record.trackArtistName,
+            releaseTagged: !untagged,
             scanId,
           });
           if (before) releaseLibraryFileRows(before, { albumId: album.id, trackId: track.id });

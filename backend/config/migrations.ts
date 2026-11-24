@@ -536,6 +536,29 @@ const listTracksForFilesOnly: Migration = (db) => {
   }
 };
 
+// Match album is refused while any of an album's files names its release.
+// Until a file is scanned again, its track's tags say whether it did.
+const storeFileReleaseTags: Migration = (db) => {
+  if (
+    db
+      .prepare(
+        "SELECT 1 FROM pragma_table_info('library_media_files') WHERE name = 'release_tagged'",
+      )
+      .get()
+  )
+    return;
+  db.exec(`
+    ALTER TABLE library_media_files ADD COLUMN release_tagged INTEGER NOT NULL DEFAULT 0;
+    UPDATE library_media_files SET release_tagged = 1
+    WHERE track_id IN (
+      SELECT id FROM library_tracks
+      WHERE json_valid(metadata_json)
+        AND (coalesce(json_extract(metadata_json, '$.tags.musicbrainz_releasegroupid'), '') <> ''
+          OR coalesce(json_extract(metadata_json, '$.tags.musicbrainz_albumid'), '') <> '')
+    );
+  `);
+};
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -572,6 +595,7 @@ export const migrations: Migration[] = [
   clearReleaseGroupsStoredAsReleases,
   keepTrackListsOfClearedReleases,
   listTracksForFilesOnly,
+  storeFileReleaseTags,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {
