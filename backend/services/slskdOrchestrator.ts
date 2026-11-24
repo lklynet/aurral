@@ -889,7 +889,8 @@ const searchResultKey = (result: SoulseekSearchItem) => `${result.user}\0${resul
 
 // One step of a search: either one poll of the running slskd search, or the
 // start of the next query. Results of finished queries live in the shared
-// search cache, so a restart only repeats the queries it lost.
+// search cache, so a restart lets the running search finish and then only
+// repeats the queries it lost.
 async function advanceSlskdSearch(
   payload: SlskdPayload,
   job: SlskdJob,
@@ -911,7 +912,10 @@ async function advanceSlskdSearch(
   const isCancelled = () => !isPipelinePayloadActive(payload);
   const enough = (results: SoulseekSearchItem[]) =>
     hasSlskdSearchCandidates(results, resolvedTrack, searchOptions);
-  const activeSearch = payload.activeSearch?.query === queries[index] ? payload.activeSearch : null;
+  const activeIndex = payload.activeSearch
+    ? queries.indexOf(payload.activeSearch.query, index)
+    : -1;
+  const activeSearch = activeIndex >= 0 ? payload.activeSearch : null;
   if (payload.activeSearch && !activeSearch) {
     searchMonitors.delete(payload.activeSearch.id);
     await stopSearch(payload.activeSearch.id);
@@ -951,7 +955,7 @@ async function advanceSlskdSearch(
     const results = slskdClient.flattenSearchResults(result.data);
     searchResults.set(activeSearch.query, results);
     mergeSearchResults(aggregated, seen, results, searchResultKey);
-    index += 1;
+    if (activeIndex === index) index += 1;
   }
   const searchIds = [...(payload.searchIds || [])];
   while (index < queries.length && !enough(aggregated)) {
