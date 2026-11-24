@@ -289,7 +289,14 @@ test("a server links a user once a signed-in account approves its code, and eith
 
   assert.equal((await form("/link", jar, { code })).headers.get("location"), "/account");
   assert.equal((await form("/link", jar, { code })).status, 404);
-  assert.deepEqual(await (await serverStatus()).json(), { status: "linked", handle: "lee_k" });
+  const linkedAccountId = await db
+    .prepare("SELECT account_id FROM links")
+    .first<string>("account_id");
+  assert.deepEqual(await (await serverStatus()).json(), {
+    status: "linked",
+    handle: "lee_k",
+    accountId: linkedAccountId,
+  });
 
   const linkId = await db.prepare("SELECT id FROM links").first<string>("id");
   githubId = 5151;
