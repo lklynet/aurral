@@ -1,6 +1,6 @@
 export const INSTANCE_ID_PATTERN = /^[A-Za-z0-9_-]{16}$/;
 export const SHARE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{22}$/;
-export const TUNNEL_URL_PATTERN = /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/;
+export const TUNNEL_URL_PATTERN = /^https:\/\/[a-z0-9-]+\.(?:trycloudflare\.com|aurral\.dev)$/;
 
 const schemaReady = new WeakMap();
 

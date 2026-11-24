@@ -1,6 +1,7 @@
 import { asAppError } from "../../../lib/errors.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import readline from "node:readline";
+import { activeConnectOrigin } from "../connect/connectClient.ts";
 import { logger } from "../logger.ts";
 import { getShareInstance, SHARE_ORIGIN } from "./store.ts";
 
@@ -15,7 +16,7 @@ const VERIFY_GRACE_MS = 2 * 60 * 1000;
 type TunnelState = "off" | "starting" | "online" | "unreachable" | "unavailable";
 
 interface ShareTunnel {
-  child: ChildProcess;
+  child: ChildProcess | null;
   port: number;
   url: string | null;
   retryTimer: NodeJS.Timeout | null;
@@ -29,6 +30,8 @@ let tunnel: ShareTunnel | null = null;
 let state: TunnelState = "off";
 let restartTimer: NodeJS.Timeout | null = null;
 let restartAttempt = 0;
+let desiredPort: number | null = null;
+let tunnelTransition = Promise.resolve();
 
 const delayFor = (delays: readonly [number, ...number[]], attempt: number) =>
   delays[Math.min(attempt, delays.length - 1)] ?? delays[0];
@@ -115,19 +118,13 @@ function launch(port: number) {
     logger.warn("share", `cloudflared stopped (${signal || code}), restarting in ${delay / 1000}s`);
     restartTimer = setTimeout(() => {
       restartTimer = null;
-      launch(port);
+      if (desiredPort === port) launchForPort(port);
     }, delay);
     restartTimer.unref();
   });
 }
 
-export function startShareTunnel(port: number) {
-  if (tunnel?.port === port || restartTimer) return;
-  restartAttempt = 0;
-  launch(port);
-}
-
-export async function stopShareTunnel() {
+async function tearDownActiveTunnel() {
   clearTimeout(restartTimer);
   restartTimer = null;
   const current = tunnel;
@@ -135,8 +132,8 @@ export async function stopShareTunnel() {
   if (state !== "unavailable") state = "off";
   if (!current) return;
   clearTimeout(current.retryTimer);
-  if (current.child.exitCode === null && current.child.signalCode === null) {
-    const exited = new Promise((resolve) => current.child.once("exit", resolve));
+  if (current.child && current.child.exitCode === null && current.child.signalCode === null) {
+    const exited = new Promise((resolve) => current.child?.once("exit", resolve));
     current.child.kill("SIGTERM");
     await exited;
   }
@@ -148,6 +145,52 @@ export async function stopShareTunnel() {
       message: asAppError(error)?.message,
     });
   }
+}
+
+function launchForPort(port: number) {
+  restartAttempt = 0;
+  const connectOrigin = activeConnectOrigin();
+  if (connectOrigin) {
+    const current: ShareTunnel = { child: null, port, url: connectOrigin, retryTimer: null };
+    tunnel = current;
+    state = "starting";
+    void register(current, connectOrigin);
+    return;
+  }
+  launch(port);
+}
+
+export function startShareTunnel(port: number) {
+  desiredPort = port;
+  void reconcileShareTunnel();
+}
+
+export function reconcileShareTunnel() {
+  tunnelTransition = tunnelTransition.then(async () => {
+    const targetPort = desiredPort;
+    if (targetPort === null) return;
+    const current = tunnel;
+    const connectOrigin = activeConnectOrigin();
+    if (current) {
+      const usingConnect = current.child === null;
+      if (current.port === targetPort && usingConnect && connectOrigin === current.url) return;
+      if (current.port === targetPort && !usingConnect && !connectOrigin) return;
+      await tearDownActiveTunnel();
+    } else if (restartTimer) {
+      if (!connectOrigin) return;
+      clearTimeout(restartTimer);
+      restartTimer = null;
+    }
+    if (desiredPort !== targetPort) return;
+    launchForPort(targetPort);
+  });
+  return tunnelTransition;
+}
+
+export function stopShareTunnel() {
+  desiredPort = null;
+  tunnelTransition = tunnelTransition.then(() => tearDownActiveTunnel());
+  return tunnelTransition;
 }
 
 let cloudflaredCheck: Promise<boolean> | null = null;

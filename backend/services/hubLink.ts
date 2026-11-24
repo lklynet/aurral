@@ -12,7 +12,11 @@ const REVOKE_ATTEMPTS = 30;
 const startedSchema = v.object({ userCode: v.string(), expiresAt: v.number() });
 const statusSchema = v.variant("status", [
   v.object({ status: v.literal("pending"), expiresAt: v.number() }),
-  v.object({ status: v.literal("linked"), handle: v.string() }),
+  v.object({
+    status: v.literal("linked"),
+    handle: v.string(),
+    accountId: v.optional(v.string()),
+  }),
 ]);
 const revokedSchema = v.object({ error: v.literal("link_revoked") });
 const revokeTaskSchema = v.object({ origin: v.string(), tokenHash: v.string() });
@@ -115,10 +119,33 @@ async function checkHub(link: HubLinksRow) {
   }
   const status = response.ok ? v.safeParse(statusSchema, body) : null;
   if (status?.success && status.output.status === "linked") {
-    db.prepare<[string, number, number]>(
-      "UPDATE hub_links SET handle = ?, linked_at = coalesce(linked_at, ?), user_code = NULL, expires_at = NULL WHERE user_id = ?",
-    ).run(status.output.handle, Date.now(), link.user_id);
+    db.prepare<[string, string | null, number, number, string, string]>(
+      "UPDATE hub_links SET handle = ?, account_id = coalesce(?, account_id), linked_at = coalesce(linked_at, ?), user_code = NULL, expires_at = NULL WHERE user_id = ? AND origin = ? AND token = ?",
+    ).run(
+      status.output.handle,
+      status.output.accountId ?? null,
+      Date.now(),
+      link.user_id,
+      link.origin,
+      link.token,
+    );
   }
+}
+
+export type HubAccountUserLookup =
+  | { kind: "matched"; userId: number }
+  | { kind: "none" }
+  | { kind: "ambiguous" };
+
+export function findUserIdByHubAccountId(origin: string, accountId: string): HubAccountUserLookup {
+  const rows = db
+    .prepare<[string, string], { user_id: number }>(
+      "SELECT user_id FROM hub_links WHERE origin = ? AND account_id = ? AND linked_at IS NOT NULL AND broken = 0 LIMIT 2",
+    )
+    .all(origin, accountId);
+  if (rows.length === 0) return { kind: "none" };
+  if (rows.length > 1) return { kind: "ambiguous" };
+  return { kind: "matched", userId: rows[0]!.user_id };
 }
 
 export async function hubLinkStatus(userId: number) {

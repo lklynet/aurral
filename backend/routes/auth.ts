@@ -37,6 +37,7 @@ import {
   startGoogleAuth,
 } from "../services/googleAuth.ts";
 import { logger } from "../services/logger.ts";
+import { ConnectAuthError, exchangeConnectAssertion } from "../services/connect/connectAuth.ts";
 import { consumePairingCode, createPairingCode } from "../services/pairingCodes.ts";
 import { websocketService } from "../services/websocketService.ts";
 import { appOrigin } from "../middleware/security.ts";
@@ -80,6 +81,9 @@ const oidcLoginQuery = v.pipe(
   ),
 );
 const pairBody = v.object({ code: v.string() });
+const connectExchangeBody = v.object({
+  assertion: v.pipe(v.string(), v.minLength(16), v.maxLength(4096)),
+});
 const sessionParam = v.object({ id: v.pipe(v.string(), v.toNumber(), v.integer()) });
 
 type SignedInUser = NonNullable<ReturnType<typeof userOps.getUserById>>;
@@ -145,6 +149,20 @@ export default new Hono<AppEnv>()
       return c.json({ error: "That code is wrong or has expired" }, 401);
     }
     return c.json(signedIn(c, user, false), 200);
+  })
+  .post("/connect-exchange", validate("json", connectExchangeBody), async (c) => {
+    try {
+      const result = await exchangeConnectAssertion(c.req.valid("json").assertion, {
+        ip: c.var.clientIp || null,
+        userAgent: c.req.header("user-agent") || null,
+      });
+      return c.json(result, 200);
+    } catch (error) {
+      if (error instanceof ConnectAuthError) {
+        return c.json({ error: error.code, message: error.message }, error.status);
+      }
+      throw error;
+    }
   })
   .post("/pairing-codes", requireAuth, (c) => {
     const session = getSessionByToken(bearerToken(c));

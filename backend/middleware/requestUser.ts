@@ -17,5 +17,6 @@ export type AppEnv = {
     clientIp: string;
     peerIp: string;
     protocol: string;
+    viaConnect?: boolean;
   };
 };

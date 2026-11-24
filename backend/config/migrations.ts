@@ -568,6 +568,14 @@ const storeFileReleaseTags: Migration = (db) => {
   `);
 };
 
+const storeHubAccountId: Migration = (db) => {
+  if (db.prepare("SELECT 1 FROM pragma_table_info('hub_links') WHERE name = 'account_id'").get()) {
+    return;
+  }
+  db.exec("ALTER TABLE hub_links ADD COLUMN account_id TEXT");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_hub_links_account ON hub_links (origin, account_id)");
+};
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -605,6 +613,7 @@ export const migrations: Migration[] = [
   keepTrackListsOfClearedReleases,
   listTracksForFilesOnly,
   storeFileReleaseTags,
+  storeHubAccountId,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {
