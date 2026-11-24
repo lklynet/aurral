@@ -53,3 +53,14 @@ export function isVariousArtistsCredit(
     )
   );
 }
+
+// Only a compilation names each track for its own artist. A featured credit,
+// like "Daft Punk feat. Pharrell", keeps the album's artist.
+export const albumTrackArtist = (
+  albumArtist: string | null | undefined,
+  albumArtistMbid: string | null | undefined,
+  trackArtist: string | null | undefined,
+) =>
+  (isVariousArtistsCredit(albumArtist, albumArtistMbid ?? null) && text(trackArtist)) ||
+  text(albumArtist) ||
+  text(trackArtist);
