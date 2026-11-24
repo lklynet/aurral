@@ -152,19 +152,36 @@ export function openTunnelSession(options: TunnelSessionOptions): TunnelSession 
   let pingTimer: NodeJS.Timeout | null = null;
   let closed = false;
 
-  const scheduleRefresh = (expiresAt: number) => {
+  const scheduleRefresh = (expiresAt: number, retryDelayMs?: number) => {
     clearTimeout(refreshTimer);
     refreshTimer = null;
-    if (!options.refreshTicket || closed) return;
-    const remaining = Math.max(expiresAt - Date.now(), 15_000);
-    const delay = Math.max(Math.floor(remaining * 0.65), 10_000);
+    if (!options.refreshTicket || closed || ws.readyState !== WebSocket.OPEN) return;
+    const remaining = expiresAt - Date.now();
+    if (remaining <= 0) return;
+    const delay =
+      retryDelayMs !== undefined
+        ? Math.min(retryDelayMs, Math.max(remaining - 2_000, 1_000))
+        : Math.max(Math.floor(remaining * 0.65), 1_000);
     refreshTimer = setTimeout(() => {
       refreshTimer = null;
-      void options.refreshTicket?.().then((next) => {
-        if (closed || !next || ws.readyState !== WebSocket.OPEN) return;
-        ws.send(encodeTextFrame(FRAME_TICKET_REFRESH, 0, next.ticket));
-        scheduleRefresh(next.expiresAt);
-      });
+      if (closed || ws.readyState !== WebSocket.OPEN) return;
+      void options
+        .refreshTicket?.()
+        .catch(() => null)
+        .then((next) => {
+          if (closed || ws.readyState !== WebSocket.OPEN) return;
+          if (!next) {
+            const left = expiresAt - Date.now();
+            if (left > 5_000) {
+              const nextRetry =
+                retryDelayMs === undefined ? 10_000 : Math.min(retryDelayMs * 2, 60_000);
+              scheduleRefresh(expiresAt, nextRetry);
+            }
+            return;
+          }
+          ws.send(encodeTextFrame(FRAME_TICKET_REFRESH, 0, next.ticket));
+          scheduleRefresh(next.expiresAt);
+        });
     }, delay);
     refreshTimer.unref();
   };
