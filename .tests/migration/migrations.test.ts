@@ -697,11 +697,14 @@ test("upgrading marks the files whose album or track tags named a release", () =
       VALUES (1, 'group', 'Group', '{"tags":{"musicbrainz_releasegroupid":"group-a"}}', 0, 0),
         (2, 'release', 'Release', '{"tags":{"musicbrainz_albumid":"release-b"}}', 0, 0),
         (3, 'untagged', 'Untagged', '{"tags":{"title":"Untagged"}}', 0, 0),
-        (4, 'shared', 'Shared', '{"tags":{"title":"Shared"}}', 0, 0);
+        (4, 'shared', 'Shared', '{"tags":{"musicbrainz_albumid":"release-a"}}', 0, 0),
+        (5, 'unfiled', 'Unfiled', '{"tags":{"title":"Unfiled"}}', 0, 0);
+    INSERT INTO library_album_tracks (album_id, track_id, created_at)
+      VALUES (2, 1, 0), (1, 3, 0), (1, 4, 0), (2, 4, 0), (1, 5, 0);
     INSERT INTO library_media_files (track_id, album_id, source, path, created_at, updated_at)
       VALUES (1, 2, 'aurral', '/1.flac', 0, 0), (2, NULL, 'aurral', '/2.flac', 0, 0),
         (3, 1, 'aurral', '/3.flac', 0, 0), (4, 1, 'aurral', '/4a.flac', 0, 0),
-        (4, 2, 'aurral', '/4b.flac', 0, 0);
+        (4, 2, 'aurral', '/4b.flac', 0, 0), (5, NULL, 'aurral', '/5.flac', 0, 0);
   `);
 
   migrate(db);
@@ -714,6 +717,7 @@ test("upgrading marks the files whose album or track tags named a release", () =
       ["/3.flac", 1],
       ["/4a.flac", 1],
       ["/4b.flac", 0],
+      ["/5.flac", 1],
     ],
   );
 });
