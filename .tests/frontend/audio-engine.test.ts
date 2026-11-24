@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
-import { createAudioEngine, levelingGain } from "../../frontend/src/utils/audioEngine.ts";
+import {
+  createAudioEngine,
+  flacFallback,
+  levelingGain,
+} from "../../frontend/src/utils/audioEngine.ts";
 
 const emptyRanges = {
   length: 0,
@@ -90,7 +94,6 @@ test("the active audio element stays mounted when the next track starts", () => 
 
   engine.load({
     src: "/api/tracks/first",
-    format: ["flac"],
     onStart: () => {
       firstStarted += 1;
     },
@@ -101,7 +104,6 @@ test("the active audio element stays mounted when the next track starts", () => 
 
   engine.load({
     src: "/api/tracks/second",
-    format: ["flac"],
     onStart: () => {
       secondStarted += 1;
     },
@@ -120,15 +122,14 @@ test("preloading the next track adds no audio element", () => {
 
   engine.load({
     src: "/api/tracks/first",
-    format: ["flac"],
     onEnd: () => {
-      engine.load({ src: "/api/tracks/second", format: ["flac"] });
+      engine.load({ src: "/api/tracks/second" });
     },
   });
   const active = nodes[0];
   assert.ok(active);
   active.start();
-  engine.preload({ src: "/api/tracks/second", format: ["flac"] });
+  engine.preload("/api/tracks/second");
 
   active.finish();
 
@@ -144,7 +145,6 @@ test("the persistent element keeps normal pause, resume, seek, volume, and mute 
 
   engine.load({
     src: "/api/tracks/first",
-    format: ["flac"],
     autoplay: false,
     startAt: 42,
   });
@@ -178,7 +178,6 @@ test("playback state stays truthful through every kind of pause", async () => {
   const loadTrack = (src: string) =>
     engine.load({
       src,
-      format: ["flac"],
       onEnd: () => {
         if (!next) return;
         const upcoming = next;
@@ -242,17 +241,17 @@ test("a queued track is levelled only when its loudness arrives before it plays"
     const { engine, nodes } = setup();
     engine.setLeveling(true);
     engine.setVolume(0.5);
-    engine.load({ src: "https://aurral.test/api/tracks/first", format: ["flac"] });
+    engine.load({ src: "https://aurral.test/api/tracks/first" });
     const active = nodes[0];
     assert.ok(active);
     active.start();
-    engine.preload({ src: "https://aurral.test/api/tracks/second", format: ["flac"] });
+    engine.preload("https://aurral.test/api/tracks/second");
     const answerSecond = answers[1];
     assert.ok(answerSecond);
 
     if (answeredAt === "before the track loads") answerSecond();
     await flushPromises();
-    engine.load({ src: "https://aurral.test/api/tracks/second", format: ["flac"] });
+    engine.load({ src: "https://aurral.test/api/tracks/second" });
     if (answeredAt === "while it is starting") answerSecond();
     await flushPromises();
     active.start();
@@ -281,15 +280,28 @@ test("Deezer preview URLs skip loudness HEAD checks and loudness fetches do not 
   engine.setLeveling(true);
   engine.load({
     src: "https://aurral.test/api/deezer/preview?artist=Illiterates&track=Chip+Away",
-    format: ["mp3"],
   });
-  engine.preload({
-    src: "https://aurral.test/api/deezer/preview/12345",
-    format: ["mp3"],
-  });
+  engine.preload("https://aurral.test/api/deezer/preview/12345");
   assert.equal(calls.length, 0);
 
-  engine.load({ src: "https://aurral.test/api/library/stream/1/2", format: ["flac"] });
+  engine.load({ src: "https://aurral.test/api/library/stream/1/2" });
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.init?.redirect, "manual");
+});
+
+test("only Aurral streams fall back to FLAC, and only once", (t) => {
+  vi.stubGlobal("window", {
+    location: { href: "https://aurral.test/", origin: "https://aurral.test" },
+  });
+  t.onTestFinished(() => {
+    vi.unstubAllGlobals();
+  });
+
+  assert.equal(
+    flacFallback("https://aurral.test/api/library/stream/1/2?token=abc"),
+    "https://aurral.test/api/library/stream/1/2?token=abc&format=flac",
+  );
+  assert.equal(flacFallback("https://aurral.test/api/library/stream/1/2?format=flac"), null);
+  assert.equal(flacFallback("https://aurral.test/api/deezer/preview/12345"), null);
+  assert.equal(flacFallback("https://cdn.example/preview.mp3"), null);
 });

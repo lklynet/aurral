@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { sendAudioFile } from "../../../services/audioFileStream.ts";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.ts";
 import { requireStreamAuth } from "../../../middleware/guards.ts";
 import { noCache } from "../../../middleware/cacheHeaders.ts";
@@ -39,12 +38,13 @@ export default new Hono<AppEnv>()
     noCache,
     requireStreamAuth,
     requirePlaylistAccessIfSignedIn,
+    validate("query", streamQuery),
     async (c) => {
       const job = downloadTracker.getJob(c.req.param("jobId"));
       if (!job || job.status !== "blocked" || !job.stagingPath) {
         return c.json({ error: "Staging file not found" }, 404);
       }
-      const sent = await sendViaNode(c, sendAudioFile, job.stagingPath);
+      const sent = await sendViaNode(c, streamSubsonicAudio, job.stagingPath, c.req.valid("query"));
       return sent || c.json({ error: "Staging file no longer exists" }, 404);
     },
   );
