@@ -2,6 +2,7 @@ import * as v from "valibot";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import { lenient } from "../db/helpers/storedSchemas.ts";
 import { readLibraryMetadata, type LibraryMetadata } from "./libraryMetadata.ts";
+import { albumIsBeingFetched, albumIsMonitored, isAlbumMonitored } from "./albumOwnership.ts";
 import type {
   LibraryAlbumCreditsRow,
   LibraryAlbumsRow,
@@ -444,7 +445,11 @@ function buildLibraryFromRows(rows: Iterable<LibraryCanonicalRow>) {
   const albumMetadata = metadataByIds(albumMetadataStmt, albums.keys());
   const albumCredits = creditsByAlbumIds(albums.keys());
   for (const album of albums.values()) {
-    Object.assign(album, metadataFields(albumMetadata.get(album.id) ?? null));
+    const metadata = albumMetadata.get(album.id) ?? null;
+    Object.assign(album, {
+      metadata,
+      monitored: isAlbumMonitored(metadata, albumManagement.get(album.id)),
+    });
     const credits = albumCredits.get(album.id);
     if (credits) album.creditedArtistMbids = credits;
   }
@@ -876,7 +881,7 @@ const libraryDateAlbumProjection = (row: LibraryDateAlbumRow) => {
     albumName: row.title,
     title: row.title,
     releaseDate: row.release_date,
-    monitored: metadata.monitored === true,
+    monitored: isAlbumMonitored(metadata, management),
     managed: Boolean(management),
     monitorMode: management?.monitorMode ?? null,
     source: sources.length === 1 ? sources[0] : null,
@@ -1821,16 +1826,11 @@ const AURRAL_MONITORED_ARTIST = `EXISTS (
     AND artist_management.monitor_rules IS NOT NULL
 )`;
 
-const beingFetched = (alias: string) => `CASE WHEN json_valid(${alias}.metadata_json)
-  THEN json_extract(${alias}.metadata_json, '$.librarySource') = 'aurral'
-    AND json_extract(${alias}.metadata_json, '$.monitored') = 1
-  ELSE 0 END`;
-
 const visibleAlbum = (sourceFilter: string | null): PageSql => {
   const playable = pageMediaExists("albums", sourceFilter, true);
   if (sourceFilter) return playable;
   return {
-    sql: `(${playable.sql} OR ${beingFetched("album")})`,
+    sql: `(${playable.sql} OR ${albumIsBeingFetched("album")})`,
     parameters: playable.parameters,
   };
 };
@@ -1922,15 +1922,6 @@ const managedAlbum = (alias: string) => `EXISTS (
   WHERE status_management.entity_kind = 'album' AND status_management.entity_id = ${alias}.id
 )`;
 
-const monitoredAlbum = (alias: string) => `(EXISTS (
-  SELECT 1 FROM library_management AS status_management
-  WHERE status_management.entity_kind = 'album'
-    AND status_management.entity_id = ${alias}.id
-    AND coalesce(status_management.monitor_mode, '') <> 'unmonitored'
-) AND CASE WHEN json_valid(${alias}.metadata_json)
-  THEN coalesce(json_extract(${alias}.metadata_json, '$.monitored') = 1, 0)
-  ELSE 0 END)`;
-
 const missingTracksAlbum = (alias: string, sourceFilter: string | null): PageSql => {
   const { conditions, parameters } = mediaSourceClause(sourceFilter, "status_media");
   const releaseDay = `substr(trim(coalesce(${alias}.release_date, '')), 1, 10)`;
@@ -1958,7 +1949,7 @@ const statusPredicate = (
 ): PageSql | null => {
   if (kind === "albums" || kind === "tracks") {
     if (status === "missing") return missingTracksAlbum("album", sourceFilter);
-    const monitored = monitoredAlbum("album");
+    const monitored = albumIsMonitored("album");
     return { sql: status === "monitored" ? monitored : `NOT ${monitored}`, parameters: [] };
   }
   if (kind !== "artists") return null;
@@ -3202,7 +3193,7 @@ function getAlbumTrackSummary(albumId: string | number, sourceFilter: string | n
       releaseDate: row.album_release_date,
       createdAt: row.album_created_at,
       metadata: albumMetadata,
-      monitored: albumMetadata?.monitored === true,
+      monitored: isAlbumMonitored(albumMetadata, albumManagement),
       ...(albumCredits.length && { creditedArtistMbids: albumCredits }),
       trackIds: [],
       managed: Boolean(albumManagement),
