@@ -77,6 +77,7 @@ beforeAll(() => {
     source: "aurral",
     path: "/library/Favorite Artist/Favorite Album/01 Favorite Track.flac",
     format: "flac",
+    releaseTagged: true,
     available: true,
   });
   const secondTrack = upsertLibraryTrack({

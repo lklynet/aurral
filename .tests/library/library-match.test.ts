@@ -47,6 +47,7 @@ const MATCHED_BY_NAME_MBID = "55555555-5555-4555-8555-555555555554";
 const LINKED_MBID = "55555555-5555-4555-8555-555555555555";
 const PICKED_GROUP = "66666666-6666-4666-8666-666666666661";
 const OTHER_GROUP = "66666666-6666-4666-8666-666666666662";
+const TAGGED_RELEASE = "66666666-6666-4666-8666-666666666670";
 const MISSING_GROUP = "66666666-6666-4666-8666-666666666663";
 const ALBUM_ARTIST_MBID = "55555555-5555-4555-8555-555555555557";
 const TRACK_GROUP = "66666666-6666-4666-8666-666666666664";
@@ -237,11 +238,6 @@ const albumRow = (id: number) =>
       "SELECT * FROM library_albums WHERE id = ?",
     )
     .get(id);
-
-const setAlbumMetadata = (albumId: number, metadata: object) =>
-  db
-    .prepare("UPDATE library_albums SET metadata_json = ? WHERE id = ?")
-    .run(JSON.stringify(metadata), albumId);
 
 const artistRow = (id: number) =>
   db
@@ -504,20 +500,44 @@ test("an album whose match was removed by hand stays out of automatic matching",
   assert.ok(!untagged().includes(album.id));
 });
 
-test("album matches are rejected without changing the album when they cannot be applied", async () => {
+test("album matches are rejected without changing the album when they cannot be applied, including while any of its files is tagged", async () => {
   const { album } = createArtist("Refused Album Artist");
-  const tagged = createArtist("Tagged Album Artist");
-  setAlbumMetadata(tagged.album.id, { tags: { musicbrainz_releasegroupid: OTHER_GROUP } });
+  const root = path.join(musicRoot, "partly-tagged");
+  const folder = path.join(root, "Tagged Album Artist", "Mixed Album");
+  const files = [
+    await writeFlacFixture(path.join(folder, "01 Tagged.flac"), {
+      artist: "Tagged Album Artist",
+      album: "Mixed Album",
+      title: "Tagged",
+      track: "1",
+      MUSICBRAINZ_ALBUMID: TAGGED_RELEASE,
+    }),
+    await writeFlacFixture(path.join(folder, "02 Untagged.flac"), {
+      artist: "Tagged Album Artist",
+      album: "Mixed Album",
+      title: "Untagged",
+      track: "2",
+    }),
+  ];
+  await scanMusicRoot({ rootPath: root, source: "readonly" });
+  await scanMusicRoot({ rootPath: root, source: "readonly", changedPaths: [files[1]!] });
+  const [tagged, ...rest] = files.map((filePath) =>
+    db
+      .prepare<[string], number>("SELECT album_id FROM library_media_files WHERE path = ?")
+      .pluck()
+      .get(filePath),
+  );
+  assert.deepEqual(rest, [tagged]);
 
   const statuses = [
     (await updateReleaseGroup(album.id, MISSING_GROUP)).status,
     (await updateReleaseGroup(album.id, "not-an-mbid")).status,
-    (await updateReleaseGroup(tagged.album.id, OTHER_GROUP)).status,
+    (await updateReleaseGroup(tagged!, OTHER_GROUP)).status,
   ];
 
   assert.deepEqual(statuses, [404, 400, 409]);
   assert.deepEqual(
-    [album, tagged.album].map((entry) => albumRow(entry.id)?.release_group_mbid),
+    [album.id, tagged!].map((id) => albumRow(id)?.release_group_mbid),
     [null, null],
   );
 });

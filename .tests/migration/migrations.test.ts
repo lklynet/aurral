@@ -683,6 +683,45 @@ test("upgrading stops treating an album's release group as its release", () => {
   );
 });
 
+test("upgrading marks the files whose album or track tags named a release", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, 35));
+  db.exec(`
+    INSERT INTO library_artists (id, identity_key, name, created_at, updated_at)
+      VALUES (1, 'artist', 'Artist', 0, 0);
+    INSERT INTO library_albums (id, identity_key, artist_id, title, metadata_json, created_at, updated_at)
+      VALUES (1, 'tagged', 1, 'Tagged', '{"tags":{"musicbrainz_albumid":"release-a"}}', 0, 0),
+        (2, 'untagged', 1, 'Untagged', '{"tags":{}}', 0, 0);
+    INSERT INTO library_tracks (id, identity_key, title, metadata_json, created_at, updated_at)
+      VALUES (1, 'group', 'Group', '{"tags":{"musicbrainz_releasegroupid":"group-a"}}', 0, 0),
+        (2, 'release', 'Release', '{"tags":{"musicbrainz_albumid":"release-b"}}', 0, 0),
+        (3, 'untagged', 'Untagged', '{"tags":{"title":"Untagged"}}', 0, 0),
+        (4, 'shared', 'Shared', '{"tags":{"musicbrainz_albumid":"release-a"}}', 0, 0),
+        (5, 'unfiled', 'Unfiled', '{"tags":{"title":"Unfiled"}}', 0, 0);
+    INSERT INTO library_album_tracks (album_id, track_id, created_at)
+      VALUES (2, 1, 0), (1, 3, 0), (1, 4, 0), (2, 4, 0), (1, 5, 0);
+    INSERT INTO library_media_files (track_id, album_id, source, path, created_at, updated_at)
+      VALUES (1, 2, 'aurral', '/1.flac', 0, 0), (2, NULL, 'aurral', '/2.flac', 0, 0),
+        (3, 1, 'aurral', '/3.flac', 0, 0), (4, 1, 'aurral', '/4a.flac', 0, 0),
+        (4, 2, 'aurral', '/4b.flac', 0, 0), (5, NULL, 'aurral', '/5.flac', 0, 0);
+  `);
+
+  migrate(db);
+
+  assert.deepEqual(
+    db.prepare("SELECT path, release_tagged FROM library_media_files ORDER BY path").raw().all(),
+    [
+      ["/1.flac", 1],
+      ["/2.flac", 1],
+      ["/3.flac", 1],
+      ["/4a.flac", 1],
+      ["/4b.flac", 0],
+      ["/5.flac", 1],
+    ],
+  );
+});
+
 test("upgrading keeps the track lists stored for an album's release and files", () => {
   const artist = upsertLibraryArtist({ identityKey: "artist:kept-list", name: "Kept List" });
   const albums = ["kept-group", "kept-release"].map((name, index) => {

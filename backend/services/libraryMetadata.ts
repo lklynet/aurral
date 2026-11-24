@@ -46,14 +46,3 @@ export const readLibraryMetadata = (text: string | null | undefined) =>
 
 export const readRawLibraryMetadata = (text: string | null | undefined) =>
   dbHelpers.readJSON(v.record(v.string(), v.unknown()), text, "library metadata") ?? {};
-
-export const hasReleaseTags = (metadata: Record<string, unknown> | null | undefined) => {
-  const tags = metadata?.tags;
-  return (
-    typeof tags === "object" &&
-    tags !== null &&
-    ["musicbrainz_releasegroupid", "musicbrainz_albumid"].some((key) =>
-      Boolean(Reflect.get(tags, key)),
-    )
-  );
-};

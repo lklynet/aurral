@@ -54,6 +54,7 @@ type LibraryCanonicalMedia =
       media_duration_ms: LibraryMediaFilesRow["duration_ms"];
       media_quality_json: LibraryMediaFilesRow["quality_json"];
       media_available: LibraryMediaFilesRow["available"];
+      media_release_tagged: LibraryMediaFilesRow["release_tagged"];
       media_created_at: LibraryMediaFilesRow["created_at"];
     }
   | {
@@ -67,6 +68,7 @@ type LibraryCanonicalMedia =
       media_duration_ms: null;
       media_quality_json: null;
       media_available: null;
+      media_release_tagged: null;
       media_created_at: null;
     };
 
@@ -228,6 +230,7 @@ const CANONICAL_SELECT = `SELECT
   media.duration_ms AS media_duration_ms,
   media.quality_json AS media_quality_json,
   media.available AS media_available,
+  media.release_tagged AS media_release_tagged,
   media.created_at AS media_created_at`;
 
 export const albumMediaCondition = (mediaAlias: string, albumTrackAlias: string) =>
@@ -268,6 +271,7 @@ export interface LibraryAlbum {
   trackCount?: number;
   availableTrackCount?: number;
   creditedArtistMbids?: string[];
+  releaseTagged?: true;
 }
 
 export interface LibraryTrack {
@@ -435,6 +439,7 @@ function buildLibraryFromRows(rows: Iterable<LibraryCanonicalRow>) {
         artist.available = true;
         album.available = true;
         track.available = true;
+        if (row.media_release_tagged) album.releaseTagged = true;
       }
     }
   }
@@ -3044,6 +3049,7 @@ type AlbumTrackSummaryRow = {
   album_metadata_json: LibraryAlbumsRow["metadata_json"];
   sources: string | null;
   available: number | null;
+  release_tagged: number | null;
 };
 
 type AlbumTrackPageOptions = {
@@ -3153,7 +3159,8 @@ function getAlbumTrackSummary(albumId: string | number, sourceFilter: string | n
        album.created_at AS album_created_at,
        album.metadata_json AS album_metadata_json,
        GROUP_CONCAT(DISTINCT media.source) AS sources,
-       MAX(media.available) AS available
+       MAX(media.available) AS available,
+       MAX(media.available AND media.release_tagged) AS release_tagged
      FROM library_albums AS album
      JOIN library_artists AS artist ON artist.id = album.artist_id
      JOIN library_album_tracks AS album_track ON album_track.album_id = album.id
@@ -3197,6 +3204,7 @@ function getAlbumTrackSummary(albumId: string | number, sourceFilter: string | n
       metadata: albumMetadata,
       monitored: isAlbumMonitored(albumMetadata, albumManagement),
       ...(albumCredits.length && { creditedArtistMbids: albumCredits }),
+      ...(row.release_tagged && { releaseTagged: true as const }),
       trackIds: [],
       managed: Boolean(albumManagement),
       monitorMode: albumManagement?.monitorMode ?? null,

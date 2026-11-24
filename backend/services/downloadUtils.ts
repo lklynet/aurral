@@ -10,6 +10,8 @@ import { getAlbumByMbid } from "./providers/metadataProvider.ts";
 import type { NormalizedAlbum } from "./providers/metadataMappers.ts";
 import { isNzbSource } from "./usenetClientCommon.ts";
 import { formatArtistCredit } from "../../lib/artistCredit.ts";
+import { db } from "../config/db-sqlite.ts";
+import type { LibraryAlbumsRow } from "../db/rows.ts";
 
 const AURRAL_IDENTITY_PREFIX = `${AURRAL_IDENTITY_TAG}=`;
 
@@ -107,6 +109,22 @@ export function parseStringListJson(value: string | null | undefined) {
 export function stringifyStringListJson(value: unknown) {
   const normalized = normalizeStringList(value);
   return normalized.length > 0 ? JSON.stringify(normalized) : null;
+}
+
+const libraryReleaseStmt = db.prepare<[string], Pick<LibraryAlbumsRow, "release_group_mbid">>(
+  `SELECT release_group_mbid FROM library_albums WHERE mbid = ?
+   ORDER BY release_group_mbid IS NULL LIMIT 1`,
+);
+
+export function withJobRelease(fields: DownloadTrackFields): DownloadTrackFields {
+  const albumMbid = fields.albumMbid?.trim();
+  const album = albumMbid ? libraryReleaseStmt.get(albumMbid) : undefined;
+  if (!album) return fields;
+  return {
+    ...fields,
+    albumMbid: album.release_group_mbid,
+    releaseMbid: fields.releaseMbid || albumMbid,
+  };
 }
 
 export function buildAurralIdentity(metadata: DownloadTrackFields = {}) {
@@ -347,7 +365,8 @@ function creditFromAlbum(
 
 // A compilation's tracks keep their own performer as the artist. The download
 // job knows which track it fetched, so its identity replaces the uploader's.
-export async function writeAudioMetadata(filePath: string, metadata: DownloadTrackFields = {}) {
+export async function writeAudioMetadata(filePath: string, fields: DownloadTrackFields = {}) {
+  const metadata = withJobRelease(fields);
   const album = await albumInfo(metadata.albumMbid, {
     withFallbackReleases: Boolean(metadata.releaseMbid && metadata.trackMbid),
   });
