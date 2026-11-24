@@ -11,6 +11,7 @@ import {
   prepareRecordingRequest,
   readRecordingMbid,
   titleKey,
+  titleMatchText,
 } from "./nativeMatcher.ts";
 import {
   labelContradictions,
@@ -255,7 +256,7 @@ function preparedRequest(manifest: ReleaseManifest) {
 }
 
 function titleFacts(title: string | null | undefined) {
-  const text = normalizeMatchText(title);
+  const text = titleMatchText(title);
   return {
     text,
     key: titleKey(title),
