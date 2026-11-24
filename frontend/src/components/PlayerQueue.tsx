@@ -291,7 +291,6 @@ function store(key: string, value: string) {
   } catch {}
 }
 
-// The page keeps at least 60% of the window, as the stylesheet also enforces.
 const railWidthMax = () =>
   Math.max(RAIL_WIDTH_MIN, Math.min(RAIL_WIDTH_MAX, Math.floor(window.innerWidth * 0.4)));
 
@@ -333,7 +332,6 @@ function useRailWidth() {
     onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => {
       const session = sessionRef.current;
       if (!session || session.pointerId !== event.pointerId) return;
-      // The handle is the panel's left edge, so dragging left widens it.
       setWidth(session.startWidth + session.startX - event.clientX, false);
     },
     onPointerEnd: (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -344,7 +342,7 @@ function useRailWidth() {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
       setResizing(false);
-      setWidth(widthRef.current, true);
+      store(RAIL_WIDTH_KEY, String(widthRef.current));
     },
     onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => {
       const step = event.shiftKey ? 24 : 8;
