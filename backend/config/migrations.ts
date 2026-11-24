@@ -508,6 +508,34 @@ const keepTrackListsOfClearedReleases: Migration = (db) => {
   }
 };
 
+const listTracksForFilesOnly: Migration = (db) => {
+  const albums = db
+    .prepare<[], { id: number; mbid: string | null; listedFor: string }>(
+      `SELECT id, mbid, metadata_json ->> '$.trackList.for' AS listedFor
+       FROM library_albums
+       WHERE release_group_mbid IS NOT NULL
+         AND json_valid(metadata_json) AND metadata_json ->> '$.trackList.for' IS NOT NULL`,
+    )
+    .all();
+  const files = db.prepare<[number], { path: string; mtimeMs: number | null }>(
+    `SELECT DISTINCT track.mbid, track.title, media.path, media.mtime_ms AS mtimeMs
+     FROM library_album_tracks AS link
+     JOIN library_tracks AS track ON track.id = link.track_id
+     JOIN library_media_files AS media ON media.track_id = track.id
+       AND (media.album_id = link.album_id OR media.album_id IS NULL)
+     WHERE link.album_id = ?
+     ORDER BY media.path`,
+  );
+  const hash = (value: unknown) => createHash("sha1").update(JSON.stringify(value)).digest("hex");
+  const relist = db.prepare<[string, number]>(
+    "UPDATE library_albums SET metadata_json = json_set(metadata_json, '$.trackList.for', ?) WHERE id = ?",
+  );
+  for (const album of albums) {
+    const songs = files.all(album.id).map((file) => [file.path, file.mtimeMs]);
+    if (album.listedFor === hash([album.mbid, songs])) relist.run(hash(songs), album.id);
+  }
+};
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -543,6 +571,7 @@ export const migrations: Migration[] = [
   renameDiscoverySourceLabels,
   clearReleaseGroupsStoredAsReleases,
   keepTrackListsOfClearedReleases,
+  listTracksForFilesOnly,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {
