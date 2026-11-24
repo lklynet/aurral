@@ -27,6 +27,18 @@ test("formats dates in the selected international order", () => {
   setDateTimeFormat("browser");
 });
 
+test("relative words follow the UI language, not the date layout", () => {
+  const now = new Date(2026, 9, 9, 15, 0);
+
+  for (const format of ["day-first", "year-first"]) {
+    setDateTimeFormat(format);
+    assert.equal(formatRelativeTime(new Date(2026, 9, 9, 9, 0), { now, unit: "day" }), "today");
+    assert.equal(formatRelativeTime(new Date(2026, 9, 8, 9, 0), { now, unit: "day" }), "yesterday");
+  }
+
+  setDateTimeFormat("browser");
+});
+
 test("describes recent moments relative to now", () => {
   const now = new Date(2026, 9, 9, 15, 0);
   const ago = (ms: number) => new Date(now.getTime() - ms);

@@ -9,12 +9,6 @@ export const setDateTimeFormat = (value: string) => {
   currentFormat = normalizeDateTimeFormat(value);
 };
 
-const getLocale = () => {
-  if (currentFormat === "day-first") return "en-GB";
-  if (currentFormat === "year-first") return "ja-JP";
-  return undefined;
-};
-
 const pad = (value: number) => String(value).padStart(2, "0");
 
 export const parseCalendarDate = (value: string | null | undefined) => {
@@ -31,7 +25,7 @@ export const parseCalendarDate = (value: string | null | undefined) => {
 
 export const formatDate = (date: Date, options?: Intl.DateTimeFormatOptions) => {
   if (currentFormat === "browser" || Number.isNaN(date.getTime())) {
-    return date.toLocaleDateString(getLocale(), options);
+    return date.toLocaleDateString(undefined, options);
   }
   const utc = options?.timeZone === "UTC";
   const year = utc ? date.getUTCFullYear() : date.getFullYear();
@@ -47,7 +41,7 @@ export const formatCalendarDate = (value: string | null | undefined) => {
 
 export const formatTime = (date: Date, options?: Intl.DateTimeFormatOptions) => {
   if (currentFormat === "browser" || Number.isNaN(date.getTime())) {
-    return date.toLocaleTimeString(getLocale(), options);
+    return date.toLocaleTimeString(undefined, options);
   }
   const utc = options?.timeZone === "UTC";
   return `${pad(utc ? date.getUTCHours() : date.getHours())}:${pad(
@@ -57,7 +51,7 @@ export const formatTime = (date: Date, options?: Intl.DateTimeFormatOptions) => 
 
 export const formatDateTime = (date: Date, options?: Intl.DateTimeFormatOptions) => {
   if (currentFormat === "browser" || Number.isNaN(date.getTime())) {
-    return date.toLocaleString(getLocale(), options);
+    return date.toLocaleString(undefined, options);
   }
   const datePart = formatDate(date, options);
   const timePart = formatTime(date, options);
@@ -67,15 +61,7 @@ export const formatDateTime = (date: Date, options?: Intl.DateTimeFormatOptions)
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
-const relativeFormatters = new Map<string | undefined, Intl.RelativeTimeFormat>();
-
-const getRelativeFormatter = () => {
-  const locale = getLocale();
-  if (!relativeFormatters.has(locale)) {
-    relativeFormatters.set(locale, new Intl.RelativeTimeFormat(locale, { numeric: "auto" }));
-  }
-  return relativeFormatters.get(locale)!;
-};
+const relativeFormatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
@@ -89,19 +75,18 @@ export const formatRelativeTime = (
   { now = new Date(), unit }: RelativeTimeOptions = {},
 ) => {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
-  const formatter = getRelativeFormatter();
   const diff = date.getTime() - now.getTime();
   const distance = Math.abs(diff);
   if (unit !== "day") {
-    if (distance < 45_000) return formatter.format(0, "second");
-    if (distance < HOUR) return formatter.format(Math.round(diff / MINUTE), "minute");
-    if (distance < DAY) return formatter.format(Math.round(diff / HOUR), "hour");
+    if (distance < 45_000) return relativeFormatter.format(0, "second");
+    if (distance < HOUR) return relativeFormatter.format(Math.round(diff / MINUTE), "minute");
+    if (distance < DAY) return relativeFormatter.format(Math.round(diff / HOUR), "hour");
   }
   const days = unit === "day" ? calendarDaysBetween(date, now) : Math.round(diff / DAY);
-  if (Math.abs(days) < 7) return formatter.format(days, "day");
-  if (Math.abs(days) < 30) return formatter.format(Math.round(days / 7), "week");
-  if (Math.abs(days) < 365) return formatter.format(Math.round(days / 30), "month");
-  return formatter.format(Math.round(days / 365), "year");
+  if (Math.abs(days) < 7) return relativeFormatter.format(days, "day");
+  if (Math.abs(days) < 30) return relativeFormatter.format(Math.round(days / 7), "week");
+  if (Math.abs(days) < 365) return relativeFormatter.format(Math.round(days / 30), "month");
+  return relativeFormatter.format(Math.round(days / 365), "year");
 };
 
 export const nextRelativeTimeChange = (
