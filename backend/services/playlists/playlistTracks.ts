@@ -123,10 +123,21 @@ export const buildCoreTrackIdentity = (track: PlaylistTrackInput | null | undefi
   return `${artistName}\u0001${trackName}`;
 };
 
+export function recordingsConflict(
+  left: PlaylistTrackInput | null | undefined,
+  right: PlaylistTrackInput | null | undefined,
+) {
+  const leftMbid = typeof left?.trackMbid === "string" ? left.trackMbid.trim().toLowerCase() : "";
+  const rightMbid =
+    typeof right?.trackMbid === "string" ? right.trackMbid.trim().toLowerCase() : "";
+  return Boolean(leftMbid && rightMbid && leftMbid !== rightMbid);
+}
+
 export const tracksShareMembership = (
   left: PlaylistTrackInput | null | undefined,
   right: PlaylistTrackInput | null | undefined,
 ) => {
+  if (recordingsConflict(left, right)) return false;
   if (buildPlaylistTrackIdentity(left) === buildPlaylistTrackIdentity(right)) {
     return true;
   }
@@ -154,7 +165,9 @@ export const pairJobsWithPlaylistTracks = <T extends PlaylistJob>(
     return index < 0 ? null : unmatchedJobs.splice(index, 1)[0];
   };
   const pairedJobs = trackList.map((track) =>
-    track?.canonicalJobId ? takeJob((job) => job.id === track.canonicalJobId) : null,
+    track?.canonicalJobId
+      ? takeJob((job) => job.id === track.canonicalJobId && !recordingsConflict(job, track))
+      : null,
   );
   trackList.forEach((track, trackIndex) => {
     if (pairedJobs[trackIndex]) return;

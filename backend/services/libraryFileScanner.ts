@@ -141,10 +141,9 @@ const applyMetadataEnrichment = (
     disk: trusted.discNumber,
     musicbrainz_artistid: trusted.artistMbid,
     musicbrainz_albumartistid: trusted.artistMbid,
-    musicbrainz_albumid: trusted.albumMbid,
+    musicbrainz_albumid: trusted.releaseMbid,
     musicbrainz_releasegroupid: trusted.albumMbid,
     musicbrainz_recordingid: trusted.trackMbid,
-    musicbrainz_trackid: trusted.trackMbid,
   };
   for (const [key, value] of Object.entries(fallbackFields)) {
     if (value == null || String(value).trim() === "") continue;
@@ -188,7 +187,7 @@ function buildMetadataRecord(metadata: ScannedMetadata, filePath: string, rootPa
   const artistMbid = artistMbids.length === 1 ? artistMbids[0] : null;
   const albumMbid = normalizeMbid(common.musicbrainz_albumid);
   const releaseGroupMbid = normalizeMbid(common.musicbrainz_releasegroupid);
-  const trackMbid = normalizeMbid(common.musicbrainz_recordingid || common.musicbrainz_trackid);
+  const trackMbid = normalizeMbid(common.musicbrainz_recordingid);
   const artistKey =
     (artistMbid && buildIdentityKey("mbid", artistMbid)) ||
     buildFallbackIdentityKey("artist", artistName);

@@ -109,7 +109,9 @@ const matchesLibraryTrack = (
 // Resolve playlist track descriptors to available library tracks. All descriptors of a batch are
 // looked up in one library query (by recording MBID and by title), then matched in memory with
 // the same rule the playlist code uses, so a 1000-entry playlist costs a couple of statements.
-export function resolveLibraryTracks(descriptors: (PlaylistTrackInput | null | undefined)[]) {
+export function resolveLibraryTracks(
+  descriptors: ((PlaylistTrackInput & { filePath?: string | null }) | null | undefined)[],
+) {
   const items = (Array.isArray(descriptors) ? descriptors : []).map((entry) =>
     normalizePlaylistTrack(entry),
   );
@@ -141,15 +143,23 @@ export function resolveLibraryTracks(descriptors: (PlaylistTrackInput | null | u
     const { file } = resolveFile(entry);
     return Boolean(file?.available && file.path);
   };
-  return items.map((track) => {
+  return items.map((track, index) => {
     if (!track) return null;
+    const filePath = descriptors[index]?.filePath;
     // A shared recording MBID identifies the track even when the titles differ (remaster, typo).
     const byId = track.trackMbid ? byMbid.get(track.trackMbid) : null;
     const candidates = byTitle.get(track.trackName.toLowerCase()) || [];
+    const byFile =
+      filePath &&
+      candidates.find(
+        (entry) =>
+          entry.files?.some((file) => file.available && file.path === filePath) &&
+          matchesLibraryTrack({ ...track, trackMbid: null }, library, entry),
+      );
     const match =
-      byId && playable(byId)
-        ? byId
-        : candidates.find((entry) => playable(entry) && matchesLibraryTrack(track, library, entry));
+      (byId && playable(byId) && byId) ||
+      (byFile && playable(byFile) && byFile) ||
+      candidates.find((entry) => playable(entry) && matchesLibraryTrack(track, library, entry));
     if (!match) return null;
     const { album, file } = resolveFile(match);
     return { file, library, track: match, albumName: album?.title };
