@@ -4,11 +4,11 @@ import { afterAll, afterEach, beforeEach, test, vi } from "vite-plus/test";
 import {
   CONNECT_SLUG_HOLD_MS,
   CONNECT_TRIAL_MS,
-  authAssertionSchema,
-  connectJwksSchema,
   generateEd25519KeyPair,
+  parseAuthAssertion,
+  parseConnectJwks,
+  parseTunnelTicket,
   sha256Base64Url,
-  tunnelTicketSchema,
   verifyConnectToken,
 } from "../../lib/connectTokens.ts";
 import {
@@ -375,10 +375,12 @@ test("tunnel tickets and sign-in assertions verify via JWKS and cannot cross-rep
 
   const jwksRes = await api("/v1/connect/keys");
   assert.equal(jwksRes.status, 200);
-  const { keys } = v.parse(connectJwksSchema, await jwksRes.json());
+  const jwks = parseConnectJwks(await jwksRes.json());
+  assert.ok(jwks);
+  const { keys } = jwks;
   assert.equal(keys.length, 1);
 
-  const verifiedTicket = await verifyConnectToken(ticketBody.ticket, keys, tunnelTicketSchema, {
+  const verifiedTicket = await verifyConnectToken(ticketBody.ticket, keys, parseTunnelTicket, {
     expectedIss: ORIGIN,
     expectedAud: "aurral-relay",
   });
@@ -386,7 +388,7 @@ test("tunnel tickets and sign-in assertions verify via JWKS and cannot cross-rep
   assert.equal(verifiedTicket.sub, inst.instanceId);
   assert.equal(verifiedTicket.slug, "nas-box");
 
-  const replayedAsAuth = await verifyConnectToken(ticketBody.ticket, keys, authAssertionSchema, {
+  const replayedAsAuth = await verifyConnectToken(ticketBody.ticket, keys, parseAuthAssertion, {
     expectedIss: ORIGIN,
   });
   assert.equal(replayedAsAuth, null);
@@ -566,8 +568,9 @@ test("PKCE client flow, CORS, server discovery, household cap, and relay status 
     v.object({ token: v.string(), expiresAt: v.number(), connectUrl: v.string() }),
     await assertionRes.json(),
   );
-  const { keys } = v.parse(connectJwksSchema, await (await api("/v1/connect/keys")).json());
-  const verifiedAssertion = await verifyConnectToken(assertionJwt, keys, authAssertionSchema, {
+  const jwks2 = parseConnectJwks(await (await api("/v1/connect/keys")).json());
+  assert.ok(jwks2);
+  const verifiedAssertion = await verifyConnectToken(assertionJwt, jwks2.keys, parseAuthAssertion, {
     expectedIss: ORIGIN,
     expectedAud: inst.instanceId,
   });

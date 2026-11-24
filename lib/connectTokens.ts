@@ -1,4 +1,4 @@
-import * as v from "valibot";
+import { isRecord } from "./isRecord.ts";
 
 export const CONNECT_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?$/;
 export const CONNECT_SLUG_HOLD_MS = 90 * 24 * 60 * 60 * 1000;
@@ -11,57 +11,158 @@ export const CONNECT_MAX_USERS_PER_SERVER = 10;
 const CLOCK_SKEW_SECONDS = 30;
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
 
-export const connectJwkSchema = v.object({
-  kid: v.pipe(v.string(), v.minLength(1), v.maxLength(64)),
-  kty: v.literal("OKP"),
-  crv: v.literal("Ed25519"),
-  x: v.pipe(v.string(), v.regex(BASE64URL_PATTERN)),
-});
+export interface ConnectPublicJwk {
+  kid: string;
+  kty: "OKP";
+  crv: "Ed25519";
+  x: string;
+}
 
-export const connectPrivateJwkSchema = v.object({
-  kid: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(64))),
-  kty: v.literal("OKP"),
-  crv: v.literal("Ed25519"),
-  x: v.pipe(v.string(), v.regex(BASE64URL_PATTERN)),
-  d: v.pipe(v.string(), v.regex(BASE64URL_PATTERN)),
-});
+export interface ConnectPrivateJwk {
+  kid?: string;
+  kty: "OKP";
+  crv: "Ed25519";
+  x: string;
+  d: string;
+}
 
-export const connectJwksSchema = v.object({
-  keys: v.array(connectJwkSchema),
-});
+export interface TunnelTicketPayload {
+  typ: "aurral-connect-tunnel";
+  iss: string;
+  aud: "aurral-relay";
+  sub: string;
+  slug: string;
+  connectOrigin: string;
+  iat: number;
+  exp: number;
+}
 
-export const tunnelTicketSchema = v.object({
-  typ: v.literal("aurral-connect-tunnel"),
-  iss: v.string(),
-  aud: v.literal("aurral-relay"),
-  sub: v.string(),
-  slug: v.pipe(v.string(), v.regex(CONNECT_SLUG_PATTERN)),
-  connectOrigin: v.string(),
-  iat: v.number(),
-  exp: v.number(),
-});
+export interface AuthAssertionPayload {
+  typ: "aurral-connect-auth";
+  iss: string;
+  aud: string;
+  sub: string;
+  handle: string;
+  jti: string;
+  iat: number;
+  exp: number;
+}
 
-export const authAssertionSchema = v.object({
-  typ: v.literal("aurral-connect-auth"),
-  iss: v.string(),
-  aud: v.string(),
-  sub: v.string(),
-  handle: v.string(),
-  jti: v.pipe(v.string(), v.minLength(8), v.maxLength(128)),
-  iat: v.number(),
-  exp: v.number(),
-});
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
 
-const jwsHeaderSchema = v.object({
-  alg: v.literal("EdDSA"),
-  kid: v.string(),
-  typ: v.literal("JWT"),
-});
+const isNonEmptyString = (value: unknown, max = 512): value is string =>
+  typeof value === "string" && value.length >= 1 && value.length <= max;
 
-export type ConnectPublicJwk = v.InferOutput<typeof connectJwkSchema>;
-export type ConnectPrivateJwk = v.InferOutput<typeof connectPrivateJwkSchema>;
-export type TunnelTicketPayload = v.InferOutput<typeof tunnelTicketSchema>;
-export type AuthAssertionPayload = v.InferOutput<typeof authAssertionSchema>;
+export function parseConnectPublicJwk(value: unknown): ConnectPublicJwk | null {
+  if (!isRecord(value)) return null;
+  if (
+    !isNonEmptyString(value.kid, 64) ||
+    value.kty !== "OKP" ||
+    value.crv !== "Ed25519" ||
+    typeof value.x !== "string" ||
+    !BASE64URL_PATTERN.test(value.x)
+  ) {
+    return null;
+  }
+  return { kid: value.kid, kty: "OKP", crv: "Ed25519", x: value.x };
+}
+
+export function parseConnectPrivateJwk(value: unknown): ConnectPrivateJwk | null {
+  if (!isRecord(value)) return null;
+  if (value.kid !== undefined && !isNonEmptyString(value.kid, 64)) return null;
+  if (
+    value.kty !== "OKP" ||
+    value.crv !== "Ed25519" ||
+    typeof value.x !== "string" ||
+    !BASE64URL_PATTERN.test(value.x) ||
+    typeof value.d !== "string" ||
+    !BASE64URL_PATTERN.test(value.d)
+  ) {
+    return null;
+  }
+  return {
+    ...(value.kid !== undefined && { kid: value.kid }),
+    kty: "OKP",
+    crv: "Ed25519",
+    x: value.x,
+    d: value.d,
+  };
+}
+
+export function parseConnectJwks(value: unknown): { keys: ConnectPublicJwk[] } | null {
+  if (!isRecord(value) || !Array.isArray(value.keys)) return null;
+  const keys: ConnectPublicJwk[] = [];
+  for (const entry of value.keys) {
+    const parsed = parseConnectPublicJwk(entry);
+    if (!parsed) return null;
+    keys.push(parsed);
+  }
+  return { keys };
+}
+
+export function parseTunnelTicket(value: unknown): TunnelTicketPayload | null {
+  if (!isRecord(value)) return null;
+  if (
+    value.typ !== "aurral-connect-tunnel" ||
+    !isNonEmptyString(value.iss) ||
+    value.aud !== "aurral-relay" ||
+    !isNonEmptyString(value.sub, 64) ||
+    typeof value.slug !== "string" ||
+    !CONNECT_SLUG_PATTERN.test(value.slug) ||
+    !isNonEmptyString(value.connectOrigin) ||
+    !isFiniteNumber(value.iat) ||
+    !isFiniteNumber(value.exp)
+  ) {
+    return null;
+  }
+  return {
+    typ: "aurral-connect-tunnel",
+    iss: value.iss,
+    aud: "aurral-relay",
+    sub: value.sub,
+    slug: value.slug,
+    connectOrigin: value.connectOrigin,
+    iat: value.iat,
+    exp: value.exp,
+  };
+}
+
+export function parseAuthAssertion(value: unknown): AuthAssertionPayload | null {
+  if (!isRecord(value)) return null;
+  if (
+    value.typ !== "aurral-connect-auth" ||
+    !isNonEmptyString(value.iss) ||
+    !isNonEmptyString(value.aud, 64) ||
+    !isNonEmptyString(value.sub, 128) ||
+    !isNonEmptyString(value.handle, 64) ||
+    typeof value.jti !== "string" ||
+    value.jti.length < 8 ||
+    value.jti.length > 128 ||
+    !isFiniteNumber(value.iat) ||
+    !isFiniteNumber(value.exp)
+  ) {
+    return null;
+  }
+  return {
+    typ: "aurral-connect-auth",
+    iss: value.iss,
+    aud: value.aud,
+    sub: value.sub,
+    handle: value.handle,
+    jti: value.jti,
+    iat: value.iat,
+    exp: value.exp,
+  };
+}
+
+function parseJwsHeader(value: unknown): { alg: "EdDSA"; kid: string; typ: "JWT" } | null {
+  if (!isRecord(value)) return null;
+  if (value.alg !== "EdDSA" || value.typ !== "JWT" || !isNonEmptyString(value.kid, 64)) {
+    return null;
+  }
+  return { alg: "EdDSA", kid: value.kid, typ: "JWT" };
+}
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -110,12 +211,12 @@ export async function parseEd25519PrivateJwk(
   } catch {
     return null;
   }
-  const parsed = v.safeParse(connectPrivateJwkSchema, parsedJson);
-  if (!parsed.success) return null;
-  const kid = parsed.output.kid ?? (await computeKid(parsed.output.x));
+  const parsed = parseConnectPrivateJwk(parsedJson);
+  if (!parsed) return null;
+  const kid = parsed.kid ?? (await computeKid(parsed.x));
   return {
-    privateJwk: { ...parsed.output, kid },
-    publicJwk: { kid, kty: "OKP", crv: "Ed25519", x: parsed.output.x },
+    privateJwk: { ...parsed, kid },
+    publicJwk: { kid, kty: "OKP", crv: "Ed25519", x: parsed.x },
   };
 }
 
@@ -125,7 +226,8 @@ export async function generateEd25519KeyPair(): Promise<{
 }> {
   const pair = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"]);
   const exported = await crypto.subtle.exportKey("jwk", pair.privateKey);
-  const parsed = v.parse(connectPrivateJwkSchema, exported);
+  const parsed = parseConnectPrivateJwk(exported);
+  if (!parsed) throw new Error("Failed to export Ed25519 key pair");
   const kid = await computeKid(parsed.x);
   return {
     privateJwk: { ...parsed, kid },
@@ -133,7 +235,7 @@ export async function generateEd25519KeyPair(): Promise<{
   };
 }
 
-export async function signConnectToken<T extends Record<string, unknown>>(
+export async function signConnectToken<T extends object>(
   privateJwkRaw: string | ConnectPrivateJwk,
   payload: T,
 ): Promise<string> {
@@ -169,13 +271,13 @@ export async function signConnectToken<T extends Record<string, unknown>>(
 }
 
 export async function verifyConnectToken<
-  Schema extends v.GenericSchema<unknown, { iss: string; aud: string; iat: number; exp: number }>,
+  Payload extends { iss: string; aud: string; iat: number; exp: number },
 >(
   token: string,
   keys: readonly ConnectPublicJwk[],
-  schema: Schema,
+  parsePayload: (value: unknown) => Payload | null,
   options: { expectedIss?: string; expectedAud?: string; nowMs?: number } = {},
-): Promise<v.InferOutput<Schema> | null> {
+): Promise<Payload | null> {
   const parts = token.split(".");
   if (parts.length !== 3) return null;
   const [headerPart, payloadPart, signaturePart] = parts;
@@ -195,9 +297,9 @@ export async function verifyConnectToken<
     return null;
   }
 
-  const header = v.safeParse(jwsHeaderSchema, headerJson);
-  if (!header.success) return null;
-  const matchedKey = keys.find((candidate) => candidate.kid === header.output.kid);
+  const header = parseJwsHeader(headerJson);
+  if (!header) return null;
+  const matchedKey = keys.find((candidate) => candidate.kid === header.kid);
   if (!matchedKey) return null;
 
   let cryptoKey: CryptoKey;
@@ -221,15 +323,15 @@ export async function verifyConnectToken<
   );
   if (!validSignature) return null;
 
-  const payload = v.safeParse(schema, payloadJson);
-  if (!payload.success) return null;
+  const payload = parsePayload(payloadJson);
+  if (!payload) return null;
 
   const nowSeconds = Math.floor((options.nowMs ?? Date.now()) / 1000);
-  if (payload.output.exp <= nowSeconds - CLOCK_SKEW_SECONDS) return null;
-  if (payload.output.iat > nowSeconds + CLOCK_SKEW_SECONDS) return null;
-  if (options.expectedIss && payload.output.iss !== options.expectedIss) return null;
-  if (options.expectedAud && payload.output.aud !== options.expectedAud) return null;
-  return payload.output;
+  if (payload.exp <= nowSeconds - CLOCK_SKEW_SECONDS) return null;
+  if (payload.iat > nowSeconds + CLOCK_SKEW_SECONDS) return null;
+  if (options.expectedIss && payload.iss !== options.expectedIss) return null;
+  if (options.expectedAud && payload.aud !== options.expectedAud) return null;
+  return payload;
 }
 
 export function normalizeLanHints(hints: readonly string[]): string[] {
