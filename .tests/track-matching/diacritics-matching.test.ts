@@ -68,6 +68,15 @@ test("scoreTextMatch matches a title written only in emoji by the same emoji", (
     assert.equal(scoreTextMatch("❤️", "❤", options), 100);
     assert.equal(scoreTextMatch("❤️✨", "❤✨", options), 100);
     assert.equal(scoreTextMatch("👋", "🌈", options), 0);
+    assert.equal(scoreTextMatch("\u{1F469}\u200D\u{1F4BB}", "\u{1F469}\u{1F4BB}", options), 0);
+    assert.equal(
+      scoreTextMatch(
+        "\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}",
+        "\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}",
+        options,
+      ),
+      0,
+    );
     assert.equal(scoreTextMatch("👋", "Hello", options), 0);
   }
 });

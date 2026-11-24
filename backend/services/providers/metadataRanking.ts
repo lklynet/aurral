@@ -117,7 +117,7 @@ export function splitWords(value: unknown, options?: { extended?: boolean }) {
 }
 
 export function symbolText(value: unknown) {
-  return String(value || "").replace(/[^\p{S}]+/gu, "");
+  return String(value || "").replace(/[^\p{S}\u200D\u{E0020}-\u{E007F}]+/gu, "");
 }
 
 function symbolScore(left: unknown, right: unknown) {
