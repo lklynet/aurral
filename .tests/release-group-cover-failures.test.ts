@@ -15,6 +15,7 @@ const missingMbid = "22222222-2222-4222-8222-222222222222";
 const replies = new Map<string, { status: number; body: unknown }>();
 const deezerReplies = new Map<string, { data: unknown[] }>();
 const requests: string[] = [];
+let deezerUnavailable = false;
 const providerServer = await createMockHttpServer((request, response) => {
   const pathname = new URL(request.url || "/", "http://localhost").pathname;
   requests.push(pathname);
@@ -45,6 +46,7 @@ beforeEach(() => {
   const get = http.get.bind(http);
   vi.spyOn(http, "get").mockImplementation(async (url, options) => {
     if (!url.startsWith("https://api.deezer.com/")) return get(url, options);
+    if (deezerUnavailable) throw new Error("Deezer unavailable");
     const page = deezerReplies.get(new URL(url).pathname)?.data ?? [];
     const data = { data: page.slice(0, Number(options?.query?.limit) || 25) };
     return { status: 200, statusText: "OK", headers: {}, data };
@@ -53,6 +55,7 @@ beforeEach(() => {
   dbOps.deleteImage(`rg:${mbid}`);
   replies.clear();
   deezerReplies.clear();
+  deezerUnavailable = false;
   requests.length = 0;
 });
 
@@ -120,6 +123,19 @@ test("confirmed missing metadata is cached as missing artwork without a warning"
   assert.equal(dbOps.getImage(`rg:${mbid}`)?.imageUrl, "NOT_FOUND");
   assert.deepEqual(requests, [`/v1/album/${mbid}`]);
   assert.equal(warnings.mock.calls.length, 0);
+});
+
+test("a failed Deezer fallback leaves an album cover retryable", async () => {
+  replies.set(`/v1/album/${mbid}`, {
+    status: 200,
+    body: { id: mbid, title: "Album", artists: [{ id: mbid, name: "Artist" }] },
+  });
+  deezerUnavailable = true;
+
+  const cover = await fetchReleaseGroupCoverUrl(mbid);
+  assert.equal(cover.transientError, true);
+  assert.equal(cover.notFound, false);
+  assert.equal(dbOps.getImage(`rg:${mbid}`), null);
 });
 
 test("an album metadata has no cover for takes Deezer's, however long the discography, without asking metadata again", async () => {

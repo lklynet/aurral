@@ -656,16 +656,18 @@ export async function resolveDeezerAlbumForPreview({
   albumTitle = "",
   releaseType = "",
   releaseDate = "",
+  throwOnError = false,
 }: {
   artistName?: string;
   deezerArtistId?: DeezerArtistId;
   albumTitle?: string;
   releaseType?: string;
   releaseDate?: string;
+  throwOnError?: boolean;
 } = {}) {
   const artist = deezerArtistId
-    ? await getDeezerArtistById(deezerArtistId)
-    : await getDeezerArtist(artistName);
+    ? await getDeezerArtistById(deezerArtistId, { throwOnError })
+    : await getDeezerArtist(artistName, { throwOnError });
   if (!artist) return null;
 
   const albums = await getDeezerAlbumsForArtist(artist);
