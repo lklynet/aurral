@@ -347,8 +347,6 @@ export function createJobWorker<Payload extends object>(
   }
 
   function start() {
-    // The loop's promise stays pending while there is work. Every job wakes its queue, so
-    // handing it to each waker kept every job's async context alive until the loop stopped.
     if (running) return Promise.resolve();
     if (shuttingDown || !ownsQueueHere(name)) return undefined;
     if (onStart && !onStart()) return;
