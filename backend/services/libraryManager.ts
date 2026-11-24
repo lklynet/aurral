@@ -110,6 +110,7 @@ import {
   getArtistByMbid as getMetadataArtistByMbid,
 } from "./providers/metadataProvider.ts";
 import {
+  VARIOUS_ARTISTS_MBID,
   isSilenceTrack,
   isUnknownTitle,
   isVariousArtistsCredit,
@@ -813,11 +814,14 @@ export class LibraryManager {
         downloadTracker.updateMetadata(job.id, { releaseMbid });
       if (restarted || requestKind === "album") downloadTracker.setRequestKind(job.id, requestKind);
     };
-    const compilation = isVariousArtistsCredit(artist?.name, artist?.mbid);
     // A compilation track's job keeps the album's "Various Artists" credit,
-    // which tags and media servers group the album by, and matches files by
-    // the track's own artist under any of its names, such as "The Jackson 5"
-    // for "The Jacksons".
+    // whichever artist the album is filed under, since tags and media servers
+    // group the album by it. It matches files by the track's own artist under
+    // any of its names, such as "The Jackson 5" for "The Jacksons".
+    const credit = isVariousArtistsCredit(album.albumArtist)
+      ? { name: album.albumArtist, mbid: VARIOUS_ARTISTS_MBID }
+      : { name: artist?.name || album.albumArtist || "Unknown Artist", mbid: artist?.mbid || null };
+    const compilation = isVariousArtistsCredit(credit.name, credit.mbid);
     const artistAliasesFor = (track: LibraryTrackRecord) =>
       compilation
         ? [...new Set([track.artistName, ...(track.metadata?.artistAliases || [])])].filter(
@@ -956,10 +960,10 @@ export class LibraryManager {
         () =>
           downloadTracker.addJob(
             {
-              artistName: artist?.name || album.albumArtist || "Unknown Artist",
+              artistName: credit.name,
               trackName: track.title,
               albumName: album.title,
-              artistMbid: artist?.mbid || null,
+              artistMbid: credit.mbid,
               albumMbid,
               releaseMbid,
               trackMbid: track.mbid || null,
@@ -2124,9 +2128,14 @@ export class LibraryManager {
       ) ||
       providerArtists[0] ||
       null;
-    // A compilation keeps "Various Artists" on the album and names each
-    // track's own artist.
-    const compilation = isVariousArtistsCredit(artist.name, artist.mbid);
+    // A compilation keeps "Various Artists" on the album, whichever of its
+    // artists it was requested from, and names each track's own artist.
+    const albumCredit = providerArtists.find((entry) => entry?.id === metadata?.artistId);
+    const albumArtist = isVariousArtistsCredit(albumCredit?.name, albumCredit?.id)
+      ? albumCredit?.name
+      : artist.name || providerArtist?.name;
+    const compilation =
+      isVariousArtistsCredit(artist.name, artist.mbid) || isVariousArtistsCredit(albumArtist);
     const trackArtists = new Map(
       providerArtists.map((entry) => [
         String(entry?.id || "")
@@ -2173,7 +2182,7 @@ export class LibraryManager {
         releaseGroupMbid: normalizedAlbumMbid,
         artistId: artist.id,
         title: resolvedAlbumName,
-        albumArtist: artist.name || providerArtist?.name || null,
+        albumArtist: albumArtist || null,
         releaseDate: metadata?.releaseDate || selectedRelease?.releaseDate || null,
         metadata: {
           id: normalizedAlbumMbid,
