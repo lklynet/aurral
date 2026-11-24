@@ -1426,14 +1426,14 @@ const UNFILED_ALBUM_TRACKS = `FROM library_album_tracks AS link
        WHERE media.track_id = link.track_id AND (media.album_id = link.album_id OR media.album_id IS NULL)
      )
      AND NOT ${TRACK_IS_LISTED}`;
-const unfiledAlbumsStmt = db
-  .prepare<[], number>(`SELECT DISTINCT link.album_id ${UNFILED_ALBUM_TRACKS} ORDER BY 1`)
-  .pluck();
+const unfiledAlbumsStmt = db.prepare<[], { id: number }>(
+  `SELECT DISTINCT link.album_id AS id ${UNFILED_ALBUM_TRACKS} ORDER BY 1`,
+);
 const unfiledAlbumTracksStmt = db
   .prepare<[number], number>(`SELECT link.track_id ${UNFILED_ALBUM_TRACKS} AND link.album_id = ?`)
   .pluck();
 
-function planUnfiledTrackDrops(albumId: number) {
+function planUnfiledTrackDrops({ id: albumId }: { id: number }) {
   const trackIds = unfiledAlbumTracksStmt.all(albumId);
   if (trackIds.length === 0) return null;
   return () => {
@@ -1913,9 +1913,8 @@ type LibraryTrackCopy = Pick<LibraryAlbumTracksRow, "disc_number" | "track_numbe
     release_listed: number;
   };
 
-const trackCopyAlbumsStmt = db
-  .prepare<[], number>(
-    `SELECT named.album_id FROM library_album_tracks AS named
+const trackCopyAlbumsStmt = db.prepare<[], { id: number }>(
+  `SELECT named.album_id AS id FROM library_album_tracks AS named
      JOIN library_tracks AS untagged ON untagged.id = named.track_id AND untagged.identity_key LIKE 'name:%'
      INTERSECT
      SELECT known.album_id FROM library_album_tracks AS known
@@ -1930,8 +1929,7 @@ const trackCopyAlbumsStmt = db
        WHERE media.track_id = track.id AND (media.album_id = copy.album_id OR media.album_id IS NULL)
      )
      ORDER BY 1`,
-  )
-  .pluck();
+);
 
 const albumTrackCopiesStmt = db.prepare<[number], LibraryTrackCopy>(
   `SELECT link.disc_number, link.track_number, track.id, track.title, track.identity_key,
@@ -1953,7 +1951,7 @@ const albumTrackCopiesStmt = db.prepare<[number], LibraryTrackCopy>(
 // no file, when no other copy left has that title. A copy tagged with a
 // recording the album's release does not list, as a song downloaded twice
 // carries, is the song the release lists at its place.
-function planTrackCopyFolds(albumId: number) {
+function planTrackCopyFolds({ id: albumId }: { id: number }) {
   const tracks = albumTrackCopiesStmt.all(albumId);
   const tagged = tracks.filter((track) => !isNameKey(track.identity_key));
   const untagged = tracks.filter((track) => isNameKey(track.identity_key));
@@ -1998,30 +1996,27 @@ function planTrackCopyFolds(albumId: number) {
 // into the album with its title, taking its files, favorites, and plays, as
 // does an album whose files all moved to another. One with no files and
 // nowhere to go is removed; its favorites and plays come back with it.
-const UNTIDY_ALBUM = `(album.identity_key LIKE 'name:%' OR (NOT ${ALBUM_HAS_FILES} AND NOT ${albumIsOwned("album")}))`;
-const untidyAlbumsStmt = db
-  .prepare<[], number>(
-    `SELECT album.id FROM library_albums AS album WHERE ${UNTIDY_ALBUM} ORDER BY album.id`,
-  )
-  .pluck();
-const untidyAlbumStmt = db.prepare<
-  [number],
-  LibraryAlbumsRow & { owned: number; has_files: number }
->(
-  `SELECT album.*, ${albumIsOwned("album")} AS owned, ${ALBUM_HAS_FILES} AS has_files
-   FROM library_albums AS album WHERE album.id = ? AND ${UNTIDY_ALBUM}`,
+const untidyAlbumsStmt = db.prepare<[], { id: number; owned: number; has_files: number }>(
+  `SELECT album.id, ${albumIsOwned("album")} AS owned, ${ALBUM_HAS_FILES} AS has_files
+   FROM library_albums AS album
+   WHERE album.identity_key LIKE 'name:%' OR (NOT ${ALBUM_HAS_FILES} AND NOT ${albumIsOwned("album")})
+   ORDER BY album.id`,
+);
+const albumStmt = db.prepare<[number], LibraryAlbumsRow>(
+  "SELECT * FROM library_albums WHERE id = ?",
 );
 const artistAlbumsStmt = db.prepare<[number, number], LibraryAlbumsRow>(
   "SELECT * FROM library_albums WHERE artist_id = ? AND id != ? ORDER BY id",
 );
 
-function planAlbumTidy(albumId: number) {
-  const album = untidyAlbumStmt.get(albumId);
-  if (!album || (!album.has_files && album.owned)) return null;
+function planAlbumTidy({ id, owned, has_files }: { id: number; owned: number; has_files: number }) {
+  if (!has_files && owned) return null;
+  const album = albumStmt.get(id);
+  if (!album) return null;
   const siblings = artistAlbumsStmt
     .all(album.artist_id, album.id)
     .filter((sibling) => isSameLibraryName(sibling.title, album.title));
-  if (album.has_files && siblings.length === 0) return null;
+  if (has_files && siblings.length === 0) return null;
   const tracks = albumTracksStmt.all(album.id);
   const hasFiles = tracks.some((track) => track.has_files);
   const titles = (hasFiles ? tracks.filter((track) => track.has_files) : tracks).map(
@@ -2031,30 +2026,6 @@ function planAlbumTidy(albumId: number) {
   if (!target && hasFiles) return null;
   return () =>
     target ? foldLibraryAlbum(album, tracks, target) : removeEmptyLibraryAlbum(album, tracks);
-}
-
-// A tidy reads the whole Library outside any write, so it never keeps other
-// processes waiting while it reads. Each album it changes is its own write,
-// which decides again, as a download may have changed the album since.
-function tidyAlbums(albumIds: number[], plan: (albumId: number) => (() => void) | null) {
-  let changed = 0;
-  for (const albumId of albumIds) {
-    if (!plan(albumId)) continue;
-    try {
-      const tidied = db.transaction(() => {
-        const write = plan(albumId);
-        write?.();
-        return Boolean(write);
-      })();
-      if (tidied) changed += 1;
-    } catch (error) {
-      logger.warn("library", "Could not tidy a Library album", {
-        albumId,
-        reason: safeLogDiagnostic(error),
-      });
-    }
-  }
-  return changed;
 }
 
 const markLibraryTidiedStmt = db.prepare<[number, number]>(
@@ -2067,11 +2038,35 @@ const markLibraryTidiedStmt = db.prepare<[number, number]>(
 export function reconcileLibraryAlbums() {
   const indexedAt = getLibraryIndexLastModified() ?? 0;
   let changed = 0;
+  // A tidy reads the whole Library outside any write, so it never keeps other
+  // processes waiting while it reads. Each album it changes is its own write,
+  // which plans again, as a download may have changed the album since.
+  const tidyAlbums = <T extends { id: number }>(
+    albums: T[],
+    plan: (album: T) => (() => void) | null,
+  ) => {
+    for (const album of albums) {
+      if (!plan(album)) continue;
+      try {
+        const tidied = db.transaction(() => {
+          const write = plan(album);
+          write?.();
+          return Boolean(write);
+        })();
+        if (tidied) changed += 1;
+      } catch (error) {
+        logger.warn("library", "Could not tidy a Library album", {
+          albumId: album.id,
+          reason: safeLogDiagnostic(error),
+        });
+      }
+    }
+  };
   try {
     changed += repairLibraryFileAlbums();
-    changed += tidyAlbums(untidyAlbumsStmt.all(), planAlbumTidy);
-    changed += tidyAlbums(trackCopyAlbumsStmt.all(), planTrackCopyFolds);
-    changed += tidyAlbums(unfiledAlbumsStmt.all(), planUnfiledTrackDrops);
+    tidyAlbums(untidyAlbumsStmt.all(), planAlbumTidy);
+    tidyAlbums(trackCopyAlbumsStmt.all(), planTrackCopyFolds);
+    tidyAlbums(unfiledAlbumsStmt.all(), planUnfiledTrackDrops);
   } finally {
     if (changed > 0) {
       const tidiedAt = Math.max(now(), indexedAt + 1);
