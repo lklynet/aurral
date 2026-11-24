@@ -257,10 +257,10 @@ function artistGenres(artistIds: number[]) {
   if (!artistIds.length) return genres;
   const rows = db
     .prepare<number[], { artistId: number; genre: string }>(
-      `SELECT entity_id AS artistId, lower(name) AS genre FROM library_entity_genres
+      `SELECT entity_id AS artistId, genre_key AS genre FROM library_entity_genres
        WHERE entity_kind = 'artists' AND entity_id IN (${placeholders(artistIds)})
        UNION
-       SELECT album.artist_id, lower(genres.name) FROM library_entity_genres AS genres
+       SELECT album.artist_id, genres.genre_key FROM library_entity_genres AS genres
        JOIN library_albums AS album ON album.id = genres.entity_id
        WHERE genres.entity_kind = 'albums' AND album.artist_id IN (${placeholders(artistIds)})`,
     )

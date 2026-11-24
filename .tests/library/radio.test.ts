@@ -88,7 +88,7 @@ beforeEach(() => {
 test("a track radio mixes the seed artist with similar and same-genre artists, never blocked ones", async () => {
   const seed = addArtist("Massive Attack", 8, ["trip hop"]);
   addArtist("Portishead", 4);
-  addArtist("Tricky", 4, ["Trip Hop"]);
+  addArtist("Tricky", 4, ["Trip-Hop"]);
   addArtist("Morcheeba", 4, ["trip hop"]);
   addArtist("Metallica", 4, ["metal"]);
   addDiscoveryFeedback(userId, { action: "block_artist", artistName: "Morcheeba" });

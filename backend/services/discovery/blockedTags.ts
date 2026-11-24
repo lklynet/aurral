@@ -1,6 +1,6 @@
 import * as v from "valibot";
 import { dbOps } from "../../db/helpers/index.ts";
-import { genreKey } from "../musicGenres.ts";
+import { genreKey } from "../../../lib/genreKey.ts";
 
 type UserId = number | string;
 
