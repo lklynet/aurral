@@ -4,6 +4,7 @@ import {
   applyMetadataEnrichment,
   buildMetadataRecord,
 } from "../../backend/services/libraryFileScanner.ts";
+import { VARIOUS_ARTISTS_MBID } from "../../backend/services/trackMatching/titleText.ts";
 
 const RELEASE_GROUP = "11111111-1111-4111-8111-111111111111";
 const RELEASE = "22222222-2222-4222-8222-222222222222";
@@ -24,4 +25,20 @@ test("an untagged download files under its job's release group and release, neve
     [RELEASE_GROUP, RELEASE],
   );
   assert.deepEqual([record(null).releaseGroupMbid, record(null).albumMbid], [RELEASE_GROUP, null]);
+});
+
+test("a Various Artists album files under Various Artists when only its tracks carry artist IDs", () => {
+  const identity = (tags: Record<string, string>) => {
+    const { artistKey, artistMbid, artistMbids } = buildMetadataRecord(
+      { common: { albumartist: "Various Artists", artist: "Blue Swede", ...tags } },
+      "/music/Various Artists/Awesome Mix/01 Hooked on a Feeling.flac",
+      "/music",
+    );
+    return { artistKey, artistMbid, artistMbids };
+  };
+
+  assert.deepEqual(
+    identity({ musicbrainz_artistid: "33333333-3333-4333-8333-333333333333" }),
+    identity({ musicbrainz_albumartistid: VARIOUS_ARTISTS_MBID }),
+  );
 });

@@ -116,9 +116,19 @@ export function splitWords(value: unknown, options?: { extended?: boolean }) {
     .filter(Boolean);
 }
 
+export function symbolText(value: unknown) {
+  return String(value || "").replace(/[^\p{S}\u200D\u{E0020}-\u{E007F}]+/gu, "");
+}
+
+function symbolScore(left: unknown, right: unknown) {
+  const symbols = symbolText(left);
+  return symbols && symbols === symbolText(right) ? 100 : 0;
+}
+
 function scoreReleaseTextMatch(left: unknown, right: unknown, options: { extended?: boolean }) {
   const a = normalizeReleaseText(left, options);
   const b = normalizeReleaseText(right, options);
+  if (!a && !b) return symbolScore(left, right);
   if (!a || !b) return 0;
   if (a === b) return 100;
   if (a.includes(b) || b.includes(a)) {
@@ -149,6 +159,7 @@ export function scoreTextMatch(
   }
   const a = normalizeText(left);
   const b = normalizeText(right);
+  if (!a && !b) return symbolScore(left, right);
   if (!a || !b) return 0;
   if (a === b) return 100;
   if (a.includes(b) || b.includes(a)) {
