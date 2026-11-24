@@ -455,7 +455,7 @@ export function upsertLibraryArtist({
   const artistName = normalizeText(name);
   const artistMbid = mbid || null;
   const artistSortName = sortName || null;
-  const metadataText = stringify(metadata);
+  const metadataText = metadata && stringify(metadata);
   if (!key || !artistName) throw new Error("Library artist identityKey and name are required");
   let libraryChanged = false;
   const artist = db.transaction(() => {
@@ -619,7 +619,7 @@ export function upsertLibraryAlbum({
   const albumReleaseGroupMbid = releaseGroupMbid || null;
   const albumArtistName = albumArtist || null;
   const albumReleaseDate = releaseDate || null;
-  const metadataText = stringify(metadata);
+  const metadataText = metadata && stringify(metadata);
   if (!key || !Number.isSafeInteger(Number(artistId)) || !albumTitle) {
     throw new Error("Library album identityKey, artistId, and title are required");
   }

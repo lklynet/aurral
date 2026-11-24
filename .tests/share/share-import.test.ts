@@ -226,6 +226,58 @@ test("saving album details does not enable monitoring or acquisition", async () 
   assert.equal(downloadTracker.getAll().length, 0);
 });
 
+test("importing an album already in the Library keeps what Aurral stored for it and its artist", async () => {
+  const artistMbid = "11111111-1111-4111-8111-111111111111";
+  const albumMbid = "22222222-2222-4222-8222-222222222222";
+  const artist = media.upsertLibraryArtist({
+    identityKey: `mbid:${artistMbid}`,
+    mbid: artistMbid,
+    name: "Kept Artist",
+    metadata: { aliases: ["Kept"] },
+  });
+  const album = media.upsertLibraryAlbum({
+    identityKey: `release-group:${albumMbid}`,
+    releaseGroupMbid: albumMbid,
+    artistId: artist.id,
+    title: "Kept Album",
+    metadata: { requestedRelease: "33333333-3333-4333-8333-333333333333", edition: "Deluxe" },
+  });
+
+  await importer.importShare({
+    ownerUserId: owner.id,
+    manifest: parseShareManifest({
+      kind: "album",
+      title: "Kept Album",
+      artistName: "Kept Artist",
+      artistMbid,
+      albumMbid,
+      tracks: [
+        {
+          title: "Kept Song",
+          artistName: "Kept Artist",
+          albumTitle: "Kept Album",
+          artistMbid,
+          albumMbid,
+        },
+      ],
+    }),
+    includeFiles: false,
+  });
+
+  const stored = (table: string, id: number): unknown =>
+    JSON.parse(
+      db
+        .prepare<[number], string>(`SELECT metadata_json FROM ${table} WHERE id = ?`)
+        .pluck()
+        .get(id) ?? "null",
+    );
+  assert.deepEqual(stored("library_artists", artist.id), { aliases: ["Kept"] });
+  assert.deepEqual(stored("library_albums", album.id), {
+    requestedRelease: "33333333-3333-4333-8333-333333333333",
+    edition: "Deluxe",
+  });
+});
+
 test("a failed shared file never falls back to configured search sources, including after retry", async () => {
   const requests = remoteShare();
   await importer.importShare({
