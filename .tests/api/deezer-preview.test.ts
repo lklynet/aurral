@@ -177,7 +177,15 @@ test("a track found by artist and title plays its Deezer preview for a signed-in
 
 test("a friend's cover is looked up by name once, and a miss isn't asked again", async () => {
   const cover = "https://cdn-images.dzcdn.net/images/cover/abc/1000x1000-000000-80-0-0.jpg";
+  const albumMbid = "11111111-1111-4111-8111-111111111111";
+  const catalogueCover =
+    "https://coverartarchive.org/release/22222222-2222-4222-8222-222222222222/front";
   const requests = stubDeezer({
+    [`https://data.aurral.org/v1/album/${albumMbid}`]: () => ({
+      id: albumMbid,
+      title: "In Rainbows",
+      cover: catalogueCover,
+    }),
     "https://api.deezer.com/search/album": () => ({
       data: [{ id: 1, title: "In Rainbows", artist: { name: "Radiohead" }, cover_xl: cover }],
     }),
@@ -198,8 +206,72 @@ test("a friend's cover is looked up by name once, and a miss isn't asked again",
     (await art("artist=Radiohead&album=In+Rainbows&w=96")).headers.get("location"),
     cover.replace("1000x1000", "120x120"),
   );
+  const identified = await art(`artist=Radiohead&album=In+Rainbows&mbid=${albumMbid}`);
+  assert.equal(identified.status, 302);
+  assert.notEqual(identified.headers.get("location"), cover);
   assert.deepEqual(requests, [
     "https://api.deezer.com/search/album",
     "https://data.aurral.org/v1/search/artist",
+    `https://data.aurral.org/v1/album/${albumMbid}`,
   ]);
+});
+
+test("profile artwork matches mixed-case Library MBIDs across aliases and skips caching transient metadata errors", async () => {
+  const { db } = await import("../../backend/config/db-sqlite.ts");
+  const releaseMbid = "33333333-3333-4333-8333-3333333333AA";
+  const groupMbid = "44444444-4444-4444-8444-4444444444BB";
+  const transientMbid = "55555555-5555-4555-8555-555555555555";
+  const groupCover =
+    "https://coverartarchive.org/release/66666666-6666-4666-8666-666666666666/front";
+  const now = Date.now();
+  const artistRow = db
+    .prepare<[string, string, string, string, number, number], { id: number }>(
+      `INSERT INTO library_artists (identity_key, mbid, name, sort_name, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+    )
+    .get(
+      "mbid:mixed",
+      "77777777-7777-4777-8777-7777777777CC",
+      "Local Alias",
+      "Local Alias",
+      now,
+      now,
+    );
+  assert.ok(artistRow);
+  db.prepare(
+    `INSERT INTO library_albums (identity_key, artist_id, mbid, release_group_mbid, title, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run("release:mixed", artistRow.id, releaseMbid, groupMbid, "Local Edition Title", now, now);
+
+  let transientFails = true;
+  const requests = stubDeezer({
+    [`https://data.aurral.org/v1/album/${groupMbid.toLowerCase()}`]: () => ({
+      id: groupMbid.toLowerCase(),
+      title: "Canonical Album",
+      cover: groupCover,
+    }),
+    [`https://data.aurral.org/v1/album/${transientMbid}`]: () => {
+      if (transientFails) throw new Error("metadata outage");
+      return { id: transientMbid, title: "Recovered", cover: groupCover };
+    },
+    "https://api.deezer.com/search/album": () => ({ data: [] }),
+  });
+
+  const user = userOps.createUser("friend-mixed", "password-hash");
+  assert.ok(user);
+  const token = createSession(user.id).token;
+  const art = (query: string) =>
+    requestPreview(`/api/hub-link/friends/art?${query}&token=${token}`);
+
+  const mapped = await art(
+    `artist=Friend+Name&album=Friend+Title&mbid=${releaseMbid.toLowerCase()}`,
+  );
+  assert.equal(mapped.status, 302);
+  assert.ok(requests.includes(`https://data.aurral.org/v1/album/${groupMbid.toLowerCase()}`));
+
+  const duringOutage = await art(`artist=Outage+Artist&album=Outage+Album&mbid=${transientMbid}`);
+  assert.equal(duringOutage.status, 404);
+  transientFails = false;
+  const recovered = await art(`artist=Outage+Artist&album=Outage+Album&mbid=${transientMbid}`);
+  assert.equal(recovered.status, 302);
 });
