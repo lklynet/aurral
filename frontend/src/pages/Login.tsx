@@ -7,6 +7,7 @@ import { getAppBasePath } from "../utils/basePath.ts";
 import { DotLoader } from "../components/DotLoader";
 import { rememberShareImport } from "../utils/shareLink.ts";
 import { activeServer, forgetActiveServer, HOSTED, hostOf } from "../utils/server.ts";
+import { consumeHostedLoginNotice } from "../hosted/connectAuth.ts";
 import { asApiError, setStoredAuth } from "../utils/api/core.ts";
 import { authClient } from "../utils/api/clients/auth.ts";
 import { parseResponse } from "hono/client";
@@ -28,12 +29,17 @@ const Login = () => {
   const [startingSso, setStartingSso] = useState(false);
   const [usingCode, setUsingCode] = useState(false);
   const [code, setCode] = useState("");
+  const [connectNotice] = useState(() =>
+    HOSTED && activeServer ? consumeHostedLoginNotice(activeServer.address) : null,
+  );
   const { login, bootstrap } = useAuth();
   const oidcEnabled = !HOSTED && !!bootstrap?.oidcEnabled;
   const googleEnabled = !HOSTED && !!bootstrap?.googleLoginEnabled;
   const hasSsoOption = oidcEnabled || googleEnabled;
   const localFormVisible = !hasSsoOption || showLocalForm;
-  const title = activeServer ? `Sign in to ${hostOf(activeServer.address)}` : "Sign in";
+  const title = activeServer
+    ? `Sign in to ${activeServer.name || hostOf(activeServer.address)}`
+    : "Sign in";
 
   const handleCodeSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -90,6 +96,10 @@ const Login = () => {
         <div className="login-header">
           <img src={logo.src} alt="Aurral" className={`login-logo${logo.className}`} />
           <h1 className="login-title">{title}</h1>
+          {activeServer?.name ? (
+            <p className="hosted-address">{hostOf(activeServer.address)}</p>
+          ) : null}
+          {connectNotice ? <p className="login-subtitle">{connectNotice}</p> : null}
         </div>
 
         {hasSsoOption && (

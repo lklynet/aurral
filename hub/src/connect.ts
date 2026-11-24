@@ -158,6 +158,21 @@ export async function getEntitlement(
   };
 }
 
+export async function getConnectAccountSummary(
+  db: D1Database,
+  accountId: string,
+  now = Date.now(),
+) {
+  const [entitlement, count] = await Promise.all([
+    getEntitlement(db, accountId, now),
+    db
+      .prepare("SELECT COUNT(*) AS count FROM connect_servers WHERE owner_account_id = ?")
+      .bind(accountId)
+      .first<number>("count"),
+  ]);
+  return { entitlement, serverCount: count ?? 0 };
+}
+
 export async function startConnectTrial(
   db: D1Database,
   accountId: string,

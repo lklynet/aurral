@@ -3,7 +3,7 @@ import { getAppBasePath } from "./basePath.ts";
 
 export const HOSTED = import.meta.env.VITE_HOSTED;
 
-export type SavedServer = { address: string; token: string; username: string };
+export type SavedServer = { address: string; token: string; username: string; name?: string };
 type ServerList = { active: string | null; servers: SavedServer[] };
 
 const SERVERS_KEY = "aurral.servers";
@@ -12,7 +12,8 @@ const isSavedServer = (value: unknown): value is SavedServer =>
   isRecord(value) &&
   typeof value.address === "string" &&
   typeof value.token === "string" &&
-  typeof value.username === "string";
+  typeof value.username === "string" &&
+  (value.name === undefined || typeof value.name === "string");
 
 export const readServers = (): ServerList => {
   try {
@@ -60,6 +61,7 @@ export const saveServer = (server: SavedServer) => {
         ...server,
         token: server.token || existing.token,
         username: server.username || existing.username,
+        name: server.name ?? existing.name,
       }
     : server;
   writeServers({

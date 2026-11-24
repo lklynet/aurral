@@ -19,6 +19,7 @@ import { ListeningSection } from "./sections/ListeningSection";
 import { AppearanceSection } from "./sections/AppearanceSection";
 import { SharedLinksSection } from "./sections/SharedLinksSection";
 import { GeneralSection } from "./sections/GeneralSection";
+import { ConnectSection, useConnectNeedsAttention } from "./sections/ConnectSection";
 import { UsersSection } from "./sections/UsersSection";
 import { LibrarySection } from "./sections/LibrarySection";
 import { MonitoringSection } from "./sections/MonitoringSection";
@@ -35,6 +36,7 @@ const SECTION_COMPONENTS: Record<SettingsSectionId, ComponentType> = {
   appearance: AppearanceSection,
   "shared-links": SharedLinksSection,
   general: GeneralSection,
+  connect: ConnectSection,
   users: UsersSection,
   library: LibrarySection,
   monitoring: MonitoringSection,
@@ -60,6 +62,7 @@ export default function SettingsModal() {
     sections.some((entry) => entry.group === group.id),
   );
   const { hasFailure: hasStorageFailure } = useStorageHealth({ enabled: isAdmin });
+  const connectNeedsAttention = useConnectNeedsAttention({ enabled: isAdmin });
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const results = useMemo(
@@ -181,6 +184,11 @@ export default function SettingsModal() {
                           <Icon aria-hidden="true" />
                           <span>{entry.label}</span>
                           {"beta" in entry ? <span className="settings-beta">Beta</span> : null}
+                          {entry.id === "connect" && connectNeedsAttention ? (
+                            <span className="settings-dialog__alert">
+                              <span className="sr-only">Connect needs attention</span>
+                            </span>
+                          ) : null}
                           {entry.id === "status" && hasStorageFailure ? (
                             <span className="settings-dialog__alert">
                               <span className="sr-only">Storage issues</span>

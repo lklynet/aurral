@@ -19,7 +19,7 @@ export function serverMenuItems(itemClassName: string, iconClassName: string) {
           <span className={iconClassName} aria-hidden="true" />
         )}
         <span className="server-menu-item">
-          <span className="server-menu-item__host">{hostOf(server.address)}</span>
+          <span className="server-menu-item__host">{server.name || hostOf(server.address)}</span>
           {server.username ? (
             <span className="server-menu-item__user">{server.username}</span>
           ) : null}

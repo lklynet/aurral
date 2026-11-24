@@ -289,6 +289,8 @@ export const queryKeys = {
   myPlaylistOrder: (userId: MaybeId): QueryKey => ["users", "me", "playlist-order", userId || null],
   myIdentities: (userId: MaybeId): QueryKey => ["auth", "identities", userId || null],
   hubLink: (userId: MaybeId): QueryKey => ["hub-link", userId || null],
+  connectStatus: ["settings", "connect"],
+  connectAccount: (userId: MaybeId): QueryKey => ["settings", "connect", "account", userId || null],
   publicPlaylists: (userId: MaybeId): QueryKey => ["hub-link", "public", userId || null],
   friends: (userId: MaybeId): QueryKey => ["hub-link", "friends", userId || null],
   hubProfiles: (userId: MaybeId): QueryKey => ["hub-link", "profiles", userId || null],

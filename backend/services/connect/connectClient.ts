@@ -1,6 +1,7 @@
 import http from "node:http";
 import * as v from "valibot";
 import { WebSocket, type RawData } from "ws";
+import { appOrigin } from "../../middleware/security.ts";
 import {
   FRAME_PING,
   FRAME_PONG,
@@ -672,8 +673,22 @@ export function activeConnectOrigin(): string | null {
     : null;
 }
 
+const connectAccountSchema = v.object({
+  entitlement: v.object({
+    status: v.string(),
+    active: v.boolean(),
+    maxServers: v.number(),
+    currentPeriodEnd: v.nullable(v.number()),
+    trialAvailable: v.boolean(),
+  }),
+  serverCount: v.number(),
+});
+
 export function getConnectStatus() {
   const config = getConnectConfig();
+  const connectDomain = (process.env.AURRAL_CONNECT_DOMAIN || "aurral.dev")
+    .replace(/^\.+|\.+$/g, "")
+    .toLowerCase();
   return {
     available: hubLinksEnabled(),
     enabled: config.enabled,
@@ -681,10 +696,42 @@ export function getConnectStatus() {
     slug: config.slug,
     name: config.name,
     connectUrl: config.connectUrl,
+    hubOrigin: config.hubOrigin || SHARE_ORIGIN,
+    appOrigin,
+    connectDomain,
     state: runtimeState,
     lastError,
     lanHints: detectLanHints(),
   };
+}
+
+export async function getConnectAccount(userId: number) {
+  if (!hubLinksEnabled()) return null;
+  const link = linkedLink(userId);
+  if (!link) return null;
+  const response = await hubRequest(
+    link.origin,
+    "/v1/connect/account",
+    authorized(link, "GET"),
+  ).catch(() => null);
+  if (!response?.ok) return null;
+  const parsed = v.safeParse(connectAccountSchema, await response.json().catch(() => null));
+  return parsed.success ? parsed.output : null;
+}
+
+export async function reconnectConnect() {
+  const config = getConnectConfig();
+  if (!config.enabled) {
+    throw new ConnectServiceError(404, "connect_not_enabled", "Aurral Connect isn't enabled.");
+  }
+  clearDeferredTransport();
+  clearTimeout(retryTimer);
+  retryTimer = null;
+  retryAttempt = 0;
+  lastError = null;
+  detachAndCloseSession();
+  await syncConnect();
+  return getConnectStatus();
 }
 
 function mapHubRefusal(status: number, code: string | null): ConnectServiceError {
