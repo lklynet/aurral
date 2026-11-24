@@ -52,6 +52,7 @@ import { getReleaseGroupCover } from "../utils/api/endpoints/artists";
 import { createAudioEngine } from "../utils/audioEngine";
 import {
   MEDIA_SESSION_SEEK_SECONDS,
+  mediaKeyAction,
   mediaSessionArtwork,
   mediaSessionPosition,
 } from "../utils/mediaSession";
@@ -997,8 +998,8 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
   ]);
 
   useEffect(() => {
+    if (!isActive) return undefined;
     const mediaSession = navigator.mediaSession;
-    if (!mediaSession || !isActive) return undefined;
     const isRunning = () => {
       const snapshot = engine.getSnapshot();
       return snapshot.isPlaying || snapshot.isStarting;
@@ -1022,18 +1023,27 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
         seekBy(-(details?.seekOffset || MEDIA_SESSION_SEEK_SECONDS)),
       stop: clearQueue,
     } satisfies Partial<Record<MediaSessionAction, MediaSessionActionHandler>>;
+    const handleMediaKey = (event: KeyboardEvent) => {
+      const action = mediaKeyAction(event.key);
+      if (!action || event.defaultPrevented || event.repeat) return;
+      event.preventDefault();
+      if (action === "playpause") togglePlayPause();
+      else handlers[action]();
+    };
+    window.addEventListener("keydown", handleMediaKey);
     for (const [action, handler] of Object.entries(handlers) as [
       MediaSessionAction,
       MediaSessionActionHandler,
     ][]) {
       try {
-        mediaSession.setActionHandler(action, handler);
+        mediaSession?.setActionHandler(action, handler);
       } catch {}
     }
     return () => {
+      window.removeEventListener("keydown", handleMediaKey);
       for (const action of Object.keys(handlers) as MediaSessionAction[]) {
         try {
-          mediaSession.setActionHandler(action, null);
+          mediaSession?.setActionHandler(action, null);
         } catch {}
       }
     };

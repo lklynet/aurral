@@ -10,6 +10,22 @@ const IMAGE_TYPES: Partial<Record<string, string>> = {
 
 export const MEDIA_SESSION_SEEK_SECONDS = 10;
 
+const MEDIA_KEY_ACTIONS = {
+  MediaPlayPause: "playpause",
+  MediaPlay: "play",
+  MediaPause: "pause",
+  MediaTrackNext: "nexttrack",
+  MediaTrackPrevious: "previoustrack",
+} as const;
+
+// TV browsers can deliver a remote's media buttons as key events instead of
+// Media Session actions.
+export function mediaKeyAction(key: string) {
+  return Object.hasOwn(MEDIA_KEY_ACTIONS, key)
+    ? MEDIA_KEY_ACTIONS[key as keyof typeof MEDIA_KEY_ACTIONS]
+    : null;
+}
+
 export function mediaSessionArtwork(src: string | null | undefined, baseUrl: string) {
   if (!src) return [];
   let url;
