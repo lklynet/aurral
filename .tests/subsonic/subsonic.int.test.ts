@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import * as v from "valibot";
 import { test, beforeAll, afterAll } from "vite-plus/test";
+import { requireFixture } from "../playlists/fixtures.ts";
+import { subsonicPayload } from "./subsonicPayload.ts";
 
 import {
   cleanupIsolatedState,
@@ -48,7 +51,9 @@ async function request(method: string, params: Record<string, string> = {}) {
     response,
     contentType,
     body,
-    json: contentType.includes("json") ? JSON.parse(body)["subsonic-response"] : null,
+    get json() {
+      return subsonicPayload(body);
+    },
   };
 }
 
@@ -128,8 +133,7 @@ test("supports token auth for every local user and syncs password changes", asyn
     body: JSON.stringify({ username: "bob", password: "bob-password" }),
   });
   assert.equal(loginResponse.status, 200);
-  const login = await loginResponse.json();
-  assert.equal(typeof login.token, "string");
+  const login = v.parse(v.object({ token: v.string() }), await loginResponse.json());
 
   const storedSecret = db
     .prepare<
@@ -224,7 +228,7 @@ test("exposes getOpenSubsonicExtensions without authentication", async () => {
   const anonymous = await fetch(
     `http://127.0.0.1:${aurral.port}/rest/getOpenSubsonicExtensions.view?f=json`,
   );
-  const body = JSON.parse(await anonymous.text())["subsonic-response"];
+  const body = subsonicPayload(await anonymous.text());
   assert.equal(body.status, "ok");
   assert.equal(body.openSubsonic, true);
   assert.deepEqual(body.openSubsonicExtensions, [
@@ -259,7 +263,7 @@ test("accepts form-encoded POST requests", async () => {
       f: "json",
     }),
   });
-  const body = JSON.parse(await response.text())["subsonic-response"];
+  const body = subsonicPayload(await response.text());
   assert.equal(body.status, "ok");
   assert.equal(body.user.username, "alice");
 
@@ -268,7 +272,7 @@ test("accepts form-encoded POST requests", async () => {
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ u: "alice", p: "password123", v: "1.16.1" }),
   });
-  assert.equal(JSON.parse(await mixed.text())["subsonic-response"].status, "ok");
+  assert.equal(subsonicPayload(await mixed.text()).status, "ok");
 });
 
 test("returns the Subsonic invalid-credentials error", async () => {
@@ -284,7 +288,7 @@ test("returns the Subsonic invalid-credentials error", async () => {
 test("returns protocol errors for unsupported authentication and requests", async () => {
   const token = await request("ping", { p: "", t: "token", s: "salt", f: "json" });
   assert.equal(token.json.error.code, 41);
-  assert.match(token.json.error.helpUrl, /^https:\/\/docs\.aurral\.org\//);
+  assert.match(token.json.error.helpUrl ?? "", /^https:\/\/docs\.aurral\.org\//);
   const tokenXml = await request("ping", { p: "", t: "token", s: "salt" });
   assert.match(tokenXml.body, /<error code="41" message="[^"]+" helpUrl="https:[^"]+"\/>/);
 
@@ -307,23 +311,23 @@ test("sorts both artist indexes using their advertised ignored articles", async 
     const result = await request(method, { f: "json" });
     const sections = result.json[payload].index;
     assert.deepEqual(
-      sections.map((section: { name: string; artist: { name: string }[] }) => section.name),
+      sections.map((section) => section.name),
       ["A", "B", "C", "L", "T", "É", "#"],
     );
     assert.deepEqual(
-      sections
-        .find((section: { name: string; artist: { name: string }[] }) => section.name === "C")
-        .artist.map((artist: { name: string }) => artist.name),
+      requireFixture(sections.find((section) => section.name === "C")).artist.map(
+        (artist) => artist.name,
+      ),
       ["The Cure", "Cure Tribute"],
     );
     assert.deepEqual(
-      sections
-        .find((section: { name: string; artist: { name: string }[] }) => section.name === "L")
-        .artist.map((artist: { name: string }) => artist.name),
+      requireFixture(sections.find((section) => section.name === "L")).artist.map(
+        (artist) => artist.name,
+      ),
       ["Los Lobos"],
     );
     assert.deepEqual(
-      sections.at(-1).artist.map((artist: { name: string }) => artist.name),
+      requireFixture(sections.at(-1)).artist.map((artist) => artist.name),
       ["!Bang", "2Pac"],
     );
   }
