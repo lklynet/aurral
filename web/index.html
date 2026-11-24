@@ -1933,13 +1933,15 @@
 
       let size = "";
       let pending = 0;
-      new ResizeObserver(() => {
+      const resize = new ResizeObserver(() => {
         const next = `${sky.clientWidth}:${hero.offsetHeight}`;
         if (next === size) return;
         size = next;
         clearTimeout(pending);
         pending = setTimeout(redraw, 120);
-      }).observe(hero);
+      });
+      resize.observe(hero);
+      resize.observe(sky);
       new IntersectionObserver(([entry]) => {
         onScreen = entry.isIntersecting;
         if (onScreen) play();
