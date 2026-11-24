@@ -2023,7 +2023,7 @@ function planAlbumTidy({ id, owned, has_files }: { id: number; owned: number; ha
     (track) => track.title,
   );
   const target = chooseLibraryAlbum(siblings, titles);
-  if (!target && (hasFiles || album.owned)) return null;
+  if ((!target && hasFiles) || (!hasFiles && album.owned)) return null;
   return () =>
     target ? foldLibraryAlbum(album, tracks, target) : removeEmptyLibraryAlbum(album, tracks);
 }
