@@ -12,7 +12,11 @@ const REVOKE_ATTEMPTS = 30;
 const startedSchema = v.object({ userCode: v.string(), expiresAt: v.number() });
 const statusSchema = v.variant("status", [
   v.object({ status: v.literal("pending"), expiresAt: v.number() }),
-  v.object({ status: v.literal("linked"), handle: v.string() }),
+  v.object({
+    status: v.literal("linked"),
+    handle: v.string(),
+    accountId: v.optional(v.string()),
+  }),
 ]);
 const revokedSchema = v.object({ error: v.literal("link_revoked") });
 const revokeTaskSchema = v.object({ origin: v.string(), tokenHash: v.string() });
@@ -115,10 +119,19 @@ async function checkHub(link: HubLinksRow) {
   }
   const status = response.ok ? v.safeParse(statusSchema, body) : null;
   if (status?.success && status.output.status === "linked") {
-    db.prepare<[string, number, number]>(
-      "UPDATE hub_links SET handle = ?, linked_at = coalesce(linked_at, ?), user_code = NULL, expires_at = NULL WHERE user_id = ?",
-    ).run(status.output.handle, Date.now(), link.user_id);
+    db.prepare<[string, string | null, number, number]>(
+      "UPDATE hub_links SET handle = ?, account_id = coalesce(?, account_id), linked_at = coalesce(linked_at, ?), user_code = NULL, expires_at = NULL WHERE user_id = ?",
+    ).run(status.output.handle, status.output.accountId ?? null, Date.now(), link.user_id);
   }
+}
+
+export function findUserIdByHubAccountId(origin: string, accountId: string): number | null {
+  const row = db
+    .prepare<[string, string], { user_id: number }>(
+      "SELECT user_id FROM hub_links WHERE origin = ? AND account_id = ? AND linked_at IS NOT NULL AND broken = 0 LIMIT 1",
+    )
+    .get(origin, accountId);
+  return row?.user_id ?? null;
 }
 
 export async function hubLinkStatus(userId: number) {

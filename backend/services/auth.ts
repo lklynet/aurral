@@ -16,6 +16,7 @@ type ClientRequest = {
   socket?: { remoteAddress?: string };
   connection?: { remoteAddress?: string };
   ip?: string;
+  viaConnect?: boolean;
 };
 
 type ProxyRequest = ClientRequest & { headers: RequestHeaders };
@@ -377,7 +378,7 @@ export function getSoleAdminUser() {
 }
 
 export function isRequestFromTrustedLocalSubnet(req: ClientRequest) {
-  if (wasForwarded(req) || isCrossSite(req)) return false;
+  if (req.viaConnect || wasForwarded(req) || isCrossSite(req)) return false;
   const peer = peerAddress(req);
   if (isLoopbackIp(peer)) return true;
   if (!isPrivateIpv4(peer)) return false;
@@ -502,7 +503,7 @@ function resolveProxyRole(req: ProxyRequest, username: string) {
 }
 
 export function resolveProxyUser(req: ProxyRequest) {
-  if (!isProxyAuthEnabled()) return null;
+  if (req.viaConnect || !isProxyAuthEnabled()) return null;
   if (!isTrustedProxy(req) || isCrossSite(req)) return null;
   const headerName = getProxyHeaderName();
   const rawUsername = getHeaderValue(req, headerName);

@@ -172,6 +172,7 @@ export interface HubLinksRow {
   linked_at: number | null;
   broken: number;
   share_listening: number;
+  account_id: string | null;
 }
 
 export interface HubPublicationsRow {

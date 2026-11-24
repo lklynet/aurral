@@ -100,22 +100,27 @@ class WebSocketService extends EventEmitter {
     return this;
   }
 
-  handleConnection(ws: WebSocket, req: IncomingMessage) {
+  handleConnection(
+    ws: WebSocket,
+    req: IncomingMessage,
+    options: { strictSessionOnly?: boolean } = {},
+  ) {
     let sessionUser: WebSocketClient["user"] = null;
     let authSource: WebSocketClient["authSource"] = null;
     let sessionToken: string | undefined;
-    if (isAuthRequired() || isCrossSite(req)) {
+    const strict = options.strictSessionOnly === true;
+    if (strict || isAuthRequired() || isCrossSite(req)) {
       const requestUrl = new URL(req.url || "", "http://localhost");
       const token = requestUrl.searchParams.get("token")?.trim();
       sessionUser = resolveSessionUserFromToken(token);
       if (sessionUser && token) {
         sessionToken = token;
-      } else {
+      } else if (!strict) {
         sessionUser = resolveProxyUser(req);
       }
       if (sessionUser) {
         authSource = "session";
-      } else {
+      } else if (!strict) {
         sessionUser = resolveLocalNetworkBypassUser({
           headers: req.headers || {},
           socket: req.socket || {},

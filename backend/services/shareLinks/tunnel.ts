@@ -1,6 +1,7 @@
 import { asAppError } from "../../../lib/errors.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import readline from "node:readline";
+import { activeConnectOrigin } from "../connect/connectClient.ts";
 import { logger } from "../logger.ts";
 import { getShareInstance, SHARE_ORIGIN } from "./store.ts";
 
@@ -15,7 +16,7 @@ const VERIFY_GRACE_MS = 2 * 60 * 1000;
 type TunnelState = "off" | "starting" | "online" | "unreachable" | "unavailable";
 
 interface ShareTunnel {
-  child: ChildProcess;
+  child: ChildProcess | null;
   port: number;
   url: string | null;
   retryTimer: NodeJS.Timeout | null;
@@ -124,6 +125,14 @@ function launch(port: number) {
 export function startShareTunnel(port: number) {
   if (tunnel?.port === port || restartTimer) return;
   restartAttempt = 0;
+  const connectOrigin = activeConnectOrigin();
+  if (connectOrigin) {
+    const current: ShareTunnel = { child: null, port, url: connectOrigin, retryTimer: null };
+    tunnel = current;
+    state = "starting";
+    void register(current, connectOrigin);
+    return;
+  }
   launch(port);
 }
 
@@ -135,8 +144,8 @@ export async function stopShareTunnel() {
   if (state !== "unavailable") state = "off";
   if (!current) return;
   clearTimeout(current.retryTimer);
-  if (current.child.exitCode === null && current.child.signalCode === null) {
-    const exited = new Promise((resolve) => current.child.once("exit", resolve));
+  if (current.child && current.child.exitCode === null && current.child.signalCode === null) {
+    const exited = new Promise((resolve) => current.child?.once("exit", resolve));
     current.child.kill("SIGTERM");
     await exited;
   }

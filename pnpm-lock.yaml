@@ -411,6 +411,15 @@ importers:
         specifier: 4.156.1
         version: 4.156.1(@cloudflare/workers-types@5.20261101.1)(@types/node@26.6.5)
 
+  relay:
+    dependencies:
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
+      ws:
+        specifier: ^8.22.0
+        version: 8.22.0
+
 packages:
 
   '@apideck/better-ajv-errors@0.3.7':
