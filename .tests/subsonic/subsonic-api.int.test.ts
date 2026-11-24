@@ -8,6 +8,12 @@ import sharp from "sharp";
 import { mkdir, mkdtemp, rm, stat, writeFile, readFile, symlink } from "node:fs/promises";
 import path from "node:path";
 import * as v from "valibot";
+import { hc } from "hono/client";
+import type auth from "../../backend/routes/auth.ts";
+import type library from "../../backend/routes/library/handlers/libraryIndex.ts";
+import type playlistJobs from "../../backend/routes/playlists/handlers/jobs.ts";
+import type playQueue from "../../backend/routes/playQueue.ts";
+import { subsonicPayload, type SubsonicPayload } from "./subsonicPayload.ts";
 
 import {
   cleanupIsolatedState,
@@ -59,67 +65,6 @@ let aurral: {
   stop(): Promise<void>;
 };
 type Playlist = ReturnType<typeof flowPlaylistConfig.createStaticPlaylist>;
-type SubsonicEntry = {
-  id: string;
-  name: string;
-  title: string;
-  artist: string;
-  album: string;
-  albumId: string;
-  artistId: string;
-  created: string;
-  coverArt: string;
-  starred: string;
-  genre: string;
-  musicBrainzId: string;
-  artistImageUrl: string;
-  roles: string[];
-  [key: string]: unknown;
-};
-type SubsonicPlaylist = SubsonicEntry & { changed: string; entry: SubsonicEntry[] };
-type Starred = { song: SubsonicEntry[]; artist: SubsonicEntry[]; album: SubsonicEntry[] };
-type SubsonicPayload = {
-  status: string;
-  error: { code: number; message: string };
-  playlist: SubsonicPlaylist;
-  playlists: { playlist: SubsonicPlaylist[] };
-  artists: { ignoredArticles: string; index: { name: string; artist: SubsonicEntry[] }[] };
-  indexes: { lastModified: number; index: { name: string; artist: SubsonicEntry[] }[] };
-  starred: Starred;
-  starred2: Starred;
-  searchResult3: Starred;
-  randomSongs: { song: SubsonicEntry[] };
-  topSongs: { song: SubsonicEntry[] };
-  playQueueByIndex: { entry: SubsonicEntry[]; currentIndex: number; position: number };
-  nowPlaying: { entry: (SubsonicEntry & { username: string })[] };
-  playQueue: {
-    entry: SubsonicEntry[];
-    current: string;
-    position: number;
-    username: string;
-    changedBy: string;
-    changed: string;
-  };
-  album: SubsonicEntry & { song: SubsonicEntry[] };
-  artist: SubsonicEntry & { album: SubsonicEntry[] };
-  song: SubsonicEntry;
-  user: { username: string; adminRole: boolean; streamRole: boolean };
-  license: { valid: boolean };
-  albumList2: { album: SubsonicEntry[] };
-  songsByGenre: { song: SubsonicEntry[] };
-  genres: { genre: { albumCount: number; songCount: number; value: string }[] };
-  artistInfo: { similarArtist: SubsonicEntry[] };
-  artistInfo2: { similarArtist: SubsonicEntry[]; largeImageUrl: string };
-  lyrics: { value: string };
-  lyricsList: {
-    structuredLyrics: {
-      lang: string;
-      synced: boolean;
-      line: { value: string; start?: number }[];
-    }[];
-  };
-  [key: string]: unknown;
-};
 
 let authToken: string;
 let heldJobId: string | null;
@@ -178,12 +123,19 @@ async function apiFetch(pathname: string, options: RequestInit = {}) {
   });
 }
 
-function responseJson(result: {
-  response: Response;
-  contentType: string;
-  body: string;
-}): SubsonicPayload {
-  return JSON.parse(result.body)["subsonic-response"];
+const apiUrl = () => `http://127.0.0.1:${aurral.port}/api`;
+const signedIn = () => ({ headers: { Authorization: `Bearer ${authToken}` } });
+
+async function signIn() {
+  const login = await hc<typeof auth>(apiUrl()).auth.login.$post({
+    json: { username: "alice", password: "password123" },
+  });
+  assert.equal(login.status, 200);
+  return (await login.json()).token;
+}
+
+function responseJson(result: { body: string }) {
+  return subsonicPayload(result.body);
 }
 
 async function waitFor<T>(check: () => Promise<T> | T, timeoutMs = 5000) {
@@ -459,13 +411,7 @@ beforeAll(async () => {
   });
 
   aurral = await startServerProcess();
-  const login = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: "alice", password: "password123" }),
-  });
-  authToken = (await login.json()).token;
-  assert.equal(login.status, 200);
+  authToken = await signIn();
 });
 
 afterAll(async () => {
@@ -607,10 +553,12 @@ test("the web player and Subsonic clients resume the same play queue", async () 
     "ok",
   );
 
-  const { queue } = await (await apiFetch("/api/play-queue")).json();
+  const playQueueApi = hc<typeof playQueue>(apiUrl(), signedIn())["play-queue"];
+  const readQueue = async () => (await (await playQueueApi.$get()).json()).queue;
+  const queue = requireFixture(await readQueue());
   assert.equal(queue.changedBy, "canonical-test");
   assert.deepEqual(
-    queue.tracks.map((track: { title: string }) => track.title),
+    queue.tracks.map((track) => track.title),
     [song.title, flowSong.title],
   );
   assert.equal(queue.currentIndex, 1);
@@ -619,14 +567,17 @@ test("the web player and Subsonic clients resume the same play queue", async () 
     assert.equal((await apiFetch(`/api${track.streamPath}`)).status, 200);
   }
 
-  const save = (streamPaths: string[], current: number) =>
-    apiFetch("/api/play-queue", {
-      method: "PUT",
-      body: JSON.stringify({ streamPaths, current, positionMs: 1500, device: "Aurral web" }),
-    }).then((response) => response.json());
-  const [librarySong, flowTrack] = queue.tracks;
+  const save = async (streamPaths: string[], current: number) => {
+    const response = await playQueueApi.$put({
+      json: { streamPaths, current, positionMs: 1500, device: "Aurral web" },
+    });
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  const librarySong = requireFixture(queue.tracks[0]);
+  const flowTrack = requireFixture(queue.tracks[1]);
   const saved = await save([flowTrack.streamPath, "/artists/x/preview", librarySong.streamPath], 2);
-  assert.ok(saved.changed > 0);
+  assert.ok((saved.changed ?? 0) > 0);
   const resumed = responseJson(await request("getPlayQueue")).playQueue;
   assert.deepEqual(
     resumed.entry.map((entry) => entry.id),
@@ -641,15 +592,15 @@ test("the web player and Subsonic clients resume the same play queue", async () 
 
   const indexed = { id: [song.id, flowSong.id], currentIndex: 1, position: "249.6" };
   assert.equal(responseJson(await request("savePlayQueueByIndex", indexed)).status, "ok");
-  const fromIndexed = (await (await apiFetch("/api/play-queue")).json()).queue;
-  assert.equal(fromIndexed.tracks[fromIndexed.currentIndex].title, flowSong.title);
+  const fromIndexed = requireFixture(await readQueue());
+  assert.equal(requireFixture(fromIndexed.tracks[fromIndexed.currentIndex]).title, flowSong.title);
   assert.equal(fromIndexed.positionMs, 250);
   assert.equal(
     responseJson(await request("savePlayQueueByIndex", { ...indexed, currentIndex: 2 })).status,
     "failed",
   );
   assert.equal(responseJson(await request("getPlayQueue")).playQueue.current, flowSong.id);
-  const { changed } = await save([librarySong.streamPath], 0);
+  const changed = requireFixture((await save([librarySong.streamPath], 0)).changed);
 
   assert.deepEqual(await save([librarySong.streamPath, "/artists/x/preview"], 1), {
     changed: null,
@@ -657,18 +608,15 @@ test("the web player and Subsonic clients resume the same play queue", async () 
   assert.equal(responseJson(await request("getPlayQueue")).playQueue.current, song.id);
 
   const close = (device: string, seen?: number) =>
-    apiFetch("/api/play-queue", {
-      method: "DELETE",
-      body: JSON.stringify({ device, changed: seen }),
-    });
+    playQueueApi.$delete({ json: { device, changed: seen } });
   assert.equal((await close("Aurral phone")).status, 204);
   assert.equal((await close("Aurral phone", changed - 1)).status, 204);
   assert.equal(responseJson(await request("getPlayQueue")).playQueue.current, song.id);
   await close("Aurral phone", changed);
-  assert.deepEqual(await (await apiFetch("/api/play-queue")).json(), { queue: null });
+  assert.equal(await readQueue(), null);
   await save([librarySong.streamPath], 0);
   await close("Aurral web");
-  assert.deepEqual(await (await apiFetch("/api/play-queue")).json(), { queue: null });
+  assert.equal(await readQueue(), null);
 });
 
 test("getNowPlaying shows what people sharing their listening play on the web or in a Subsonic app", async () => {
@@ -870,7 +818,11 @@ test("stops ffmpeg when a client closes a transcoded stream early", async () => 
       "pid=,comm=",
       "--ppid",
       String(aurral.child.pid),
-    ]).catch((error) => (error.code === 1 ? { stdout: "" } : Promise.reject(error)));
+    ]).catch((error: unknown) =>
+      error instanceof Error && "code" in error && error.code === 1
+        ? { stdout: "" }
+        : Promise.reject(error),
+    );
     return stdout.split("\n").filter((line: string) => /\bffmpeg$/.test(line.trim()));
   };
   try {
@@ -1711,14 +1663,18 @@ test("creates durable Subsonic playlists around one promoted library job", async
   assert.equal(libraryJobs.length, 1);
 
   const aurralPlaylistId = decodeURIComponent(firstId.slice("shared:".length));
-  const aurralJobsResponse = await apiFetch(
-    `/api/playlists/jobs/${encodeURIComponent(aurralPlaylistId)}`,
-  );
-  assert.equal(aurralJobsResponse.status, 200);
-  const aurralJobs = await aurralJobsResponse.json();
+  const playlistJobsApi = hc<typeof playlistJobs>(apiUrl(), signedIn()).playlists.jobs[
+    ":playlistId"
+  ];
+  const jobsIn = async (playlistId: string) => {
+    const response = await playlistJobsApi.$get({ param: { playlistId }, query: {} });
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  const aurralJobs = await jobsIn(aurralPlaylistId);
   assert.equal(aurralJobs.length, 1);
-  assert.equal(aurralJobs[0].id, canonicalJobId);
-  assert.equal(aurralJobs[0].playlistType, aurralPlaylistId);
+  assert.equal(aurralJobs[0]?.id, canonicalJobId);
+  assert.equal(aurralJobs[0]?.playlistType, aurralPlaylistId);
   assert.equal(
     (await apiFetch(`/api/playlists/stream/${encodeURIComponent(canonicalJobId)}`)).status,
     200,
@@ -1740,13 +1696,7 @@ test("creates durable Subsonic playlists around one promoted library job", async
     { method: "DELETE" },
   );
   assert.equal(removeLibraryTrackResponse.status, 200);
-  await waitFor(async () => {
-    const response = await apiFetch(
-      `/api/playlists/jobs/${encodeURIComponent(secondAurralPlaylistId)}`,
-    );
-    const jobs = await response.json();
-    return jobs.length === 0 ? true : null;
-  });
+  await waitFor(async () => ((await jobsIn(secondAurralPlaylistId)).length === 0 ? true : null));
   await stat(requireFixture(libraryJobs[0]).finalPath!);
 
   assert.equal(responseJson(await request("deletePlaylist", { id: second.id })).status, "ok");
@@ -1923,13 +1873,14 @@ test("playlist favorites resolve to the owned library track", async () => {
   try {
     assert.equal(responseJson(await request("star", { id: playlistSongId })).status, "ok");
 
-    const favorites = await (await apiFetch("/api/library/favorites")).json();
+    const libraryApi = hc<typeof library>(apiUrl(), signedIn()).library;
+    const favorites = await (await libraryApi.favorites.$get()).json();
     assert.deepEqual(
-      favorites.library.tracks.map((track: { title: string }) => track.title),
+      favorites.library.tracks.map((track) => track.title),
       ["Canonical Song"],
     );
     assert.equal(
-      favorites.songIds.some((id: string) => /^song:/.test(id)),
+      favorites.songIds.some((id) => /^song:/.test(id)),
       true,
     );
 
@@ -1945,13 +1896,14 @@ test("playlist favorites resolve to the owned library track", async () => {
     librarySongId = requireFixture(
       responseJson(await request("getAlbum", { id: album.id })).album.song[0],
     ).id;
-    const page = await (
-      await apiFetch("/api/library?kind=tracks&page=1&pageSize=100&availableOnly=true")
-    ).json();
+    const pageResponse = await libraryApi.$get({
+      query: { kind: "tracks", page: "1", pageSize: "100", availableOnly: "true" },
+    });
+    assert.equal(pageResponse.status, 200);
+    const page = await pageResponse.json();
+    assert.ok(page.kind === "tracks" && "items" in page);
     assert.equal(
-      page.items.find(
-        (track: { title: string; userFavorite: boolean }) => track.title === "Canonical Song",
-      ).userFavorite,
+      requireFixture(page.items.find((track) => track.title === "Canonical Song")).userFavorite,
       true,
     );
 
@@ -2062,13 +2014,7 @@ test("streams library files with full and range responses", async () => {
 });
 
 test("streams library files through the authenticated native route", async () => {
-  const login = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: "alice", password: "password123" }),
-  });
-  const { token } = await login.json();
-  const headers = { Authorization: `Bearer ${token}` };
+  const headers = { Authorization: `Bearer ${await signIn()}` };
   const canonical = await fetch(
     `http://127.0.0.1:${aurral.port}/api/library?source=readonly&availableOnly=true&kind=tracks&page=1&pageSize=100`,
     { headers },
