@@ -11,7 +11,7 @@ import {
   scoreTextMatch,
 } from "./providers/metadataRanking.ts";
 import { buildResolvedJobTrack, type DownloadTrackFields } from "./downloadUtils.ts";
-import { normalizeMatchText } from "./trackMatching/nativeMatcher.ts";
+import { normalizeMatchText, titleMatchText } from "./trackMatching/nativeMatcher.ts";
 import { extractVariants, sameMixCredit } from "./trackMatching/semanticPolicy.ts";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 
@@ -83,10 +83,10 @@ export function sameVersion(left: string | null | undefined, right: string | nul
 }
 
 function sameTitle(left: string | null | undefined, right: string | null | undefined) {
-  const a = normalizeMatchText(left);
+  const a = titleMatchText(left);
   if (!a) return false;
   return (
-    a === normalizeMatchText(right) ||
+    a === titleMatchText(right) ||
     (sameVersion(left, right) && scoreTextMatch(left, right, { extended: true }) >= 90)
   );
 }
@@ -321,8 +321,8 @@ function pick(manifest: PlaceableManifest, job: ManifestJobInput, taken: Set<num
       )
     : null;
   if (placed) return placed.index;
-  const key = normalizeMatchText(title);
-  const named = manifest.tracks.filter((track) => normalizeMatchText(track.title) === key);
+  const key = titleMatchText(title);
+  const named = manifest.tracks.filter((track) => titleMatchText(track.title) === key);
   if (key && named.length === 1) {
     const entry = compatible.find(({ track }) => track === named[0]);
     if (entry) return entry.index;

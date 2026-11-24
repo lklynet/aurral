@@ -62,6 +62,16 @@ test("scoreTextMatch treats an accent difference as an exact match", () => {
   assert.equal(scoreTextMatch("Un Canto a Galicia", "Un canto a Galícia", matcher), 100);
 });
 
+test("scoreTextMatch matches a title written only in emoji by the same emoji", () => {
+  for (const options of [matcher, null]) {
+    assert.equal(scoreTextMatch("👋", "👋", options), 100);
+    assert.equal(scoreTextMatch("❤️", "❤", options), 100);
+    assert.equal(scoreTextMatch("❤️✨", "❤✨", options), 100);
+    assert.equal(scoreTextMatch("👋", "🌈", options), 0);
+    assert.equal(scoreTextMatch("👋", "Hello", options), 0);
+  }
+});
+
 test("getNormalizedText keeps accented words whole instead of splitting them", () => {
   assert.equal(getNormalizedText("Canción"), "cancion");
   assert.equal(getNormalizedText("Rocío Jurado"), "rocio jurado");
