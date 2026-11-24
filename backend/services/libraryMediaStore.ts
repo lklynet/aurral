@@ -2002,8 +2002,8 @@ const untidyAlbumsStmt = db.prepare<[], { id: number; owned: number; has_files: 
    WHERE album.identity_key LIKE 'name:%' OR (NOT ${ALBUM_HAS_FILES} AND NOT ${albumIsOwned("album")})
    ORDER BY album.id`,
 );
-const albumStmt = db.prepare<[number], LibraryAlbumsRow>(
-  "SELECT * FROM library_albums WHERE id = ?",
+const albumStmt = db.prepare<[number], LibraryAlbumsRow & { owned: number }>(
+  `SELECT album.*, ${albumIsOwned("album")} AS owned FROM library_albums AS album WHERE album.id = ?`,
 );
 const artistAlbumsStmt = db.prepare<[number, number], LibraryAlbumsRow>(
   "SELECT * FROM library_albums WHERE artist_id = ? AND id != ? ORDER BY id",
@@ -2012,7 +2012,7 @@ const artistAlbumsStmt = db.prepare<[number, number], LibraryAlbumsRow>(
 function planAlbumTidy({ id, owned, has_files }: { id: number; owned: number; has_files: number }) {
   if (!has_files && owned) return null;
   const album = albumStmt.get(id);
-  if (!album) return null;
+  if (!album || (!has_files && album.owned)) return null;
   const siblings = artistAlbumsStmt
     .all(album.artist_id, album.id)
     .filter((sibling) => isSameLibraryName(sibling.title, album.title));
