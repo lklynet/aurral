@@ -2029,7 +2029,8 @@ textarea:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .sidebar-resize-handle:hover::after {
+  .sidebar-resize-handle:hover::after,
+  .player-rail-resize-handle:hover::after {
     background: var(--aurral-text-muted);
   }
 }
@@ -13436,7 +13437,57 @@ button.playlist-detail__cover {
   }
 }
 
+.player-rail-resize-handle {
+  display: none;
+}
+
 @media (min-width: 1024px) {
+  .player-rail {
+    --player-queue-width: min(var(--player-panel-width, 22rem), 40vw);
+  }
+
+  .player-rail.is-resizing {
+    transition: none;
+  }
+
+  .player-rail-resize-handle {
+    position: relative;
+    display: block;
+    width: 0;
+    flex: none;
+    z-index: var(--aurral-z-raised);
+    touch-action: none;
+  }
+
+  .player-rail-resize-handle::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    left: -0.5rem;
+    width: 1rem;
+    cursor: col-resize;
+  }
+
+  .player-rail-resize-handle::after {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    left: -1px;
+    width: 2px;
+    border-radius: var(--aurral-radius-round);
+    background: transparent;
+    transition: background-color var(--aurral-duration-fast) var(--aurral-ease-standard);
+  }
+
+  .player-rail-resize-handle.is-active::after,
+  .player-rail-resize-handle:focus-visible::after {
+    background: var(--aurral-text-muted);
+  }
+
+  .player-rail-resize-handle:focus-visible {
+    outline: none;
+  }
+
   .btn.player-rail-edge {
     margin-right: 0;
   }
