@@ -7,7 +7,6 @@ import { requireAuth, requirePermission } from "../../../middleware/guards.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { logger } from "../../../services/logger.ts";
-import { getLibraryReadModelForArtistPage } from "../../../services/libraryReadModel.ts";
 import { getLibraryArtistProjection } from "../../../services/libraryQueryService.ts";
 import { artistQueueTracks } from "../../../services/queueTracks.ts";
 import { asAppError } from "../../../../lib/errors.ts";
@@ -16,8 +15,6 @@ import { isErrorStatus, isFailure } from "../../shared/errorStatus.ts";
 const listQuery = v.object({
   limit: v.optional(v.string()),
   offset: v.optional(v.string()),
-  readPath: v.optional(v.string()),
-  source: v.optional(v.string()),
 });
 
 const monitoringInput = v.object({
@@ -49,17 +46,6 @@ export default new Hono<AppEnv>()
     try {
       const limit = Math.min(Math.max(Number.parseInt(query.limit ?? "", 10) || 10000, 1), 10000);
       const offset = Math.max(Number.parseInt(query.offset ?? "", 10) || 0, 0);
-      if (query.readPath === "library") {
-        const { artists } = getLibraryReadModelForArtistPage({
-          source: query.source || "all",
-          limit,
-          offset,
-        });
-        return c.json(
-          artists.map((artist) => ({ ...artist, added: artist.addedAt })),
-          200,
-        );
-      }
       const artists = getLibraryArtistProjection({ pageSize: limit, offset });
       return c.json(
         artists.map((artist) => ({ ...artist, added: artist.addedAt })),
