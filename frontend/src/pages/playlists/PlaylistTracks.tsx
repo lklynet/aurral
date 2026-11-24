@@ -256,11 +256,20 @@ export function PlaylistTracks({
           json: { jobIds },
         }),
       );
+      return true;
     } catch (err) {
       showError(
         `Could not reorder ${entry.name || "the playlist"}. ${getApiErrorMessage(err, "Try again.")}`,
       );
       await refresh();
+      return false;
+    }
+  };
+
+  const handleMoveTrack = async (track: PlaylistTrackRow, edge: "top" | "bottom") => {
+    const rest = tracks.flatMap((row) => (row.id === track.id ? [] : [row.id]));
+    if (await handleReorder(edge === "top" ? [track.id, ...rest] : [...rest, track.id])) {
+      showSuccess(`Moved ${track.trackName} to the ${edge}`);
     }
   };
 
@@ -467,6 +476,7 @@ export function PlaylistTracks({
           isFlow ? undefined : (selected, target) => moveTracks(selected, target)
         }
         onReorder={canReorder ? handleReorder : undefined}
+        onMoveTrack={canReorder ? handleMoveTrack : undefined}
         playlists={staticPlaylists}
         playlistSavingKey={playlistMenuSavingKey}
         playlistMenuError={playlistMenuError}
