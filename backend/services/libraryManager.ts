@@ -102,7 +102,7 @@ import {
 } from "./providers/metadataRanking.ts";
 import { enqueueSystemTask } from "./jobs/systemTasks.ts";
 import { scheduleReleaseMetadataRefresh } from "./releaseMetadataSync.ts";
-import { loadFreshReleasesByArtists } from "./discovery/freshReleases.ts";
+import { loadFreshReleasesByArtist } from "./discovery/freshReleases.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
 import { logger } from "./logger.ts";
 import {
@@ -1528,22 +1528,47 @@ export class LibraryManager {
       const artist = libraryArtistFallback(artistId);
       return artist?.mbid ? [{ artist, mbid: artist.mbid, entry }] : [];
     });
-    const announced = Map.groupBy(
-      await loadFreshReleasesByArtists(artists.map(({ mbid }) => mbid)),
-      (release) => release.artistMbid,
-    );
+    const announced = await loadFreshReleasesByArtist(artists.map(({ mbid }) => mbid));
     let queuedAlbums = 0;
     let queuedTracks = 0;
     let failedArtists = 0;
     for (const { artist, mbid, entry } of artists) {
-      const news = announced.get(mbid);
-      if (news) {
-        await refreshArtistMissingReleases(
-          mbid,
-          news.map((release) => release.releaseGroupMbid),
-        );
-      }
       const effective = resolveArtistMonitoring(entry.monitorRules, defaults);
+      if (!effective) continue;
+      const news = announced.get(mbid);
+      if (news && (effective.rules.catalog !== "none" || effective.rules.newReleases)) {
+        const exclusions = indexArtistExclusions(mbid);
+        const eligible = selectMonitoredReleases(
+          news.map((release) => ({
+            id: release.releaseGroupMbid,
+            type: release.type,
+            secondaryTypes: release.secondaryTypes,
+            releaseStatuses: [],
+            firstReleaseDate: release.releaseDate,
+          })),
+          effective.rules,
+          effective,
+        ).filter((release) => {
+          if (exclusions.isAlbumExcluded(release.id)) return false;
+          const existing = libraryAlbumForReference(release.id);
+          const override = existing
+            ? getLibraryManagementEntry("album", Number(existing.id))
+            : null;
+          if (override?.monitorMode === "unmonitored") return false;
+          if (existing && existing.statistics.percentOfTracks >= 100) {
+            return (
+              effective.rules.edition === "expanded" && !this.albumWantsExpandedEdition(release.id)
+            );
+          }
+          return true;
+        });
+        if (eligible.length > 0) {
+          await refreshArtistMissingReleases(
+            mbid,
+            eligible.map((release) => release.id),
+          );
+        }
+      }
       const plan = await this.planArtistMonitoring(artist, effective);
       if (plan.error) {
         failedArtists += 1;
