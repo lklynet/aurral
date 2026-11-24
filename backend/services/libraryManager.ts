@@ -20,6 +20,7 @@ import {
   type LibraryTrack,
 } from "./libraryQueryService.ts";
 import { readRawLibraryMetadata, type LibraryMetadata } from "./libraryMetadata.ts";
+import { albumIsMonitored } from "./albumOwnership.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import { selectCanonicalFile } from "./canonicalFileSelector.ts";
 import { scheduleLibraryScan } from "./libraryScanWorker.ts";
@@ -70,7 +71,6 @@ import {
 import {
   isStudioAlbum,
   listArtistReleases,
-  MONITORED_AURRAL_ALBUM_CONDITION,
   monitoredTrackCondition,
   monitoringToken,
   nextArtistMonitoring,
@@ -141,11 +141,9 @@ const _albumMonitoringUpdates = new Map<number, Promise<unknown>>();
 const _artistMonitoringUpdates = new Map<number, Promise<unknown>>();
 const _trackMonitoringUpdates = new Map<number, Promise<unknown>>();
 
-const monitoredAlbumStmt = db.prepare(`
-  SELECT 1 FROM library_management AS management
-  JOIN library_albums AS album ON album.id = management.entity_id
-  WHERE management.entity_id = ? AND ${MONITORED_AURRAL_ALBUM_CONDITION}
-`);
+const monitoredAlbumStmt = db.prepare(
+  `SELECT 1 FROM library_albums AS album WHERE album.id = ? AND ${albumIsMonitored("album")}`,
+);
 
 const isMonitoredAlbum = (albumId: unknown) => Boolean(monitoredAlbumStmt.get(Number(albumId)));
 
@@ -390,7 +388,7 @@ function mapLibraryAlbum(
     title: album.title,
     addedAt: album.metadata?.added || null,
     releaseDate: album.releaseDate || null,
-    monitored: album.metadata?.monitored === true,
+    monitored: album.monitored === true,
     managed: Boolean(album.managed),
     monitorMode: album.monitorMode || null,
     sources: album.sources,

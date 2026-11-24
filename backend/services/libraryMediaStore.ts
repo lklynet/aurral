@@ -13,6 +13,7 @@ import {
 import { isSameSongAtPlace } from "./trackMatching/nativeMatcher.ts";
 import { clearLibraryManagement } from "./libraryManagementStore.ts";
 import { hasReleaseTags, readRawLibraryMetadata } from "./libraryMetadata.ts";
+import { albumIsOwned } from "./albumOwnership.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { asAppError } from "../../lib/errors.ts";
 import {
@@ -1232,20 +1233,6 @@ const TRACK_IS_LISTED = `(json_valid(album.metadata_json) AND EXISTS (
   SELECT 1 FROM json_each(album.metadata_json, '$.trackList.recordings') WHERE value = track.mbid
 ))`;
 
-// Aurral keeps the albums it was asked for, with or without files: a requested album still downloading, or one unmonitored so artist
-// monitoring leaves it out.
-export const ALBUM_IS_OWNED = `(
-  CASE WHEN json_valid(album.metadata_json)
-    THEN json_extract(album.metadata_json, '$.librarySource') IS NOT NULL
-      OR COALESCE(json_extract(album.metadata_json, '$.trackListComplete'), 0) = 1
-    ELSE 0 END
-  OR EXISTS (
-    SELECT 1 FROM library_management AS owner
-    WHERE owner.entity_kind = 'album' AND owner.entity_id = album.id
-      AND owner.monitor_mode IS NOT NULL
-  )
-)`;
-
 // A file without a recording ID is the album's song at its place, even
 // spelled another way, or with its title when either has no place; the
 // tagged one when an untagged copy sits beside it.
@@ -1410,7 +1397,7 @@ function dropUnfiledAlbumTracks() {
      FROM library_album_tracks AS link
      JOIN library_albums AS album ON album.id = link.album_id
      JOIN library_tracks AS track ON track.id = link.track_id
-     WHERE (NOT ${ALBUM_IS_OWNED} OR (json_valid(album.metadata_json)
+     WHERE (NOT ${albumIsOwned("album")} OR (json_valid(album.metadata_json)
          AND json_extract(album.metadata_json, '$.trackList.release') IS NOT NULL
          AND json_valid(track.metadata_json)
          AND json_type(track.metadata_json, '$.tags') IS NOT NULL))
@@ -1991,9 +1978,9 @@ function reconcileAlbums() {
   let changed = repairLibraryFileAlbums();
   const albums = db
     .prepare<[], LibraryAlbumsRow & { owned: number; has_files: number }>(
-      `SELECT album.*, ${ALBUM_IS_OWNED} AS owned, ${ALBUM_HAS_FILES} AS has_files
+      `SELECT album.*, ${albumIsOwned("album")} AS owned, ${ALBUM_HAS_FILES} AS has_files
      FROM library_albums AS album
-     WHERE album.identity_key LIKE 'name:%' OR (NOT ${ALBUM_HAS_FILES} AND NOT ${ALBUM_IS_OWNED})
+     WHERE album.identity_key LIKE 'name:%' OR (NOT ${ALBUM_HAS_FILES} AND NOT ${albumIsOwned("album")})
      ORDER BY album.id`,
     )
     .all();

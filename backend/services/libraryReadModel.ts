@@ -9,6 +9,7 @@ import {
 import { getManagementMap } from "./libraryManagementStore.ts";
 import { selectCanonicalFile } from "./canonicalFileSelector.ts";
 import type { LibraryMetadata } from "./libraryMetadata.ts";
+import { isAlbumMonitored } from "./albumOwnership.ts";
 
 type ManagementByEntityId = ReturnType<typeof getManagementMap>;
 
@@ -148,7 +149,7 @@ const buildAlbum = (
     title: album.title,
     releaseDate: album.releaseDate,
     addedAt: null,
-    monitored: Boolean(album.metadata?.monitored),
+    monitored: isAlbumMonitored(album.metadata, management),
     trackListComplete:
       !management ||
       album.metadata?.trackListComplete === true ||
