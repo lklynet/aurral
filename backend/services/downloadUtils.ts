@@ -116,8 +116,6 @@ const libraryReleaseStmt = db.prepare<[string], Pick<LibraryAlbumsRow, "release_
    ORDER BY release_group_mbid IS NULL LIMIT 1`,
 );
 
-// An album without a release group keys its jobs by its release, so a job's
-// album ID that is a Library album's release names the job's release.
 export function withJobRelease(fields: DownloadTrackFields): DownloadTrackFields {
   const albumMbid = fields.albumMbid?.trim();
   const album = albumMbid ? libraryReleaseStmt.get(albumMbid) : undefined;

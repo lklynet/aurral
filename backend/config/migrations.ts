@@ -536,9 +536,6 @@ const listTracksForFilesOnly: Migration = (db) => {
   }
 };
 
-// Match album is refused while any of an album's files names its release.
-// Until a file is scanned again, it counts as tagged when its album or its
-// track was, so no album the old album-wide check refused becomes matchable.
 const storeFileReleaseTags: Migration = (db) => {
   if (
     db
