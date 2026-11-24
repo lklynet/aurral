@@ -2012,7 +2012,7 @@ const artistAlbumsStmt = db.prepare<[number, number], LibraryAlbumsRow>(
 function planAlbumTidy({ id, owned, has_files }: { id: number; owned: number; has_files: number }) {
   if (!has_files && owned) return null;
   const album = albumStmt.get(id);
-  if (!album || (!has_files && album.owned)) return null;
+  if (!album) return null;
   const siblings = artistAlbumsStmt
     .all(album.artist_id, album.id)
     .filter((sibling) => isSameLibraryName(sibling.title, album.title));
@@ -2023,7 +2023,7 @@ function planAlbumTidy({ id, owned, has_files }: { id: number; owned: number; ha
     (track) => track.title,
   );
   const target = chooseLibraryAlbum(siblings, titles);
-  if (!target && hasFiles) return null;
+  if (!target && (hasFiles || album.owned)) return null;
   return () =>
     target ? foldLibraryAlbum(album, tracks, target) : removeEmptyLibraryAlbum(album, tracks);
 }
