@@ -289,6 +289,37 @@ test("Connect registration enforces trial/entitlement, server limits, reserved s
     .prepare("SELECT instance_id, released_at FROM connect_slugs WHERE slug = 'lee-home'")
     .first<{ instance_id: string | null; released_at: number | null }>();
   assert.deepEqual(releasedRow, { instance_id: null, released_at: 1_700_000_000_000 });
+
+  const racer = await createAccount(7003, "racer_three");
+  await setConnectEntitlement(db, racer.accountId, {
+    status: "active",
+    maxServers: 1,
+    currentPeriodEnd: Date.now() + 86_400_000,
+  });
+  const raceA = makeInstance(6);
+  const raceB = makeInstance(7);
+  const [linkA, linkB] = await Promise.all([
+    linkServer(racer.accountId, raceA.instanceId, "racer", "tok6_"),
+    linkServer(racer.accountId, raceB.instanceId, "racer", "tok7_"),
+  ]);
+  const [resA, resB] = await Promise.all([
+    api("/v1/connect/servers", {
+      method: "POST",
+      headers: { authorization: `Bearer ${linkA}`, "content-type": "application/json" },
+      body: JSON.stringify({ ...raceA, slug: "race-one", name: "Race 1" }),
+    }),
+    api("/v1/connect/servers", {
+      method: "POST",
+      headers: { authorization: `Bearer ${linkB}`, "content-type": "application/json" },
+      body: JSON.stringify({ ...raceB, slug: "race-two", name: "Race 2" }),
+    }),
+  ]);
+  assert.deepEqual([resA.status, resB.status].sort(), [201, 403]);
+  const racerCount = await db
+    .prepare("SELECT COUNT(*) AS count FROM connect_servers WHERE owner_account_id = ?")
+    .bind(racer.accountId)
+    .first<number>("count");
+  assert.equal(racerCount, 1);
 });
 
 test("tunnel tickets and sign-in assertions verify via JWKS and cannot cross-replay", async () => {

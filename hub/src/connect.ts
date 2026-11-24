@@ -302,24 +302,6 @@ export async function registerConnectServer(
   const entitlement = await getEntitlement(db, params.ownerAccountId, now);
   if (!entitlement.active) return { ok: false as const, error: "subscription_required" as const };
 
-  const existing = await db
-    .prepare("SELECT owner_account_id FROM connect_servers WHERE instance_id = ?")
-    .bind(params.instanceId)
-    .first<string>("owner_account_id");
-  if (existing && existing !== params.ownerAccountId) {
-    return { ok: false as const, error: "server_already_owned" as const };
-  }
-  if (!existing) {
-    const count =
-      (await db
-        .prepare("SELECT COUNT(*) AS count FROM connect_servers WHERE owner_account_id = ?")
-        .bind(params.ownerAccountId)
-        .first<number>("count")) ?? 0;
-    if (count >= entitlement.maxServers) {
-      return { ok: false as const, error: "server_limit_reached" as const };
-    }
-  }
-
   const slug = normalizeSlug(params.slug);
   const slugProblem = checkSlug(slug);
   if (slugProblem) return { ok: false as const, error: `slug_${slugProblem}` as const };
@@ -339,24 +321,56 @@ export async function registerConnectServer(
   }
 
   const lanHints = normalizeLanHints(params.lanHints ?? []);
-  await db
+  const inserted = await db
     .prepare(
       `INSERT INTO connect_servers (instance_id, owner_account_id, name, lan_hints, online, last_seen_at, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, 0, NULL, ?5, ?5)
-       ON CONFLICT (instance_id) DO UPDATE SET
-         name = excluded.name,
-         lan_hints = excluded.lan_hints,
-         updated_at = excluded.updated_at`,
+       SELECT ?1, ?2, ?3, ?4, 0, NULL, ?5, ?5
+       WHERE NOT EXISTS (SELECT 1 FROM connect_servers WHERE instance_id = ?1)
+         AND (SELECT COUNT(*) FROM connect_servers WHERE owner_account_id = ?2) < ?6`,
     )
-    .bind(params.instanceId, params.ownerAccountId, params.name, JSON.stringify(lanHints), now)
+    .bind(
+      params.instanceId,
+      params.ownerAccountId,
+      params.name,
+      JSON.stringify(lanHints),
+      now,
+      entitlement.maxServers,
+    )
     .run();
+  const createdServer = inserted.meta.changes > 0;
+  if (!createdServer) {
+    const updated = await db
+      .prepare(
+        "UPDATE connect_servers SET name = ?, lan_hints = ?, updated_at = ? WHERE instance_id = ? AND owner_account_id = ?",
+      )
+      .bind(params.name, JSON.stringify(lanHints), now, params.instanceId, params.ownerAccountId)
+      .run();
+    if (!updated.meta.changes) {
+      const owner = await db
+        .prepare("SELECT owner_account_id FROM connect_servers WHERE instance_id = ?")
+        .bind(params.instanceId)
+        .first<string>("owner_account_id");
+      return {
+        ok: false as const,
+        error:
+          owner && owner !== params.ownerAccountId
+            ? ("server_already_owned" as const)
+            : ("server_limit_reached" as const),
+      };
+    }
+  }
 
   const claimed = await claimSlugForInstance(db, params.instanceId, slug, now);
   if (!claimed.ok) {
-    if (!existing) {
+    if (createdServer) {
       await db
-        .prepare("DELETE FROM connect_servers WHERE instance_id = ?")
-        .bind(params.instanceId)
+        .prepare(
+          `DELETE FROM connect_servers
+           WHERE instance_id = ?1
+             AND owner_account_id = ?2
+             AND NOT EXISTS (SELECT 1 FROM connect_slugs WHERE instance_id = ?1)`,
+        )
+        .bind(params.instanceId, params.ownerAccountId)
         .run();
     }
     return { ok: false as const, error: `slug_${claimed.error}` as const };
