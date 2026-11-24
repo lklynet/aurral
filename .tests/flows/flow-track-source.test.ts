@@ -232,6 +232,7 @@ test("a year range reads artist releases and album tracks from data.aurral.org w
   assert.deepEqual(pick, {
     trackName: "Fresh Cut",
     albumName: "Comeback LP",
+    albumMbid,
     trackMbid: recordingMbid,
     durationMs: 215000,
     releaseYear: "2025",
@@ -467,6 +468,18 @@ test("new releases try an artist's older release when the newest has no usable t
       ["Older Single", band],
       ["Namesake EP Single", namesake],
     ],
+  );
+});
+
+test("flow picks carry the release group from the catalogue track", async () => {
+  const source = new FlowTrackSource();
+  source._getArtistTopTrackList = async () => [
+    { ...topTrack("Single", "Single Album"), albumMbid: "single-group" },
+  ];
+
+  assert.equal(
+    (await source._pickTrack("Artist", source._buildFilters({}, new Set()), false))?.albumMbid,
+    "single-group",
   );
 });
 

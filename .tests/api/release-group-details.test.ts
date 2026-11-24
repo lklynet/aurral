@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { stubMissingMusicbrainz } from "../helpers/stubFetch.ts";
 import { afterAll, beforeAll, test } from "vite-plus/test";
 import {
   cleanupIsolatedState,
@@ -62,7 +63,8 @@ afterAll(async () => {
   await cleanupIsolatedState(state);
 });
 
-test("an album MusicBrainz doesn't have is a 404, and an outage is an uncached 502", async () => {
+test("an album MusicBrainz doesn't have is a 404, and an outage is an uncached 502", async (t) => {
+  stubMissingMusicbrainz(t);
   const missing = await details(missingMbid);
   assert.equal(missing.status, 404);
 

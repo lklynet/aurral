@@ -36,6 +36,7 @@ import { getAlbumTracksByAlbumMbid, getArtistByMbid } from "../providers/metadat
 type ArtistTopTrack = {
   name: string;
   albumName: string | null;
+  albumMbid?: string | null;
   mbid: string | null;
   durationMs: number | null;
   popularity: number;
@@ -555,7 +556,7 @@ export class FlowTrackSource {
     };
     const earliest = new Map<string, YearRelease>();
     const addRelease = (candidate: YearRelease) => {
-      const key = this._releaseKey(candidate.title);
+      const key = candidate.albumMbid || this._releaseKey(candidate.title);
       const known = earliest.get(key);
       if (!known || candidate.year < known.year) {
         earliest.set(key, candidate);
@@ -596,19 +597,23 @@ export class FlowTrackSource {
     const releases = await this._releasesInYears(artistName, filters, owned, artistMbid);
     if (releases.length === 0) return null;
     const byTitle = new Map(releases.map((release) => [this._releaseKey(release.title), release]));
+    const byMbid = new Map(releases.map((release) => [release.albumMbid, release]));
+    const releaseFor = (track: ArtistTopTrack) =>
+      track.albumMbid
+        ? byMbid.get(track.albumMbid)
+        : byTitle.get(this._releaseKey(track.albumName));
     const isOwned = (title: string) => owned?.ownedTitles.has(title.trim().toLowerCase()) === true;
     const hit = this._pickTrackFromRanges(
       await this._getArtistTopTrackList(artistName, artistMbid),
       this._deepDiveRanges(deepDive),
-      (track) =>
-        Boolean(track.albumName && byTitle.has(this._releaseKey(track.albumName))) &&
-        !isOwned(track.name),
+      (track) => Boolean(releaseFor(track)) && !isOwned(track.name),
     );
-    const hitRelease = hit?.albumName ? byTitle.get(this._releaseKey(hit.albumName)) : null;
+    const hitRelease = hit && releaseFor(hit);
     if (hit && hitRelease) {
       return {
         trackName: hit.name,
         albumName: hitRelease.title,
+        albumMbid: hit.albumMbid,
         trackMbid: hit.mbid,
         durationMs: hit.durationMs,
         releaseYear: String(hitRelease.year),
@@ -625,6 +630,7 @@ export class FlowTrackSource {
       return {
         trackName: track.title,
         albumName: release.title,
+        albumMbid: release.albumMbid,
         trackMbid: track.recordingId || null,
         durationMs: track.durationMs ?? null,
         releaseYear: String(release.year),
@@ -666,6 +672,7 @@ export class FlowTrackSource {
         ? {
             trackName: picked.pick.name,
             albumName: picked.albumName || picked.pick.albumName,
+            albumMbid: picked.pick.albumMbid,
             trackMbid: picked.pick.mbid,
             durationMs: picked.pick.durationMs,
           }
@@ -676,6 +683,7 @@ export class FlowTrackSource {
       ? {
           trackName: pick.name,
           albumName: pick.albumName,
+          albumMbid: pick.albumMbid,
           trackMbid: pick.mbid,
           durationMs: pick.durationMs,
         }

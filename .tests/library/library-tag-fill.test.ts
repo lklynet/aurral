@@ -1,4 +1,5 @@
 import { requireFixture } from "../playlists/fixtures.ts";
+import { stubMissingMusicbrainz } from "../helpers/stubFetch.ts";
 import type * as Rows from "../../backend/db/rows.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
@@ -223,7 +224,8 @@ async function checkAndRun(operation: Awaited<ReturnType<typeof operations.start
 
 const originalSettings = dbOps.getSettings();
 
-beforeEach(async () => {
+beforeEach(async (t) => {
+  stubMissingMusicbrainz(t);
   providerDown = false;
   await rm(root, { recursive: true, force: true });
   await rm(outside, { recursive: true, force: true });

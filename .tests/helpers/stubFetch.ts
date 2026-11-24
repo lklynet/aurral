@@ -14,3 +14,10 @@ export function stubFetch(
     globalThis.fetch = originalFetch;
   });
 }
+
+export function stubMissingMusicbrainz(t: import("vite-plus/test").TestContext) {
+  const fetchBefore = globalThis.fetch;
+  stubFetch(t, (url, init) =>
+    url.hostname === "musicbrainz.org" ? json({}, 404) : fetchBefore(url, init),
+  );
+}

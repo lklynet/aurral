@@ -7,7 +7,7 @@ import {
   setupIsolatedBackend,
 } from "./helpers/backendTestHarness.ts";
 import { requireFixture } from "./playlists/fixtures.ts";
-import { stubFetch } from "./helpers/stubFetch.ts";
+import { stubFetch, stubMissingMusicbrainz } from "./helpers/stubFetch.ts";
 import { http } from "../lib/http.ts";
 
 const mbid = "11111111-1111-4111-8111-111111111111";
@@ -112,7 +112,8 @@ test("failed cover metadata requests log the MBID and remain retryable", async (
   assert.equal(dbOps.getImage(`rg:${mbid}`)?.imageUrl, buildStableImageProxyUrl(cover));
 });
 
-test("confirmed missing metadata is cached as missing artwork without a warning", async () => {
+test("confirmed missing metadata is cached as missing artwork without a warning", async (t) => {
+  stubMissingMusicbrainz(t);
   const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
 
   const result = await fetchReleaseGroupCoverUrl(mbid);
