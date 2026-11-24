@@ -12,6 +12,7 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 import { listen } from "../helpers/honoApp.ts";
+import { isRecord } from "../../lib/isRecord.ts";
 
 const [
   state,
@@ -69,15 +70,30 @@ let user;
 let artist: import("../../backend/db/rows.ts").LibraryArtistsRow;
 let album: import("../../backend/db/rows.ts").LibraryAlbumsRow;
 
-function fields(value: Record<string, unknown>, contract: Record<string, string>) {
-  assert.ok(value && typeof value === "object");
+type FieldTypes = {
+  string: string;
+  number: number;
+  boolean: boolean;
+  null: null;
+  array: unknown[];
+  object: Record<string, unknown>;
+};
+type FieldSpec = keyof FieldTypes | `${keyof FieldTypes}|${string}`;
+type Field<Spec extends string> = Spec extends `${infer Head}|${infer Rest}`
+  ? Field<Head> | Field<Rest>
+  : Spec extends keyof FieldTypes
+    ? FieldTypes[Spec]
+    : never;
+
+function fields<const Contract extends Record<string, FieldSpec>>(
+  value: unknown,
+  contract: Contract,
+): asserts value is { [Name in keyof Contract]: Field<Contract[Name]> } {
+  assert.ok(isRecord(value));
   for (const [name, type] of Object.entries(contract)) {
     assert.ok(Object.hasOwn(value, name), `missing ${name}`);
-    const actual = Array.isArray(value[name])
-      ? "array"
-      : value[name] === null
-        ? "null"
-        : typeof value[name];
+    const field = value[name];
+    const actual: string = Array.isArray(field) ? "array" : field === null ? "null" : typeof field;
     assert.ok(type.split("|").includes(actual), `${name}: expected ${type}, got ${actual}`);
   }
 }
@@ -109,7 +125,7 @@ async function call(
     },
     ...(body && { body: JSON.stringify(body) }),
   });
-  const payload = await response.json();
+  const payload: unknown = await response.json();
   assert.equal(response.status, status, `${method} ${route}`);
   return payload;
 }
@@ -281,6 +297,7 @@ test("sign-in, bootstrap, and identity preserve their public response fields", a
   });
   fields(bootstrap.api, { version: "number", features: "array" });
   const signedIn = await call("/api/health/bootstrap");
+  fields(signedIn, { user: "object", api: "object" });
   fields(signedIn.user, {
     id: "number",
     username: "string",
@@ -344,7 +361,6 @@ test("discovery, search, artist details, and release details preserve their publ
     offset: "number",
     items: "array",
   });
-  assert.equal(search.items[0].id, artistMbid);
   fields(search.items[0], {
     type: "string",
     id: "string",
@@ -353,6 +369,7 @@ test("discovery, search, artist details, and release details preserve their publ
     tags: "array",
     inLibrary: "boolean",
   });
+  assert.equal(search.items[0].id, artistMbid);
   const albumSearch = await call("/api/search?q=Contract&scope=album");
   fields(albumSearch, {
     scope: "string",
@@ -379,7 +396,6 @@ test("discovery, search, artist details, and release details preserve their publ
     "appears-on-release-groups": "array",
   });
   assert.equal(details.id, artistMbid);
-  assert.equal(details["release-groups"][0].id, albumMbid);
   fields(details["release-groups"][0], {
     id: "string",
     title: "string",
@@ -387,6 +403,7 @@ test("discovery, search, artist details, and release details preserve their publ
     "secondary-types": "array",
     "first-release-date": "string|null",
   });
+  assert.equal(details["release-groups"][0].id, albumMbid);
   const release = await call(`/api/artists/release-group/${albumMbid}`);
   fields(release, {
     id: "string",
@@ -442,9 +459,9 @@ test("trending charts preserve their public response fields", async () => {
     durationMs: "number|null",
     artworkUrl: "string|null",
     preview_url: "string|null",
-  };
+  } as const;
   fields(trending.songs.items[0], { ...song, movement: "number|string|null" });
-  fields(trending.albums[0], {
+  fields(requireFixture(trending.albums)[0], {
     key: "string",
     position: "number",
     name: "string",
@@ -453,7 +470,7 @@ test("trending charts preserve their public response fields", async () => {
     releaseDate: "string|null",
     genre: "string|null",
   });
-  fields(trending.artists[0], {
+  fields(requireFixture(trending.artists)[0], {
     key: "string",
     position: "number",
     name: "string",
@@ -567,6 +584,7 @@ test("library pages, lookups, album requests, and track requests preserve their 
     method: "POST",
     body: { mbids: [albumMbid] },
   });
+  fields(albums, { [albumMbid]: "object" });
   fields(albums[albumMbid], {
     inLibrary: "boolean",
     fromLibraryIndex: "boolean",
@@ -654,18 +672,16 @@ test("flows, activity, and review preserve their public response fields and stor
     worker: "object",
     hint: "object",
   });
-  assert.ok(status.flows.some((flow: { id: string }) => flow.id === flowId));
+  assert.ok(status.flows.some((flow) => isRecord(flow) && flow.id === flowId));
   downloadTracker.addJob({ artistName: "Flow Artist", trackName: "Flow Song", albumMbid }, flowId);
   downloadTracker.addJob({ artistName: "Flow Artist", trackName: "Loose Song" }, flowId);
-  const flowTracks = await call(`/api/playlists/jobs/${flowId}`);
+  const flowTracks = v.parse(
+    v.array(v.object({ trackName: v.string(), artworkUrl: v.nullable(v.string()) })),
+    await call(`/api/playlists/jobs/${flowId}`),
+  );
   const artworkUrl = `/api/artists/release-group/${albumMbid}/cover/image`;
   assert.deepEqual(
-    Object.fromEntries(
-      flowTracks.map((track: { trackName: string; artworkUrl: string | null }) => [
-        track.trackName,
-        track.artworkUrl,
-      ]),
-    ),
+    Object.fromEntries(flowTracks.map((track) => [track.trackName, track.artworkUrl])),
     { "Flow Song": artworkUrl, "Loose Song": null },
   );
   dbOps.setImage(`rg:${albumMbid}`, "https://images.example/contract.jpg");
@@ -675,8 +691,11 @@ test("flows, activity, and review preserve their public response fields and stor
   assert.equal((await fetch(`${baseUrl}${artworkUrl}`, { redirect: "manual" })).status, 401);
   const denied = await hold("Denied Song");
   const approved = await hold("Approved Song");
-  const jobs = await call("/api/playlists/jobs?status=blocked");
-  assert.ok(jobs.some((job: { id: string }) => job.id === denied.jobId));
+  const jobs = v.parse(
+    v.array(v.looseObject({ id: v.string() })),
+    await call("/api/playlists/jobs?status=blocked"),
+  );
+  assert.ok(jobs.some((job) => job.id === denied.jobId));
   fields(jobs[0], {
     id: "string",
     status: "string",
@@ -685,7 +704,7 @@ test("flows, activity, and review preserve their public response fields and stor
     playlistType: "string",
     streamFormat: "string|null",
   });
-  const activity = await call("/api/requests?refresh=1");
+  const activity = v.parse(v.array(v.unknown()), await call("/api/requests?refresh=1"));
   assert.ok(activity.length);
   fields(activity[0], {
     id: "string",
@@ -722,9 +741,9 @@ test("flows, activity, and review preserve their public response fields and stor
     playlistId: "string",
     name: "string",
   });
-  assert.equal(
-    (await call(`/api/playlists/jobs/${denied.jobId}/deny`, { method: "POST" })).success,
-    true,
+  v.parse(
+    v.object({ success: v.literal(true) }),
+    await call(`/api/playlists/jobs/${denied.jobId}/deny`, { method: "POST" }),
   );
   assert.equal(downloadTracker.getJob(denied.jobId)!.status, "pending");
   assert.equal(await stat(denied.stagingPath).catch(() => null), null);
