@@ -683,7 +683,7 @@ test("upgrading stops treating an album's release group as its release", () => {
   );
 });
 
-test("upgrading marks the files whose tags name their release", () => {
+test("upgrading marks the files whose album or track tags named a release", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
   migrate(db, migrations.slice(0, 35));
@@ -711,7 +711,7 @@ test("upgrading marks the files whose tags name their release", () => {
     [
       ["/1.flac", 1],
       ["/2.flac", 1],
-      ["/3.flac", 0],
+      ["/3.flac", 1],
       ["/4a.flac", 1],
       ["/4b.flac", 0],
     ],

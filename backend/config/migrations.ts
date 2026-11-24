@@ -537,8 +537,8 @@ const listTracksForFilesOnly: Migration = (db) => {
 };
 
 // Match album is refused while any of an album's files names its release.
-// Until a file is scanned again, its track's tags say whether it did, or its
-// album's when other files share the track and may have written them.
+// Until a file is scanned again, it counts as tagged when its album or its
+// track was, so no album the old album-wide check refused becomes matchable.
 const storeFileReleaseTags: Migration = (db) => {
   if (
     db
@@ -554,14 +554,8 @@ const storeFileReleaseTags: Migration = (db) => {
   db.exec(`
     ALTER TABLE library_media_files ADD COLUMN release_tagged INTEGER NOT NULL DEFAULT 0;
     UPDATE library_media_files AS media SET release_tagged = 1
-    WHERE CASE
-      WHEN media.album_id IS NOT NULL AND EXISTS (
-        SELECT 1 FROM library_media_files AS other
-        WHERE other.track_id = media.track_id AND other.id <> media.id
-      )
-      THEN (SELECT ${namesRelease} FROM library_albums WHERE id = media.album_id)
-      ELSE (SELECT ${namesRelease} FROM library_tracks WHERE id = media.track_id)
-    END;
+    WHERE EXISTS (SELECT 1 FROM library_albums WHERE id = media.album_id AND ${namesRelease})
+      OR EXISTS (SELECT 1 FROM library_tracks WHERE id = media.track_id AND ${namesRelease});
   `);
 };
 
