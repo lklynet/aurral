@@ -1,5 +1,10 @@
 import { hostedBuildPath } from "../../../lib/hostedBuild.ts";
-import { activeServer, normalizeAddress, reloadWhenServerChanges } from "../utils/server.ts";
+import {
+  activeServer,
+  hostOf,
+  normalizeAddress,
+  reloadWhenServerChanges,
+} from "../utils/server.ts";
 import { checkServer } from "./checkServer.ts";
 import type { HostedScreen } from "./screens.tsx";
 
@@ -12,6 +17,18 @@ const pairScreen = (): HostedScreen => {
   const address = dot > 0 ? normalizeAddress(fragment.slice(dot + 1)) : null;
   window.history.replaceState(null, "", "/pair");
   return address ? { kind: "pair", code: fragment.slice(0, dot), address } : { kind: "connect" };
+};
+
+const connectCallbackScreen = (): HostedScreen => {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code") ?? "";
+  const state = params.get("state") ?? "";
+  const error = params.get("error");
+  window.history.replaceState(null, "", "/connect");
+  if (error || !code || !state) {
+    return { kind: "connect", initialError: "Couldn't sign in. Try again." };
+  }
+  return { kind: "connectCallback", code, state };
 };
 
 const loadBuild = async (version: string) => {
@@ -34,10 +51,20 @@ const start = async () => {
     window.addEventListener("hashchange", () => window.location.reload(), { once: true });
     return show(pairScreen());
   }
+  if (window.location.pathname === "/connect/callback") {
+    return show(connectCallbackScreen());
+  }
   if (window.location.pathname === "/connect" || !activeServer) return show({ kind: "connect" });
-  const { address } = activeServer;
+  const { address, name } = activeServer;
   const server = await checkServer(address).catch(() => null);
-  if (!server) return show({ kind: "unreachable", address });
+  if (!server) {
+    return show({
+      kind: "unreachable",
+      address,
+      name,
+      isConnect: Boolean(name) || hostOf(address).endsWith(".aurral.dev"),
+    });
+  }
   if (server.onboardingRequired || !server.authRequired) {
     return show({ kind: "ownAddress", address, setup: server.onboardingRequired });
   }

@@ -11,6 +11,7 @@ import {
   disableConnectServer,
   discoverConnectServers,
   exchangeConnectAuthCode,
+  getConnectAccountSummary,
   isAllowedRedirectUri,
   issueConnectAssertion,
   issueTunnelTicket,
@@ -392,6 +393,12 @@ const v1 = new Hono<Env>()
       expiresAt: issued.expiresAt,
       connectUrl: issued.connectUrl,
     });
+  })
+  .get("/connect/account", async (c) => {
+    const token = bearer(c);
+    const link = token && (await linkedLinkDetails(c.env.DB, await sha256Hex(token)));
+    if (!link) return linkRevoked(c);
+    return c.json(await getConnectAccountSummary(c.env.DB, link.account_id));
   })
   .post("/connect/servers", json(connectRegisterSchema), async (c) => {
     const token = bearer(c);

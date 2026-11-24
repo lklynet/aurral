@@ -335,6 +335,25 @@ test("tunnel tickets and sign-in assertions verify via JWKS and cannot cross-rep
   });
   assert.equal(unenabled.status, 404);
 
+  const beforeAccount = await api("/v1/connect/account", {
+    headers: { authorization: `Bearer ${linkToken}` },
+  });
+  assert.equal(beforeAccount.status, 200);
+  const beforeAccountBody = v.parse(
+    v.object({
+      entitlement: v.object({
+        active: v.boolean(),
+        trialAvailable: v.boolean(),
+        maxServers: v.number(),
+      }),
+      serverCount: v.number(),
+    }),
+    await beforeAccount.json(),
+  );
+  assert.equal(beforeAccountBody.entitlement.active, false);
+  assert.equal(beforeAccountBody.entitlement.trialAvailable, true);
+  assert.equal(beforeAccountBody.serverCount, 0);
+
   assert.equal(
     (
       await api("/v1/connect/servers", {
@@ -345,6 +364,21 @@ test("tunnel tickets and sign-in assertions verify via JWKS and cannot cross-rep
     ).status,
     201,
   );
+
+  const afterAccount = await api("/v1/connect/account", {
+    headers: { authorization: `Bearer ${linkToken}` },
+  });
+  assert.equal(afterAccount.status, 200);
+  const afterAccountBody = v.parse(
+    v.object({
+      entitlement: v.object({ active: v.boolean(), trialAvailable: v.boolean() }),
+      serverCount: v.number(),
+    }),
+    await afterAccount.json(),
+  );
+  assert.equal(afterAccountBody.entitlement.active, true);
+  assert.equal(afterAccountBody.entitlement.trialAvailable, false);
+  assert.equal(afterAccountBody.serverCount, 1);
 
   const wrongSecret = await api("/v1/connect/ticket", {
     method: "POST",

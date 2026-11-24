@@ -66,6 +66,7 @@ export const FilePlus2 = createIcon(icons.FilePlus01);
 export const FileUp = createIcon(icons.Upload01);
 export const Fingerprint = createIcon(icons.Fingerprint01);
 export const Folder = createIcon(icons.Folder);
+export const Globe = createIcon(icons.Globe01);
 export const Grid3X3 = createIcon(icons.Grid01);
 export const GripVertical = createIcon(icons.DotsGrid);
 export const Headphones = createIcon(icons.Headphones01);

@@ -5,6 +5,7 @@ import {
   Database,
   Download,
   Eye,
+  Globe,
   Headphones,
   Library,
   Link,
@@ -21,6 +22,7 @@ export const SETTINGS_SECTIONS = [
   { id: "appearance", label: "Appearance", icon: Monitor, group: "account" },
   { id: "shared-links", label: "Shared links", icon: Link, group: "account" },
   { id: "general", label: "General", icon: SlidersHorizontal, group: "server" },
+  { id: "connect", label: "Connect", icon: Globe, group: "server" },
   { id: "users", label: "Users", icon: Users, group: "server" },
   { id: "library", label: "Library", icon: Library, group: "server" },
   { id: "monitoring", label: "Monitoring", icon: Eye, group: "server" },
@@ -106,6 +108,11 @@ const SETTINGS_SEARCH: Record<SettingsSectionId, Record<string, SettingsSearchEn
     Display: "date and time format all users",
     "API access": "API key X-Api-Key api_key admin authentication copy rotate",
     Backup: "back up restore export import download upload config database migrate move server",
+  },
+  connect: {
+    Connection:
+      "remote access tunnel aurral.dev subdomain music.aurral.org subsonic billing trial online disable turn off",
+    "Server details": "server name address prefix slug sign in with aurral",
   },
   users: {
     Users: "create edit add account permissions roles suspended disabled claim",

@@ -7,7 +7,9 @@ import {
   ConnectServiceError,
   disableConnect,
   enableConnect,
+  getConnectAccount,
   getConnectStatus,
+  reconnectConnect,
   updateConnect,
 } from "../services/connect/connectClient.ts";
 
@@ -28,6 +30,19 @@ export default new Hono<AppEnv>()
   .basePath("/connect")
   .use(requireAuth, requireAdmin)
   .get("/", (c) => c.json(getConnectStatus()))
+  .get("/account", requireUserAccount, async (c) =>
+    c.json({ account: await getConnectAccount(c.var.user.id) }),
+  )
+  .post("/reconnect", requireUserAccount, async (c) => {
+    try {
+      return c.json(await reconnectConnect(), 200);
+    } catch (error) {
+      if (error instanceof ConnectServiceError) {
+        return c.json({ error: error.code, message: error.message }, error.status);
+      }
+      throw error;
+    }
+  })
   .post("/enable", requireUserAccount, validate("json", enableBody), async (c) => {
     try {
       return c.json(
