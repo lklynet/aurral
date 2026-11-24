@@ -40,6 +40,7 @@ import {
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { isPathWithin } from "./libraryFolders.ts";
 import { trackArtistCreditFromTags } from "../../lib/artistCredit.ts";
+import { VARIOUS_ARTISTS_MBID, isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 
 type ScannedMetadata = {
   common?: Partial<ICommonTagsResult>;
@@ -183,7 +184,9 @@ function buildMetadataRecord(metadata: ScannedMetadata, filePath: string, rootPa
             .filter((mbid) => mbid !== null),
         ),
       ]
-    : [normalizeMbid(common.musicbrainz_artistid)].filter((mbid) => mbid !== null);
+    : isVariousArtistsCredit(text(common.albumartist))
+      ? [VARIOUS_ARTISTS_MBID]
+      : [normalizeMbid(common.musicbrainz_artistid)].filter((mbid) => mbid !== null);
   const artistMbid = artistMbids.length === 1 ? artistMbids[0] : null;
   const albumMbid = normalizeMbid(common.musicbrainz_albumid);
   const releaseGroupMbid = normalizeMbid(common.musicbrainz_releasegroupid);
