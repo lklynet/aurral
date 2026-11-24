@@ -50,6 +50,7 @@ export interface RelayOptions {
   appOrigin?: string;
   hubOrigin?: string;
   relaySecret?: string;
+  trustedProxies?: readonly string[];
   publicKeys?: readonly ConnectPublicJwk[];
   maxStreamsPerTunnel?: number;
   maxBufferedBytes?: number;
@@ -141,17 +142,42 @@ function safeCloseWs(target: WebSocket, code: number | undefined, reason?: strin
   }
 }
 
+function normalizeRemoteIp(value: string | undefined): string {
+  const raw = (value ?? "").trim().toLowerCase();
+  return raw.startsWith("::ffff:") ? raw.slice(7) : raw;
+}
+
 export function createRelayServer(options: RelayOptions = {}) {
   const connectDomain = (options.connectDomain ?? "aurral.dev")
     .replace(/^\.+|\.+$/g, "")
     .toLowerCase();
   const appOrigin = (options.appOrigin ?? "https://music.aurral.org").replace(/\/+$/, "");
   const hubOrigin = (options.hubOrigin ?? "https://aurral.org").replace(/\/+$/, "");
+  const trustedProxies = new Set((options.trustedProxies ?? []).map((ip) => normalizeRemoteIp(ip)));
   const maxStreams = options.maxStreamsPerTunnel ?? 200;
   const maxBufferedBytes = options.maxBufferedBytes ?? 1024 * 1024;
   const maxStreamResponseBytes = maxBufferedBytes * 4;
   const now = options.now ?? (() => Date.now());
   const fetchImpl = options.fetchImpl ?? fetch;
+
+  function resolveClientIp(req: IncomingMessage): string {
+    const socketIp = normalizeRemoteIp(req.socket.remoteAddress);
+    if (socketIp && trustedProxies.has(socketIp)) {
+      const forwarded = req.headers["x-forwarded-for"];
+      const raw = Array.isArray(forwarded) ? forwarded.join(",") : forwarded;
+      if (raw) {
+        const hops = raw
+          .split(",")
+          .map((hop) => normalizeRemoteIp(hop))
+          .filter(Boolean);
+        for (let index = hops.length - 1; index >= 0; index -= 1) {
+          const hop = hops[index];
+          if (hop && !trustedProxies.has(hop)) return hop;
+        }
+      }
+    }
+    return socketIp;
+  }
 
   let cachedKeys: readonly ConnectPublicJwk[] = options.publicKeys ?? [];
   let keysFetchedAt = options.publicKeys ? Number.POSITIVE_INFINITY : 0;
@@ -201,18 +227,28 @@ export function createRelayServer(options: RelayOptions = {}) {
 
   const tunnelsBySlug = new Map<string, ActiveTunnel>();
   const tunnelsByInstance = new Map<string, ActiveTunnel>();
+  const statusQueue = new Map<string, Promise<void>>();
 
   function reportStatus(instanceId: string, online: boolean) {
     if (!options.relaySecret) return;
-    void fetchImpl(`${hubOrigin}/v1/connect/relay/status`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${options.relaySecret}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ updates: [{ instanceId, online }] }),
-      signal: AbortSignal.timeout(5000),
-    }).catch(() => undefined);
+    const prev = statusQueue.get(instanceId) ?? Promise.resolve();
+    const next = prev
+      .then(async () => {
+        await fetchImpl(`${hubOrigin}/v1/connect/relay/status`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${options.relaySecret}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ updates: [{ instanceId, online }] }),
+          signal: AbortSignal.timeout(5000),
+        });
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (statusQueue.get(instanceId) === next) statusQueue.delete(instanceId);
+      });
+    statusQueue.set(instanceId, next);
   }
 
   function closeAllStreams(tunnel: ActiveTunnel) {
@@ -498,12 +534,7 @@ export function createRelayServer(options: RelayOptions = {}) {
 
     tunnel.streams.set(streamId, { kind: "http", res, headersSent: false, backpressured: false });
 
-    const remoteIp =
-      (typeof req.headers["x-forwarded-for"] === "string"
-        ? req.headers["x-forwarded-for"].split(",")[0]?.trim()
-        : undefined) ??
-      req.socket.remoteAddress ??
-      "";
+    const remoteIp = resolveClientIp(req);
 
     tunnel.ws.send(
       encodeJsonFrame(FRAME_REQ_HEAD, streamId, {
@@ -609,7 +640,7 @@ export function createRelayServer(options: RelayOptions = {}) {
           encodeJsonFrame(FRAME_WS_OPEN, streamId, {
             path: req.url ?? "/ws",
             headers: filterHeaders(req.headers, REQUEST_HEADER_STRIP),
-            remoteIp: req.socket.remoteAddress ?? "",
+            remoteIp: resolveClientIp(req),
           }),
         );
         clientWs.on("message", (data, isBinary) => {

@@ -30,7 +30,13 @@ export default new Hono<AppEnv>()
   .get("/", (c) => c.json(getConnectStatus()))
   .post("/enable", requireUserAccount, validate("json", enableBody), async (c) => {
     try {
-      return c.json(await enableConnect(c.var.user.id, c.req.valid("json")), 200);
+      return c.json(
+        await enableConnect(c.var.user.id, {
+          ...c.req.valid("json"),
+          deferTransportChange: c.var.viaConnect === true,
+        }),
+        200,
+      );
     } catch (error) {
       if (error instanceof ConnectServiceError) {
         return c.json({ error: error.code, message: error.message }, error.status);
@@ -40,7 +46,13 @@ export default new Hono<AppEnv>()
   })
   .patch("/", requireUserAccount, validate("json", updateBody), async (c) => {
     try {
-      return c.json(await updateConnect(c.var.user.id, c.req.valid("json")), 200);
+      return c.json(
+        await updateConnect(c.var.user.id, {
+          ...c.req.valid("json"),
+          deferTransportChange: c.var.viaConnect === true,
+        }),
+        200,
+      );
     } catch (error) {
       if (error instanceof ConnectServiceError) {
         return c.json({ error: error.code, message: error.message }, error.status);
@@ -49,5 +61,8 @@ export default new Hono<AppEnv>()
     }
   })
   .post("/disable", requireUserAccount, async (c) =>
-    c.json(await disableConnect(c.var.user.id), 200),
+    c.json(
+      await disableConnect(c.var.user.id, { deferTransportChange: c.var.viaConnect === true }),
+      200,
+    ),
   );

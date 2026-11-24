@@ -459,6 +459,7 @@ export function openTunnelSession(options: TunnelSessionOptions): TunnelSession 
 let listener: ConnectListenerHandle | null = null;
 let session: TunnelSession | null = null;
 let retryTimer: NodeJS.Timeout | null = null;
+let deferredTransportTimer: NodeJS.Timeout | null = null;
 let retryAttempt = 0;
 let runtimeState: ConnectRuntimeState = "off";
 let lastError: string | null = null;
@@ -466,6 +467,24 @@ let syncing = Promise.resolve();
 
 const delayFor = (attempt: number) =>
   RETRY_DELAYS_MS[Math.min(attempt, RETRY_DELAYS_MS.length - 1)] ?? RETRY_DELAYS_MS[0];
+
+function clearDeferredTransport() {
+  clearTimeout(deferredTransportTimer);
+  deferredTransportTimer = null;
+}
+
+function scheduleDeferredTransport(task: () => Promise<void>) {
+  clearDeferredTransport();
+  deferredTransportTimer = setTimeout(() => {
+    deferredTransportTimer = null;
+    void task().catch((error) => {
+      logger.error("connect", "Deferred Connect update failed:", {
+        message: asAppError(error)?.message ?? "unknown",
+      });
+    });
+  }, 150);
+  deferredTransportTimer.unref();
+}
 
 function detachAndCloseSession() {
   const current = session;
@@ -544,6 +563,7 @@ async function applyConnectState() {
       runtimeState = "subscription_required";
       lastError = "An active Aurral Connect subscription is required.";
       void reconcileShareTunnel();
+      scheduleReconnect();
       return;
     }
     if (ticket.kind === "not_enabled") {
@@ -614,6 +634,7 @@ export function syncConnect() {
 }
 
 export async function stopConnect() {
+  clearDeferredTransport();
   clearTimeout(retryTimer);
   retryTimer = null;
   await syncing;
@@ -696,7 +717,13 @@ function mapHubRefusal(status: number, code: string | null): ConnectServiceError
 
 export async function enableConnect(
   userId: number,
-  params: { slug: string; name: string; startTrial?: boolean; allowHubSignIn?: boolean },
+  params: {
+    slug: string;
+    name: string;
+    startTrial?: boolean;
+    allowHubSignIn?: boolean;
+    deferTransportChange?: boolean;
+  },
 ) {
   if (!hubLinksEnabled()) {
     throw new ConnectServiceError(403, "accounts_disabled", "aurral.org accounts are turned off.");
@@ -705,6 +732,7 @@ export async function enableConnect(
   if (!link) {
     throw new ConnectServiceError(403, "link_required", "Link your aurral.org account first.");
   }
+  const previousSlug = getConnectConfig().slug;
   const { id: instanceId, secret } = getShareInstance();
   const response = await hubRequest(
     link.origin,
@@ -732,6 +760,8 @@ export async function enableConnect(
       "Unexpected response from aurral.org.",
     );
   }
+  clearDeferredTransport();
+  const slugChanged = previousSlug !== null && previousSlug !== parsed.output.server.slug;
   setConnectConfig({
     enabled: true,
     allowHubSignIn: params.allowHubSignIn !== false,
@@ -740,13 +770,31 @@ export async function enableConnect(
     connectUrl: parsed.output.server.connectUrl,
     hubOrigin: link.origin,
   });
-  await syncConnect();
+  if (slugChanged) {
+    const reconnect = async () => {
+      detachAndCloseSession();
+      await syncConnect();
+      void reconcileShareTunnel();
+    };
+    if (params.deferTransportChange) {
+      scheduleDeferredTransport(reconnect);
+    } else {
+      await reconnect();
+    }
+  } else {
+    await syncConnect();
+  }
   return getConnectStatus();
 }
 
 export async function updateConnect(
   userId: number,
-  params: { slug?: string; name?: string; allowHubSignIn?: boolean },
+  params: {
+    slug?: string;
+    name?: string;
+    allowHubSignIn?: boolean;
+    deferTransportChange?: boolean;
+  },
 ) {
   const config = getConnectConfig();
   if (!config.enabled) {
@@ -791,9 +839,17 @@ export async function updateConnect(
       ...(params.allowHubSignIn !== undefined && { allowHubSignIn: params.allowHubSignIn }),
     });
     if (slugChanged) {
-      detachAndCloseSession();
-      await syncConnect();
-      void reconcileShareTunnel();
+      clearDeferredTransport();
+      const reconnect = async () => {
+        detachAndCloseSession();
+        await syncConnect();
+        void reconcileShareTunnel();
+      };
+      if (params.deferTransportChange) {
+        scheduleDeferredTransport(reconnect);
+      } else {
+        await reconnect();
+      }
     }
     return getConnectStatus();
   }
@@ -803,7 +859,10 @@ export async function updateConnect(
   return getConnectStatus();
 }
 
-export async function disableConnect(userId: number) {
+export async function disableConnect(
+  userId: number,
+  options: { deferTransportChange?: boolean } = {},
+) {
   const link = linkedLink(userId);
   const config = getConnectConfig();
   if (link && config.enabled) {
@@ -814,7 +873,14 @@ export async function disableConnect(userId: number) {
       authorized(link, "DELETE"),
     ).catch(() => null);
   }
+  clearDeferredTransport();
   setConnectConfig({ enabled: false, allowHubSignIn: false });
+  if (options.deferTransportChange) {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+    scheduleDeferredTransport(() => stopConnect());
+    return { ...getConnectStatus(), state: "off" as const };
+  }
   await stopConnect();
   return getConnectStatus();
 }

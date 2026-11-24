@@ -30,6 +30,8 @@ let tunnel: ShareTunnel | null = null;
 let state: TunnelState = "off";
 let restartTimer: NodeJS.Timeout | null = null;
 let restartAttempt = 0;
+let desiredPort: number | null = null;
+let tunnelTransition = Promise.resolve();
 
 const delayFor = (delays: readonly [number, ...number[]], attempt: number) =>
   delays[Math.min(attempt, delays.length - 1)] ?? delays[0];
@@ -116,46 +118,13 @@ function launch(port: number) {
     logger.warn("share", `cloudflared stopped (${signal || code}), restarting in ${delay / 1000}s`);
     restartTimer = setTimeout(() => {
       restartTimer = null;
-      launch(port);
+      if (desiredPort === port) launchForPort(port);
     }, delay);
     restartTimer.unref();
   });
 }
 
-export function startShareTunnel(port: number) {
-  const connectOrigin = activeConnectOrigin();
-  if (tunnel?.port === port) {
-    const usingConnect = tunnel.child === null;
-    if (usingConnect && connectOrigin === tunnel.url) return;
-    if (!usingConnect && !connectOrigin) return;
-    void stopShareTunnel().then(() => startShareTunnel(port));
-    return;
-  }
-  if (restartTimer) return;
-  restartAttempt = 0;
-  if (connectOrigin) {
-    const current: ShareTunnel = { child: null, port, url: connectOrigin, retryTimer: null };
-    tunnel = current;
-    state = "starting";
-    void register(current, connectOrigin);
-    return;
-  }
-  launch(port);
-}
-
-export async function reconcileShareTunnel() {
-  const current = tunnel;
-  if (!current) return;
-  const connectOrigin = activeConnectOrigin();
-  const usingConnect = current.child === null;
-  if (usingConnect && connectOrigin === current.url) return;
-  if (!usingConnect && !connectOrigin) return;
-  const { port } = current;
-  await stopShareTunnel();
-  startShareTunnel(port);
-}
-
-export async function stopShareTunnel() {
+async function tearDownActiveTunnel() {
   clearTimeout(restartTimer);
   restartTimer = null;
   const current = tunnel;
@@ -176,6 +145,52 @@ export async function stopShareTunnel() {
       message: asAppError(error)?.message,
     });
   }
+}
+
+function launchForPort(port: number) {
+  restartAttempt = 0;
+  const connectOrigin = activeConnectOrigin();
+  if (connectOrigin) {
+    const current: ShareTunnel = { child: null, port, url: connectOrigin, retryTimer: null };
+    tunnel = current;
+    state = "starting";
+    void register(current, connectOrigin);
+    return;
+  }
+  launch(port);
+}
+
+export function startShareTunnel(port: number) {
+  desiredPort = port;
+  void reconcileShareTunnel();
+}
+
+export function reconcileShareTunnel() {
+  tunnelTransition = tunnelTransition.then(async () => {
+    const targetPort = desiredPort;
+    if (targetPort === null) return;
+    const current = tunnel;
+    const connectOrigin = activeConnectOrigin();
+    if (current) {
+      const usingConnect = current.child === null;
+      if (current.port === targetPort && usingConnect && connectOrigin === current.url) return;
+      if (current.port === targetPort && !usingConnect && !connectOrigin) return;
+      await tearDownActiveTunnel();
+    } else if (restartTimer) {
+      if (!connectOrigin) return;
+      clearTimeout(restartTimer);
+      restartTimer = null;
+    }
+    if (desiredPort !== targetPort) return;
+    launchForPort(targetPort);
+  });
+  return tunnelTransition;
+}
+
+export function stopShareTunnel() {
+  desiredPort = null;
+  tunnelTransition = tunnelTransition.then(() => tearDownActiveTunnel());
+  return tunnelTransition;
 }
 
 let cloudflaredCheck: Promise<boolean> | null = null;
