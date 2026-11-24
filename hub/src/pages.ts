@@ -52,14 +52,25 @@ const LEGAL = html`<p class="muted">
 const codeField = (code: string | null) =>
   code ? html`<input type="hidden" name="code" value="${code}" />` : "";
 
-const signOut = (code: string | null, label = "Sign out") =>
+const nextField = (next: string | null) =>
+  next ? html`<input type="hidden" name="next" value="${next}" />` : "";
+
+const querySuffix = (code: string | null, next: string | null) => {
+  const params = new URLSearchParams();
+  if (code) params.set("code", code);
+  if (next) params.set("next", next);
+  return params.size ? `?${params}` : "";
+};
+
+const signOut = (code: string | null, label = "Sign out", next: string | null = null) =>
   html`<form method="post" action="/account/sign-out">
-    ${codeField(code)}
+    ${codeField(code)} ${nextField(next)}
     <button class="button">${label}</button>
   </form>`;
 
-const leave = (code: string | null) =>
-  html`${signOut(code)} <a class="button danger link" href="/account/delete">Delete account</a>`;
+const leave = (code: string | null, next: string | null = null) =>
+  html`${signOut(code, "Sign out", next)}
+    <a class="button danger link" href="/account/delete">Delete account</a>`;
 
 const shortDate = (time: number) =>
   new Date(time).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -68,17 +79,24 @@ export const signInPage = (
   providers: { id: string; label: string }[],
   failed: boolean,
   code: string | null,
+  next: string | null = null,
 ) =>
   layout(
     "Sign in",
     html`<h1>Sign in to aurral.org</h1>
       <p class="muted">
-        ${code ? "Sign in to link your Aurral." : "To link your Aurral and publish playlists."}
+        ${
+          next
+            ? "Sign in to connect to your Aurral server."
+            : code
+              ? "Sign in to link your Aurral."
+              : "To link your Aurral and publish playlists."
+        }
       </p>
       ${failed ? html`<p class="error" role="alert">Sign-in didn't finish. Try again.</p>` : ""}
       ${providers.map(
         ({ id, label }) =>
-          html`<a class="button" href="/account/sign-in/${id}${code ? `?code=${code}` : ""}"
+          html`<a class="button" href="/account/sign-in/${id}${querySuffix(code, next)}"
             >Continue with ${label}</a
           >`,
       )}
@@ -96,6 +114,7 @@ export const handlePage = (
   value: string,
   problem: Exclude<HandleClaim, "claimed"> | null,
   code: string | null,
+  next: string | null = null,
 ) =>
   layout(
     "Pick a handle",
@@ -104,7 +123,7 @@ export const handlePage = (
         Shown on playlists you publish. 3 to 20 lowercase letters, numbers, or underscores.
       </p>
       <form method="post" action="/account/handle">
-        ${codeField(code)}
+        ${codeField(code)} ${nextField(next)}
         <input
           name="handle"
           value="${value}"
@@ -118,7 +137,7 @@ export const handlePage = (
         ${problem ? html`<p class="error" role="alert">${HANDLE_ERRORS[problem]}</p>` : ""}
         <button class="button primary">Continue</button>
       </form>
-      ${leave(code)}`,
+      ${leave(code, next)}`,
   );
 
 type LinkRow = { id: string; user_name: string; linked_at: number; public_count: number };
@@ -230,4 +249,40 @@ export const deletePage = (handle: string | null) =>
         <button class="button danger">Delete account</button>
       </form>
       <a class="button" href="/account">Cancel</a>`,
+  );
+
+export const connectAuthorizePage = (
+  handle: string,
+  clientLabel: string,
+  params: {
+    clientId: string;
+    redirectUri: string;
+    codeChallenge: string;
+    state: string;
+    next: string;
+  },
+) =>
+  layout(
+    "Sign in to Aurral",
+    html`<h1>Sign in to ${clientLabel} as @${handle}?</h1>
+      <p class="muted">
+        This lets ${clientLabel} find your Connect-enabled Aurral servers and sign into them as you.
+      </p>
+      <form method="post" action="/connect/authorize">
+        <input type="hidden" name="client_id" value="${params.clientId}" />
+        <input type="hidden" name="redirect_uri" value="${params.redirectUri}" />
+        <input type="hidden" name="code_challenge" value="${params.codeChallenge}" />
+        <input type="hidden" name="state" value="${params.state}" />
+        <button class="button primary">Continue as @${handle}</button>
+      </form>
+      <a class="button" href="/account">Cancel</a>
+      ${signOut(null, `Not @${handle}? Sign out`, params.next)}`,
+  );
+
+export const connectErrorPage = (message: string) =>
+  layout(
+    "Sign in error",
+    html`<h1>Couldn't finish sign-in</h1>
+      <p class="muted">${message}</p>
+      <a class="button" href="/account">Back to account</a>`,
   );

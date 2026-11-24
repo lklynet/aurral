@@ -52,7 +52,9 @@ export async function linkStatus(db: D1Database, tokenHash: string, now = Date.n
     .bind(tokenHash)
     .first<{ account_id: string | null; expires_at: number | null; handle: string | null }>();
   if (!row) return null;
-  if (row.account_id && row.handle) return { status: "linked" as const, handle: row.handle };
+  if (row.account_id && row.handle) {
+    return { status: "linked" as const, handle: row.handle, accountId: row.account_id };
+  }
   if (!row.account_id && row.expires_at && row.expires_at > now) {
     return { status: "pending" as const, expiresAt: row.expires_at };
   }
@@ -64,6 +66,14 @@ export const linkedAccountId = (db: D1Database, tokenHash: string) =>
     .prepare("SELECT account_id FROM links WHERE token_hash = ? AND account_id IS NOT NULL")
     .bind(tokenHash)
     .first<string>("account_id");
+
+export const linkedLinkDetails = (db: D1Database, tokenHash: string) =>
+  db
+    .prepare(
+      "SELECT id, instance_id, account_id FROM links WHERE token_hash = ? AND account_id IS NOT NULL",
+    )
+    .bind(tokenHash)
+    .first<{ id: string; instance_id: string; account_id: string }>();
 
 export const revokeLink = (db: D1Database, instanceId: string, tokenHash: string) =>
   db

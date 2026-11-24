@@ -8,8 +8,14 @@
     { "pattern": "aurral.org/v1/*", "zone_name": "aurral.org" },
     { "pattern": "aurral.org/account*", "zone_name": "aurral.org" },
     { "pattern": "aurral.org/link*", "zone_name": "aurral.org" },
+    { "pattern": "aurral.org/connect*", "zone_name": "aurral.org" },
   ],
-  "vars": { "HUB_ORIGIN": "https://aurral.org" },
+  "vars": {
+    "HUB_ORIGIN": "https://aurral.org",
+    "APP_ORIGIN": "https://music.aurral.org",
+    "CONNECT_DOMAIN": "aurral.dev",
+    "CONNECT_RELAY_URL": "wss://relay.aurral.dev/tunnel",
+  },
   "ratelimits": [
     { "name": "LINK_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
   ],
@@ -24,7 +30,12 @@
     "preview": {
       "workers_dev": true,
       "routes": [],
-      "vars": { "HUB_ORIGIN": "https://aurral-hub-preview.leefamous.workers.dev" },
+      "vars": {
+        "HUB_ORIGIN": "https://aurral-hub-preview.leefamous.workers.dev",
+        "APP_ORIGIN": "https://music.aurral.org",
+        "CONNECT_DOMAIN": "aurral.dev",
+        "CONNECT_RELAY_URL": "wss://relay.aurral.dev/tunnel",
+      },
       "ratelimits": [
         { "name": "LINK_LIMITER", "namespace_id": "1002", "simple": { "limit": 20, "period": 60 } },
       ],
