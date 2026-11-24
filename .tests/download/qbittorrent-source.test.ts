@@ -70,6 +70,7 @@ async function startFake() {
     torrents: [] as Torrent[],
     releases: [] as Record<string, unknown>[],
     musicReleases: null as Record<string, unknown>[] | null,
+    unavailable: new Set<string>(),
     added: [] as FormData[],
     deleted: [] as string[],
     onAdd: (_tag: string) => {},
@@ -163,6 +164,15 @@ async function startFake() {
           },
         },
       ]);
+    if (
+      url.pathname === "/api/v1/search" &&
+      fake.unavailable.has(String(url.searchParams.get("type")))
+    ) {
+      response.writeHead(400, { "Content-Type": "application/json" });
+      return response.end(
+        JSON.stringify({ message: "Search failed due to all selected indexers being unavailable" }),
+      );
+    }
     if (url.pathname === "/api/v1/search")
       return json(
         response,
@@ -256,6 +266,30 @@ test("an album search keeps seeded torrents of the album, best quality first", a
   assert.deepEqual(
     broader.map((result) => result.id),
     ["flac"],
+  );
+});
+
+test("an album search falls back to the plain query when the artist/album query fails, and fails only when every query does", async () => {
+  fake.releases = [release("flac", "Glass Coast - Lowlands (2020) [FLAC]", 5)];
+  fake.unavailable.add("music");
+  const search = () =>
+    qbittorrentSource.albums!.search(ALBUM, {
+      upgrade: null,
+      track: null,
+      denied: new Set(),
+      release: null,
+    });
+
+  assert.deepEqual(
+    (await search()).map((result) => result.id),
+    ["flac"],
+  );
+
+  fake.unavailable.add("search");
+  await assert.rejects(
+    search(),
+    (error) =>
+      error instanceof DownloadSourceError && /indexers being unavailable/.test(error.message),
   );
 });
 
