@@ -20,7 +20,7 @@ The Aurral web app also runs at `music.aurral.org` as a client that calls server
 
 ## Later: Connect
 
-Pairing works for any server that already has an HTTPS address. Connect, a paid add-on, would give every server a stable hostname through a managed tunnel, on a listener where no request counts as local and only pairing-issued tokens are accepted.
+Pairing works for any server that already has an HTTPS address. Connect, an optional paid relay described in [0016](./0016-aurral-connect.md), gives servers a stable `*.aurral.dev` hostname and zero-config sign-in from `music.aurral.org`, desktop, and mobile.
 
 ## Traps
 
