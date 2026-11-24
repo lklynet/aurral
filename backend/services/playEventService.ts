@@ -126,9 +126,6 @@ const tagMbids = (value: unknown) => [
   ),
 ];
 
-// Clients send the album artist's MBID, which is Various Artists on a
-// compilation. The Library track's tags credit each artist on the song, and its
-// album holds the release that was played.
 const libraryListenIds = (albumKey: string | null, title: string) => {
   const matches = albumKey ? libraryTrackStmt.all(albumKey, title) : [];
   const [track] = matches;
