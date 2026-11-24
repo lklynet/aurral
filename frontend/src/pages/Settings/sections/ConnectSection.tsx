@@ -27,7 +27,12 @@ import {
 
 type ConnectStatus = InferResponseType<typeof connectClient.$get, 200>;
 
-const POLL_CONNECTING_MS = 3000;
+const STATUS_POLL_MS = 3000;
+const RETRYING_STATES = new Set<ConnectStatus["state"]>([
+  "connecting",
+  "error",
+  "subscription_required",
+]);
 const SLUG_ERROR_CODES = new Set([
   "slug_invalid",
   "slug_reserved",
@@ -583,8 +588,8 @@ export function ConnectSection() {
     queryKey: queryKeys.connectStatus,
     queryFn: ({ signal }) => parseResponse(connectClient.$get({}, { init: { signal } })),
     refetchInterval: (query) =>
-      query.state.data?.enabled && query.state.data.state === "connecting"
-        ? POLL_CONNECTING_MS
+      query.state.data?.enabled && RETRYING_STATES.has(query.state.data.state)
+        ? STATUS_POLL_MS
         : false,
   });
 

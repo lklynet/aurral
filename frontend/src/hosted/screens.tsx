@@ -2,6 +2,7 @@ import {
   StrictMode,
   useCallback,
   useEffect,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -146,13 +147,16 @@ function ConnectPicker({
   const [connecting, setConnecting] = useState<ConnectDiscoveredServer | null>(null);
   const [offlineServer, setOfflineServer] = useState<ConnectDiscoveredServer | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const attempt = useRef(0);
 
   const openServer = useCallback(
     async (server: ConnectDiscoveredServer) => {
+      const current = ++attempt.current;
       setError(null);
       setOfflineServer(null);
       setConnecting(server);
       const result = await exchangeServerSession(session.token, server);
+      if (current !== attempt.current) return;
       if (result.ok) {
         saveServer({
           address: server.connectUrl,
@@ -259,7 +263,10 @@ function ConnectPicker({
           <button
             type="button"
             className="btn btn-secondary btn--full login-submit"
-            onClick={() => setConnecting(null)}
+            onClick={() => {
+              attempt.current += 1;
+              setConnecting(null);
+            }}
           >
             Choose another server
           </button>
