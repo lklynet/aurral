@@ -11,6 +11,7 @@ import type { NormalizedAlbum } from "./providers/metadataMappers.ts";
 import { isNzbSource } from "./usenetClientCommon.ts";
 import { formatArtistCredit } from "../../lib/artistCredit.ts";
 import { db } from "../config/db-sqlite.ts";
+import type { LibraryAlbumsRow } from "../db/rows.ts";
 
 const AURRAL_IDENTITY_PREFIX = `${AURRAL_IDENTITY_TAG}=`;
 
@@ -110,16 +111,22 @@ export function stringifyStringListJson(value: unknown) {
   return normalized.length > 0 ? JSON.stringify(normalized) : null;
 }
 
-const libraryReleaseStmt = db.prepare<[string], { 1: number }>(
-  "SELECT 1 FROM library_albums WHERE mbid = ? LIMIT 1",
+const libraryReleaseStmt = db.prepare<[string], Pick<LibraryAlbumsRow, "release_group_mbid">>(
+  `SELECT release_group_mbid FROM library_albums WHERE mbid = ?
+   ORDER BY release_group_mbid IS NULL LIMIT 1`,
 );
 
 // An album without a release group keys its jobs by its release, so a job's
 // album ID that is a Library album's release names the job's release.
-export function withJobRelease<Fields extends DownloadTrackFields>(fields: Fields): Fields {
+export function withJobRelease(fields: DownloadTrackFields): DownloadTrackFields {
   const albumMbid = fields.albumMbid?.trim();
-  if (!albumMbid || !libraryReleaseStmt.get(albumMbid)) return fields;
-  return { ...fields, albumMbid: null, releaseMbid: fields.releaseMbid || albumMbid };
+  const album = albumMbid ? libraryReleaseStmt.get(albumMbid) : undefined;
+  if (!album) return fields;
+  return {
+    ...fields,
+    albumMbid: album.release_group_mbid,
+    releaseMbid: fields.releaseMbid || albumMbid,
+  };
 }
 
 export function buildAurralIdentity(metadata: DownloadTrackFields = {}) {

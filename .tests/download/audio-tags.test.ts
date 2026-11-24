@@ -179,7 +179,8 @@ test("a download for an album without a release group is tagged with its release
   });
   const filePath = makeAudio("groupless.flac", ["-c:a", "flac"]);
   tagAsUploader(filePath, (file) => {
-    file.tag.musicBrainzReleaseId = releaseMbid;
+    file.tag.musicBrainzReleaseGroupId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    file.tag.musicBrainzReleaseId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
   });
 
   await writeAudioMetadata(filePath, { ...job, albumMbid: releaseMbid });

@@ -49,15 +49,23 @@ test("an untagged download files under its job's release group and release, neve
     artistId: artist.id,
     title: "Album",
   });
-  const keyedByRelease = buildMetadataRecord(
-    applyMetadataEnrichment({ common: {} }, { albumMbid: GROUPLESS_RELEASE }),
-    "/music/Artist/Album/01 Song.flac",
-    "/music",
-  );
-  assert.deepEqual(
-    [keyedByRelease.releaseGroupMbid, keyedByRelease.albumMbid],
-    [null, GROUPLESS_RELEASE],
-  );
+  upsertLibraryAlbum({
+    identityKey: `release-group:${RELEASE_GROUP}`,
+    mbid: RELEASE,
+    releaseGroupMbid: RELEASE_GROUP,
+    artistId: artist.id,
+    title: "Album",
+  });
+  const keyedByRelease = (albumMbid: string) => {
+    const { releaseGroupMbid, albumMbid: releaseMbid } = buildMetadataRecord(
+      applyMetadataEnrichment({ common: {} }, { albumMbid }),
+      "/music/Artist/Album/01 Song.flac",
+      "/music",
+    );
+    return [releaseGroupMbid, releaseMbid];
+  };
+  assert.deepEqual(keyedByRelease(GROUPLESS_RELEASE), [null, GROUPLESS_RELEASE]);
+  assert.deepEqual(keyedByRelease(RELEASE), [RELEASE_GROUP, RELEASE]);
 });
 
 test("a Various Artists album files under Various Artists when only its tracks carry artist IDs", () => {

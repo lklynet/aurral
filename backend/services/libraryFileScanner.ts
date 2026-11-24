@@ -132,7 +132,7 @@ const applyMetadataEnrichment = (
   if ((!enrichment || typeof enrichment !== "object") && Object.keys(embedded).length === 0) {
     return metadata;
   }
-  const trusted = withJobRelease<DownloadTrackFields>({ ...embedded, ...(enrichment || {}) });
+  const trusted = withJobRelease({ ...embedded, ...(enrichment || {}) });
   const taggedGroup = normalizeMbid(common.musicbrainz_releasegroupid);
   const otherGroup = taggedGroup !== null && taggedGroup !== normalizeMbid(trusted.albumMbid);
   const fallbackFields = {
