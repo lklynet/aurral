@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { test } from "vite-plus/test";
 import { migrate, migrations } from "../../backend/config/migrations.ts";
 import { decryptIntegrations, encryptWithKey } from "../../backend/config/encryption.ts";
@@ -683,33 +683,41 @@ test("upgrading stops treating an album's release group as its release", () => {
   );
 });
 
-test("upgrading keeps the track list of an album whose release group was stored as its release", () => {
+test("upgrading keeps the track lists stored for an album's release and files", () => {
   const artist = upsertLibraryArtist({ identityKey: "artist:kept-list", name: "Kept List" });
-  const album = upsertLibraryAlbum({
-    identityKey: "release-group:kept-list",
-    mbid: "kept-list",
-    releaseGroupMbid: "kept-list",
-    artistId: artist.id,
-    title: "Kept List",
+  const albums = ["kept-group", "kept-release"].map((name, index) => {
+    const album = upsertLibraryAlbum({
+      identityKey: `release-group:${name}`,
+      mbid: index === 0 ? name : `${name}-edition`,
+      releaseGroupMbid: name,
+      artistId: artist.id,
+      title: name,
+    });
+    const track = upsertLibraryTrack({ identityKey: `track:${name}`, title: "Song" });
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+    const path = `/music/Kept List/${name}/01 Song.flac`;
+    upsertLibraryMediaFile({
+      trackId: track.id,
+      albumId: album.id,
+      source: "aurral",
+      path,
+      mtimeMs: 1,
+    });
+    const basis = createHash("sha1")
+      .update(JSON.stringify([album.mbid, [[path, 1]]]))
+      .digest("hex");
+    storeLibraryAlbumTrackList(album.id, { release: null, basis });
+    return album.id;
   });
-  const track = upsertLibraryTrack({ identityKey: "track:kept-list", title: "Song" });
-  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
-  upsertLibraryMediaFile({
-    trackId: track.id,
-    albumId: album.id,
-    source: "aurral",
-    path: "/music/Kept List/01 Song.flac",
-    mtimeMs: 1,
-  });
-  const [listed] = getLibraryAlbumsToList();
-  storeLibraryAlbumTrackList(album.id, { release: null, basis: listed!.basis });
-  assert.deepEqual(getLibraryAlbumsToList(), []);
 
-  for (const step of migrations.slice(32, 34)) step(libraryDb);
+  for (const step of migrations.slice(32)) step(libraryDb);
 
   assert.equal(
-    libraryDb.prepare("SELECT mbid FROM library_albums WHERE id = ?").pluck().get(album.id),
+    libraryDb.prepare("SELECT mbid FROM library_albums WHERE id = ?").pluck().get(albums[0]),
     null,
   );
-  assert.deepEqual(getLibraryAlbumsToList(), []);
+  assert.deepEqual(
+    getLibraryAlbumsToList().filter((album) => albums.includes(album.id)),
+    [],
+  );
 });

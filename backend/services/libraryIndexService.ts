@@ -48,6 +48,7 @@ interface JobMetadata {
   trackName: string;
   artistMbid: string | null;
   albumMbid: string | null;
+  releaseMbid: string | null;
   trackMbid: string | null;
   releaseYear: string | null;
   trackNumber: number | null;
@@ -78,6 +79,7 @@ function getJobMetadataByPath() {
         | "track_name"
         | "artist_mbid"
         | "album_mbid"
+        | "release_mbid"
         | "track_mbid"
         | "release_year"
         | "track_number"
@@ -85,7 +87,7 @@ function getJobMetadataByPath() {
       >
     >(
       `SELECT final_path, artist_name, album_name, track_name,
-        artist_mbid, album_mbid, track_mbid, release_year, track_number, disc_number
+        artist_mbid, album_mbid, release_mbid, track_mbid, release_year, track_number, disc_number
        FROM download_jobs
        WHERE status = 'done' AND final_path IS NOT NULL
        ORDER BY completed_at DESC, created_at DESC`,
@@ -101,6 +103,7 @@ function getJobMetadataByPath() {
       trackName: row.track_name,
       artistMbid: row.artist_mbid,
       albumMbid: row.album_mbid,
+      releaseMbid: row.release_mbid,
       trackMbid: row.track_mbid,
       releaseYear: row.release_year,
       trackNumber: row.track_number,
