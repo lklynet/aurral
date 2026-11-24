@@ -698,6 +698,16 @@ test("getNowPlaying shows what people sharing their listening play on the web or
     assert.deepEqual(await playing("now-bob"), [[song.id, "alice"]]);
 
     await request("scrobble", { u: "now-bob", id: song.id, submission: "true" });
+    assert.deepEqual(
+      db
+        .prepare("SELECT track_mbid, artist_mbid, album_mbid FROM play_events WHERE user_id = ?")
+        .get(bob.id),
+      {
+        track_mbid: song.musicBrainzId,
+        artist_mbid: "11111111-1111-4111-8111-111111111111",
+        album_mbid: "22222222-2222-4222-8222-222222222222",
+      },
+    );
     assert.deepEqual(await playing("alice"), [
       [song.id, "alice"],
       [song.id, "now-bob"],
