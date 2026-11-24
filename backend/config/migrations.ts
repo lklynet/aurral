@@ -466,6 +466,11 @@ const renameDiscoverySourceLabels: Migration = (db) =>
     WHERE instr(value, '"lastfm_') > 0;
   `);
 
+// Adding an album and importing an untagged download once stored the release
+// group as the album's release.
+const clearReleaseGroupsStoredAsReleases: Migration = (db) =>
+  db.exec("UPDATE library_albums SET mbid = NULL WHERE mbid = release_group_mbid");
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -499,6 +504,7 @@ export const migrations: Migration[] = [
   forgetArtistCoverAlbums,
   indexPlaysByArtistId,
   renameDiscoverySourceLabels,
+  clearReleaseGroupsStoredAsReleases,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

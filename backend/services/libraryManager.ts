@@ -2172,7 +2172,6 @@ export class LibraryManager {
     const saveAlbum = () => {
       const albumRecord = upsertLibraryAlbum({
         identityKey: buildIdentityKey("release-group", normalizedAlbumMbid),
-        mbid: normalizedAlbumMbid,
         releaseGroupMbid: normalizedAlbumMbid,
         artistId: artist.id,
         title: resolvedAlbumName,

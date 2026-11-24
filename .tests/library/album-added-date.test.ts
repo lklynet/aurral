@@ -98,7 +98,7 @@ test("re-adding an Aurral album keeps the date it was first added", async () => 
     const firstAdded = "2020-01-02T03:04:05.000Z";
     const row = db
       .prepare<unknown[], { id: number; metadata_json: string | null }>(
-        "SELECT id, metadata_json FROM library_albums WHERE mbid = ?",
+        "SELECT id, metadata_json FROM library_albums WHERE release_group_mbid = ?",
       )
       .get(albumMbid);
     const metadata = JSON.parse(requireFixture(requireFixture(row).metadata_json));

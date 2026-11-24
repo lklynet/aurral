@@ -630,7 +630,7 @@ test("concurrent album disable and enable leaves the last choice active", async 
   await runQueuedMonitoringTasks();
   const album = db
     .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryAlbumsRow["id"] }>(
-      "SELECT id FROM library_albums WHERE mbid = ?",
+      "SELECT id FROM library_albums WHERE release_group_mbid = ?",
     )
     .get(releases.firstAlbum.id);
   assert.ok(album);
@@ -673,7 +673,7 @@ test("an album override survives artist monitoring changes and unmonitoring keep
   downloadTracker.setDone(finishedJob.id, "/aurral/Monitor Artist/Latest EP/01.flac", "Latest EP");
   const album = db
     .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryAlbumsRow["id"] }>(
-      "SELECT id FROM library_albums WHERE mbid = ?",
+      "SELECT id FROM library_albums WHERE release_group_mbid = ?",
     )
     .get(releases.latestEp.id);
   assert.ok(album);
@@ -1001,7 +1001,7 @@ test("a deleted album stays out of monitoring until someone asks for it again", 
   await runQueuedMonitoringTasks();
   const album = db
     .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryAlbumsRow["id"] }>(
-      "SELECT id FROM library_albums WHERE mbid = ?",
+      "SELECT id FROM library_albums WHERE release_group_mbid = ?",
     )
     .get(releases.secondAlbum.id);
   assert.ok(album);
@@ -1054,7 +1054,7 @@ test("allowing an excluded album again lets monitoring take it back", async () =
   await runQueuedMonitoringTasks();
   const album = db
     .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryAlbumsRow["id"] }>(
-      "SELECT id FROM library_albums WHERE mbid = ?",
+      "SELECT id FROM library_albums WHERE release_group_mbid = ?",
     )
     .get(releases.firstAlbum.id);
   assert.ok(album);
