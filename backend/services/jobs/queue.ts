@@ -25,7 +25,10 @@ export interface QueueConfig<Payload extends object> {
   start: () => Promise<unknown>;
   skipInTest?: boolean;
   priority?: (payload: Payload) => number;
-  onAbandoned?: (job: JobRow, reason: string) => unknown;
+  onAbandoned?: (
+    job: JobRow,
+    reason: string,
+  ) => JsonObject | null | void | Promise<JsonObject | null | void>;
 }
 
 export interface EnqueueOptions<Payload> {
@@ -190,8 +193,15 @@ const statements = {
     )
   `),
   running: db.prepare<[], JobRow>("SELECT * FROM jobs WHERE state = 'running'"),
-  settleAbandoned: db.prepare<{ id: number; workerId: string | null; now: number; error: string }>(`
+  settleAbandoned: db.prepare<{
+    id: number;
+    workerId: string | null;
+    now: number;
+    error: string;
+    payload: string | null;
+  }>(`
     UPDATE jobs SET state = ${SETTLED}, worker_id = NULL, lease_until = NULL,
+      payload = COALESCE(@payload, payload),
       finished_at = CASE WHEN cancel_requested = 1 OR attempts >= max_attempts THEN @now END,
       last_error = @error
     WHERE id = @id AND state = 'running' AND worker_id IS @workerId
@@ -439,16 +449,17 @@ export async function recoverAbandonedJobs(reason: string, group: string | null 
     .all()
     .filter((row) => group == null || queues.get(row.queue)?.group === group);
   for (const row of abandoned) {
-    try {
-      await queues.get(row.queue)?.onAbandoned?.(row, reason);
-    } catch (error) {
-      console.warn(`[jobs] Could not clean up ${row.queue} job ${row.id}:`, error);
-    }
+    const payload = await Promise.resolve()
+      .then(() => queues.get(row.queue)?.onAbandoned?.(row, reason))
+      .catch((error: unknown) => {
+        console.warn(`[jobs] Could not clean up ${row.queue} job ${row.id}:`, error);
+      });
     statements.settleAbandoned.run({
       id: row.id,
       workerId: row.worker_id,
       now: Date.now(),
       error: reason,
+      payload: payload ? JSON.stringify(payload) : null,
     });
   }
   if (group == null) statements.releaseAllLocks.run();
