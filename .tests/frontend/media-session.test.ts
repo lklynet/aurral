@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
 import {
+  mediaKeyAction,
   mediaSessionArtwork,
   mediaSessionPosition,
 } from "../../frontend/src/utils/mediaSession.ts";
@@ -50,4 +51,15 @@ test("lock-screen position stays inside the track and clears without a usable du
   assert.equal(mediaSessionPosition(0, 5), null);
   assert.equal(mediaSessionPosition(Number.POSITIVE_INFINITY, 5), null);
   assert.equal(mediaSessionPosition(Number.NaN, 5), null);
+});
+
+test("a TV remote's media keys map to the player's Media Session actions", () => {
+  assert.equal(mediaKeyAction("MediaPlayPause"), "playpause");
+  assert.equal(mediaKeyAction("MediaPlay"), "play");
+  assert.equal(mediaKeyAction("MediaPause"), "pause");
+  assert.equal(mediaKeyAction("MediaTrackNext"), "nexttrack");
+  assert.equal(mediaKeyAction("MediaTrackPrevious"), "previoustrack");
+  assert.equal(mediaKeyAction(" "), null);
+  assert.equal(mediaKeyAction("MediaStop"), null);
+  assert.equal(mediaKeyAction("constructor"), null);
 });
