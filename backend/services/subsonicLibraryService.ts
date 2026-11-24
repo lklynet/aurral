@@ -1028,10 +1028,12 @@ const trackFromJob = (job: DownloadJob | null | undefined) => {
     albumName: job?.albumName,
     artistMbid: job?.artistMbid,
     albumMbid: job?.albumMbid,
+    releaseMbid: job?.releaseMbid,
     trackMbid: job?.trackMbid,
     releaseYear: job?.releaseYear,
     durationMs: job?.durationMs,
     trackNumber: job?.trackNumber,
+    discNumber: job?.discNumber,
     artistAliases: job?.artistAliases,
   });
   return (

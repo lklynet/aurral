@@ -101,15 +101,16 @@ test("rolled-back handoff leaves the continuing process and queued payload uncha
 });
 
 test("album leadership moves to a held peer without cancelling shared provider work", () => {
+  const releaseMbid = "11111111-1111-4111-8111-111111111111";
   const leader = createTrackedJob(
     downloadTracker,
-    { artistName: "Artist", trackName: "First", albumMbid: "album" },
+    { artistName: "Artist", trackName: "First", albumMbid: "album", releaseMbid, discNumber: 1 },
     "library",
   );
   assert.ok(leader != null);
   const peer = createTrackedJob(
     downloadTracker,
-    { artistName: "Artist", trackName: "Second", albumMbid: "album" },
+    { artistName: "Artist", trackName: "Second", albumMbid: "album", releaseMbid, discNumber: 2 },
     "library",
   );
   assert.ok(peer != null);
@@ -133,6 +134,7 @@ test("album leadership moves to a held peer without cancelling shared provider w
     albumGrab: true,
     albumGroupJobIds: [leader, peer],
     queueUuid: "existing-queue",
+    track: { releaseMbid, discNumber: 1 },
   };
   insertJob(db, "download-pipeline", payload);
   const redirect = db.transaction(() =>
@@ -146,6 +148,8 @@ test("album leadership moves to a held peer without cancelling shared provider w
   assert.equal(continued.jobId, peer);
   assert.deepEqual(continued.albumGroupJobIds, [peer]);
   assert.equal(continued.queueUuid, "existing-queue");
+  assert.equal(continued.track.releaseMbid, releaseMbid);
+  assert.equal(continued.track.discNumber, 2);
   assert.equal(cancellation.isPipelinePayloadActive(continued), true);
 });
 

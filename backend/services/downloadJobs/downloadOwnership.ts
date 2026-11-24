@@ -195,6 +195,7 @@ function recordTransfer(
       albumName: to.albumName,
       artistMbid: to.artistMbid,
       albumMbid: to.albumMbid,
+      releaseMbid: to.releaseMbid,
       trackMbid: to.trackMbid,
       releaseYear: to.releaseYear,
       durationMs: to.durationMs,
