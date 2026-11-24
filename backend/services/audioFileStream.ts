@@ -26,9 +26,14 @@ export function audioContentType(format: string) {
   return knownContentType(normalized) || `audio/${normalized}`;
 }
 
-export async function sendAudioFile(req: IncomingMessage, res: ServerResponse, filePath: string) {
+export async function sendAudioFile(
+  req: IncomingMessage,
+  res: ServerResponse,
+  filePath: string,
+  loudnessPath = filePath,
+) {
   if (req.method === "HEAD") {
-    const lufs = await fileLoudness(filePath);
+    const lufs = await fileLoudness(loudnessPath);
     if (lufs != null) res.setHeader("X-Aurral-Loudness", lufs.toFixed(1));
   }
   return sendFile(req, res, filePath, {

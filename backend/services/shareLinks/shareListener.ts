@@ -155,8 +155,8 @@ export function createShareApp() {
       const served = playsInBrowsers(track.file)
         ? await sendViaNode(c, sendAudioFile, track.file.path)
         : await sendViaNode(c, streamSubsonicAudio, track.file.path, {
-            format: "mp3",
-            maxBitRate: 320,
+            format: "flac",
+            maxBitRate: 0,
           });
       return served || notFound(c);
     })
