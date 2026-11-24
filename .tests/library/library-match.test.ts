@@ -414,12 +414,46 @@ test("rematching an artist and album Aurral added leaves their old MBIDs behind"
     `release-group:${ADDED_GROUP}`,
     ADDED_GROUP,
     ADDED_GROUP,
-    JSON.stringify({ id: ADDED_GROUP, foreignAlbumId: ADDED_GROUP, librarySource: "aurral" }),
+    JSON.stringify({
+      id: ADDED_GROUP,
+      foreignAlbumId: ADDED_GROUP,
+      librarySource: "aurral",
+      trackListComplete: true,
+      requestedRelease: TRACK_RELEASE,
+      edition: "expanded",
+    }),
     album.id,
   );
+  const missing = libraryStore.upsertLibraryTrack({
+    identityKey: `recording:${NEXT_RECORDING}`,
+    mbid: NEXT_RECORDING,
+    title: "Only On The Old Group",
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: missing.id, trackNumber: 2 });
 
   assert.equal((await updateMbid(artist.id, REMATCHED_MBID)).status, 200);
   assert.equal((await updateReleaseGroup(album.id, REMATCHED_GROUP)).status, 200);
+
+  const rematched = v.parse(
+    v.record(v.string(), v.unknown()),
+    JSON.parse(albumRow(album.id)!.metadata_json!),
+  );
+  assert.deepEqual(
+    ["trackListComplete", "requestedRelease", "edition"].filter((key) => key in rematched),
+    [],
+  );
+  assert.equal(
+    db
+      .prepare("SELECT track_id FROM library_album_tracks WHERE album_id = ?")
+      .pluck()
+      .all(album.id)
+      .includes(missing.id),
+    false,
+  );
+  assert.equal(
+    libraryStore.getLibraryAlbumsToList().some((entry) => entry.id === album.id),
+    true,
+  );
 
   const albumsFor = async (reference: string) => {
     const response = await app.request(`/library/albums?artistId=${reference}`);

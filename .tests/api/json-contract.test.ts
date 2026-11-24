@@ -233,18 +233,21 @@ beforeAll(async () => {
     identityKey: "contract:artist",
     mbid: artistMbid,
     name: artistData.name,
+    metadata: { foreignArtistId: artistMbid, monitorNewItems: "all" },
   });
   album = libraryStore.upsertLibraryAlbum({
     identityKey: "contract:album",
     releaseGroupMbid: albumMbid,
     artistId: artist.id,
     title: albumData.title,
+    metadata: { foreignAlbumId: albumMbid, foreignArtistId: artistMbid },
   });
   const track = libraryStore.upsertLibraryTrack({
     identityKey: "contract:track",
     mbid: trackMbid,
     title: "Contract Song",
     artistName: artist.name,
+    metadata: { foreignTrackId: trackMbid },
   });
   libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
   const mediaPath = path.join(state.baseDir, "media", "Contract Song.flac");
@@ -517,6 +520,7 @@ test("library pages, lookups, album requests, and track requests preserve their 
     files: "array",
   });
   assert.equal(page.items[0].mbid, trackMbid);
+  assert.doesNotMatch(JSON.stringify(page), /foreign(Artist|Album|Track)Id|monitorNewItems/);
   for (const [kind, name] of [
     ["artists", "name"],
     ["albums", "title"],
@@ -535,6 +539,10 @@ test("library pages, lookups, album requests, and track requests preserve their 
       genres: "array",
     });
     fields(collection.items[0], { id: "number", identityKey: "string", [name]: "string" });
+    assert.doesNotMatch(
+      JSON.stringify(collection),
+      /foreign(Artist|Album|Track)Id|monitorNewItems/,
+    );
     if (kind === "albums") {
       const {
         items: [entry],

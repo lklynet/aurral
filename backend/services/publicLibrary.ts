@@ -36,9 +36,14 @@ const publicEntity = <T extends { identityKey: string }>(
     ? { ...entity, userFavorite: favoriteKeys.has(`${kind}:${entity.identityKey}`) }
     : { ...entity };
 
+const withoutLidarrFields = <M extends Record<string, unknown>>(metadata: M) => {
+  const { foreignArtistId, foreignAlbumId, foreignTrackId, monitorNewItems, ...rest } = metadata;
+  return rest;
+};
+
 const summaryMetadata = <M extends Record<string, unknown>>(metadata: M | null) => {
   if (!metadata) return null;
-  const { trackList, tags, ...rest } = metadata;
+  const { trackList, tags, ...rest } = withoutLidarrFields(metadata);
   if (!tags || typeof tags !== "object") return rest;
   return {
     ...rest,
@@ -104,7 +109,10 @@ export function buildPublicLibrary(
       ),
     ),
     tracks: library.tracks.map((track) => {
-      const item = publicEntity("song", track, favoriteKeys);
+      const item = {
+        ...publicEntity("song", track, favoriteKeys),
+        metadata: track.metadata && withoutLidarrFields(track.metadata),
+      };
       const customArtwork = trackArtwork.get(String(track.id));
       return customArtwork
         ? {

@@ -1371,6 +1371,16 @@ function foldLibraryAlbum(
   for (const trackId of dropped) unlinkFilelessAlbumTrack(target.id, trackId);
 }
 
+const filelessAlbumTracksStmt = db
+  .prepare<[number], number>(
+    `SELECT link.track_id FROM library_album_tracks AS link
+     WHERE link.album_id = ? AND NOT EXISTS (
+       SELECT 1 FROM library_media_files AS media
+       WHERE media.track_id = link.track_id AND (media.album_id = link.album_id OR media.album_id IS NULL)
+     )`,
+  )
+  .pluck();
+
 function unlinkFilelessAlbumTrack(albumId: number, trackId: number) {
   unlinkAlbumTrackStmt.run(albumId, trackId);
   if (!trackLinkedStmt.get(trackId) && !trackHasFileStmt.get(trackId)) {
@@ -1577,6 +1587,16 @@ export function setLibraryAlbumReleaseGroup(albumId: number, releaseGroupMbid: s
       : fallbackTaken
         ? `${fallbackKey}:${album.id}`
         : fallbackKey;
+    if (album.release_group_mbid !== releaseGroupMbid) {
+      for (const trackId of filelessAlbumTracksStmt.all(album.id)) {
+        unlinkFilelessAlbumTrack(album.id, trackId);
+      }
+      db.prepare<[number]>(
+        `UPDATE library_albums
+         SET metadata_json = json_remove(metadata_json, '$.trackListComplete', '$.requestedRelease', '$.edition')
+         WHERE id = ? AND json_valid(metadata_json) AND json_type(metadata_json) = 'object'`,
+      ).run(album.id);
+    }
     const kept = rekeyLibraryAlbum(album.id, key);
     if (kept == null) return { error: "not_found" } as const;
     db.prepare<[string | null, string | null, number, number]>(
