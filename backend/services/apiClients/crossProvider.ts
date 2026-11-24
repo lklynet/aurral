@@ -30,19 +30,21 @@ export async function resolveDeezerAlbumToMbid(
   const deezerId = String(deezerAlbumId || "")
     .replace(/^dz-/, "")
     .trim();
-  const dzKey = deezerId ? `dz:${deezerId}` : null;
-  const aaKey = normalizeArtistAlbumKey(artistName, albumName);
-  const cached = (dzKey && dbOps.getDeezerMbidCache(dzKey)) || dbOps.getDeezerMbidCache(aaKey);
-  if (cached) return cached;
-
-  if (dzKey) {
+  if (deezerId) {
     const key = `deezer-album:${deezerId}`;
     const linked = (await lookupIds([key]).catch(() => null))?.get(key)?.albumMbid;
+    const cacheKey = `dz:${deezerId}`;
+    const previous = dbOps.getDeezerMbidCache(cacheKey);
     if (linked) {
-      dbOps.setDeezerMbidCache(dzKey, linked);
+      if (linked !== previous) dbOps.setDeezerMbidCache(cacheKey, linked);
       return linked;
     }
+    if (previous) return previous;
   }
+
+  const aaKey = normalizeArtistAlbumKey(artistName, albumName);
+  const cached = dbOps.getDeezerMbidCache(aaKey);
+  if (cached) return cached;
 
   const artist = String(artistName || "").trim();
   const album = String(albumName || "").trim();
@@ -55,7 +57,6 @@ export async function resolveDeezerAlbumToMbid(
       albumTitle: album,
     });
     if (!id) return null;
-    if (dzKey) dbOps.setDeezerMbidCache(dzKey, id);
     dbOps.setDeezerMbidCache(aaKey, id);
     return id;
   } catch (e) {
