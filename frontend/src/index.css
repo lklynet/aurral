@@ -13488,6 +13488,11 @@ button.playlist-detail__cover {
     outline: none;
   }
 
+  .player-rail-resize-handle:focus-visible::before {
+    outline: 2px solid var(--aurral-ring);
+    outline-offset: -2px;
+  }
+
   .btn.player-rail-edge {
     margin-right: 0;
   }
