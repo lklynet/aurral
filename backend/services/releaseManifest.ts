@@ -13,7 +13,7 @@ import {
 import { buildResolvedJobTrack, type DownloadTrackFields } from "./downloadUtils.ts";
 import { normalizeMatchText, titleMatchText } from "./trackMatching/nativeMatcher.ts";
 import { extractVariants, sameMixCredit } from "./trackMatching/semanticPolicy.ts";
-import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
+import { isVariousArtistsCredit } from "../../lib/artistCredit.ts";
 
 type ManifestArtistInput = Partial<NormalizedArtist> & { artistname?: string };
 

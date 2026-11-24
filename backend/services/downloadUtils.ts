@@ -2,14 +2,13 @@ import path from "path";
 import * as v from "valibot";
 import fs from "fs/promises";
 import type { ICommonTagsResult, IAudioMetadata } from "music-metadata";
-import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { AURRAL_IDENTITY_TAG, writeAudioTags } from "./audioTags.ts";
 import { getAlbumByMbid } from "./providers/metadataProvider.ts";
 import type { NormalizedAlbum } from "./providers/metadataMappers.ts";
 import { isNzbSource } from "./usenetClientCommon.ts";
-import { formatArtistCredit } from "../../lib/artistCredit.ts";
+import { formatArtistCredit, isVariousArtistsCredit } from "../../lib/artistCredit.ts";
 import { db } from "../config/db-sqlite.ts";
 import type { LibraryAlbumsRow } from "../db/rows.ts";
 

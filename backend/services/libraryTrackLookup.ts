@@ -11,7 +11,7 @@ import {
   tracksShareMembership,
   type PlaylistTrackInput,
 } from "./playlists/playlistTracks.ts";
-import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
+import { isVariousArtistsCredit } from "../../lib/artistCredit.ts";
 
 export type StarredAt = Map<string, string>;
 export type Rating = { userRating?: number; averageRating: number };

@@ -33,3 +33,23 @@ export function trackArtistCreditFromTags(artist: unknown, artists: unknown) {
   }
   return primary || names.join(", ");
 }
+
+export const VARIOUS_ARTISTS_MBID = "89ad4ac3-39f7-470e-963a-56509c546377";
+
+const VARIOUS_ARTISTS_NAMES = new Set(["various artists", "various", "va", "v a"]);
+
+// "Various Artists" credits a compilation, not a performer.
+export function isVariousArtistsCredit(
+  name: string | null | undefined,
+  mbid: string | null = null,
+) {
+  return (
+    text(mbid).toLowerCase() === VARIOUS_ARTISTS_MBID ||
+    VARIOUS_ARTISTS_NAMES.has(
+      text(name)
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, " ")
+        .trim(),
+    )
+  );
+}

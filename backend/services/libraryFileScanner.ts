@@ -40,8 +40,11 @@ import {
 } from "./downloadUtils.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { isPathWithin } from "./libraryFolders.ts";
-import { trackArtistCreditFromTags } from "../../lib/artistCredit.ts";
-import { VARIOUS_ARTISTS_MBID, isVariousArtistsCredit } from "./trackMatching/titleText.ts";
+import {
+  trackArtistCreditFromTags,
+  VARIOUS_ARTISTS_MBID,
+  isVariousArtistsCredit,
+} from "../../lib/artistCredit.ts";
 
 type ScannedMetadata = {
   common?: Partial<ICommonTagsResult>;

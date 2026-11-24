@@ -15,10 +15,10 @@ import {
 } from "../providers/metadataRanking.ts";
 import {
   coreAlbumTitle,
-  isVariousArtistsCredit,
   otherProductMarker,
   withoutFeaturedArtists,
 } from "../trackMatching/titleText.ts";
+import { isVariousArtistsCredit } from "../../../lib/artistCredit.ts";
 import {
   checkVariantCompatibility,
   labelContradictions,
