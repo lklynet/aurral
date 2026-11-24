@@ -49,44 +49,65 @@ const tracks = [
   ["01b405ae-0000-4000-8000-000000000002", "Raspberries", "Go All the Way", 203000],
 ];
 
+const mixer = "0e3ca88b-910e-4daa-97db-68f3722edd5f";
+const mixMbid = "3642adba-c41f-41f4-9e86-73e295c04c62";
+const mixTracks = [
+  [mixer, "TSHA", "Sacrifice", 201000],
+  ["f98a61b4-0000-4000-8000-000000000003", "CYRIL", "Stumblin' In", 189000],
+];
+
+const compilation = (
+  id: string,
+  title: string,
+  entries: typeof tracks,
+  recordingPrefix: string,
+) => ({
+  id,
+  title,
+  artistId: variousArtists,
+  artists: [
+    { id: variousArtists, name: "Various Artists" },
+    ...entries.map(([artistId, artistName]) => ({
+      id: artistId,
+      name: artistName,
+      aliases: artistName === "Blue Swede" ? ["Björn Skifs & Blåblus"] : [],
+    })),
+  ],
+  releases: [
+    {
+      id: `${id}-release`,
+      status: "Official",
+      tracks: entries.map(([artistId, , trackTitle, durationMs], index) => ({
+        id: `${recordingPrefix}-track-${index}`,
+        recordingId: `${recordingPrefix}-0000-4000-8000-00000000000${index}`,
+        title: trackTitle,
+        artistId,
+        durationMs,
+        trackPosition: index + 1,
+        mediumNumber: 1,
+      })),
+    },
+  ],
+});
+
+const albums = new Map([
+  [
+    `/v1/album/${albumMbid}`,
+    compilation(albumMbid, "Guardians of the Galaxy: Awesome Mix, Vol. 1", tracks, "aaaaaaaa"),
+  ],
+  [`/v1/album/${mixMbid}`, compilation(mixMbid, "The Annual 2025", mixTracks, "bbbbbbbb")],
+]);
+
 const metadataServer = await createMockHttpServer((request, response) => {
   const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
   response.setHeader("content-type", "application/json");
-  if (pathname !== `/v1/album/${albumMbid}`) {
+  const album = albums.get(pathname);
+  if (!album) {
     response.writeHead(404);
     response.end(JSON.stringify({ error: "not found" }));
     return;
   }
-  response.end(
-    JSON.stringify({
-      id: albumMbid,
-      title: "Guardians of the Galaxy: Awesome Mix, Vol. 1",
-      artistId: variousArtists,
-      artists: [
-        { id: variousArtists, name: "Various Artists" },
-        ...tracks.map(([artistId, artistName]) => ({
-          id: artistId,
-          name: artistName,
-          aliases: artistName === "Blue Swede" ? ["Björn Skifs & Blåblus"] : [],
-        })),
-      ],
-      releases: [
-        {
-          id: `${albumMbid}-release`,
-          status: "Official",
-          tracks: tracks.map(([artistId, , title, durationMs], index) => ({
-            id: `track-${index}`,
-            recordingId: `aaaaaaaa-0000-4000-8000-00000000000${index}`,
-            title,
-            artistId,
-            durationMs,
-            trackPosition: index + 1,
-            mediumNumber: 1,
-          })),
-        },
-      ],
-    }),
-  );
+  response.end(JSON.stringify(album));
 });
 
 const originalSettings = dbOps.getSettings();
@@ -239,5 +260,31 @@ test("a compilation track whose stored aliases can't be read is still fetched by
   assert.deepEqual(
     downloadTracker.getAll().map((job) => job.artistAliases),
     [["Raspberries"]],
+  );
+});
+
+test("a compilation requested from one of its artists searches each track by its own artist", async () => {
+  downloadTracker.clearAll();
+  const requested = await app.request("/library/albums/request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      albumMbid: mixMbid,
+      albumName: "The Annual 2025",
+      artistMbid: mixer,
+      artistName: "TSHA",
+    }),
+  });
+  assert.equal(requested.status, 201, await requested.text());
+
+  assert.deepEqual(
+    downloadTracker
+      .getAll()
+      .map((job) => [job.trackName, job.artistName, job.artistMbid, job.artistAliases])
+      .sort(),
+    [
+      ["Sacrifice", "Various Artists", variousArtists, ["TSHA"]],
+      ["Stumblin' In", "Various Artists", variousArtists, ["CYRIL"]],
+    ],
   );
 });
