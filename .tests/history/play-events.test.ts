@@ -8,6 +8,7 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
+import { stubFetch } from "../helpers/stubFetch.ts";
 
 const [isolatedState, playEvents, scrobbleStore] = await setupIsolatedBackend(
   "play-events",
@@ -15,6 +16,7 @@ const [isolatedState, playEvents, scrobbleStore] = await setupIsolatedBackend(
   () => import("../../backend/services/scrobbleConnectionStore.ts"),
 );
 const { db } = await import("../../backend/config/db-sqlite.ts");
+const media = await import("../../backend/services/libraryMediaStore.ts");
 
 beforeEach(() => {
   resetDatabase(db);
@@ -90,6 +92,99 @@ test("pins each scrobble delivery to the connection active when the play was rec
 
   assert.equal(JSON.parse(row.payload).eventId, event.id);
   assert.equal(JSON.parse(row.payload).connectionRevision, connection.connectionRevision);
+});
+
+test("a Library play credits the song's own artists and the release it was played from", async (t: import("vite-plus/test").TestContext) => {
+  const VARIOUS_ARTISTS = "89ad4ac3-39f7-470e-963a-56509c546377";
+  const RELEASE_GROUP = "b942e690-bcc2-4bb2-a1b7-a779b20ad406";
+  const RELEASE = "5c0b54fe-d8ad-46aa-a29e-25c2077fc835";
+  const credits = [
+    ["Lead Artist", "11111111-1111-4111-8111-111111111111"],
+    ["Second Artist", "22222222-2222-4222-8222-222222222222"],
+    ["Third Artist", "33333333-3333-4333-8333-333333333333"],
+  ];
+  const artist = media.upsertLibraryArtist({
+    identityKey: `mbid:${VARIOUS_ARTISTS}`,
+    mbid: VARIOUS_ARTISTS,
+    name: "Various Artists",
+  });
+  const album = media.upsertLibraryAlbum({
+    identityKey: `release-group:${RELEASE_GROUP}`,
+    mbid: RELEASE,
+    releaseGroupMbid: RELEASE_GROUP,
+    artistId: artist.id,
+    title: "The Compilation",
+  });
+  const track = media.upsertLibraryTrack({
+    identityKey: "recording:compilation-song",
+    title: "Compilation Song",
+    artistName: "Lead Artist, Second Artist, Third Artist",
+    metadata: {
+      tags: {
+        artists: credits.map(([name]) => name),
+        musicbrainz_artistid: credits.map(([, mbid]) => mbid),
+      },
+    },
+  });
+  media.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  const userId = requireFixture(
+    db.prepare<[], { id: number }>("SELECT id FROM users WHERE username = 'listener'").get(),
+  ).id;
+  scrobbleStore.scrobbleConnectionStore.saveConnection(userId, "koito", {
+    token: "koito-token",
+    baseUrl: "http://koito.local:4110",
+  });
+  const submitted: { listen_type: string; info: unknown }[] = [];
+  stubFetch(t, (_url, init) => {
+    const body = v.parse(
+      v.object({
+        listen_type: v.string(),
+        payload: v.tuple([
+          v.object({ track_metadata: v.object({ additional_info: v.unknown() }) }),
+        ]),
+      }),
+      JSON.parse(String(init?.body)),
+    );
+    submitted.push({
+      listen_type: body.listen_type,
+      info: body.payload[0].track_metadata.additional_info,
+    });
+    return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+  });
+  const play = {
+    title: "Compilation Song",
+    artist: "Lead Artist, Second Artist, Third Artist",
+    album: "The Compilation",
+    artistMbid: VARIOUS_ARTISTS,
+    albumMbid: RELEASE_GROUP,
+  };
+
+  playEvents.recordPlayEvent(userId, { ...play, trackId: String(track.id), albumId: album.id });
+  const job = requireFixture(
+    db
+      .prepare<[], { payload: string }>("SELECT payload FROM jobs WHERE queue = 'play-events'")
+      .get(),
+  );
+  await playEvents.deliverPlayEvent(
+    v.parse(playEvents.playEventDeliverySchema, JSON.parse(job.payload)),
+  );
+  await playEvents.sendNowPlaying(userId, {
+    ...play,
+    trackId: "song:recording%3Acompilation-song",
+    albumId: `album:${encodeURIComponent(album.identity_key)}`,
+  });
+
+  const expected = {
+    submission_client: "Aurral",
+    release_mbid: RELEASE,
+    release_group_mbid: RELEASE_GROUP,
+    artist_mbids: credits.map(([, mbid]) => mbid),
+    artist_names: credits.map(([name]) => name),
+  };
+  assert.deepEqual(submitted, [
+    { listen_type: "single", info: expected },
+    { listen_type: "playing_now", info: expected },
+  ]);
 });
 
 test("one unreadable user entry keeps every other user's scrobble connections", () => {

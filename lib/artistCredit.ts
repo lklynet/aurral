@@ -8,7 +8,7 @@ export const formatArtistCredit = (credit: ArtistCredit) =>
 
 const text = (value: unknown) => String(value ?? "").trim();
 
-const artistNames = (value: unknown) => {
+export const artistNames = (value: unknown) => {
   const seen = new Set<string>();
   return (Array.isArray(value) ? value : [value])
     .flatMap((entry) => text(entry).split(";"))
