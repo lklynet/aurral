@@ -2130,9 +2130,8 @@ export class LibraryManager {
       null;
     // A compilation keeps "Various Artists" on the album, whichever of its
     // artists it was requested from, and names each track's own artist.
-    const albumCredit = providerArtists.find((entry) => entry?.id === metadata?.artistId);
-    const albumArtist = isVariousArtistsCredit(albumCredit?.name, albumCredit?.id)
-      ? albumCredit?.name
+    const albumArtist = isVariousArtistsCredit(null, metadata?.artistId)
+      ? "Various Artists"
       : artist.name || providerArtist?.name;
     const compilation =
       isVariousArtistsCredit(artist.name, artist.mbid) || isVariousArtistsCredit(albumArtist);

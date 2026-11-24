@@ -280,11 +280,11 @@ test("a compilation requested from one of its artists searches each track by its
   assert.deepEqual(
     downloadTracker
       .getAll()
-      .map((job) => [job.trackName, job.artistName, job.artistAliases])
+      .map((job) => [job.trackName, job.artistName, job.artistMbid, job.artistAliases])
       .sort(),
     [
-      ["Sacrifice", "Various Artists", ["TSHA"]],
-      ["Stumblin' In", "Various Artists", ["CYRIL"]],
+      ["Sacrifice", "Various Artists", variousArtists, ["TSHA"]],
+      ["Stumblin' In", "Various Artists", variousArtists, ["CYRIL"]],
     ],
   );
 });
