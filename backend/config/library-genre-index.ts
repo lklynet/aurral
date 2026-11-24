@@ -63,7 +63,7 @@ export function initializeLibraryGenreIndex(db: Database.Database) {
         entity_id INTEGER NOT NULL,
         name TEXT NOT NULL,
         genre_key TEXT NOT NULL,
-        PRIMARY KEY (entity_kind, entity_id, genre_key)
+        PRIMARY KEY (entity_kind, entity_id, name)
       ) WITHOUT ROWID;
       CREATE INDEX idx_library_genres_key ON library_entity_genres (genre_key, name);
       DELETE FROM settings WHERE key LIKE 'libraryGenreStats:%';

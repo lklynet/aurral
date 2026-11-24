@@ -273,6 +273,11 @@ test("genre spellings that differ only by case, spaces, hyphens or underscores a
     });
     return album.id;
   });
+  store.upsertLibraryArtist({
+    identityKey: "genre:spelling-artist",
+    name: "Spelling Artist",
+    metadata: { genres: ["Hip-Hop", "hip hop"] },
+  });
   for (const genre of ["Hip Hop", "hip-hop", "HIPHOP"]) {
     assert.deepEqual(
       query
