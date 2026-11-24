@@ -123,9 +123,16 @@ function launch(port: number) {
 }
 
 export function startShareTunnel(port: number) {
-  if (tunnel?.port === port || restartTimer) return;
-  restartAttempt = 0;
   const connectOrigin = activeConnectOrigin();
+  if (tunnel?.port === port) {
+    const usingConnect = tunnel.child === null;
+    if (usingConnect && connectOrigin === tunnel.url) return;
+    if (!usingConnect && !connectOrigin) return;
+    void stopShareTunnel().then(() => startShareTunnel(port));
+    return;
+  }
+  if (restartTimer) return;
+  restartAttempt = 0;
   if (connectOrigin) {
     const current: ShareTunnel = { child: null, port, url: connectOrigin, retryTimer: null };
     tunnel = current;
@@ -134,6 +141,18 @@ export function startShareTunnel(port: number) {
     return;
   }
   launch(port);
+}
+
+export async function reconcileShareTunnel() {
+  const current = tunnel;
+  if (!current) return;
+  const connectOrigin = activeConnectOrigin();
+  const usingConnect = current.child === null;
+  if (usingConnect && connectOrigin === current.url) return;
+  if (!usingConnect && !connectOrigin) return;
+  const { port } = current;
+  await stopShareTunnel();
+  startShareTunnel(port);
 }
 
 export async function stopShareTunnel() {

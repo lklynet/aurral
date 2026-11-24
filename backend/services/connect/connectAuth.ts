@@ -1,7 +1,6 @@
-import * as v from "valibot";
 import {
-  authAssertionSchema,
-  connectJwksSchema,
+  parseAuthAssertion,
+  parseConnectJwks,
   verifyConnectToken,
   type ConnectPublicJwk,
 } from "../../../lib/connectTokens.ts";
@@ -20,10 +19,10 @@ let cachedKeys: { origin: string; fetchedAt: number; keys: ConnectPublicJwk[] } 
 const usedJtis = new Map<string, number>();
 
 export class ConnectAuthError extends Error {
-  status: 401 | 403 | 502;
+  status: 401 | 403 | 409 | 502 | 503;
   code: string;
 
-  constructor(status: 401 | 403 | 502, code: string, message: string) {
+  constructor(status: 401 | 403 | 409 | 502 | 503, code: string, message: string) {
     super(message);
     this.status = status;
     this.code = code;
@@ -35,14 +34,9 @@ export function resetConnectAuthCache() {
   usedJtis.clear();
 }
 
-function pruneUsedJtis(now: number) {
+function pruneExpiredJtis(now: number) {
   for (const [jti, expiresAt] of usedJtis) {
     if (expiresAt <= now) usedJtis.delete(jti);
-  }
-  while (usedJtis.size > MAX_TRACKED_JTIS) {
-    const oldest = usedJtis.keys().next().value;
-    if (!oldest) break;
-    usedJtis.delete(oldest);
   }
 }
 
@@ -75,16 +69,16 @@ async function fetchConnectKeys(origin: string, force = false): Promise<ConnectP
       "Couldn't reach aurral.org to verify sign-in.",
     );
   }
-  const parsed = v.safeParse(connectJwksSchema, await response.json().catch(() => null));
-  if (!parsed.success) {
+  const parsed = parseConnectJwks(await response.json().catch(() => null));
+  if (!parsed) {
     throw new ConnectAuthError(
       502,
       "hub_invalid_keys",
       "Received invalid signing keys from aurral.org.",
     );
   }
-  cachedKeys = { origin, fetchedAt: now, keys: parsed.output.keys };
-  return parsed.output.keys;
+  cachedKeys = { origin, fetchedAt: now, keys: parsed.keys };
+  return parsed.keys;
 }
 
 export async function exchangeConnectAssertion(
@@ -103,13 +97,13 @@ export async function exchangeConnectAssertion(
   const origin = config.hubOrigin || SHARE_ORIGIN;
   const instanceId = getShareInstance().id;
   const keys = await fetchConnectKeys(origin, false);
-  let verified = await verifyConnectToken(assertion, keys, authAssertionSchema, {
+  let verified = await verifyConnectToken(assertion, keys, parseAuthAssertion, {
     expectedIss: origin,
     expectedAud: instanceId,
   });
   if (!verified) {
     const refreshed = await fetchConnectKeys(origin, true);
-    verified = await verifyConnectToken(assertion, refreshed, authAssertionSchema, {
+    verified = await verifyConnectToken(assertion, refreshed, parseAuthAssertion, {
       expectedIss: origin,
       expectedAud: instanceId,
     });
@@ -123,7 +117,7 @@ export async function exchangeConnectAssertion(
   }
 
   const now = Date.now();
-  pruneUsedJtis(now);
+  pruneExpiredJtis(now);
   if (usedJtis.has(verified.jti)) {
     throw new ConnectAuthError(
       401,
@@ -131,10 +125,24 @@ export async function exchangeConnectAssertion(
       "That Aurral sign-in token was already used.",
     );
   }
+  if (usedJtis.size >= MAX_TRACKED_JTIS) {
+    throw new ConnectAuthError(
+      503,
+      "connect_busy",
+      "Too many recent sign-in attempts. Try again in a minute.",
+    );
+  }
   usedJtis.set(verified.jti, verified.exp * 1000 + 60_000);
 
-  const userId = findUserIdByHubAccountId(origin, verified.sub);
-  const user = userId ? userOps.getUserById(userId) : null;
+  const lookup = findUserIdByHubAccountId(origin, verified.sub);
+  if (lookup.kind === "ambiguous") {
+    throw new ConnectAuthError(
+      409,
+      "ambiguous_account_link",
+      "More than one local user on this server is linked to this aurral.org account.",
+    );
+  }
+  const user = lookup.kind === "matched" ? userOps.getUserById(lookup.userId) : null;
   if (!user || user.status !== "active") {
     throw new ConnectAuthError(
       403,

@@ -1,4 +1,4 @@
-import * as v from "valibot";
+import { isRecord } from "./isRecord.ts";
 
 export const FRAME_REQ_HEAD = 0x01;
 export const FRAME_REQ_DATA = 0x02;
@@ -15,6 +15,8 @@ export const FRAME_WS_CLOSE = 0x0c;
 export const FRAME_PING = 0x0d;
 export const FRAME_PONG = 0x0e;
 export const FRAME_TICKET_REFRESH = 0x0f;
+export const FRAME_STREAM_PAUSE = 0x10;
+export const FRAME_STREAM_RESUME = 0x11;
 
 export const TUNNEL_CLOSE_REPLACED = 4009;
 export const TUNNEL_CLOSE_EXPIRED = 4008;
@@ -35,42 +37,112 @@ export type FrameType =
   | typeof FRAME_WS_CLOSE
   | typeof FRAME_PING
   | typeof FRAME_PONG
-  | typeof FRAME_TICKET_REFRESH;
+  | typeof FRAME_TICKET_REFRESH
+  | typeof FRAME_STREAM_PAUSE
+  | typeof FRAME_STREAM_RESUME;
 
-export const headerEntriesSchema = v.array(v.tuple([v.string(), v.string()]));
+export interface ReqHeadPayload {
+  method: string;
+  path: string;
+  headers: [string, string][];
+  remoteIp?: string;
+}
 
-export const reqHeadSchema = v.object({
-  method: v.string(),
-  path: v.string(),
-  headers: headerEntriesSchema,
-  remoteIp: v.optional(v.string()),
-});
+export interface ResHeadPayload {
+  status: number;
+  headers: [string, string][];
+}
 
-export const resHeadSchema = v.object({
-  status: v.pipe(v.number(), v.integer(), v.minValue(100), v.maxValue(599)),
-  headers: headerEntriesSchema,
-});
+export interface WsOpenPayload {
+  path: string;
+  headers: [string, string][];
+  remoteIp?: string;
+}
 
-export const wsOpenSchema = v.object({
-  path: v.string(),
-  headers: headerEntriesSchema,
-  remoteIp: v.optional(v.string()),
-});
+export interface WsAcceptedPayload {
+  protocol?: string;
+}
 
-export const wsAcceptedSchema = v.object({
-  protocol: v.optional(v.string()),
-});
+export interface WsClosePayload {
+  code: number;
+  reason?: string;
+}
 
-export const wsCloseSchema = v.object({
-  code: v.pipe(v.number(), v.integer(), v.minValue(1000), v.maxValue(4999)),
-  reason: v.optional(v.string()),
-});
+function parseHeaderEntries(value: unknown): [string, string][] | null {
+  if (!Array.isArray(value)) return null;
+  const entries: [string, string][] = [];
+  for (const item of value) {
+    if (!Array.isArray(item) || item.length !== 2) return null;
+    if (typeof item[0] !== "string" || typeof item[1] !== "string") return null;
+    entries.push([item[0], item[1]]);
+  }
+  return entries;
+}
 
-export type ReqHeadPayload = v.InferOutput<typeof reqHeadSchema>;
-export type ResHeadPayload = v.InferOutput<typeof resHeadSchema>;
-export type WsOpenPayload = v.InferOutput<typeof wsOpenSchema>;
-export type WsAcceptedPayload = v.InferOutput<typeof wsAcceptedSchema>;
-export type WsClosePayload = v.InferOutput<typeof wsCloseSchema>;
+export function parseReqHead(value: unknown): ReqHeadPayload | null {
+  if (!isRecord(value) || typeof value.method !== "string" || typeof value.path !== "string") {
+    return null;
+  }
+  if (value.remoteIp !== undefined && typeof value.remoteIp !== "string") return null;
+  const headers = parseHeaderEntries(value.headers);
+  if (!headers) return null;
+  return {
+    method: value.method,
+    path: value.path,
+    headers,
+    ...(value.remoteIp !== undefined && { remoteIp: value.remoteIp }),
+  };
+}
+
+export function parseResHead(value: unknown): ResHeadPayload | null {
+  if (!isRecord(value)) return null;
+  if (
+    typeof value.status !== "number" ||
+    !Number.isInteger(value.status) ||
+    value.status < 100 ||
+    value.status > 599
+  ) {
+    return null;
+  }
+  const headers = parseHeaderEntries(value.headers);
+  if (!headers) return null;
+  return { status: value.status, headers };
+}
+
+export function parseWsOpen(value: unknown): WsOpenPayload | null {
+  if (!isRecord(value) || typeof value.path !== "string") return null;
+  if (value.remoteIp !== undefined && typeof value.remoteIp !== "string") return null;
+  const headers = parseHeaderEntries(value.headers);
+  if (!headers) return null;
+  return {
+    path: value.path,
+    headers,
+    ...(value.remoteIp !== undefined && { remoteIp: value.remoteIp }),
+  };
+}
+
+export function parseWsAccepted(value: unknown): WsAcceptedPayload | null {
+  if (!isRecord(value)) return null;
+  if (value.protocol !== undefined && typeof value.protocol !== "string") return null;
+  return value.protocol !== undefined ? { protocol: value.protocol } : {};
+}
+
+export function parseWsClose(value: unknown): WsClosePayload | null {
+  if (!isRecord(value)) return null;
+  if (
+    typeof value.code !== "number" ||
+    !Number.isInteger(value.code) ||
+    value.code < 1000 ||
+    value.code > 4999
+  ) {
+    return null;
+  }
+  if (value.reason !== undefined && typeof value.reason !== "string") return null;
+  return {
+    code: value.code,
+    ...(value.reason !== undefined && { reason: value.reason }),
+  };
+}
 
 const HEADER_BYTES = 5;
 const encoder = new TextEncoder();
@@ -106,13 +178,12 @@ export function decodeFrame(
   };
 }
 
-export function decodeJsonPayload<Schema extends v.GenericSchema>(
+export function decodeJsonPayload<T>(
   payload: Uint8Array,
-  schema: Schema,
-): v.InferOutput<Schema> | null {
+  parse: (value: unknown) => T | null,
+): T | null {
   try {
-    const parsed = v.safeParse(schema, JSON.parse(decoder.decode(payload)));
-    return parsed.success ? parsed.output : null;
+    return parse(JSON.parse(decoder.decode(payload)));
   } catch {
     return null;
   }
@@ -172,6 +243,7 @@ export function isRootHtmlNavigation(
 }
 
 const RESERVED_WS_CLOSE_CODES = new Set([1004, 1005, 1006, 1015]);
+const MAX_WS_CLOSE_REASON_BYTES = 123;
 
 export function safeWsCloseCode(code: number | undefined): number {
   if (
@@ -184,4 +256,13 @@ export function safeWsCloseCode(code: number | undefined): number {
     return 1000;
   }
   return code;
+}
+
+export function safeWsCloseReason(reason: string | undefined): string {
+  if (!reason) return "";
+  const bytes = encoder.encode(reason);
+  if (bytes.byteLength <= MAX_WS_CLOSE_REASON_BYTES) return reason;
+  let end = MAX_WS_CLOSE_REASON_BYTES;
+  while (end > 0 && ((bytes[end] ?? 0) & 0xc0) === 0x80) end -= 1;
+  return decoder.decode(bytes.subarray(0, end));
 }

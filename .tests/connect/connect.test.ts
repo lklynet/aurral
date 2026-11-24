@@ -290,19 +290,27 @@ test("Connect listener enforces never-local auth, exchanges Ed25519 assertions o
     });
     assert.equal(unauthWsCode, 4401);
 
-    const wsConnectedType = await new Promise<string>((resolve, reject) => {
+    const wsMessages = await new Promise<string[]>((resolve, reject) => {
+      const received: string[] = [];
       const ws = new WebSocket(
         `ws://127.0.0.1:${relayPort}/ws?token=${encodeURIComponent(sessionBody.token)}`,
         { headers: { host: "lee-home.aurral.dev" } },
       );
+      ws.on("open", () => {
+        ws.send(JSON.stringify({ type: "ping" }));
+      });
       ws.on("message", (data) => {
         const parsed = v.parse(v.object({ type: v.string() }), JSON.parse(data.toString()));
-        ws.close();
-        resolve(parsed.type);
+        received.push(parsed.type);
+        if (received.includes("connected") && received.includes("pong")) {
+          ws.close();
+          resolve(received);
+        }
       });
       ws.on("error", reject);
     });
-    assert.equal(wsConnectedType, "connected");
+    assert.ok(wsMessages.includes("connected"));
+    assert.ok(wsMessages.includes("pong"));
 
     const salt = "connectsalt";
     const subsonicToken = createHash("md5").update(`password123${salt}`).digest("hex");
@@ -345,6 +353,40 @@ test("Connect listener enforces never-local auth, exchanges Ed25519 assertions o
       body: JSON.stringify({ assertion: assertion2 }),
     });
     assert.equal(disabledExchange.status, 403);
+
+    setConnectConfig({ allowHubSignIn: true });
+    const secondUser = userOps.createUser(
+      "second",
+      hashPassword("password123"),
+      "user",
+      null,
+      true,
+      false,
+      "password123",
+    );
+    assert.ok(secondUser);
+    db.prepare(
+      "INSERT INTO hub_links (user_id, origin, token, handle, account_id, linked_at, broken) VALUES (?, ?, ?, ?, ?, ?, 0)",
+    ).run(secondUser.id, SHARE_ORIGIN, "u".repeat(43), "lee_k", "acct_lee_1", Date.now());
+    const assertion3 = await signConnectToken(keyPair.privateJwk, {
+      typ: "aurral-connect-auth",
+      iss: SHARE_ORIGIN,
+      aud: instanceId,
+      sub: "acct_lee_1",
+      handle: "lee_k",
+      jti: "jti-unique-connect-3",
+      iat,
+      exp: iat + 60,
+    });
+    const ambiguous = await rawHttp(relayPort, {
+      method: "POST",
+      path: "/api/auth/connect-exchange",
+      host: "lee-home.aurral.dev",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ assertion: assertion3 }),
+    });
+    assert.equal(ambiguous.status, 409);
+    db.prepare("DELETE FROM hub_links WHERE user_id = ?").run(secondUser.id);
   } finally {
     tunnel.close();
   }

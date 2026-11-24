@@ -10,6 +10,8 @@ import {
   FRAME_RES_DATA,
   FRAME_RES_END,
   FRAME_RES_HEAD,
+  FRAME_STREAM_PAUSE,
+  FRAME_STREAM_RESUME,
   FRAME_STREAM_RST,
   FRAME_TICKET_REFRESH,
   FRAME_WS_ACCEPTED,
@@ -26,15 +28,17 @@ import {
   encodeJsonFrame,
   encodeTextFrame,
   filterHeaders,
-  reqHeadSchema,
+  parseReqHead,
+  parseWsClose,
+  parseWsOpen,
   safeWsCloseCode,
-  wsCloseSchema,
-  wsOpenSchema,
+  safeWsCloseReason,
 } from "../../../lib/connectTunnel.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { authorized, hubLinksEnabled, hubRequest, linkedLink, refusalOf } from "../hubLink.ts";
 import { logger } from "../logger.ts";
 import { getShareInstance, SHARE_ORIGIN } from "../shareLinks/store.ts";
+import { reconcileShareTunnel } from "../shareLinks/tunnel.ts";
 import {
   CONNECT_CLIENT_IP_HEADER,
   startConnectListener,
@@ -46,6 +50,8 @@ declare function clearTimeout(timeout: NodeJS.Timeout | string | number | null |
 
 const RETRY_DELAYS_MS = [2000, 5000, 15000, 30000, 60000] as const;
 const MAX_BUFFERED_BYTES = 1024 * 1024;
+const MAX_PENDING_WS_MESSAGES = 64;
+const MAX_PENDING_WS_BYTES = 256 * 1024;
 const PING_INTERVAL_MS = 25_000;
 
 export type ConnectRuntimeState =
@@ -87,6 +93,20 @@ export class ConnectServiceError extends Error {
   }
 }
 
+type LocalHttpStream = {
+  req: http.ClientRequest;
+  res: http.IncomingMessage | null;
+  pausedByRelay: boolean;
+  pausedByBuffer: boolean;
+};
+
+type LocalWsStream = {
+  ws: WebSocket;
+  open: boolean;
+  pending: (string | Uint8Array)[];
+  pendingBytes: number;
+};
+
 function toBytes(data: RawData): Uint8Array {
   if (Buffer.isBuffer(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
   if (Array.isArray(data)) {
@@ -94,6 +114,15 @@ function toBytes(data: RawData): Uint8Array {
     return new Uint8Array(joined.buffer, joined.byteOffset, joined.byteLength);
   }
   return new Uint8Array(data);
+}
+
+function safeCloseWs(target: WebSocket, code: number | undefined, reason?: string) {
+  if (target.readyState !== WebSocket.OPEN && target.readyState !== WebSocket.CONNECTING) return;
+  try {
+    target.close(safeWsCloseCode(code), safeWsCloseReason(reason));
+  } catch {
+    target.terminate();
+  }
 }
 
 export interface TunnelSessionOptions {
@@ -117,8 +146,8 @@ export function openTunnelSession(options: TunnelSessionOptions): TunnelSession 
     perMessageDeflate: false,
   });
 
-  const httpStreams = new Map<number, http.ClientRequest>();
-  const wsStreams = new Map<number, WebSocket>();
+  const httpStreams = new Map<number, LocalHttpStream>();
+  const wsStreams = new Map<number, LocalWsStream>();
   let refreshTimer: NodeJS.Timeout | null = null;
   let pingTimer: NodeJS.Timeout | null = null;
   let closed = false;
@@ -161,7 +190,7 @@ export function openTunnelSession(options: TunnelSessionOptions): TunnelSession 
     if (frame.type === FRAME_PONG) return;
 
     if (frame.type === FRAME_REQ_HEAD) {
-      const head = decodeJsonPayload(frame.payload, reqHeadSchema);
+      const head = decodeJsonPayload(frame.payload, parseReqHead);
       if (!head) {
         if (ws.readyState === WebSocket.OPEN)
           ws.send(encodeFrame(FRAME_STREAM_RST, frame.streamId));
@@ -178,64 +207,83 @@ export function openTunnelSession(options: TunnelSessionOptions): TunnelSession 
       }
       if (head.remoteIp) headers[CONNECT_CLIENT_IP_HEADER] = head.remoteIp;
 
-      const localReq = http.request(
-        {
-          host: "127.0.0.1",
-          port: options.connectPort,
-          method: head.method,
-          path: head.path,
-          headers,
-        },
-        (localRes) => {
-          if (ws.readyState !== WebSocket.OPEN) {
-            localRes.destroy();
-            return;
-          }
-          ws.send(
-            encodeJsonFrame(FRAME_RES_HEAD, frame.streamId, {
-              status: localRes.statusCode ?? 500,
-              headers: filterHeaders(localRes.headers),
-            }),
-          );
-          localRes.on("data", (chunk: Buffer) => {
-            if (ws.readyState !== WebSocket.OPEN) {
+      let localReq: http.ClientRequest;
+      try {
+        localReq = http.request(
+          {
+            host: "127.0.0.1",
+            port: options.connectPort,
+            method: head.method,
+            path: head.path,
+            headers,
+          },
+          (localRes) => {
+            const entry = httpStreams.get(frame.streamId);
+            if (!entry || ws.readyState !== WebSocket.OPEN) {
               localRes.destroy();
               return;
             }
+            entry.res = localRes;
             ws.send(
-              encodeFrame(
-                FRAME_RES_DATA,
-                frame.streamId,
-                new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength),
-              ),
+              encodeJsonFrame(FRAME_RES_HEAD, frame.streamId, {
+                status: localRes.statusCode ?? 500,
+                headers: filterHeaders(localRes.headers),
+              }),
             );
-            if (ws.bufferedAmount > MAX_BUFFERED_BYTES) {
-              localRes.pause();
-              const drainCheck = setInterval(() => {
-                if (
-                  ws.readyState !== WebSocket.OPEN ||
-                  ws.bufferedAmount <= MAX_BUFFERED_BYTES / 2
-                ) {
-                  clearInterval(drainCheck);
-                  localRes.resume();
-                }
-              }, 10);
-              drainCheck.unref();
-            }
-          });
-          localRes.on("end", () => {
-            httpStreams.delete(frame.streamId);
-            if (ws.readyState === WebSocket.OPEN)
-              ws.send(encodeFrame(FRAME_RES_END, frame.streamId));
-          });
-          localRes.on("error", () => {
-            httpStreams.delete(frame.streamId);
-            if (ws.readyState === WebSocket.OPEN)
-              ws.send(encodeFrame(FRAME_STREAM_RST, frame.streamId));
-          });
-        },
-      );
-      httpStreams.set(frame.streamId, localReq);
+            localRes.on("data", (chunk: Buffer) => {
+              if (ws.readyState !== WebSocket.OPEN) {
+                localRes.destroy();
+                return;
+              }
+              ws.send(
+                encodeFrame(
+                  FRAME_RES_DATA,
+                  frame.streamId,
+                  new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength),
+                ),
+              );
+              if (ws.bufferedAmount > MAX_BUFFERED_BYTES && !entry.pausedByBuffer) {
+                entry.pausedByBuffer = true;
+                localRes.pause();
+                const drainCheck = setInterval(() => {
+                  if (
+                    closed ||
+                    ws.readyState !== WebSocket.OPEN ||
+                    ws.bufferedAmount <= MAX_BUFFERED_BYTES / 2
+                  ) {
+                    clearInterval(drainCheck);
+                    entry.pausedByBuffer = false;
+                    if (!entry.pausedByRelay && !localRes.destroyed) localRes.resume();
+                  }
+                }, 10);
+                drainCheck.unref();
+              }
+            });
+            localRes.on("end", () => {
+              httpStreams.delete(frame.streamId);
+              if (ws.readyState === WebSocket.OPEN)
+                ws.send(encodeFrame(FRAME_RES_END, frame.streamId));
+            });
+            localRes.on("error", () => {
+              httpStreams.delete(frame.streamId);
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(encodeFrame(FRAME_STREAM_RST, frame.streamId));
+              }
+            });
+          },
+        );
+      } catch {
+        if (ws.readyState === WebSocket.OPEN)
+          ws.send(encodeFrame(FRAME_STREAM_RST, frame.streamId));
+        return;
+      }
+
+      httpStreams.set(frame.streamId, {
+        req: localReq,
+        res: null,
+        pausedByRelay: false,
+        pausedByBuffer: false,
+      });
       localReq.on("error", () => {
         httpStreams.delete(frame.streamId);
         if (ws.readyState === WebSocket.OPEN)
@@ -245,44 +293,77 @@ export function openTunnelSession(options: TunnelSessionOptions): TunnelSession 
     }
 
     if (frame.type === FRAME_REQ_DATA) {
-      httpStreams.get(frame.streamId)?.write(frame.payload);
+      httpStreams.get(frame.streamId)?.req.write(frame.payload);
       return;
     }
 
     if (frame.type === FRAME_REQ_END) {
-      httpStreams.get(frame.streamId)?.end();
+      httpStreams.get(frame.streamId)?.req.end();
+      return;
+    }
+
+    if (frame.type === FRAME_STREAM_PAUSE) {
+      const entry = httpStreams.get(frame.streamId);
+      if (entry) {
+        entry.pausedByRelay = true;
+        entry.res?.pause();
+      }
+      return;
+    }
+
+    if (frame.type === FRAME_STREAM_RESUME) {
+      const entry = httpStreams.get(frame.streamId);
+      if (entry) {
+        entry.pausedByRelay = false;
+        if (!entry.pausedByBuffer && entry.res && !entry.res.destroyed) entry.res.resume();
+      }
       return;
     }
 
     if (frame.type === FRAME_STREAM_RST) {
-      const req = httpStreams.get(frame.streamId);
-      if (req) {
+      const entry = httpStreams.get(frame.streamId);
+      if (entry) {
         httpStreams.delete(frame.streamId);
-        req.destroy();
+        entry.res?.destroy();
+        entry.req.destroy();
       }
       const localWs = wsStreams.get(frame.streamId);
       if (localWs) {
         wsStreams.delete(frame.streamId);
-        localWs.close(1000);
+        safeCloseWs(localWs.ws, 1000);
       }
       return;
     }
 
     if (frame.type === FRAME_WS_OPEN) {
-      const open = decodeJsonPayload(frame.payload, wsOpenSchema);
-      if (!open) {
+      const open = decodeJsonPayload(frame.payload, parseWsOpen);
+      if (!open || !open.path.startsWith("/ws") || open.path.includes("#")) {
         if (ws.readyState === WebSocket.OPEN)
           ws.send(encodeFrame(FRAME_STREAM_RST, frame.streamId));
         return;
       }
-      const localWs = new WebSocket(`ws://127.0.0.1:${options.connectPort}${open.path}`, {
-        headers: open.remoteIp ? { [CONNECT_CLIENT_IP_HEADER]: open.remoteIp } : undefined,
-      });
-      wsStreams.set(frame.streamId, localWs);
+      let localWs: WebSocket;
+      try {
+        localWs = new WebSocket(`ws://127.0.0.1:${options.connectPort}${open.path}`, {
+          headers: open.remoteIp ? { [CONNECT_CLIENT_IP_HEADER]: open.remoteIp } : undefined,
+        });
+      } catch {
+        if (ws.readyState === WebSocket.OPEN)
+          ws.send(encodeFrame(FRAME_STREAM_RST, frame.streamId));
+        return;
+      }
+      const stream: LocalWsStream = { ws: localWs, open: false, pending: [], pendingBytes: 0 };
+      wsStreams.set(frame.streamId, stream);
       localWs.on("open", () => {
+        stream.open = true;
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(encodeJsonFrame(FRAME_WS_ACCEPTED, frame.streamId, {}));
         }
+        for (const queued of stream.pending) {
+          if (localWs.readyState === WebSocket.OPEN) localWs.send(queued);
+        }
+        stream.pending.length = 0;
+        stream.pendingBytes = 0;
       });
       localWs.on("message", (data, binary) => {
         if (ws.readyState !== WebSocket.OPEN) return;
@@ -300,7 +381,7 @@ export function openTunnelSession(options: TunnelSessionOptions): TunnelSession 
           ws.send(
             encodeJsonFrame(FRAME_WS_CLOSE, frame.streamId, {
               code: safeWsCloseCode(code),
-              reason: reason.toString("utf8"),
+              reason: safeWsCloseReason(reason.toString("utf8")),
             }),
           );
         }
@@ -313,26 +394,35 @@ export function openTunnelSession(options: TunnelSessionOptions): TunnelSession 
       return;
     }
 
-    if (frame.type === FRAME_WS_DATA_TEXT) {
-      const localWs = wsStreams.get(frame.streamId);
-      if (localWs?.readyState === WebSocket.OPEN) localWs.send(decodeTextPayload(frame.payload));
-      return;
-    }
-
-    if (frame.type === FRAME_WS_DATA_BIN) {
-      const localWs = wsStreams.get(frame.streamId);
-      if (localWs?.readyState === WebSocket.OPEN) localWs.send(frame.payload);
+    if (frame.type === FRAME_WS_DATA_TEXT || frame.type === FRAME_WS_DATA_BIN) {
+      const stream = wsStreams.get(frame.streamId);
+      if (!stream) return;
+      const item =
+        frame.type === FRAME_WS_DATA_TEXT ? decodeTextPayload(frame.payload) : frame.payload;
+      if (stream.open && stream.ws.readyState === WebSocket.OPEN) {
+        stream.ws.send(item);
+      } else if (
+        !stream.open &&
+        stream.pending.length < MAX_PENDING_WS_MESSAGES &&
+        stream.pendingBytes + frame.payload.byteLength <= MAX_PENDING_WS_BYTES
+      ) {
+        stream.pending.push(item);
+        stream.pendingBytes += frame.payload.byteLength;
+      } else if (!stream.open) {
+        wsStreams.delete(frame.streamId);
+        stream.ws.terminate();
+        if (ws.readyState === WebSocket.OPEN)
+          ws.send(encodeFrame(FRAME_STREAM_RST, frame.streamId));
+      }
       return;
     }
 
     if (frame.type === FRAME_WS_CLOSE) {
-      const localWs = wsStreams.get(frame.streamId);
-      const closedPayload = decodeJsonPayload(frame.payload, wsCloseSchema);
-      if (localWs) {
+      const stream = wsStreams.get(frame.streamId);
+      const closedPayload = decodeJsonPayload(frame.payload, parseWsClose);
+      if (stream) {
         wsStreams.delete(frame.streamId);
-        if (localWs.readyState === WebSocket.OPEN || localWs.readyState === WebSocket.CONNECTING) {
-          localWs.close(safeWsCloseCode(closedPayload?.code), closedPayload?.reason ?? "");
-        }
+        safeCloseWs(stream.ws, closedPayload?.code, closedPayload?.reason);
       }
     }
   });
@@ -342,12 +432,13 @@ export function openTunnelSession(options: TunnelSessionOptions): TunnelSession 
     closed = true;
     clearTimeout(refreshTimer);
     if (pingTimer) clearInterval(pingTimer);
-    for (const req of httpStreams.values()) req.destroy();
+    for (const entry of httpStreams.values()) {
+      entry.res?.destroy();
+      entry.req.destroy();
+    }
     httpStreams.clear();
-    for (const localWs of wsStreams.values()) {
-      if (localWs.readyState === WebSocket.OPEN || localWs.readyState === WebSocket.CONNECTING) {
-        localWs.close(1012);
-      }
+    for (const stream of wsStreams.values()) {
+      safeCloseWs(stream.ws, 1012);
     }
     wsStreams.clear();
     options.onClose?.(code, reason);
@@ -360,9 +451,7 @@ export function openTunnelSession(options: TunnelSessionOptions): TunnelSession 
     ws,
     close() {
       cleanup(1000, "Client closing");
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close(1000, "Client closing");
-      }
+      safeCloseWs(ws, 1000, "Client closing");
     },
   };
 }
@@ -377,6 +466,12 @@ let syncing = Promise.resolve();
 
 const delayFor = (attempt: number) =>
   RETRY_DELAYS_MS[Math.min(attempt, RETRY_DELAYS_MS.length - 1)] ?? RETRY_DELAYS_MS[0];
+
+function detachAndCloseSession() {
+  const current = session;
+  session = null;
+  current?.close();
+}
 
 async function requestHubTicket(hubOrigin: string) {
   const { id: instanceId, secret } = getShareInstance();
@@ -423,8 +518,7 @@ async function applyConnectState() {
   retryTimer = null;
   const config = getConnectConfig();
   if (!config.enabled || !hubLinksEnabled()) {
-    session?.close();
-    session = null;
+    detachAndCloseSession();
     if (listener) {
       const current = listener;
       listener = null;
@@ -432,6 +526,7 @@ async function applyConnectState() {
     }
     runtimeState = "off";
     lastError = null;
+    void reconcileShareTunnel();
     return;
   }
 
@@ -448,12 +543,14 @@ async function applyConnectState() {
     if (ticket.kind === "subscription_required") {
       runtimeState = "subscription_required";
       lastError = "An active Aurral Connect subscription is required.";
+      void reconcileShareTunnel();
       return;
     }
     if (ticket.kind === "not_enabled") {
       setConnectConfig({ enabled: false, allowHubSignIn: false });
       runtimeState = "off";
       lastError = null;
+      void reconcileShareTunnel();
       return;
     }
     runtimeState = "error";
@@ -481,6 +578,7 @@ async function applyConnectState() {
       runtimeState = "online";
       lastError = null;
       logger.info("connect", `Aurral Connect is online at ${ticket.connectUrl}`);
+      void reconcileShareTunnel();
     },
     onClose: (code, reason) => {
       if (session !== activeSession) return;
@@ -490,6 +588,7 @@ async function applyConnectState() {
         lastError =
           "Another Aurral instance connected with this server's identity (for example, a restored backup).";
         logger.warn("connect", lastError);
+        void reconcileShareTunnel();
         return;
       }
       if (code === TUNNEL_CLOSE_EXPIRED) {
@@ -498,6 +597,7 @@ async function applyConnectState() {
         runtimeState = "error";
         lastError = reason || "Connect tunnel disconnected.";
       }
+      void reconcileShareTunnel();
       scheduleReconnect();
     },
   });
@@ -517,14 +617,14 @@ export async function stopConnect() {
   clearTimeout(retryTimer);
   retryTimer = null;
   await syncing;
-  session?.close();
-  session = null;
+  detachAndCloseSession();
   if (listener) {
     const current = listener;
     listener = null;
     await current.close();
   }
   runtimeState = "off";
+  void reconcileShareTunnel();
 }
 
 export function activeConnectOrigin(): string | null {
@@ -691,9 +791,9 @@ export async function updateConnect(
       ...(params.allowHubSignIn !== undefined && { allowHubSignIn: params.allowHubSignIn }),
     });
     if (slugChanged) {
-      session?.close();
-      session = null;
+      detachAndCloseSession();
       await syncConnect();
+      void reconcileShareTunnel();
     }
     return getConnectStatus();
   }

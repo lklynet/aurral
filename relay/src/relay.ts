@@ -1,12 +1,11 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
-import * as v from "valibot";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 import {
   CONNECT_SLUG_PATTERN,
-  connectJwksSchema,
-  tunnelTicketSchema,
+  parseConnectJwks,
+  parseTunnelTicket,
   verifyConnectToken,
   type ConnectPublicJwk,
   type TunnelTicketPayload,
@@ -20,6 +19,8 @@ import {
   FRAME_RES_DATA,
   FRAME_RES_END,
   FRAME_RES_HEAD,
+  FRAME_STREAM_PAUSE,
+  FRAME_STREAM_RESUME,
   FRAME_STREAM_RST,
   FRAME_TICKET_REFRESH,
   FRAME_WS_ACCEPTED,
@@ -37,10 +38,11 @@ import {
   encodeTextFrame,
   filterHeaders,
   isRootHtmlNavigation,
-  resHeadSchema,
+  parseResHead,
+  parseWsAccepted,
+  parseWsClose,
   safeWsCloseCode,
-  wsAcceptedSchema,
-  wsCloseSchema,
+  safeWsCloseReason,
 } from "../../lib/connectTunnel.ts";
 
 export interface RelayOptions {
@@ -60,12 +62,15 @@ type PendingHttpStream = {
   kind: "http";
   res: ServerResponse;
   headersSent: boolean;
+  backpressured: boolean;
 };
 
 type PendingWsStream = {
   kind: "ws";
   ws: WebSocket;
   accepted: boolean;
+  pendingFrames: Uint8Array[];
+  pendingBytes: number;
 };
 
 type ActiveTunnel = {
@@ -79,6 +84,8 @@ type ActiveTunnel = {
 
 const JWKS_CACHE_TTL_MS = 60 * 60 * 1000;
 const JWKS_MIN_REFRESH_MS = 30 * 1000;
+const MAX_PENDING_WS_FRAMES = 64;
+const MAX_PENDING_WS_BYTES = 256 * 1024;
 const REQUEST_HEADER_STRIP = new Set([
   "host",
   "x-forwarded-for",
@@ -125,6 +132,15 @@ function rejectUpgrade(socket: Duplex, status: number, text: string) {
   socket.destroy();
 }
 
+function safeCloseWs(target: WebSocket, code: number | undefined, reason?: string) {
+  if (target.readyState !== WebSocket.OPEN && target.readyState !== WebSocket.CONNECTING) return;
+  try {
+    target.close(safeWsCloseCode(code), safeWsCloseReason(reason));
+  } catch {
+    target.terminate();
+  }
+}
+
 export function createRelayServer(options: RelayOptions = {}) {
   const connectDomain = (options.connectDomain ?? "aurral.dev")
     .replace(/^\.+|\.+$/g, "")
@@ -133,6 +149,7 @@ export function createRelayServer(options: RelayOptions = {}) {
   const hubOrigin = (options.hubOrigin ?? "https://aurral.org").replace(/\/+$/, "");
   const maxStreams = options.maxStreamsPerTunnel ?? 200;
   const maxBufferedBytes = options.maxBufferedBytes ?? 1024 * 1024;
+  const maxStreamResponseBytes = maxBufferedBytes * 4;
   const now = options.now ?? (() => Date.now());
   const fetchImpl = options.fetchImpl ?? fetch;
 
@@ -153,9 +170,9 @@ export function createRelayServer(options: RelayOptions = {}) {
         signal: AbortSignal.timeout(5000),
       });
       if (!response.ok) return cachedKeys;
-      const parsed = v.safeParse(connectJwksSchema, await response.json());
-      if (parsed.success) {
-        cachedKeys = parsed.output.keys;
+      const parsed = parseConnectJwks(await response.json());
+      if (parsed) {
+        cachedKeys = parsed.keys;
         keysFetchedAt = current;
       }
     } catch {
@@ -166,14 +183,14 @@ export function createRelayServer(options: RelayOptions = {}) {
 
   async function verifyTicket(ticket: string): Promise<TunnelTicketPayload | null> {
     const keys = await loadPublicKeys(false);
-    let verified = await verifyConnectToken(ticket, keys, tunnelTicketSchema, {
+    let verified = await verifyConnectToken(ticket, keys, parseTunnelTicket, {
       expectedIss: hubOrigin,
       expectedAud: "aurral-relay",
       nowMs: now(),
     });
     if (!verified && !options.publicKeys) {
       const refreshed = await loadPublicKeys(true);
-      verified = await verifyConnectToken(ticket, refreshed, tunnelTicketSchema, {
+      verified = await verifyConnectToken(ticket, refreshed, parseTunnelTicket, {
         expectedIss: hubOrigin,
         expectedAud: "aurral-relay",
         nowMs: now(),
@@ -207,11 +224,8 @@ export function createRelayServer(options: RelayOptions = {}) {
         } else if (!stream.res.writableEnded) {
           stream.res.destroy();
         }
-      } else if (
-        stream.ws.readyState === WebSocket.OPEN ||
-        stream.ws.readyState === WebSocket.CONNECTING
-      ) {
-        stream.ws.close(1012, "Tunnel disconnected");
+      } else {
+        safeCloseWs(stream.ws, 1012, "Tunnel disconnected");
       }
     }
     tunnel.streams.clear();
@@ -226,16 +240,33 @@ export function createRelayServer(options: RelayOptions = {}) {
     closeAllStreams(tunnel);
   }
 
+  function resetHttpStream(tunnel: ActiveTunnel, streamId: number, stream: PendingHttpStream) {
+    tunnel.streams.delete(streamId);
+    if (!stream.headersSent && !stream.res.writableEnded) {
+      try {
+        stream.res.writeHead(502, { "content-type": "application/json" });
+        stream.res.end(JSON.stringify({ error: "bad_upstream_response" }));
+      } catch {
+        stream.res.destroy();
+      }
+    } else if (!stream.res.writableEnded) {
+      stream.res.destroy();
+    }
+    if (tunnel.ws.readyState === WebSocket.OPEN) {
+      tunnel.ws.send(encodeFrame(FRAME_STREAM_RST, streamId));
+    }
+  }
+
   function registerTunnel(ticket: TunnelTicketPayload, ws: WebSocket): ActiveTunnel {
     const existingBySlug = tunnelsBySlug.get(ticket.slug);
     if (existingBySlug) {
       unregisterTunnel(existingBySlug, existingBySlug.instanceId !== ticket.sub);
-      existingBySlug.ws.close(TUNNEL_CLOSE_REPLACED, "Replaced by newer connection");
+      safeCloseWs(existingBySlug.ws, TUNNEL_CLOSE_REPLACED, "Replaced by newer connection");
     }
     const existingByInstance = tunnelsByInstance.get(ticket.sub);
     if (existingByInstance && existingByInstance !== existingBySlug) {
       unregisterTunnel(existingByInstance, false);
-      existingByInstance.ws.close(TUNNEL_CLOSE_REPLACED, "Replaced by newer connection");
+      safeCloseWs(existingByInstance.ws, TUNNEL_CLOSE_REPLACED, "Replaced by newer connection");
     }
 
     const tunnel: ActiveTunnel = {
@@ -266,7 +297,7 @@ export function createRelayServer(options: RelayOptions = {}) {
             nextTicket.sub !== tunnel.instanceId ||
             nextTicket.slug !== tunnel.slug
           ) {
-            ws.close(TUNNEL_CLOSE_EXPIRED, "Invalid refreshed ticket");
+            safeCloseWs(ws, TUNNEL_CLOSE_EXPIRED, "Invalid refreshed ticket");
             return;
           }
           tunnel.expiresAtMs = nextTicket.exp * 1000;
@@ -279,31 +310,52 @@ export function createRelayServer(options: RelayOptions = {}) {
 
       if (stream.kind === "http") {
         if (frame.type === FRAME_RES_HEAD) {
-          const head = decodeJsonPayload(frame.payload, resHeadSchema);
+          const head = decodeJsonPayload(frame.payload, parseResHead);
           if (!head) {
-            tunnel.streams.delete(frame.streamId);
-            stream.res.destroy();
+            resetHttpStream(tunnel, frame.streamId, stream);
             return;
           }
           if (!stream.headersSent && !stream.res.writableEnded) {
-            for (const [name, value] of head.headers) {
-              const existing = stream.res.getHeader(name);
-              if (existing === undefined) {
-                stream.res.setHeader(name, value);
-              } else if (Array.isArray(existing)) {
-                stream.res.setHeader(name, [...existing, value]);
-              } else {
-                stream.res.setHeader(name, [String(existing), value]);
+            try {
+              for (const [name, value] of head.headers) {
+                const existing = stream.res.getHeader(name);
+                if (existing === undefined) {
+                  stream.res.setHeader(name, value);
+                } else if (Array.isArray(existing)) {
+                  stream.res.setHeader(name, [...existing, value]);
+                } else {
+                  stream.res.setHeader(name, [String(existing), value]);
+                }
               }
+              stream.res.writeHead(head.status);
+              stream.headersSent = true;
+            } catch {
+              resetHttpStream(tunnel, frame.streamId, stream);
             }
-            stream.res.writeHead(head.status);
-            stream.headersSent = true;
           }
           return;
         }
         if (frame.type === FRAME_RES_DATA) {
-          if (stream.headersSent && !stream.res.writableEnded) {
-            stream.res.write(frame.payload);
+          if (!stream.headersSent || stream.res.writableEnded) return;
+          if (stream.res.writableLength + frame.payload.byteLength > maxStreamResponseBytes) {
+            resetHttpStream(tunnel, frame.streamId, stream);
+            return;
+          }
+          const ok = stream.res.write(frame.payload);
+          if (!ok && !stream.backpressured) {
+            stream.backpressured = true;
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(encodeFrame(FRAME_STREAM_PAUSE, frame.streamId));
+            }
+            stream.res.once("drain", () => {
+              stream.backpressured = false;
+              if (
+                tunnel.streams.get(frame.streamId) === stream &&
+                ws.readyState === WebSocket.OPEN
+              ) {
+                ws.send(encodeFrame(FRAME_STREAM_RESUME, frame.streamId));
+              }
+            });
           }
           return;
         }
@@ -326,8 +378,13 @@ export function createRelayServer(options: RelayOptions = {}) {
       }
 
       if (frame.type === FRAME_WS_ACCEPTED) {
-        decodeJsonPayload(frame.payload, wsAcceptedSchema);
+        decodeJsonPayload(frame.payload, parseWsAccepted);
         stream.accepted = true;
+        if (ws.readyState === WebSocket.OPEN) {
+          for (const queued of stream.pendingFrames) ws.send(queued);
+        }
+        stream.pendingFrames.length = 0;
+        stream.pendingBytes = 0;
         return;
       }
       if (frame.type === FRAME_WS_DATA_TEXT) {
@@ -343,24 +400,14 @@ export function createRelayServer(options: RelayOptions = {}) {
         return;
       }
       if (frame.type === FRAME_WS_CLOSE) {
-        const closed = decodeJsonPayload(frame.payload, wsCloseSchema);
+        const closed = decodeJsonPayload(frame.payload, parseWsClose);
         tunnel.streams.delete(frame.streamId);
-        if (
-          stream.ws.readyState === WebSocket.OPEN ||
-          stream.ws.readyState === WebSocket.CONNECTING
-        ) {
-          stream.ws.close(safeWsCloseCode(closed?.code), closed?.reason ?? "");
-        }
+        safeCloseWs(stream.ws, closed?.code, closed?.reason);
         return;
       }
       if (frame.type === FRAME_STREAM_RST) {
         tunnel.streams.delete(frame.streamId);
-        if (
-          stream.ws.readyState === WebSocket.OPEN ||
-          stream.ws.readyState === WebSocket.CONNECTING
-        ) {
-          stream.ws.close(1011, "Upstream reset");
-        }
+        safeCloseWs(stream.ws, 1011, "Upstream reset");
       }
     });
 
@@ -449,7 +496,7 @@ export function createRelayServer(options: RelayOptions = {}) {
       return;
     }
 
-    tunnel.streams.set(streamId, { kind: "http", res, headersSent: false });
+    tunnel.streams.set(streamId, { kind: "http", res, headersSent: false, backpressured: false });
 
     const remoteIp =
       (typeof req.headers["x-forwarded-for"] === "string"
@@ -550,7 +597,14 @@ export function createRelayServer(options: RelayOptions = {}) {
         return;
       }
       clientWss.handleUpgrade(req, socket, head, (clientWs) => {
-        tunnel.streams.set(streamId, { kind: "ws", ws: clientWs, accepted: false });
+        const wsStream: PendingWsStream = {
+          kind: "ws",
+          ws: clientWs,
+          accepted: false,
+          pendingFrames: [],
+          pendingBytes: 0,
+        };
+        tunnel.streams.set(streamId, wsStream);
         tunnel.ws.send(
           encodeJsonFrame(FRAME_WS_OPEN, streamId, {
             path: req.url ?? "/ws",
@@ -560,20 +614,36 @@ export function createRelayServer(options: RelayOptions = {}) {
         );
         clientWs.on("message", (data, isBinary) => {
           if (tunnel.ws.readyState !== WebSocket.OPEN) return;
-          if (isBinary) {
-            tunnel.ws.send(encodeFrame(FRAME_WS_DATA_BIN, streamId, toBytes(data)));
+          const bytes = toBytes(data);
+          const encoded = isBinary
+            ? encodeFrame(FRAME_WS_DATA_BIN, streamId, bytes)
+            : encodeTextFrame(FRAME_WS_DATA_TEXT, streamId, decodeTextPayload(bytes));
+          if (wsStream.accepted) {
+            tunnel.ws.send(encoded);
+          } else if (
+            wsStream.pendingFrames.length < MAX_PENDING_WS_FRAMES &&
+            wsStream.pendingBytes + encoded.byteLength <= MAX_PENDING_WS_BYTES
+          ) {
+            wsStream.pendingFrames.push(encoded);
+            wsStream.pendingBytes += encoded.byteLength;
           } else {
-            tunnel.ws.send(
-              encodeTextFrame(FRAME_WS_DATA_TEXT, streamId, decodeTextPayload(toBytes(data))),
-            );
+            tunnel.streams.delete(streamId);
+            safeCloseWs(clientWs, 1009, "Too many queued messages");
+            tunnel.ws.send(encodeFrame(FRAME_STREAM_RST, streamId));
           }
+        });
+        clientWs.on("error", () => {
+          if (tunnel.streams.delete(streamId) && tunnel.ws.readyState === WebSocket.OPEN) {
+            tunnel.ws.send(encodeFrame(FRAME_STREAM_RST, streamId));
+          }
+          clientWs.terminate();
         });
         clientWs.on("close", (code, reason) => {
           if (tunnel.streams.delete(streamId) && tunnel.ws.readyState === WebSocket.OPEN) {
             tunnel.ws.send(
               encodeJsonFrame(FRAME_WS_CLOSE, streamId, {
                 code: safeWsCloseCode(code),
-                reason: reason.toString("utf8"),
+                reason: safeWsCloseReason(reason.toString("utf8")),
               }),
             );
           }
@@ -589,7 +659,7 @@ export function createRelayServer(options: RelayOptions = {}) {
     const current = now();
     for (const tunnel of [...tunnelsBySlug.values()]) {
       if (tunnel.expiresAtMs <= current) {
-        tunnel.ws.close(TUNNEL_CLOSE_EXPIRED, "Ticket expired");
+        safeCloseWs(tunnel.ws, TUNNEL_CLOSE_EXPIRED, "Ticket expired");
       }
     }
   }, options.expiryCheckIntervalMs ?? 30_000);
