@@ -271,7 +271,7 @@ test("an owned album in the release feed stays out of the calendar and its libra
     const visible = await getRecentMissingReleases(100, {
       now: Date.parse("2030-03-01T12:00:00Z"),
     });
-    assert.ok(!visible.some((album) => album.mbid === releaseMbid));
+    assert.ok(!visible.some((album) => album.releaseGroupMbid === releaseMbid));
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path = ?").run(mediaPath);
     db.prepare(

@@ -188,7 +188,7 @@ export default new Hono<AppEnv>()
           .filter(Boolean)
           .map((reference) =>
             albums.find((candidate) =>
-              [candidate.id, candidate.providerId, candidate.mbid, candidate.foreignAlbumId].some(
+              [candidate.id, candidate.mbid, candidate.releaseGroupMbid].some(
                 (value) => String(value ?? "") === String(reference),
               ),
             ),

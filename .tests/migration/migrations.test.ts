@@ -647,3 +647,28 @@ test("upgrading drops what only Last.fm read and keeps the rest", () => {
     undefined,
   );
 });
+
+test("upgrading stops treating an album's release group as its release", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, 32));
+  db.exec(`
+    INSERT INTO library_artists (id, identity_key, name, created_at, updated_at)
+      VALUES (1, 'artist', 'Artist', 0, 0);
+    INSERT INTO library_albums (id, identity_key, mbid, release_group_mbid, artist_id, title, created_at, updated_at)
+      VALUES (1, 'added', 'group-a', 'group-a', 1, 'Added', 0, 0),
+        (2, 'scanned', 'release-b', 'group-b', 1, 'Scanned', 0, 0),
+        (3, 'release-only', 'release-c', NULL, 1, 'Release Only', 0, 0);
+  `);
+
+  migrate(db);
+
+  assert.deepEqual(
+    db.prepare("SELECT id, mbid, release_group_mbid FROM library_albums ORDER BY id").raw().all(),
+    [
+      [1, null, "group-a"],
+      [2, "release-b", "group-b"],
+      [3, "release-c", null],
+    ],
+  );
+});

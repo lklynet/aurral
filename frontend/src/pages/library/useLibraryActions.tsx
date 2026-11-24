@@ -1060,7 +1060,7 @@ export function useLibraryActions({
           },
         ]
       : []),
-    ...(canMatchAlbum && album.providerId == null
+    ...(canMatchAlbum && !album.releaseTagged
       ? [
           {
             id: "match",

@@ -16,7 +16,7 @@ interface LibraryArtworkFields {
 }
 
 export type LibraryArtist = BackendLibraryArtist & LibraryArtworkFields;
-export type LibraryAlbum = BackendLibraryAlbum & LibraryArtworkFields;
+export type LibraryAlbum = BackendLibraryAlbum & LibraryArtworkFields & { releaseTagged?: boolean };
 type PlaylistSongFileFields =
   | "id"
   | "albumId"

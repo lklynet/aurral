@@ -381,17 +381,13 @@ function mapLibraryAlbum(
   const trackCount = albumTracks.length;
   return {
     id: String(album.id),
-    providerId: album.metadata?.id ?? null,
     artistId: String(album.artistId),
     artistName: artist?.name || album.albumArtist || null,
     artistMbid: artist?.mbid || null,
-    mbid: album.releaseGroupMbid || album.mbid || null,
+    mbid: album.mbid || null,
     releaseGroupMbid: album.releaseGroupMbid || null,
-    foreignAlbumId:
-      album.metadata?.foreignAlbumId || album.releaseGroupMbid || album.mbid || album.identityKey,
     albumName: album.title,
     title: album.title,
-    path: album.metadata?.path || null,
     addedAt: album.metadata?.added || null,
     releaseDate: album.releaseDate || null,
     monitored: album.metadata?.monitored === true,
@@ -413,15 +409,9 @@ function mapLibraryTrack(track: LibraryTrackRecord, album: LibraryAlbumRecord | 
   const relation = (track.albums || []).find((entry) => entry.albumId === album?.id);
   return {
     id: String(track.id),
-    providerId: track.metadata?.id ?? null,
     albumId: album ? String(album.id) : null,
     artistId: album ? String(album.artistId) : null,
     mbid: track.mbid || null,
-    foreignTrackId:
-      track.metadata?.foreignRecordingId ||
-      track.metadata?.foreignTrackId ||
-      track.mbid ||
-      track.identityKey,
     trackName: track.title,
     title: track.title,
     trackNumber: relation?.trackNumber || 0,
@@ -2182,7 +2172,6 @@ export class LibraryManager {
     const saveAlbum = () => {
       const albumRecord = upsertLibraryAlbum({
         identityKey: buildIdentityKey("release-group", normalizedAlbumMbid),
-        mbid: normalizedAlbumMbid,
         releaseGroupMbid: normalizedAlbumMbid,
         artistId: artist.id,
         title: resolvedAlbumName,

@@ -12,7 +12,7 @@ const recommendedReleases = (userId: number | null) => {
     ? getFreshReleasesByArtists(ids).filter((release) =>
         releaseMatchesRules(
           {
-            id: release.mbid,
+            id: release.releaseGroupMbid,
             type: release.albumType,
             secondaryTypes: release.secondaryTypes,
             releaseStatuses: [],
@@ -33,17 +33,19 @@ async function releasesIn(
   now: number,
 ) {
   const fromLibrary = await getRecentMissingReleases(count + 1, { when, now });
-  const libraryIds = new Set(fromLibrary.map((album) => album.mbid));
+  const libraryIds = new Set(fromLibrary.map((album) => album.releaseGroupMbid));
   const today = toDay(now);
   const fromRecommendations = recommended.filter(
-    ({ mbid, releaseDate }) =>
-      !libraryIds.has(mbid) && (when === "upcoming" ? releaseDate > today : releaseDate <= today),
+    ({ releaseGroupMbid, releaseDate }) =>
+      !libraryIds.has(releaseGroupMbid) &&
+      (when === "upcoming" ? releaseDate > today : releaseDate <= today),
   );
   const direction = when === "upcoming" ? 1 : -1;
   return [...fromLibrary, ...fromRecommendations].sort(
     (left, right) =>
       direction * month(left.releaseDate).localeCompare(month(right.releaseDate)) ||
-      Number(libraryIds.has(right.mbid)) - Number(libraryIds.has(left.mbid)) ||
+      Number(libraryIds.has(right.releaseGroupMbid)) -
+        Number(libraryIds.has(left.releaseGroupMbid)) ||
       direction * left.releaseDate.localeCompare(right.releaseDate),
   );
 }

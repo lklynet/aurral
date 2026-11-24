@@ -64,7 +64,7 @@ export function shareDestination(manifest: ShareManifest) {
                   "",
                 trackMbid: track.mbid,
                 albumMbid: album.releaseGroupMbid,
-                releaseMbid: album.mbid !== album.releaseGroupMbid ? album.mbid : null,
+                releaseMbid: album.mbid,
                 albumTitle: album.title,
               },
             ]

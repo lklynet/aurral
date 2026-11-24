@@ -71,7 +71,6 @@ test("library read model maps the existing root to Library-shaped records", () =
   );
   assert.equal(result.albums[0]?.mbid, "release-1");
   assert.equal(result.albums[0]?.releaseGroupMbid, "album-1");
-  assert.equal(result.artists[0]?.foreignArtistId, "artist-1");
   assert.equal(result.albums[0]?.statistics.sizeOnDisk, 123);
   assert.equal(result.artists[0]?.statistics.sizeOnDisk, 123);
   assert.equal(result.tracks[0]?.path, "/music/Root Artist/Root Album/01 Root Track.flac");
@@ -95,7 +94,7 @@ test("library album statistics exclude unavailable file sizes", () => {
   assert.equal(result.albums[0]?.statistics.sizeOnDisk, 0);
 });
 
-test("library read model preserves non-MBID provider artist identity", () => {
+test("library read model finds an artist without an MBID by its identity key", () => {
   const result = buildLibraryReadModel({
     artists: [
       readArtist({
@@ -118,9 +117,7 @@ test("library read model preserves non-MBID provider artist identity", () => {
     tracks: [],
   });
 
-  assert.equal(result.artists[0]?.providerId, 42);
-  assert.equal(result.artists[0].mbid, null);
-  assert.equal(result.artists[0]?.foreignArtistId, "705@deezer");
+  assert.equal(result.artists[0]?.mbid, null);
   assert.equal(
     findLibraryArtist(result.artists, "lidarr-artist:705@deezer")?.name,
     "Provider Artist",

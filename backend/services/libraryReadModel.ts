@@ -74,7 +74,7 @@ const albumFiles = (track: LibraryTrackRecord, albumId: number) =>
 const recordMatches = (record: ReadArtist, reference: unknown) => {
   const value = String(reference ?? "").trim();
   if (!value) return false;
-  return [record.id, record.providerId, record.mbid, record.identityKey].some(
+  return [record.id, record.mbid, record.identityKey].some(
     (candidate) => String(candidate ?? "").trim() === value,
   );
 };
@@ -92,17 +92,14 @@ const buildArtist = (
   const sizeOnDisk = hasSummary
     ? Number(artist.sizeOnDisk || 0)
     : artistAlbums.reduce((total, album) => total + album.statistics.sizeOnDisk, 0);
-  const providerId = artist.metadata?.id ?? null;
   const management = managementByArtistId.get(Number(artist.id)) || null;
   return {
     id: artist.id,
     identityKey: artist.identityKey,
-    providerId,
     source: artist.source || (artist.sources?.length === 1 ? artist.sources[0] : null),
     managed: Boolean(management),
     monitorMode: management?.monitorMode ?? null,
     mbid: artist.mbid,
-    foreignArtistId: artist.metadata?.foreignArtistId || artist.mbid || artist.identityKey,
     artistName: artist.name,
     name: artist.name,
     sortName: artist.sortName,
@@ -135,23 +132,18 @@ const buildAlbum = (
   const trackFileCount = albumTracks.filter((track) =>
     albumFiles(track, album.id).some((file) => file.available),
   ).length;
-  const providerId = album.metadata?.id ?? null;
   const management = managementByAlbumId.get(Number(album.id)) || null;
   return {
     id: album.id,
     identityKey: album.identityKey,
-    providerId,
     source: album.source || (album.sources?.length === 1 ? album.sources[0] : null),
     managed: Boolean(management),
     monitorMode: management?.monitorMode ?? null,
-    providerArtistId: album.metadata?.artistId ?? null,
     artistId: album.artistId,
     artistMbid: artist?.mbid || null,
     artistName: artist?.name || album.albumArtist,
-    mbid: album.mbid || album.releaseGroupMbid,
+    mbid: album.mbid,
     releaseGroupMbid: album.releaseGroupMbid || null,
-    foreignAlbumId:
-      album.metadata?.foreignAlbumId || album.mbid || album.releaseGroupMbid || album.identityKey,
     albumName: album.title,
     title: album.title,
     releaseDate: album.releaseDate,
@@ -178,15 +170,9 @@ const buildTrack = (track: LibraryTrackRecord, album: ReadAlbum) => {
   const relation = track.albums.find((entry) => entry.albumId === album.id);
   return {
     id: track.id,
-    providerId: track.metadata?.id ?? null,
     albumId: album.id,
     artistId: album.artistId,
     mbid: track.mbid,
-    foreignTrackId:
-      track.metadata?.foreignRecordingId ||
-      track.metadata?.foreignTrackId ||
-      track.mbid ||
-      track.identityKey,
     trackName: track.title,
     title: track.title,
     trackNumber: relation?.trackNumber || 0,

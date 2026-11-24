@@ -38,7 +38,7 @@ const libraryAlbumLookup = (albums: ReadAlbum[], reference: string) => {
   const value = String(reference || "").trim();
   if (!value) return undefined;
   return albums.find((album) =>
-    [album.foreignAlbumId, album.mbid, album.releaseGroupMbid, album.identityKey].some(
+    [album.mbid, album.releaseGroupMbid, album.identityKey].some(
       (candidate) => String(candidate || "").trim() === value,
     ),
   );
@@ -70,30 +70,18 @@ const libraryAlbumResult = (album: ReadAlbum, ownedTrackMbids: string[] = []) =>
   releaseDate: String(album.releaseDate || "").trim(),
 });
 
-type WithAbsentKeys<Value, Keys extends PropertyKey> = Value extends unknown
-  ? Value & { [Key in Exclude<Keys, keyof Value>]?: undefined }
-  : never;
-
 const toLibraryArtist = (
-  artist: WithAbsentKeys<
-    ReturnType<typeof getLibraryArtistProjection>[number] | ReadArtist,
-    "providerId"
-  >,
+  artist: ReturnType<typeof getLibraryArtistProjection>[number] | ReadArtist,
   libraryId?: string | number,
 ) => ({
   ...artist,
-  id: artist.providerId ?? artist.id,
   ...(libraryId != null && { libraryId: String(libraryId) }),
-  foreignArtistId: artist.foreignArtistId || artist.mbid,
   added: artist.addedAt,
 });
 
 const toLibraryAlbum = (album: ReadAlbum, libraryId?: string | number) => ({
   ...album,
-  id: album.providerId ?? album.id,
-  artistId: album.providerArtistId ?? album.artistId,
   ...(libraryId != null && { libraryId: String(libraryId) }),
-  foreignAlbumId: album.foreignAlbumId || album.mbid,
   title: album.albumName,
   albumType: "Album",
 });
@@ -262,7 +250,6 @@ export default new Hono<AppEnv>()
       );
       const recent = artists.map((artist) => ({
         ...artist,
-        foreignArtistId: artist.foreignArtistId || artist.mbid,
         added: artist.addedAt,
         coverUrl: buildLibraryArtworkUrl("artist", artist.id, versions.get(artist.id)),
       }));

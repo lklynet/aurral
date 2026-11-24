@@ -68,14 +68,10 @@ export function getFreshReleasesByArtists(artistMbids: Iterable<string | null | 
       ? [
           {
             id: release.releaseGroupMbid,
-            providerId: release.releaseGroupMbid,
             artistId: artistMbid,
             artistName: release.artistName,
             artistMbid,
-            foreignArtistId: artistMbid,
-            mbid: release.releaseGroupMbid,
             releaseGroupMbid: release.releaseGroupMbid,
-            foreignAlbumId: release.releaseGroupMbid,
             albumName: release.title,
             title: release.title,
             releaseDate: release.releaseDate,

@@ -294,14 +294,10 @@ export function getReleaseCalendarEntries({
     const availableTrackCount = Number(row.available_track_count || 0);
     return {
       id: row.release_group_mbid,
-      providerId: row.release_group_mbid,
       artistId: String(row.artist_id),
       artistName: row.artist_name,
       artistMbid: row.artist_mbid || null,
-      foreignArtistId: row.artist_mbid || null,
-      mbid: row.release_group_mbid,
       releaseGroupMbid: row.release_group_mbid,
-      foreignAlbumId: row.release_group_mbid,
       albumName: row.title,
       title: row.title,
       releaseDate: row.release_date,

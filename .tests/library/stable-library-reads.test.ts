@@ -382,16 +382,15 @@ test("an artist with unreadable metadata fields keeps the rest of its details", 
     db.prepare("UPDATE library_artists SET metadata_json = ? WHERE id = ?").run(
       JSON.stringify({
         foreignArtistId: 42,
-        monitorNewItems: "all",
         qualityProfile: { name: 5 },
-        addOptions: "all",
+        monitored: true,
+        added: "2020-01-02T03:04:05.000Z",
       }),
       artist.id,
     );
     const [projection] = getLibraryArtistProjection({ reference: artist.id });
-    assert.equal(projection?.foreignArtistId, artist.identity_key);
-    assert.equal(projection?.monitorNewItems, "all");
-    assert.equal(projection?.quality, "standard");
+    assert.equal(projection?.monitored, true);
+    assert.equal(projection?.addedAt, "2020-01-02T03:04:05.000Z");
   } finally {
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   }

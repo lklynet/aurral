@@ -172,6 +172,8 @@ Library artist, album, and track entries use numeric `id` and string
 `identityKey`. Artists have string `name`, albums have string `title`, and
 tracks have strings `title` and `artistName`, nullable string `mbid`, and array
 `files`. These IDs are different from MusicBrainz IDs and Subsonic IDs.
+Albums have nullable strings `mbid`, the release, and `releaseGroupMbid`, the
+release group.
 
 Album lookup objects contain boolean `inLibrary` and `monitored`, nullable
 strings `libraryAlbumId` and `libraryArtistId`, string `status`, numeric

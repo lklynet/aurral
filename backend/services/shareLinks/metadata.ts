@@ -81,7 +81,7 @@ export function resolveShareManifest(
                 albumArtistName: artist?.name,
                 artistMbid: artist?.mbid,
                 albumMbid: album.releaseGroupMbid,
-                releaseMbid: album.mbid !== album.releaseGroupMbid ? album.mbid : null,
+                releaseMbid: album.mbid,
                 trackMbid: track.mbid,
                 trackNumber: position?.trackNumber,
                 discNumber: position?.discNumber,

@@ -424,11 +424,7 @@ export async function removePlaylistFileIfUnshared(
 function findMatchingArtist(artists: ReadArtist[], track: DownloadTrackInput) {
   const artistMbid = String(track?.artistMbid || "").trim();
   if (artistMbid) {
-    const match = artists.find(
-      (artist) =>
-        String(artist?.mbid || "").trim() === artistMbid ||
-        String(artist?.foreignArtistId || "").trim() === artistMbid,
-    );
+    const match = artists.find((artist) => String(artist?.mbid || "").trim() === artistMbid);
     if (match) return match;
   }
   const artistKey = normalizeText(track?.artistName);
@@ -440,9 +436,7 @@ function findMatchingArtist(artists: ReadArtist[], track: DownloadTrackInput) {
 }
 
 const albumHasMbid = (album: ReadAlbum, albumMbid: string) =>
-  [album.mbid, album.foreignAlbumId, album.releaseGroupMbid].some(
-    (value) => String(value || "").trim() === albumMbid,
-  );
+  [album.mbid, album.releaseGroupMbid].some((value) => String(value || "").trim() === albumMbid);
 
 function rankAlbums(albums: ReadAlbum[], track: DownloadTrackInput) {
   const albumMbid = String(track?.albumMbid || "").trim();
@@ -464,11 +458,7 @@ function rankAlbums(albums: ReadAlbum[], track: DownloadTrackInput) {
 function findMatchingTrack(tracks: ReadTrack[], track: DownloadTrackInput, strictAlbum = false) {
   const trackMbid = String(track?.trackMbid || "").trim();
   if (trackMbid) {
-    const match = tracks.find(
-      (entry) =>
-        String(entry?.mbid || "").trim() === trackMbid ||
-        String(entry?.foreignTrackId || "").trim() === trackMbid,
-    );
+    const match = tracks.find((entry) => String(entry?.mbid || "").trim() === trackMbid);
     if (match) return match;
     if (strictAlbum) return null;
   }

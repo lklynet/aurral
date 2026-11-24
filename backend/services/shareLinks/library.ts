@@ -117,7 +117,7 @@ function shareTracks(library: ReturnType<typeof loadLibrary>, preferredPaths = n
           albumTitle: album.title,
           artistMbid: artist?.mbid || null,
           albumMbid: album.releaseGroupMbid || null,
-          releaseMbid: album.mbid !== album.releaseGroupMbid ? album.mbid : null,
+          releaseMbid: album.mbid,
           trackMbid: track.mbid || null,
           albumArtistName: artist?.name || album.albumArtist || "",
           discNumber: Number(position?.discNumber) || 1,

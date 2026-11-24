@@ -57,7 +57,12 @@ beforeAll(() => {
     albumArtist: artist.name,
     metadata: {
       trackList: { release: "55555555-5555-4555-8555-555555555555", recordings: [] },
-      tags: { genre: ["Indie Rock"], releasetype: "ep", barcode: "0123456789" },
+      tags: {
+        genre: ["Indie Rock"],
+        releasetype: "ep",
+        barcode: "0123456789",
+        musicbrainz_albumid: "55555555-5555-4555-8555-555555555555",
+      },
     },
   });
   const track = upsertLibraryTrack({
@@ -193,7 +198,6 @@ test("library pages return bounded collection responses", async () => {
   assert.equal(tracks.total, 3);
   assert.equal(tracks.items.length, 1);
   assert.equal(tracks.items[0]?.artistName, "Favorite Artist");
-  assert.equal(tracks.items[0].providerId, null);
   assert.equal(tracks.items[0]?.source, "aurral");
   assert.equal(tracks.items[0]?.available, true);
   assert.equal(tracks.items[0].managed, false);
@@ -215,6 +219,7 @@ test("library pages return bounded collection responses", async () => {
     genre: ["Indie Rock"],
     releasetype: "ep",
   });
+  assert.equal(available.items[0]?.releaseTagged, true);
 
   const compact: LibraryPage = await (
     await getPage({ kind: "albums", page: "1", pageSize: "1", compact: "true" })

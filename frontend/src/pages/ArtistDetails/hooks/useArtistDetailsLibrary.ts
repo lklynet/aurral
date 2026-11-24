@@ -131,11 +131,11 @@ export function useArtistDetailsLibrary({
     if (!albumId || albumId.startsWith("pending-")) return false;
     if (!album.managed) return false;
     if (isLibraryAlbumComplete(album)) return false;
-    if (ownedByKey.has(album.mbid || album.foreignAlbumId || "")) return false;
+    if (ownedByKey.has(album.releaseGroupMbid || "")) return false;
     if (isAwaitingRelease({ ...album, trackFileCount: album.statistics?.trackFileCount })) {
       return false;
     }
-    return album.monitored && !isAlbumDownloading(album.mbid || album.foreignAlbumId);
+    return album.monitored && !isAlbumDownloading(album.releaseGroupMbid);
   });
 
   const handleReSearchMissingDownloads = async () => {
@@ -154,7 +154,7 @@ export function useArtistDetailsLibrary({
             buildAlbumRetryPayload({
               album,
               artist: {
-                mbid: album.artistMbid || libraryArtist?.foreignArtistId || libraryArtist?.mbid,
+                mbid: album.artistMbid || libraryArtist?.mbid,
                 name: album.artistName || libraryArtist?.artistName,
               },
             }),
@@ -183,9 +183,7 @@ export function useArtistDetailsLibrary({
     const owned = ownedByKey.get(releaseGroupId);
     const album =
       existsInLibrary && libraryArtist
-        ? libraryAlbums.find(
-            (a) => a.mbid === releaseGroupId || a.foreignAlbumId === releaseGroupId,
-          )
+        ? libraryAlbums.find((a) => a.releaseGroupMbid === releaseGroupId)
         : undefined;
     if (album && isLibraryAlbumComplete(album)) {
       return {
