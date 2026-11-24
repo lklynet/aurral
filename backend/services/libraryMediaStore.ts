@@ -1471,7 +1471,7 @@ export function getLibraryAlbumsToList() {
   for (const { listedFor, listedRule, ...album } of albums) {
     const songs = albumFiles.all(album.id);
     const basis = createHash("sha1")
-      .update(JSON.stringify([album.mbid, songs.map((file) => [file.path, file.mtimeMs])]))
+      .update(JSON.stringify(songs.map((file) => [file.path, file.mtimeMs])))
       .digest("hex");
     const filesChanged = listedFor !== basis;
     if (filesChanged || listedRule !== LIBRARY_TRACK_LIST_RULE) {

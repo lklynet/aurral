@@ -132,6 +132,8 @@ const applyMetadataEnrichment = (
     return metadata;
   }
   const trusted: DownloadTrackFields = { ...embedded, ...(enrichment || {}) };
+  const taggedGroup = normalizeMbid(common.musicbrainz_releasegroupid);
+  const otherGroup = taggedGroup !== null && taggedGroup !== normalizeMbid(trusted.albumMbid);
   const fallbackFields = {
     albumartist: trusted.artistName,
     artist: trusted.artistName,
@@ -142,7 +144,7 @@ const applyMetadataEnrichment = (
     disk: trusted.discNumber,
     musicbrainz_artistid: trusted.artistMbid,
     musicbrainz_albumartistid: trusted.artistMbid,
-    musicbrainz_albumid: trusted.releaseMbid,
+    musicbrainz_albumid: otherGroup ? null : trusted.releaseMbid,
     musicbrainz_releasegroupid: trusted.albumMbid,
     musicbrainz_recordingid: trusted.trackMbid,
   };

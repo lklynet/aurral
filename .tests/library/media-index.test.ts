@@ -37,6 +37,7 @@ import {
 } from "../../backend/services/libraryFileScanner.ts";
 import { scanConfiguredLibrary } from "../../backend/services/libraryIndexService.ts";
 import { libraryManager } from "../../backend/services/libraryManager.ts";
+import { downloadTracker } from "../../backend/services/downloadJobs/downloadTracker.ts";
 import { setLibraryManagement } from "../../backend/services/libraryManagementStore.ts";
 import { dbOps } from "../../backend/db/helpers/index.ts";
 import { clearMetadataProviderCaches } from "../../backend/services/providers/metadataProvider.ts";
@@ -1195,6 +1196,51 @@ test("a song an album keeps after its untagged file is gone is listed once", asy
       ["Two", "missing"],
       ["Three", "missing"],
     ]);
+  });
+});
+
+test("an untagged download takes its job's release on a rescan and keeps its track list", async (t: import("vite-plus/test").TestContext) => {
+  const downloads = await mkdtemp(path.join(tmpdir(), "aurral-job-release-"));
+  const artist = `Job Release ${process.pid}`;
+  const title = `Job Release Album ${process.pid}`;
+  const album = listedAlbum(artist, uuid("dddddddd", 5), title, 50, ["One"]);
+  const release = uuid("bbbbbbbb", 50);
+  const filePath = await makeTrack(path.join(downloads, artist, title, "01 One.flac"), {
+    ARTIST: artist,
+    ALBUMARTIST: artist,
+    ALBUM: title,
+    TITLE: "One",
+    TRACKNUMBER: 1,
+  });
+  const job = requireValue(
+    downloadTracker.ensureLibraryTrackJob(
+      { artistName: artist, trackName: "One", albumName: title, albumMbid: album.releaseGroup },
+      filePath,
+    ),
+  );
+  t.onTestFinished(async () => {
+    downloadTracker.removeJob(job.id);
+    removeArtistsNamed(artist);
+    await rm(downloads, { recursive: true, force: true });
+  });
+  const albumIds = () =>
+    db
+      .prepare<[string], Pick<Rows.LibraryAlbumsRow, "mbid" | "release_group_mbid">>(
+        "SELECT mbid, release_group_mbid FROM library_albums WHERE title = ?",
+      )
+      .get(title);
+  await withReleaseGroups({ [album.releaseGroup]: album.group }, async (provider) => {
+    await scanConfiguredLibrary({ musicRoot: downloads, includeReadOnly: false });
+    assert.deepEqual(albumIds(), { mbid: null, release_group_mbid: album.releaseGroup });
+    const groupLookups = () => provider.requests.filter((id) => id === album.releaseGroup).length;
+    assert.equal(groupLookups(), 1);
+
+    downloadTracker.updateMetadata(job.id, { releaseMbid: release });
+    clearMetadataProviderCaches();
+    await scanConfiguredLibrary({ musicRoot: downloads, includeReadOnly: false, force: true });
+
+    assert.deepEqual(albumIds(), { mbid: release, release_group_mbid: album.releaseGroup });
+    assert.equal(groupLookups(), 1);
   });
 });
 
