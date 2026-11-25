@@ -10,6 +10,7 @@ import { playlistJobsClient } from "../utils/api/clients/playlistJobs.ts";
 import type { LibraryAlbum, LibraryArtist, LibraryTrack } from "../utils/libraryPageData.ts";
 import { formatDuration } from "./library/libraryShared.tsx";
 import { ModalBackdrop } from "../components/ModalBackdrop";
+import { formatQuality } from "../../../lib/formatQuality.ts";
 
 type LibraryQuality = NonNullable<LibraryTrack["files"][number]["quality"]>;
 type LibraryMetadata = {
@@ -95,16 +96,6 @@ const durationMs = (
   if (Number(track?.metadata?.durationMs) > 0) return Number(track.metadata?.durationMs);
   const seconds = Number(track?.metadata?.duration);
   return seconds > 0 ? Math.round(seconds * 1000) : 0;
-};
-
-const formatQuality = (quality: LibraryQuality | string | null | undefined) => {
-  if (!quality || typeof quality !== "object") return text(quality);
-  return [
-    quality.bitrate ? Math.round(quality.bitrate / 1000) + " kbps" : "",
-    quality.bitsPerSample ? quality.bitsPerSample + " bit" : "",
-  ]
-    .filter(Boolean)
-    .join(" · ");
 };
 
 const getRows = ({ kind, source, entity, artist, album, trackNumber }: LibraryInfoItem) => {
