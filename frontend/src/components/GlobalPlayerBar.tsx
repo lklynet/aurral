@@ -10,6 +10,7 @@ import {
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router";
 import { albumPath } from "../../../lib/albumPath.ts";
+import { albumTrackArtist } from "../../../lib/artistCredit.ts";
 import {
   ChevronDown,
   ChevronLeft,
@@ -413,9 +414,13 @@ function GlobalPlayerBar({ minimized, onMinimizedChange, rail }: GlobalPlayerBar
       : []),
   ];
   const playlistItemAfter = trackMenuItems.at(-1)?.id;
+  const playlistPayload = {
+    ...savePayload,
+    artistName: albumTrackArtist(savePayload.artistName, savePayload.artistMbid, artistLabel),
+  };
   const renderPlaylistItem = ({ closeMenu }: { closeMenu: () => void }) => (
     <PlayerPlaylistSubmenu
-      track={savePayload}
+      track={playlistPayload}
       separator={!canAddToLibrary && trackMenuItems.length > 0}
       onClose={closeMenu}
     />

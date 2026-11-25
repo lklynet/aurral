@@ -109,12 +109,8 @@ import {
   getAlbumByMbid as getMetadataAlbumByMbid,
   getArtistByMbid as getMetadataArtistByMbid,
 } from "./providers/metadataProvider.ts";
-import {
-  VARIOUS_ARTISTS_MBID,
-  isSilenceTrack,
-  isUnknownTitle,
-  isVariousArtistsCredit,
-} from "./trackMatching/titleText.ts";
+import { isSilenceTrack, isUnknownTitle } from "./trackMatching/titleText.ts";
+import { VARIOUS_ARTISTS_MBID, isVariousArtistsCredit } from "../../lib/artistCredit.ts";
 import { recordTrackJobQueued } from "./aurralHistoryService.ts";
 const metadataLookups = new PQueue({ concurrency: 4 });
 

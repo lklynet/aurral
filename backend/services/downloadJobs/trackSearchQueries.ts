@@ -7,7 +7,8 @@
 
 import { getYear } from "../providers/metadataRanking.ts";
 import { getPathParts } from "../trackMatching/candidateNormalizer.ts";
-import { coreAlbumTitle, isVariousArtistsCredit } from "../trackMatching/titleText.ts";
+import { coreAlbumTitle } from "../trackMatching/titleText.ts";
+import { isVariousArtistsCredit } from "../../../lib/artistCredit.ts";
 
 export interface TrackSearchContext {
   artistName?: string | null;

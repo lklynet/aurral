@@ -1,7 +1,7 @@
 // yt-dlp search queries. Channel and title evidence lives in
 // trackMatching/youtubeEvidence.ts.
 
-import { isVariousArtistsCredit } from "../trackMatching/titleText.ts";
+import { isVariousArtistsCredit } from "../../../lib/artistCredit.ts";
 
 // "Artist Title" and "Artist Title official audio" find most uploads. A
 // compilation track is searched by its own artist. YouTube returns nothing
