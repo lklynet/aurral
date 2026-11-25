@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { AlertCircle, EyeOff, Share } from "../../components/icons";
@@ -50,7 +50,6 @@ import {
 import { libraryViewQueryOptions } from "../../utils/libraryViewQuery.ts";
 import { LIBRARY_SOURCE, useLibraryActions } from "../library/useLibraryActions.tsx";
 import {
-  Cover,
   formatDuration,
   isAlbumArtistCredit,
   trackDurationMs,
@@ -64,8 +63,7 @@ import { OwnedTrackMark, useReleasePreviewQueue, useReleaseTracks } from "./rele
 import { useAlbumDownload } from "./useAlbumDownload.ts";
 import { useLibraryAlbumState } from "./useLibraryAlbumState.ts";
 import { useReleaseCover } from "./useReleaseCover.ts";
-import ArtworkLightbox from "../../components/ArtworkLightbox.tsx";
-import { useArtworkLightbox } from "../../hooks/useArtworkLightbox.ts";
+import AlbumCover from "./AlbumCover.tsx";
 import { useAlbumEditions } from "./useAlbumEditions.tsx";
 import StatePanel from "../../components/StatePanel";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
@@ -246,7 +244,8 @@ function AlbumPage() {
     enabled: !libraryLoading && !libraryCover,
   });
   const artwork = libraryCover || cover.src;
-  const lightbox = useArtworkLightbox();
+  const [loadedCover, setLoadedCover] = useState({ artwork: "", preview: "" });
+  const previewSrc = loadedCover.artwork === artwork ? loadedCover.preview : "";
   const playbackSource = useMemo(
     () => ({
       type: "release",
@@ -582,7 +581,7 @@ function AlbumPage() {
   }
 
   return (
-    <CollectionPage tintSrc={artwork}>
+    <CollectionPage tintSrc={previewSrc}>
       {actions.renderModals()}
       {albumState.albumMonitoring.dialog}
       <CollectionHeader
@@ -590,12 +589,13 @@ function AlbumPage() {
           !artwork && headerPending ? (
             <SkeletonShape className="skeleton-fill" />
           ) : (
-            <Cover
+            <AlbumCover
+              key={`${routeRef}/${artwork}`}
               src={artwork}
               label={title}
-              thumbnail={false}
+              preview={previewSrc}
+              onLoad={(preview) => setLoadedCover({ artwork, preview })}
               onError={libraryCover ? undefined : cover.onError}
-              onOpen={lightbox.open}
             />
           )
         }
@@ -726,7 +726,6 @@ function AlbumPage() {
           <span>No tracks available</span>
         </div>
       )}
-      <ArtworkLightbox artwork={lightbox.artwork} onClose={lightbox.close} />
     </CollectionPage>
   );
 }

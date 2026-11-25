@@ -9,8 +9,9 @@ const FANART = /^(https?:\/\/assets\.fanart\.tv)\/fanart\//i;
 const FANART_SQUARE =
   /^https?:\/\/assets\.fanart\.tv\/fanart\/music\/[^/?#]+\/(?:albumcover|artistthumb)\//i;
 const DEEZER =
-  /^(https?:\/\/[\w-]+\.dzcdn\.net\/images\/[a-z]+\/[0-9a-f]+\/)\d+x\d+(-[^/?#]*\.(?:jpg|png))$/i;
-const DEEZER_WIDTHS = [120, 250, 500, 1000];
+  /^(https?:\/\/[\w-]+\.dzcdn\.net\/images\/[a-z]+\/[0-9a-f]+\/)(\d+)x\d+(-[^/?#]*\.(?:jpg|png))$/i;
+const DEEZER_MAX_WIDTH = 1000;
+const DEEZER_WIDTHS = [120, 250, 500, DEEZER_MAX_WIDTH];
 const CAA_COVER =
   /^(https?:\/\/coverartarchive\.org\/release\/[^/?#]+\/[^/?#]+)-(?:250|500|1200)(\.[a-z]+)$/i;
 const LIDARR_COVER =
@@ -38,7 +39,7 @@ export function imageSizes(url: string): ImageSize[] {
   const deezer = url.match(DEEZER);
   if (deezer) {
     return DEEZER_WIDTHS.map((width) => ({
-      url: `${deezer[1]}${width}x${width}${deezer[2]}`,
+      url: `${deezer[1]}${width}x${width}${deezer[3]}`,
       width,
     }));
   }
@@ -73,4 +74,20 @@ export function imageSizes(url: string): ImageSize[] {
     ];
   }
   return [];
+}
+
+export function albumCoverSources(url: string) {
+  const [path = url] = url.split(/[?#]/, 1);
+  const suffix = url.slice(path.length);
+  const deezer = path.match(DEEZER);
+  const original = originalImage(path);
+  const fullSize =
+    deezer && Number(deezer[2]) < DEEZER_MAX_WIDTH
+      ? `${deezer[1]}${DEEZER_MAX_WIDTH}x${DEEZER_MAX_WIDTH}${deezer[3]}${suffix}`
+      : original + suffix;
+  const sizes =
+    suffix && (deezer || original !== path)
+      ? imageSizes(path).map((size) => ({ ...size, url: size.url + suffix }))
+      : imageSizes(url);
+  return { fullSize, thumbnails: sizes.filter(({ width }) => width <= 512) };
 }

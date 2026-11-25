@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
-import { imageSizes, originalImage, resizedImageWidth } from "../../lib/imageSizes.ts";
+import {
+  albumCoverSources,
+  imageSizes,
+  originalImage,
+  resizedImageWidth,
+} from "../../lib/imageSizes.ts";
 
 const urlsByWidth = (url: string) =>
   Object.fromEntries(imageSizes(url).map((size) => [size.width, size.url]));
@@ -82,6 +87,28 @@ test("artwork from fanart, Deezer, the Lidarr image cache, AudioDB artist photos
     imageSizes("https://r2.theaudiodb.com/images/media/artist/thumb/byev521700402620.jpg/small"),
     [],
   );
+});
+
+test("the album lightbox opens the largest known cover and preserves single-source artwork", () => {
+  const deezer = "https://cdn-images.dzcdn.net/images/cover/638e69b9/";
+  const suffix = "-000000-80-0-0.jpg?aurral_image_retry=7";
+  const sources = albumCoverSources(deezer + "250x250" + suffix);
+  assert.deepEqual(
+    sources.thumbnails.map(({ url }) => url),
+    [120, 250, 500].map((n) => `${deezer}${n}x${n}${suffix}`),
+  );
+  assert.equal(sources.fullSize, deezer + "1000x1000" + suffix);
+  assert.equal(
+    albumCoverSources(deezer + "1500x1500" + suffix).fullSize,
+    deezer + "1500x1500" + suffix,
+  );
+  assert.equal(
+    albumCoverSources("https://coverartarchive.org/release/r/1-500.jpg?aurral_image_retry=7")
+      .fullSize,
+    "https://coverartarchive.org/release/r/1.jpg?aurral_image_retry=7",
+  );
+  const library = "/api/library/albums/42/cover?v=3";
+  assert.deepEqual(albumCoverSources(library), { fullSize: library, thumbnails: [] });
 });
 
 test("a requested width rounds up to a size Aurral resizes to, and past the largest keeps the original", () => {

@@ -81,7 +81,6 @@
   --aurral-scheduled: light-dark(#a16207, #facc15);
   --aurral-ring: light-dark(#17171775, #ffffff75);
   --aurral-scrim: light-dark(#e5e7ebb8, #000000b8);
-  --aurral-lightbox-scrim: light-dark(#000000d9, #000000e6);
   --aurral-border: light-dark(#17171714, #ffffff14);
   --aurral-border-strong: light-dark(#17171724, #ffffff1c);
   --aurral-border-overlay: light-dark(#17171724, #252525);
@@ -15804,8 +15803,15 @@ button.section-show-all {
 }
 
 .artwork-lightbox {
-  padding: 1rem;
-  background: var(--aurral-lightbox-scrim);
+  --close-size: 2.75rem;
+  --close-icon-size: var(--aurral-icon);
+  /* With a 2-unit stroke, XClose spans 14 of its 24 viewBox units. */
+  --close-overhang: calc((var(--close-size) - var(--close-icon-size) * 14 / 24) / 2);
+  --close-top: max(0.5rem, env(safe-area-inset-top));
+  --close-right: max(0.5rem, env(safe-area-inset-right));
+  --cover-max-height: calc(100dvh - 2 * (var(--close-top) + var(--close-size)));
+
+  cursor: zoom-out;
 }
 
 @media (max-width: 767px) {
@@ -15818,27 +15824,60 @@ button.section-show-all {
 .artwork-lightbox__panel {
   position: relative;
   display: flex;
-  min-width: min(60vw, 18rem);
-  min-height: min(60dvh, 18rem);
-  max-width: min(92vw, 1200px);
-  max-height: 92dvh;
+  width: min(100%, var(--cover-max-height), 1200px);
+  max-width: calc(100vw - 2 * (env(safe-area-inset-right) + var(--close-overhang)));
   align-items: center;
   justify-content: center;
+  outline: none;
 }
 
 .artwork-lightbox__image {
-  display: block;
-  max-width: 100%;
-  max-height: 92dvh;
+  width: 100%;
+  max-height: var(--cover-max-height);
   border-radius: var(--aurral-radius);
   box-shadow: var(--aurral-shadow-artwork);
   object-fit: contain;
 }
 
+.artwork-lightbox__image[hidden] {
+  display: none;
+}
+
 .artwork-lightbox__close {
   position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
-  background: var(--aurral-overlay-raised);
-  color: var(--aurral-text);
+  right: calc(-1 * var(--close-overhang));
+  bottom: 100%;
+  width: var(--close-size);
+  height: var(--close-size);
+  padding: 0;
+  border-radius: var(--aurral-radius-round);
+  color: color-mix(in srgb, var(--aurral-text) 60%, var(--aurral-text-muted));
+}
+
+.artwork-lightbox__close svg {
+  width: var(--close-icon-size);
+  height: var(--close-icon-size);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .artwork-lightbox__close:hover {
+    color: var(--aurral-text);
+  }
+}
+
+@media (orientation: landscape) {
+  .artwork-lightbox {
+    --cover-max-height: min(
+      92dvh,
+      calc(100dvh - 2 * (env(safe-area-inset-top) + var(--close-overhang)))
+    );
+  }
+
+  .artwork-lightbox__panel {
+    max-width: calc(100vw - 2 * (var(--close-right) + var(--close-size)));
+  }
+
+  .artwork-lightbox__close {
+    inset: calc(-1 * var(--close-overhang)) auto auto 100%;
+  }
 }

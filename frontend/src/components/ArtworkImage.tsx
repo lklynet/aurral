@@ -6,6 +6,7 @@ type ImageProps = ComponentProps<"img">;
 type ArtworkImageProps = ImageProps & {
   src: string;
   thumbnail?: boolean;
+  variants?: readonly ImageSize[];
   sizes?: string;
   loading?: ImageProps["loading"];
   decoding?: ImageProps["decoding"];
@@ -68,12 +69,12 @@ function DirectImage({ src, onError, ...props }: ImageProps & { src: string }) {
 export default function ArtworkImage({
   src,
   thumbnail = true,
+  variants = thumbnail ? imageSizes(src) : [],
   sizes = "200px",
   loading = "lazy",
   decoding = "async",
   ...props
 }: ArtworkImageProps) {
-  const variants = thumbnail ? imageSizes(src) : [];
   if (variants.length) {
     return (
       <ThumbnailImage

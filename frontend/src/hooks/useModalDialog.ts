@@ -173,10 +173,11 @@ export function useModalDialog({
       }
 
       const activeElement = document.activeElement;
-      if (event.shiftKey && (activeElement === first || !dialog.contains(activeElement))) {
+      const focusOnContainerOrOutside = activeElement === dialog || !dialog.contains(activeElement);
+      if (event.shiftKey && (activeElement === first || focusOnContainerOrOutside)) {
         event.preventDefault();
         last.focus({ preventScroll: true });
-      } else if (!event.shiftKey && (activeElement === last || !dialog.contains(activeElement))) {
+      } else if (!event.shiftKey && (activeElement === last || focusOnContainerOrOutside)) {
         event.preventDefault();
         first.focus({ preventScroll: true });
       }

@@ -102,7 +102,6 @@ export function Cover({
   compact = false,
   thumbnail = true,
   onError,
-  onOpen,
 }: {
   src?: string | null;
   label?: string | null;
@@ -110,11 +109,10 @@ export function Cover({
   compact?: boolean;
   thumbnail?: boolean;
   onError?: () => void;
-  onOpen?: (src: string, label: string) => void;
 }) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   if (src && src !== failedSrc) {
-    const image = (
+    return (
       <ArtworkImage
         src={src}
         thumbnail={thumbnail}
@@ -126,17 +124,6 @@ export function Cover({
           onError?.();
         }}
       />
-    );
-    if (!onOpen) return image;
-    return (
-      <button
-        type="button"
-        className="native-library-cover-button"
-        onClick={() => onOpen(src, label || "")}
-        aria-label={`View ${label || "album"} artwork larger`}
-      >
-        {image}
-      </button>
     );
   }
 
