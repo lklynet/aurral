@@ -75,6 +75,14 @@ test("artwork from fanart, Deezer, the Lidarr image cache, AudioDB artist photos
     "https://imagecache.lidarr.audio/v1/caa/r/1.jpg",
   );
   assert.equal(
+    originalImage("https://cdn-images.dzcdn.net/images/cover/638e69b9/250x250-000000-80-0-0.jpg"),
+    "https://cdn-images.dzcdn.net/images/cover/638e69b9/1000x1000-000000-80-0-0.jpg",
+  );
+  assert.equal(
+    originalImage("https://cdn-images.dzcdn.net/images/cover/638e69b9/1400x1400-000000-80-0-0.jpg"),
+    "https://cdn-images.dzcdn.net/images/cover/638e69b9/1400x1400-000000-80-0-0.jpg",
+  );
+  assert.equal(
     originalImage("https://assets.fanart.tv/fanart/plaid-4fe86e55a9e8e.jpg"),
     "https://assets.fanart.tv/fanart/plaid-4fe86e55a9e8e.jpg",
   );
