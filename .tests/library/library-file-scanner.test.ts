@@ -83,3 +83,17 @@ test("a Various Artists album files under Various Artists when only its tracks c
     identity({ musicbrainz_albumartistid: VARIOUS_ARTISTS_MBID }),
   );
 });
+
+test("an album artist tag holding several NUL-separated values names the album for its first artist", () => {
+  const names = (albumartist: string) => {
+    const { artistName, albumArtist } = buildMetadataRecord(
+      { common: { artist: "Proxy", artists: ["Proxy"], albumartist, albumartists: [albumartist] } },
+      "/music/Proxy/Bubble Bite EP/01 Bubble.mp3",
+      "/music",
+    );
+    return [artistName, albumArtist];
+  };
+
+  assert.deepEqual(names("Proxy\0﻿\0﻿"), ["Proxy", "Proxy"]);
+  assert.deepEqual(names("Mason Maynard\0﻿Green Velvet"), ["Mason Maynard", "Mason Maynard"]);
+});

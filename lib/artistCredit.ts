@@ -8,10 +8,18 @@ export const formatArtistCredit = (credit: ArtistCredit) =>
 
 const text = (value: unknown) => String(value ?? "").trim();
 
+// ID3v2.3 has no multi-value frames, but tag editors still separate values
+// with NUL, each value starting with its own byte-order mark, which trim drops.
+export const tagValues = (value: unknown) =>
+  (Array.isArray(value) ? value : [value])
+    .flatMap((entry) => text(entry).split("\0"))
+    .map(text)
+    .filter(Boolean);
+
 export const artistNames = (value: unknown) => {
   const seen = new Set<string>();
-  return (Array.isArray(value) ? value : [value])
-    .flatMap((entry) => text(entry).split(";"))
+  return tagValues(value)
+    .flatMap((entry) => entry.split(";"))
     .map(text)
     .filter((name) => {
       const key = name.toLocaleLowerCase();
