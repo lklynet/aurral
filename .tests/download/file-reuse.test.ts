@@ -632,6 +632,7 @@ test("playlists use an indexed Library file whose folder and name Aurral did not
     albumId: album.id,
     source: "aurral",
     path: filePath,
+    quality: { format: "MPEG 1 Layer 3", bitrate: 320_000, sampleRate: 44100 },
   });
 
   const result = await reuseTrackForPlaylist(
@@ -650,6 +651,7 @@ test("playlists use an indexed Library file whose folder and name Aurral did not
   const job = trackedJob(downloadTracker, result.jobId);
   assert.equal(job.externalPath ?? null, null);
   assert.equal(job.reusedLibraryFile, true);
+  assert.equal(job.qualityTier, "mp3-320");
   assert.deepEqual([job.artistMbid, job.albumMbid], ["hellyeah", "undeniable"]);
 });
 

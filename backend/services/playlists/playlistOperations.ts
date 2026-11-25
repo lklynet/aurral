@@ -25,6 +25,7 @@ import {
   fileExists,
   removePlaylistFileIfUnshared,
   reuseTrackForPlaylist,
+  takeIndexedFileQuality,
 } from "../downloadJobs/fileReuse.ts";
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import { resolveAurralOwnedTrackJob } from "../libraryTrackResearchService.ts";
@@ -242,6 +243,7 @@ const linkIndexedFiles = async (tracks: unknown, ownerUserId: unknown) => {
     downloadTracker.setDone(jobId, finalPath, input.albumName, external ? file.path : null, {
       reusedLibraryFile: true,
     });
+    takeIndexedFileQuality(finalPath, [jobId]);
     libraryJobsByPath.set(finalPath, downloadTracker.getJob(jobId)!);
     linked.push({ ...input, canonicalJobId: jobId });
   }
