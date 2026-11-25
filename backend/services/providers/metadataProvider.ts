@@ -6,6 +6,7 @@ import { http, isTransientNetworkError } from "../../../lib/http.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import createCache from "../apiClients/simpleCache.ts";
 import createRateLimiter from "../apiClients/rateLimiter.ts";
+import { createOutagePause } from "../apiClients/outagePause.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { APP_NAME, APP_VERSION, DEFAULT_METADATA_BASE_URL } from "../../config/constants.ts";
 import {
@@ -230,16 +231,19 @@ const musicbrainzAlbumSearchCache = createCache<v.InferOutput<typeof releaseGrou
 );
 const providerInflightRequests: InflightRequests = new Map();
 const METADATA_MAX_RETRIES = 1;
+const metadataPause = createOutagePause("AurralBrainz");
 // The search service allows each address 60 uncached searches a minute. Work
 // that no request is waiting on, such as scans, imports and downloads, takes
 // turns that add up to half of that across every process. The rest is left for
 // searches sent while serving a request, which are never held back.
 const backgroundSearchLimiter = createRateLimiter(SEARCH_BACKGROUND_INTERVAL_MS, {
+  check: metadataPause.check,
   shared: "metadata-search",
 });
 // A job that reads many files at once finds them all stale on the same day.
 // Nothing waits on those refreshes, so they go out one at a time.
 const backgroundRevalidationLimiter = createRateLimiter(REVALIDATION_BACKGROUND_INTERVAL_MS, {
+  check: metadataPause.check,
   shared: "metadata-revalidation",
 });
 
@@ -516,35 +520,36 @@ function refreshMetadata<Schema extends v.GenericSchema>(
         if (sharedSignal.aborted) {
           throw sharedSignal.reason || new Error("The operation was aborted");
         }
-        const send = () => {
-          const sentAt = Date.now();
-          return http
-            .get(`${baseUrl}${path}`, {
-              query: params,
-              timeoutMs: METADATA_REQUEST_TIMEOUT_MS,
-              bodyTimeoutMs: METADATA_RESPONSE_BODY_TIMEOUT_MS,
-              headers: {
-                "User-Agent": getUserAgent(),
-              },
-              signal: sharedSignal,
-            })
-            .then(
-              (response) => {
-                countMetadataCall(baseUrl, path, response.status, sentAt);
-                return response;
-              },
-              (error: unknown) => {
-                const failure = asAppError(error);
-                countMetadataCall(
-                  baseUrl,
-                  path,
-                  failure?.response?.status ?? failure?.code ?? "error",
-                  sentAt,
-                );
-                throw error;
-              },
-            );
-        };
+        const send = () =>
+          metadataPause.run(() => {
+            const sentAt = Date.now();
+            return http
+              .get(`${baseUrl}${path}`, {
+                query: params,
+                timeoutMs: METADATA_REQUEST_TIMEOUT_MS,
+                bodyTimeoutMs: METADATA_RESPONSE_BODY_TIMEOUT_MS,
+                headers: {
+                  "User-Agent": getUserAgent(),
+                },
+                signal: sharedSignal,
+              })
+              .then(
+                (response) => {
+                  countMetadataCall(baseUrl, path, response.status, sentAt);
+                  return response;
+                },
+                (error: unknown) => {
+                  const failure = asAppError(error);
+                  countMetadataCall(
+                    baseUrl,
+                    path,
+                    failure?.response?.status ?? failure?.code ?? "error",
+                    sentAt,
+                  );
+                  throw error;
+                },
+              );
+          });
         try {
           const response = await (limiter
             ? limiter.schedule(send, { signal: sharedSignal })
