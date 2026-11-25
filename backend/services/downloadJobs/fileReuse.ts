@@ -492,13 +492,12 @@ async function findLibraryFolderSource(
 ): Promise<ReuseSource | null> {
   const { label, external } = FOLDER_SOURCES[source];
   const strictAlbum = options.targetPlaylistType === "library";
-  const { artists, albums, tracks } = buildLibraryReadModel(
-    getLibraryForArtistReferences({
-      source,
-      availableOnly: false,
-      references: [track?.artistMbid, ...creditedNames(track?.artistName)],
-    }),
-  );
+  const library = getLibraryForArtistReferences({
+    source,
+    availableOnly: false,
+    references: [track?.artistMbid, ...creditedNames(track?.artistName)],
+  });
+  const { artists, albums, tracks } = buildLibraryReadModel(library);
   const artist =
     findLibraryArtist(artists, track?.artistMbid) || findMatchingArtist(artists, track);
   if (!artist) {
@@ -518,6 +517,15 @@ async function findLibraryFolderSource(
     return null;
   }
 
+  const credit = normalizeText(track?.artistName);
+  const splitCredit =
+    normalizeText(artist.artistName || artist.name) !== credit &&
+    !(track?.artistMbid && artist.mbid === track.artistMbid);
+  const creditFits = (matched: ReadTrack) =>
+    !splitCredit ||
+    Boolean(track?.trackMbid && matched.mbid === track.trackMbid) ||
+    normalizeText(library.tracks.find((entry) => entry.id === matched.id)?.artistName) === credit;
+
   let foundTitleOnAnyAlbum = false;
   const rankedAlbums = rankAlbums(artistAlbums, track);
   const albumsToCheck = strictAlbum
@@ -531,7 +539,7 @@ async function findLibraryFolderSource(
   for (const album of albumsToCheck) {
     const albumTracks = findLibraryTracksForAlbum(tracks, album.id);
     const matchedTrack = findMatchingTrack(albumTracks, track, strictAlbum);
-    if (!matchedTrack) continue;
+    if (!matchedTrack || !creditFits(matchedTrack)) continue;
     foundTitleOnAnyAlbum = true;
     if (matchedTrack.hasFile !== true || !matchedTrack.path) {
       console.log(

@@ -683,14 +683,24 @@ test("playlists use a Library file credited to several artists when the request 
     path: filePath,
   });
 
-  const result = await reuseTrackForPlaylist(
-    { artistName: "Artist A, Artist B", trackName: "Song", albumName: "Album" },
-    "static-playlist",
-    { downloadRoot, skipHistory: true },
-  );
+  const reuse = () =>
+    reuseTrackForPlaylist(
+      { artistName: "Artist A, Artist B", trackName: "Song", albumName: "Album" },
+      "static-playlist",
+      { downloadRoot, skipHistory: true },
+    );
 
+  const result = await reuse();
   assert.equal(result.reused, true);
   assert.equal(result.finalPath, filePath);
+
+  downloadTracker.clearAll();
+  libraryStore.upsertLibraryTrack({
+    identityKey: "name:artist a:album:1:1:song",
+    title: "Song",
+    artistName: "Artist A",
+  });
+  assert.equal((await reuse()).reused, false);
 });
 
 test("jobs follow the Library files a scan changed", async () => {
