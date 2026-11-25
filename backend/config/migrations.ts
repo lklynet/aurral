@@ -4,7 +4,8 @@ import { createAurral3Schema } from "./aurral-3-schema.ts";
 import { NOTIFICATION_EVENTS } from "../../lib/notificationEvents.ts";
 import { isRecord } from "../../lib/isRecord.ts";
 import { tagValues, trackArtistCreditFromTags } from "../../lib/artistCredit.ts";
-import type { LibraryTracksRow, SettingsRow, UsersRow } from "../db/rows.ts";
+import { yearFirstReleaseDate } from "../../lib/releaseDate.ts";
+import type { LibraryAlbumsRow, LibraryTracksRow, SettingsRow, UsersRow } from "../db/rows.ts";
 
 type Migration = (db: Database.Database) => void;
 
@@ -601,6 +602,21 @@ const dropAlbumArtistTagSeparators: Migration = (db) => {
   if (changed) db.prepare("DELETE FROM settings WHERE key = 'librarySearchIndexVersion'").run();
 };
 
+const storeReleaseDatesYearFirst: Migration = (db) => {
+  const rows = db
+    .prepare<[], Pick<LibraryAlbumsRow, "id" | "release_date">>(
+      "SELECT id, release_date FROM library_albums WHERE release_date GLOB '*[0-9][./-]*[0-9][./-][0-9][0-9][0-9][0-9]'",
+    )
+    .all();
+  const update = db.prepare<[string | null, number]>(
+    "UPDATE library_albums SET release_date = ? WHERE id = ?",
+  );
+  for (const row of rows) {
+    const date = yearFirstReleaseDate(row.release_date ?? "");
+    if (date !== row.release_date) update.run(date, row.id);
+  }
+};
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -640,6 +656,7 @@ export const migrations: Migration[] = [
   storeFileReleaseTags,
   storeHubAccountId,
   dropAlbumArtistTagSeparators,
+  storeReleaseDatesYearFirst,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

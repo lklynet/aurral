@@ -97,3 +97,21 @@ test("an album artist tag holding several NUL-separated values names the album f
   assert.deepEqual(names("Proxy\0﻿\0﻿"), ["Proxy", "Proxy"]);
   assert.deepEqual(names("Mason Maynard\0﻿Green Velvet"), ["Mason Maynard", "Mason Maynard"]);
 });
+
+test("a release date tagged day or month first is stored year first", () => {
+  const releaseDate = (date: string) =>
+    buildMetadataRecord({ common: { date } }, "/music/Artist/Album/01 Song.mp3", "/music")
+      .releaseDate;
+
+  assert.deepEqual(
+    ["25/03/2022", "03/25/2022", "25.03.2022", "05/04/2022", "2022-03-25", "Unknown", ""].map(
+      releaseDate,
+    ),
+    ["2022-03-25", "2022-03-25", "2022-03-25", "2022", "2022-03-25", "Unknown", null],
+  );
+  assert.equal(
+    buildMetadataRecord({ common: { year: 2022 } }, "/music/Artist/Album/01 Song.mp3", "/music")
+      .releaseDate,
+    "2022",
+  );
+});
