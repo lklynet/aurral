@@ -426,6 +426,15 @@ test("repairReusableTrackLinks scans after repairing a library track", async () 
   };
   const sourcePath = path.join(isolatedState.baseDir, "library-source.flac");
   await fs.writeFile(sourcePath, "audio");
+  libraryStore.upsertLibraryMediaFile({
+    trackId: libraryStore.upsertLibraryTrack({
+      identityKey: "recording:glory-box",
+      title: "Glory Box",
+    }).id,
+    source: "aurral",
+    path: sourcePath,
+    quality: { format: "FLAC", bitrate: 900_000, sampleRate: 44100, bitsPerSample: 16 },
+  });
   const missingPath = path.join(downloadRoot, "Portishead", "Dummy", "Glory Box.flac");
   const jobId = createTrackedJob(downloadTracker, track, "library");
   assert.ok(jobId != null);
@@ -444,6 +453,7 @@ test("repairReusableTrackLinks scans after repairing a library track", async () 
 
   assert.equal(result.repaired, 1);
   assert.equal(downloadTracker.getJob(jobId)?.finalPath, sourcePath);
+  assert.equal(downloadTracker.getJob(jobId)?.qualityTier, "flac-standard");
   assert.equal(scheduleScanLibrary.mock.calls.length, 1);
 });
 
@@ -632,6 +642,7 @@ test("playlists use an indexed Library file whose folder and name Aurral did not
     albumId: album.id,
     source: "aurral",
     path: filePath,
+    quality: { format: "MPEG 1 Layer 3", bitrate: 320_000, sampleRate: 44100 },
   });
 
   const result = await reuseTrackForPlaylist(
@@ -650,6 +661,7 @@ test("playlists use an indexed Library file whose folder and name Aurral did not
   const job = trackedJob(downloadTracker, result.jobId);
   assert.equal(job.externalPath ?? null, null);
   assert.equal(job.reusedLibraryFile, true);
+  assert.equal(job.qualityTier, "mp3-320");
   assert.deepEqual([job.artistMbid, job.albumMbid], ["hellyeah", "undeniable"]);
 });
 

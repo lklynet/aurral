@@ -280,6 +280,7 @@ test("an imported track links the Library file at its path even when its names d
   assert.equal(job.finalPath, libraryFile);
   assert.equal(job.artistName, "N.E.R.D");
   assert.equal(job.albumName, "Fly or Die");
+  assert.equal(job.qualityTier, "flac-standard");
 });
 
 test("an imported track does not link an indexed file that is gone from disk", async () => {

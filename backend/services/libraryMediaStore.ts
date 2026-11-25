@@ -2876,16 +2876,17 @@ export async function withLibraryScan<T extends LibraryScanCounts>(
   });
 }
 
-const libraryFileIdsStmt = db.prepare<
+const indexedLibraryFileStmt = db.prepare<
   [string],
-  {
+  Pick<LibraryMediaFilesRow, "path" | "quality_json" | "available"> & {
     artistName: string | null;
     artistMbid: string | null;
     albumMbid: string | null;
     trackMbid: string | null;
   }
 >(`
-  SELECT artist.name AS artistName, artist.mbid AS artistMbid,
+  SELECT media.path, media.quality_json, media.available,
+    artist.name AS artistName, artist.mbid AS artistMbid,
     COALESCE(NULLIF(album.release_group_mbid, ''), album.mbid) AS albumMbid,
     track.mbid AS trackMbid
   FROM library_media_files AS media
@@ -2900,10 +2901,10 @@ const libraryFileIdsStmt = db.prepare<
 `);
 
 // A compilation's album artist is not the artist of its tracks.
-export function getLibraryFileIds(path: string) {
-  const ids = libraryFileIdsStmt.get(normalizeText(path));
-  if (!ids) return null;
-  const { artistName, artistMbid, ...file } = ids;
+export function getIndexedLibraryFile(path: string) {
+  const indexed = indexedLibraryFileStmt.get(normalizeText(path));
+  if (!indexed) return null;
+  const { artistName, artistMbid, ...file } = indexed;
   return {
     ...file,
     artistMbid: isVariousArtistsCredit(artistName, artistMbid) ? null : artistMbid,

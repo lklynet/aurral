@@ -28,7 +28,7 @@ import {
 } from "../downloadJobs/fileReuse.ts";
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import { resolveAurralOwnedTrackJob } from "../libraryTrackResearchService.ts";
-import { isAurralOwnedPath } from "../qualityProfile.ts";
+import { classifyLibraryFileQuality, isAurralOwnedPath } from "../qualityProfile.ts";
 import { playlistManager } from "./playlistManager.ts";
 import { isAnyDownloadSourceConfigured } from "../downloadSourceService.ts";
 import { downloadWorker } from "../downloadJobs/downloadWorker.ts";
@@ -175,7 +175,7 @@ async function reuseSavedFlowTracks(flowId: string, jobIds: string[]) {
 
 const indexedFileStmt = db.prepare<
   [string],
-  Pick<LibraryMediaFilesRow, "path" | "source" | "duration_ms"> &
+  Pick<LibraryMediaFilesRow, "path" | "source" | "duration_ms" | "quality_json"> &
     Pick<LibraryTracksRow, "title"> &
     Partial<Pick<LibraryAlbumTracksRow, "track_number" | "disc_number">> & {
       track_mbid: string | null;
@@ -185,7 +185,7 @@ const indexedFileStmt = db.prepare<
       album_mbid: string | null;
     }
 >(`
-  SELECT media.path, media.source, media.duration_ms, track.title, track.mbid AS track_mbid,
+  SELECT media.path, media.source, media.duration_ms, media.quality_json, track.title, track.mbid AS track_mbid,
     COALESCE(track.artist_name, artist.name) AS artist_name,
     CASE WHEN track.artist_name IS NULL OR track.artist_name = artist.name THEN artist.mbid END AS artist_mbid,
     album.title AS album_title, album.release_group_mbid AS album_mbid,
@@ -241,6 +241,7 @@ const linkIndexedFiles = async (tracks: unknown, ownerUserId: unknown) => {
     const external = file.source === "readonly";
     downloadTracker.setDone(jobId, finalPath, input.albumName, external ? file.path : null, {
       reusedLibraryFile: true,
+      quality: classifyLibraryFileQuality(file),
     });
     libraryJobsByPath.set(finalPath, downloadTracker.getJob(jobId)!);
     linked.push({ ...input, canonicalJobId: jobId });
