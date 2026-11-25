@@ -764,7 +764,7 @@ test("upgrading keeps the track lists stored for an album's release and files", 
 test("upgrading keeps only the first of several NUL-separated album artist values", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  migrate(db, migrations.slice(0, -1));
+  migrate(db, migrations.slice(0, 37));
   db.prepare("INSERT INTO settings (key, value) VALUES ('librarySearchIndexVersion', '3')").run();
   db.prepare(
     `INSERT INTO library_artists (identity_key, name, created_at, updated_at)
@@ -790,5 +790,34 @@ test("upgrading keeps only the first of several NUL-separated album artist value
   assert.equal(
     db.prepare("SELECT value FROM settings WHERE key = 'librarySearchIndexVersion'").get(),
     undefined,
+  );
+});
+
+test("upgrading stores day-first album release dates year first", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, 38));
+  db.prepare(
+    `INSERT INTO library_artists (identity_key, name, created_at, updated_at)
+     VALUES ('name:artist:a', 'A', 1, 1)`,
+  ).run();
+  const insert = db.prepare<[string, string, string]>(
+    `INSERT INTO library_albums (identity_key, artist_id, title, release_date, created_at, updated_at)
+     VALUES (?, 1, ?, ?, 1, 1)`,
+  );
+  for (const [key, date] of [
+    ["day-first", "25/03/2022"],
+    ["ambiguous", "05/04/2022"],
+    ["iso", "2022-03-25"],
+    ["unknown", "Unknown"],
+  ] as const) {
+    insert.run(key, key, date);
+  }
+
+  migrate(db);
+
+  assert.deepEqual(
+    db.prepare("SELECT release_date FROM library_albums ORDER BY id").pluck().all(),
+    ["2022-03-25", "2022", "2022-03-25", "Unknown"],
   );
 });

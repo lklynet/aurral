@@ -40,6 +40,7 @@ import {
 } from "./downloadUtils.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { isPathWithin } from "./libraryFolders.ts";
+import { yearFirstReleaseDate } from "../../lib/releaseDate.ts";
 import {
   tagValues,
   trackArtistCreditFromTags,
@@ -226,8 +227,15 @@ function buildMetadataRecord(metadata: ScannedMetadata, filePath: string, rootPa
     trackNumber,
     discNumber,
     albumArtist: taggedAlbumArtist || artistName,
-    releaseDate:
-      text(common.originaldate || common.originalyear || common.releasedate || common.date) || null,
+    releaseDate: yearFirstReleaseDate(
+      text(
+        common.originaldate ||
+          common.originalyear ||
+          common.releasedate ||
+          common.date ||
+          common.year,
+      ),
+    ),
     artistMetadata: { tags: common },
     albumMetadata: { tags: common },
     trackMetadata: { tags: common },
