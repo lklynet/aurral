@@ -426,6 +426,13 @@ test("repairReusableTrackLinks scans after repairing a library track", async () 
   };
   const sourcePath = path.join(isolatedState.baseDir, "library-source.flac");
   await fs.writeFile(sourcePath, "audio");
+  libraryStore.upsertLibraryMediaFile({
+    trackId: libraryStore.upsertLibraryTrack({ identityKey: "recording:glory-box", title: "Glory Box" })
+      .id,
+    source: "aurral",
+    path: sourcePath,
+    quality: { format: "FLAC", bitrate: 900_000, sampleRate: 44100, bitsPerSample: 16 },
+  });
   const missingPath = path.join(downloadRoot, "Portishead", "Dummy", "Glory Box.flac");
   const jobId = createTrackedJob(downloadTracker, track, "library");
   assert.ok(jobId != null);
@@ -444,6 +451,7 @@ test("repairReusableTrackLinks scans after repairing a library track", async () 
 
   assert.equal(result.repaired, 1);
   assert.equal(downloadTracker.getJob(jobId)?.finalPath, sourcePath);
+  assert.equal(downloadTracker.getJob(jobId)?.qualityTier, "flac-standard");
   assert.equal(scheduleScanLibrary.mock.calls.length, 1);
 });
 

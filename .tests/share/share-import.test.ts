@@ -62,6 +62,7 @@ media.upsertLibraryMediaFile({
   path: localPath,
   format: "flac",
   size: 14,
+  quality: { format: "FLAC", bitrate: 900_000, sampleRate: 44100, bitsPerSample: 16 },
 });
 
 const manifest = parseShareManifest({
@@ -146,6 +147,7 @@ test("details-only playlist imports keep order and repeated entries without queu
     ["done", "saved", "saved", "saved"],
   );
   assert.equal(jobs[0]?.finalPath, localPath);
+  assert.equal(jobs[0]?.qualityTier, "flac-standard");
   assert.equal(downloadTracker.getNextPending(), null);
   assert.equal(db.prepare("SELECT 1 FROM share_downloads").get(), undefined);
 });
