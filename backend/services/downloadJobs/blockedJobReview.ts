@@ -5,10 +5,12 @@ import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import { getActiveDownloadAttemptId, withPipelineCommitLock } from "./downloadCancellation.ts";
 import { buildTrackDestination, resolveDownloadRoot } from "../downloadPaths.ts";
 import {
+  buildResolvedJobTrack,
   commitDownloadedFile,
   joinUnderRoot,
   buildTrackFileName,
   sanitizePathPart,
+  writeImportedFileMetadata,
 } from "../downloadUtils.ts";
 import { recordPipelineJobSuccess, refreshCompletedPipelinePlaylist } from "../pipelineHelpers.ts";
 import { classifyQualityJob } from "../qualityProfileService.ts";
@@ -75,6 +77,10 @@ export async function approveBlockedJob(jobId: string) {
     async () => {
       if (!getBlockedJob(job.id)) return null;
       const committedPath = await commitDownloadedFile(sourcePath, path.join(finalDir, finalName));
+      await writeImportedFileMetadata(committedPath, buildResolvedJobTrack(job), {
+        source: job.downloadSource || "downloads",
+        jobId: job.id,
+      });
       const recorded = await recordPipelineJobSuccess({
         downloadTracker,
         job,

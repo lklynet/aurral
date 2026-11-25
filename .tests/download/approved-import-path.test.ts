@@ -16,6 +16,7 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 import { requireFixture } from "../playlists/fixtures.ts";
+import { writeFlacFixture } from "../helpers/flacFixture.ts";
 
 const [
   isolatedState,
@@ -39,6 +40,7 @@ const [
   { processSystemTask },
   { refreshCompletedPipelinePlaylist },
   { systemTaskSchema },
+  { scanConfiguredLibrary },
 ] = await setupIsolatedBackend(
   "approved-import-path",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -61,6 +63,7 @@ const [
   () => import("../../backend/services/systemTaskWorker.ts"),
   () => import("../../backend/services/pipelineHelpers.ts"),
   () => import("../../backend/services/jobs/systemTasks.ts"),
+  () => import("../../backend/services/libraryIndexService.ts"),
 );
 
 function takePlaylistSyncs() {
@@ -242,19 +245,21 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("approving a reviewed download commits it inside the managed playlist library", async () => {
+test("approving a reviewed download commits it inside the managed playlist library, tagged from its job", async () => {
   const playlistId = "40ae99ad-92b0-48c6-93e7-7b39e76703ea";
+  const artistMbid = "baaf92f5-f2b2-4f51-9723-abed41a257f8";
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Reviewed",
     tracks: [{ artistName: "Artist", trackName: "Track", albumName: "Album" }],
   });
-  const sourcePath = path.join(isolatedState.baseDir, "review", "Track.flac");
-  await fs.mkdir(path.dirname(sourcePath), { recursive: true });
-  await fs.writeFile(sourcePath, "reviewed audio");
+  const sourcePath = await writeFlacFixture(
+    path.join(isolatedState.baseDir, "review", "Track.flac"),
+    { album_artist: "Uploader", ARTIST: "Uploader", ALBUM: "Uploader Album", TITLE: "Track" },
+  );
   const jobId = createTrackedJob(
     downloadTracker,
-    { artistName: "Artist", trackName: "Track", albumName: "Album" },
+    { artistName: "Artist", artistMbid, trackName: "Track", albumName: "Album" },
     playlistId,
   );
   assert.ok(jobId != null);
@@ -267,7 +272,10 @@ test("approving a reviewed download commits it inside the managed playlist libra
   assert.equal(response.status, 200, JSON.stringify(payload));
   assert.equal(payload.path, expectedPath);
   assert.equal(downloadTracker.getJob(jobId)?.finalPath, expectedPath);
-  assert.equal(await fs.readFile(expectedPath, "utf8"), "reviewed audio");
+  await scanConfiguredLibrary({ includeReadOnly: false, changedPaths: [expectedPath] });
+  assert.deepEqual(db.prepare("SELECT name FROM library_artists WHERE mbid = ?").all(artistMbid), [
+    { name: "Artist" },
+  ]);
   await waitForApprovalFollowUps();
   await assert.rejects(fs.access(path.join(playlistManager.libraryRoot, "Reviewed.m3u")));
 });
