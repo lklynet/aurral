@@ -64,6 +64,8 @@ import { OwnedTrackMark, useReleasePreviewQueue, useReleaseTracks } from "./rele
 import { useAlbumDownload } from "./useAlbumDownload.ts";
 import { useLibraryAlbumState } from "./useLibraryAlbumState.ts";
 import { useReleaseCover } from "./useReleaseCover.ts";
+import ArtworkLightbox from "../../components/ArtworkLightbox.tsx";
+import { useArtworkLightbox } from "../../hooks/useArtworkLightbox.ts";
 import { useAlbumEditions } from "./useAlbumEditions.tsx";
 import StatePanel from "../../components/StatePanel";
 import { getApiErrorMessage } from "../../utils/api/errors.ts";
@@ -244,6 +246,7 @@ function AlbumPage() {
     enabled: !libraryLoading && !libraryCover,
   });
   const artwork = libraryCover || cover.src;
+  const lightbox = useArtworkLightbox();
   const playbackSource = useMemo(
     () => ({
       type: "release",
@@ -592,6 +595,7 @@ function AlbumPage() {
               label={title}
               thumbnail={false}
               onError={libraryCover ? undefined : cover.onError}
+              onOpen={lightbox.open}
             />
           )
         }
@@ -722,6 +726,7 @@ function AlbumPage() {
           <span>No tracks available</span>
         </div>
       )}
+      <ArtworkLightbox artwork={lightbox.artwork} onClose={lightbox.close} />
     </CollectionPage>
   );
 }

@@ -81,6 +81,7 @@
   --aurral-scheduled: light-dark(#a16207, #facc15);
   --aurral-ring: light-dark(#17171775, #ffffff75);
   --aurral-scrim: light-dark(#e5e7ebb8, #000000b8);
+  --aurral-lightbox-scrim: light-dark(#000000d9, #000000e6);
   --aurral-border: light-dark(#17171714, #ffffff14);
   --aurral-border-strong: light-dark(#17171724, #ffffff1c);
   --aurral-border-overlay: light-dark(#17171724, #252525);
@@ -8968,6 +8969,28 @@ button.native-library-genre-row:focus-visible {
   background: var(--aurral-surface-raised);
 }
 
+.native-library-cover-button {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+.native-library-cover-button:focus-visible {
+  outline: 2px solid var(--aurral-ring);
+  outline-offset: -2px;
+}
+
+.native-library-cover-button img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .native-library-detail__cover > img,
 .native-library-detail__cover > .native-library-cover-fallback {
   display: block;
@@ -15778,4 +15801,44 @@ button.section-show-all {
   .app-mobile-menu {
     transform: none;
   }
+}
+
+.artwork-lightbox {
+  padding: 1rem;
+  background: var(--aurral-lightbox-scrim);
+}
+
+@media (max-width: 767px) {
+  body :is(.artist-modal-backdrop.artwork-lightbox) {
+    align-items: center;
+    padding: 1rem;
+  }
+}
+
+.artwork-lightbox__panel {
+  position: relative;
+  display: flex;
+  min-width: min(60vw, 18rem);
+  min-height: min(60dvh, 18rem);
+  max-width: min(92vw, 1200px);
+  max-height: 92dvh;
+  align-items: center;
+  justify-content: center;
+}
+
+.artwork-lightbox__image {
+  display: block;
+  max-width: 100%;
+  max-height: 92dvh;
+  border-radius: var(--aurral-radius);
+  box-shadow: var(--aurral-shadow-artwork);
+  object-fit: contain;
+}
+
+.artwork-lightbox__close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: var(--aurral-overlay-raised);
+  color: var(--aurral-text);
 }
