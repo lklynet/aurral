@@ -1012,6 +1012,7 @@ export async function reuseTrackForPlaylist(
   });
   if (!source) return { reused: false, reason };
 
+  const library = getIndexedLibraryFile(source.sourcePath);
   const finalPath =
     source.sourceType === "aurral" && targetPlaylistType === "library"
       ? (await adoptFileIntoPlaylist(source.sourcePath, targetPlaylistType, downloadRoot, {
@@ -1026,7 +1027,6 @@ export async function reuseTrackForPlaylist(
   if (!jobId) {
     return { reused: false, reason: "Failed to create reuse job" };
   }
-  const library = getIndexedLibraryFile(source.sourcePath);
   downloadTracker.setDone(
     jobId,
     finalPath,
