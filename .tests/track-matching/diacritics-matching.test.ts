@@ -62,6 +62,12 @@ test("scoreTextMatch treats an accent difference as an exact match", () => {
   assert.equal(scoreTextMatch("Un Canto a Galicia", "Un canto a Galícia", matcher), 100);
 });
 
+test("scoreTextMatch ranks the same words in another order below the exact title", () => {
+  for (const options of [matcher, null]) {
+    assert.ok(scoreTextMatch("2/1", "1/2", options) < scoreTextMatch("1/2", "1/2", options));
+  }
+});
+
 test("scoreTextMatch matches a title written only in emoji by the same emoji", () => {
   for (const options of [matcher, null]) {
     assert.equal(scoreTextMatch("👋", "👋", options), 100);

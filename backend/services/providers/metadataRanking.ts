@@ -60,13 +60,6 @@ function normalizeText(value: unknown) {
     .trim();
 }
 
-function splitSearchWords(value: unknown) {
-  return normalizeText(value)
-    .split(" ")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
 export function getNormalizedText(value: unknown) {
   return normalizeText(value);
 }
@@ -109,13 +102,6 @@ export function normalizeTitle(value: unknown, { extended = false }: { extended?
     .join(" ");
 }
 
-export function splitWords(value: unknown, options?: { extended?: boolean }) {
-  return normalizeReleaseText(value, options)
-    .split(" ")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
 export function symbolText(value: unknown) {
   return String(value || "").replace(/[^\p{S}\u200D\u{E0020}-\u{E007F}]+/gu, "");
 }
@@ -125,28 +111,25 @@ function symbolScore(left: unknown, right: unknown) {
   return symbols && symbols === symbolText(right) ? 100 : 0;
 }
 
-function scoreReleaseTextMatch(left: unknown, right: unknown, options: { extended?: boolean }) {
-  const a = normalizeReleaseText(left, options);
-  const b = normalizeReleaseText(right, options);
+function scoreNormalizedText(a: string, b: string, left: unknown, right: unknown) {
   if (!a && !b) return symbolScore(left, right);
   if (!a || !b) return 0;
   if (a === b) return 100;
+  const aWords = a.split(" ");
+  const bWords = b.split(" ");
   if (a.includes(b) || b.includes(a)) {
-    const aWords = a.split(" ").filter(Boolean).length;
-    const bWords = b.split(" ").filter(Boolean).length;
-    const ratio = Math.min(aWords, bWords) / Math.max(aWords, bWords, 1);
+    const ratio = Math.min(aWords.length, bWords.length) / Math.max(aWords.length, bWords.length);
     if (ratio >= 0.6) return 92;
     if (ratio >= 0.25) return 70;
     return 45;
   }
-  const leftWords = new Set(splitWords(a, options));
-  const rightWords = new Set(splitWords(b, options));
-  if (leftWords.size === 0 || rightWords.size === 0) return 0;
+  const leftWords = new Set(aWords);
+  const rightWords = new Set(bWords);
   let overlap = 0;
   for (const word of leftWords) {
     if (rightWords.has(word)) overlap += 1;
   }
-  return Math.round(((2 * overlap) / Math.max(1, leftWords.size + rightWords.size)) * 100);
+  return Math.min(99, Math.round(((2 * overlap) / (leftWords.size + rightWords.size)) * 100));
 }
 
 export function scoreTextMatch(
@@ -154,31 +137,14 @@ export function scoreTextMatch(
   right: unknown,
   options?: { extended?: boolean } | null,
 ) {
-  if (options != null) {
-    return scoreReleaseTextMatch(left, right, options);
-  }
-  const a = normalizeText(left);
-  const b = normalizeText(right);
-  if (!a && !b) return symbolScore(left, right);
-  if (!a || !b) return 0;
-  if (a === b) return 100;
-  if (a.includes(b) || b.includes(a)) {
-    const aWords = a.split(" ").filter(Boolean).length;
-    const bWords = b.split(" ").filter(Boolean).length;
-    const wordRatio = Math.min(aWords, bWords) / Math.max(aWords, bWords, 1);
-    if (wordRatio >= 0.6) return 92;
-    if (wordRatio >= 0.25) return 70;
-    return 45;
-  }
-  const leftWords = new Set(splitSearchWords(a));
-  const rightWords = new Set(splitSearchWords(b));
-  if (leftWords.size === 0 || rightWords.size === 0) return 0;
-  let overlap = 0;
-  for (const word of leftWords) {
-    if (rightWords.has(word)) overlap += 1;
-  }
-  const ratio = (2 * overlap) / Math.max(1, leftWords.size + rightWords.size);
-  return Math.round(ratio * 100);
+  return options != null
+    ? scoreNormalizedText(
+        normalizeReleaseText(left, options),
+        normalizeReleaseText(right, options),
+        left,
+        right,
+      )
+    : scoreNormalizedText(normalizeText(left), normalizeText(right), left, right);
 }
 
 function positiveMs(value: unknown) {
