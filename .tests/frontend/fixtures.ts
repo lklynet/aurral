@@ -64,5 +64,6 @@ export const activityRequest = (overrides: Partial<ActivityRequest> = {}): Activ
   upgrade: null,
   cause: null,
   inQueue: false,
+  jobRemoved: false,
   ...overrides,
 });

@@ -379,6 +379,7 @@ export interface RequestItem {
   upgrade: TrackUpgrade | null;
   cause: ActivityCause | null;
   inQueue: boolean;
+  jobRemoved: boolean;
 }
 
 type HistoryRequestOptions = {
@@ -390,6 +391,7 @@ type HistoryRequestOptions = {
   libraryAlbumId?: string | null;
   requestGroupId?: string | null;
   cause?: ActivityCause | null;
+  jobRemoved?: boolean;
 };
 
 export const toHistoryRequestItem = (
@@ -446,6 +448,7 @@ export const toHistoryRequestItem = (
     releaseTitle,
     upgrade: entry.metadata?.upgrade || null,
     cause: options.cause ?? null,
+    jobRemoved: options.jobRemoved ?? false,
     inQueue:
       entry.status === "processing" || entry.status === "pending" || entry.status === "blocked",
   };
@@ -553,7 +556,7 @@ export const getAurralHistoryRequests = async (user: RequesterUser | null = null
     const albumGrabId = entry.metadata?.albumGrabId;
     const manifest = albumGrabId ? expanded.manifests.get(albumGrabId) : undefined;
     const albumMbid = job?.albumMbid || entry.metadata?.albumMbid || manifest?.albumMbid || null;
-    return [{ entry, job, manifest, albumMbid }];
+    return [{ entry, job, jobId, manifest, albumMbid }];
   });
   const queuedAlbums = queuedAlbumGrabs(
     visible.flatMap(({ entry, job, manifest }) =>
@@ -566,7 +569,7 @@ export const getAurralHistoryRequests = async (user: RequesterUser | null = null
     ),
   );
   const describeCause = causeDescriber();
-  return visible.map(({ entry, job, manifest: grab, albumMbid }) => {
+  return visible.map(({ entry, job, jobId, manifest: grab, albumMbid }) => {
     const manifest = grab ?? (job ? queuedAlbums.get(job.id) : undefined);
     if (entry.kind === "track_download" && job) {
       entry.metadata = {
@@ -612,6 +615,7 @@ export const getAurralHistoryRequests = async (user: RequesterUser | null = null
       requestGroupId: job?.requestGroupId || manifest?.requestGroupId,
       albumGrab: manifest ? { ...manifest, libraryAlbumId: libraryAlbumId || null } : null,
       cause: entry.kind === "track_download" && job ? describeCause(downloadCause(job)) : null,
+      jobRemoved: entry.kind === "track_download" && Boolean(jobId) && !job,
     });
   });
 };

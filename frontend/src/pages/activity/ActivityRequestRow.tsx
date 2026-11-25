@@ -123,16 +123,10 @@ export function ActivityRowActions({
   const isDenying = reviewingJob === "deny";
   const activeControl = request.jobId ? controllingJobs[request.jobId] : undefined;
   const canCancel = isCancelableDownload(request);
+  const hasJob = request.kind === "track_download" && !!request.jobId && !request.jobRemoved;
   const canRetry =
-    request.kind === "track_download" &&
-    !!request.jobId &&
-    ["pending", "processing", "failed", "cancelled"].includes(request.status) &&
-    !blocked;
-  const canManualSearch =
-    request.kind === "track_download" &&
-    !!request.jobId &&
-    request.status === "failed" &&
-    !request.upgrade;
+    hasJob && ["pending", "processing", "failed", "cancelled"].includes(request.status) && !blocked;
+  const canManualSearch = hasJob && request.status === "failed" && !request.upgrade;
   const isThisPlaying = currentTrack?.id === String(request.jobId) && isPlaying;
 
   return (

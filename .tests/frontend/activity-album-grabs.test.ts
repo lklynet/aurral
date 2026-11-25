@@ -73,11 +73,21 @@ test("an album grab keeps completed tracks inside its queue row until every trac
   assert.equal(matchesActivityView(row, "queue"), true);
   assert.equal(matchesActivityView(row, "history"), false);
   const [done] = groupAlbumGrabRequests(
-    tracks.map((track) => ({ ...track, status: "completed", completedAt: "2026-09-29T15:08:00Z" })),
+    tracks.map((track, index) => ({
+      ...track,
+      status: "completed",
+      completedAt: "2026-09-29T15:08:00Z",
+      jobRemoved: index === 0,
+    })),
   );
   assert.ok(done !== undefined);
   assert.equal(done.id, row.id);
   assert.equal(done.statusLabel, "Completed");
+  assert.equal(done.jobRemoved, false);
+  assert.deepEqual(
+    done.children?.map((child) => child.jobRemoved),
+    [true, false, false],
+  );
   assert.equal(matchesActivityView(done, "history"), true);
   assert.equal(done.requestedAt, "2026-09-29T15:06:00Z");
   assert.equal(done.completedAt, "2026-09-29T15:08:00.000Z");
