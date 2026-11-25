@@ -18,7 +18,7 @@ const [
   isolatedState,
   { prowlarrClient },
   { downloadTracker },
-  { processSourcePipelinePayload },
+  { albumOf, processSourcePipelinePayload, resolveTrack },
   { usenetSource, tidarrSource },
   { nzbgetClient },
   { SabnzbdClient, sabnzbdClient },
@@ -303,7 +303,7 @@ async function searchUntilDone(payload: UsenetPayload) {
   return result;
 }
 
-test("Usenet searches like Lidarr: a music search where supported, then cleaned text", async () => {
+test("Usenet sends Prowlarr a music search where supported, then cleaned text", async () => {
   const requests: { query: string | null; type: string | null; indexerIds: string[] }[] = [];
   const server = await createMockHttpServer((req, res) => {
     const url = new URL(req.url || "/", "http://mock");
@@ -336,7 +336,13 @@ test("Usenet searches like Lidarr: a music search where supported, then cleaned 
         type: url.searchParams.get("type"),
         indexerIds: url.searchParams.getAll("indexerIds"),
       });
-      sendJson(res, 200, []);
+      const release = {
+        guid: "normal-isnt",
+        title: "Puscifer - Normal Isnt FLAC",
+        protocol: "usenet",
+        downloadUrl: "/1",
+      };
+      sendJson(res, 200, url.searchParams.get("query") === "Puscifer Normal Isnt" ? [release] : []);
       return;
     }
     sendJson(res, 404, {});
@@ -357,7 +363,7 @@ test("Usenet searches like Lidarr: a music search where supported, then cleaned 
         releaseYear: "1980",
         durationMs: 312000,
       },
-      "usenet-lidarr-plan",
+      "usenet-search-plan",
     );
 
     const result = await searchUntilDone({ phase: "search", source: "usenet", jobId });
@@ -368,6 +374,27 @@ test("Usenet searches like Lidarr: a music search where supported, then cleaned 
       { query: "AC DC Hells Bells", type: "search", indexerIds: ["1", "2"] },
     ]);
     assert.equal(result.message, "No matching album in the search results");
+
+    requests.length = 0;
+    const pusciferId = createTrackedJob(
+      downloadTracker,
+      { artistName: "Puscifer", albumName: "Normal Isn’t", trackName: "Self Evident" },
+      "usenet-apostrophes",
+    );
+    const puscifer = trackedJob(downloadTracker, pusciferId);
+    const candidates = await searchUntilDone({
+      phase: "search",
+      source: "usenet",
+      jobId: pusciferId,
+      albumGrab: true,
+    });
+    assert.deepEqual(
+      requests.map(({ query }) => query),
+      ["{artist:Puscifer}{album:Normal Isnt}", "Puscifer Normal Isnt"],
+    );
+    assert.deepEqual(guids(candidates), ["normal-isnt"]);
+    await usenetSource.albums.manualSearch(albumOf(null, puscifer), resolveTrack({}, puscifer));
+    assert.equal(requests.at(-1)?.query, "Puscifer Self Evident Normal Isnt");
   } finally {
     await server.close();
   }
@@ -895,9 +922,10 @@ for (const albumGrab of [false, true]) {
 }
 
 test("Tidarr tries each album once, at its best allowed quality", async () => {
+  const albumName = "I'm Still Here";
   const server = await fakeTidarr([
-    { id: "123", artist: "Tidal Band", title: "Album", tracks: 10 },
-    { id: "456", artist: "Tidal Band", title: "Album", tracks: 10 },
+    { id: "123", artist: "Tidal Band", title: albumName, tracks: 10 },
+    { id: "456", artist: "Tidal Band", title: albumName, tracks: 10 },
   ]);
   try {
     useTidarr(server.url);
@@ -907,7 +935,7 @@ test("Tidarr tries each album once, at its best allowed quality", async () => {
     ] as const) {
       const jobId = createTrackedJob(
         downloadTracker,
-        { artistName: "Tidal Band", trackName: "First", albumName: "Album", durationMs: 180000 },
+        { artistName: "Tidal Band", trackName: "First", albumName, durationMs: 180000 },
         "tidarr-qualities",
       );
       assert.ok(jobId != null);
@@ -915,7 +943,7 @@ test("Tidarr tries each album once, at its best allowed quality", async () => {
       const result = await searchUntilDone({ phase: "search", source: "tidarr", jobId });
       assert.deepEqual(guids(result).sort(), expected);
     }
-    assert.equal(server.searches[0], "Tidal Band Album");
+    assert.equal(server.searches[0], "Tidal Band I'm Still Here");
   } finally {
     await server.close();
   }
@@ -1116,6 +1144,32 @@ function admitted(titles: string[], context: Parameters<typeof rankUsenetRelease
 }
 
 test("Usenet release titles match by their words, not by overall similarity", () => {
+  const normalIsnt = admitted(
+    [
+      "Puscifer.Normal.Isn.t.FLAC",
+      "Puscifer - Normal Isnt Acoustic FLAC",
+      "Other Artist - Normal Isnt FLAC",
+      "Puscifer - Normal Isnt FLAC",
+      "Puscifer - Normal Isn’t FLAC",
+    ],
+    { artistName: "Puscifer", albumName: "Normal Isn't", trackName: "It Isnt Over" },
+  );
+  assert.deepEqual(normalIsnt.map(([title]) => title).sort(), [
+    "Puscifer - Normal Isnt FLAC",
+    "Puscifer - Normal Isn’t FLAC",
+    "Puscifer.Normal.Isn.t.FLAC",
+  ]);
+
+  for (const [artistName, albumName, release] of [
+    ["Rock N Roll", "Rocknroll", "Rock'n'Roll - Rocknroll"],
+    ["Rock'n'Roll", "Live Isn't Easy", "Rock.N.Roll - Live Isnt Easy"],
+    ["A'Coustic", "Normal Isn't", "Acoustic - Normal Isnt"],
+  ] as const) {
+    assert.deepEqual(admitted([release, `${release} Acoustic`], { artistName, albumName }), [
+      [release, "album"],
+    ]);
+  }
+
   const lemonade = admitted(
     [
       "Beyoncé feat. Kendrick Lamar - Lemonade (2016) MP3",

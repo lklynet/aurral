@@ -8,6 +8,7 @@ import {
   isUsenetClientKey,
   normalizeBaseUrl,
   normalizeInteger,
+  stripSearchApostrophes,
   type UsenetClientKey,
 } from "./usenetClientCommon.ts";
 
@@ -310,7 +311,8 @@ function buildSearchParams({
   offset?: number;
 }) {
   const params = new URLSearchParams();
-  params.set("query", String(query || "").trim());
+  const text = String(query || "").trim();
+  params.set("query", stripSearchApostrophes(text).trim() || text);
   params.set("type", type);
   if (Array.isArray(indexerIds) && indexerIds.length > 0) {
     for (const indexerId of indexerIds) {

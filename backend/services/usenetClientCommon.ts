@@ -2,6 +2,10 @@ export const USENET_CLIENT_KEYS = ["sabnzbd", "nzbget"] as const;
 
 export type UsenetClientKey = (typeof USENET_CLIENT_KEYS)[number];
 
+export function stripSearchApostrophes(value: string) {
+  return value.replace(/['\u0060\u00B4\u2018\u2019]/gu, "");
+}
+
 export const isUsenetClientKey = (key: unknown): key is UsenetClientKey =>
   USENET_CLIENT_KEYS.some((entry) => entry === key);
 
