@@ -15,10 +15,10 @@ import {
 } from "../providers/metadataRanking.ts";
 import {
   coreAlbumTitle,
-  isVariousArtistsCredit,
   otherProductMarker,
   withoutFeaturedArtists,
 } from "../trackMatching/titleText.ts";
+import { isVariousArtistsCredit } from "../../../lib/artistCredit.ts";
 import {
   checkVariantCompatibility,
   labelContradictions,
@@ -26,6 +26,7 @@ import {
   type ReleaseTrack,
 } from "../trackMatching/semanticPolicy.ts";
 import { splitGluedSourceCodec } from "../qualityProfileModel.ts";
+import { stripSearchApostrophes } from "../usenetClientCommon.ts";
 
 const AUDIO_CATEGORY_MIN = 3000;
 const AUDIO_CATEGORY_MAX = 3999;
@@ -146,6 +147,29 @@ function releaseKey(release: UsenetRelease) {
 
 const SCENE_GROUP_AFTER_YEAR = /(-(?:19|20)\d{2})-[^\s-]+$/u;
 
+const CONTRACTION = /[\p{L}\p{M}\p{N}]+(?:['`´‘’][\p{L}\p{M}\p{N}]+)+/gu;
+const RELEASE_WORD = /[\p{L}\p{M}\p{N}]+(?:['`´‘’][\p{L}\p{M}\p{N}]+)*/gu;
+const NO_REQUESTED_VARIANTS = prepareVariantRequest(null);
+
+// Expand "isnt" to "isn t" only when one side actually spells it "isn't".
+// Keep edition labels whole: an artist called A'Coustic cannot hide "(Acoustic)".
+function matchContractions(contractions: string[]) {
+  const spellings = new Map<string, string>();
+  for (const word of contractions) {
+    const parts = word.split(/[^\p{L}\p{M}\p{N}]+/u);
+    const joined = parts.join("");
+    const edition =
+      labelContradictions(joined, NO_REQUESTED_VARIANTS).length > 0 ||
+      otherProductMarker(joined, [], { album: true });
+    spellings.set(joined, edition ? joined : parts.join(" "));
+  }
+  return (text: string) =>
+    text.replace(RELEASE_WORD, (word) => {
+      const key = stripSearchApostrophes(foldDiacritics(word).toLowerCase());
+      return spellings.get(key) ?? word;
+    });
+}
+
 function titleWords(value: string) {
   return foldDiacritics(String(value || ""))
     .toLowerCase()
@@ -196,27 +220,61 @@ function withoutCredits(title: string) {
   return withoutFeaturedArtists(String(title || "").replace(/\s*[[(][^\])]*[\])]/gu, " "));
 }
 
-function readReleaseRequest(context: UsenetSearchContext) {
+function readReleaseRequest(context: UsenetSearchContext, normalize = (value: string) => value) {
   const compilation = context?.compilation === true || isVariousArtistsCredit(context?.artistName);
   const artists = (
     compilation
       ? creditedArtists(context)
       : [context?.artistName, ...(context?.artistAliases || [])]
   )
-    .map((name) => String(name || "").trim())
+    .map((name) => normalize(String(name || "").trim()))
     .filter(Boolean)
     .flatMap((name) => [name, name.replace(/^the\s+/iu, "")]);
-  const albumName = readComparableAlbumName(context);
-  const trackName = String(context?.trackName || "").trim();
+  const albumName = normalize(readComparableAlbumName(context));
+  const trackName = normalize(String(context?.trackName || "").trim());
+  const versionRequest = { albumName, artists, secondaryTypes: context?.secondaryTypes };
   return {
+    albumVersions: prepareVariantRequest({
+      ...versionRequest,
+      releaseTracks: context?.releaseTracks,
+    }),
+    trackVersions: prepareVariantRequest({ ...versionRequest, trackName }),
     compilation,
     artists,
     albumName,
     albums: [albumName, coreAlbumTitle(albumName)].filter(Boolean),
     trackName,
     tracks: [trackName, withoutCredits(trackName)].filter(Boolean),
-    secondaryTypes: context?.secondaryTypes || [],
   };
+}
+
+function matchReleaseTitle(title: string, request: ReturnType<typeof readReleaseRequest>) {
+  const words = titleWords(title.replace(SCENE_GROUP_AFTER_YEAR, "$1"));
+
+  // Identity gate: the artist (any artist for a compilation) and the album
+  // or track title appear in the release title.
+  const hasAlbum = request.albums.some((album) =>
+    containsAlbumApartFromArtist(words, album, request.compilation ? [] : request.artists),
+  );
+  const hasArtist =
+    (request.compilation && hasAlbum) ||
+    request.artists.some((name) => containsPhrase(words, name));
+  const hasTrack = request.tracks.some((track) => containsPhrase(words, track));
+  // A release must be the requested version: a remix or radio edit of the
+  // track is not downloaded for the original, nor an acoustic album for the
+  // album. Every version word in the title counts, however it is noted,
+  // unless the request names it; an album is not asked for its tracks'.
+  const otherVersion =
+    labelContradictions(title, hasAlbum ? request.albumVersions : request.trackVersions).length >
+      0 ||
+    (hasTrack && !checkVariantCompatibility(null, { title }, request.trackVersions).compatible);
+  const otherProduct = otherProductMarker(
+    title,
+    [request.albumName, request.trackName, ...request.artists],
+    { album: hasAlbum },
+  );
+  const admissible = hasArtist && (hasAlbum || hasTrack) && !otherVersion && !otherProduct;
+  return { hasAlbum, hasArtist, hasTrack, admissible };
 }
 
 export function rankUsenetReleases<Release extends UsenetRelease>(
@@ -225,18 +283,9 @@ export function rankUsenetReleases<Release extends UsenetRelease>(
   options: UsenetRankOptions = {},
 ) {
   const request = readReleaseRequest(context);
-  const albumVersions = prepareVariantRequest({
-    albumName: request.albumName,
-    artists: request.artists,
-    secondaryTypes: request.secondaryTypes,
-    releaseTracks: context?.releaseTracks,
-  });
-  const trackVersions = prepareVariantRequest({
-    albumName: request.albumName,
-    artists: request.artists,
-    secondaryTypes: request.secondaryTypes,
-    trackName: request.trackName,
-  });
+  const names = [...request.artists, request.albumName, request.trackName].join(" ");
+  const requestContractions = foldDiacritics(names).toLowerCase().match(CONTRACTION) ?? [];
+  const comparisons = new Map<string, (title: string) => ReturnType<typeof matchReleaseTitle>>();
   const expectedYear = getYear(context?.releaseYear);
   const seen = new Set();
   const ranked = [];
@@ -256,35 +305,25 @@ export function rankUsenetReleases<Release extends UsenetRelease>(
       indexer: release.indexer,
       guid: release.guid,
     };
-    const words = titleWords(title.replace(SCENE_GROUP_AFTER_YEAR, "$1"));
-
-    // Identity gate: the artist (any artist for a compilation) and the album
-    // or track title appear in the release title.
-    const hasAlbum = request.albums.some((album) =>
-      containsAlbumApartFromArtist(words, album, request.compilation ? [] : request.artists),
-    );
-    const hasArtist =
-      (request.compilation && hasAlbum) ||
-      request.artists.some((name) => containsPhrase(words, name));
-    const hasTrack = request.tracks.some((track) => containsPhrase(words, track));
-    // A release must be the requested version: a remix or radio edit of the
-    // track is not downloaded for the original, nor an acoustic album for the
-    // album. Every version word in the title counts, however it is noted,
-    // unless the request names it; an album is not asked for its tracks'.
-    const otherVersion =
-      labelContradictions(title, hasAlbum ? albumVersions : trackVersions).length > 0 ||
-      (hasTrack && !checkVariantCompatibility(null, { title }, trackVersions).compatible);
-    const otherProduct = otherProductMarker(
-      title,
-      [request.albumName, request.trackName, ...request.artists],
-      { album: hasAlbum },
-    );
-    const admissible =
-      hasAudioCategory(release) &&
-      hasArtist &&
-      (hasAlbum || hasTrack) &&
-      !otherVersion &&
-      !otherProduct;
+    let matched = matchReleaseTitle(title, request);
+    if (!matched.admissible || !matched.hasAlbum) {
+      const contractions =
+        title.match(CONTRACTION)?.map((word) => foldDiacritics(word).toLowerCase()) ?? [];
+      if (contractions.length || requestContractions.length) {
+        const key = contractions.join(" ");
+        let comparison = comparisons.get(key);
+        if (!comparison) {
+          const normalize = matchContractions([...requestContractions, ...contractions]);
+          const normalizedRequest = readReleaseRequest(context, normalize);
+          comparison = (value) => matchReleaseTitle(normalize(value), normalizedRequest);
+          comparisons.set(key, comparison);
+        }
+        const alternative = comparison(title);
+        if (alternative.admissible) matched = alternative;
+      }
+    }
+    const { hasAlbum, hasArtist, hasTrack } = matched;
+    const admissible = hasAudioCategory(release) && matched.admissible;
     if (!admissible) {
       ranked.push({
         raw,

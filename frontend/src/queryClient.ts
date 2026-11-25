@@ -95,7 +95,6 @@ export const queryKeys = {
   listeningHistory: (userId: MaybeId): QueryKey => ["auth", "listening-history", userId || null],
   libraryPrefix: ["library"],
   libraryFavorites: ["library", "favorites"],
-  libraryAlbums: (artistId: MaybeId): QueryKey => ["library", "albums", artistId || null],
   libraryAlbumsPrefix: ["library", "albums"],
   libraryArtist: (mbid: MaybeText): QueryKey => ["library", "artist", mbid || null],
   libraryMatches: (
@@ -290,6 +289,8 @@ export const queryKeys = {
   myPlaylistOrder: (userId: MaybeId): QueryKey => ["users", "me", "playlist-order", userId || null],
   myIdentities: (userId: MaybeId): QueryKey => ["auth", "identities", userId || null],
   hubLink: (userId: MaybeId): QueryKey => ["hub-link", userId || null],
+  connectStatus: ["settings", "connect"],
+  connectAccount: (userId: MaybeId): QueryKey => ["settings", "connect", "account", userId || null],
   publicPlaylists: (userId: MaybeId): QueryKey => ["hub-link", "public", userId || null],
   friends: (userId: MaybeId): QueryKey => ["hub-link", "friends", userId || null],
   hubProfiles: (userId: MaybeId): QueryKey => ["hub-link", "profiles", userId || null],

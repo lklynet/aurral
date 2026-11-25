@@ -4,7 +4,7 @@
       "cold": 12,
       "warm": 12
     },
-    "bytes": 1686,
+    "bytes": 1663,
     "scans": []
   },
   "library home": {
@@ -12,7 +12,7 @@
       "cold": 127,
       "warm": 121
     },
-    "bytes": 181156,
+    "bytes": 175042,
     "scans": []
   },
   "library albums": {
@@ -20,7 +20,7 @@
       "cold": 20,
       "warm": 20
     },
-    "bytes": 135998,
+    "bytes": 132128,
     "scans": []
   },
   "library albums, last page": {
@@ -28,7 +28,7 @@
       "cold": 20,
       "warm": 20
     },
-    "bytes": 139992,
+    "bytes": 136104,
     "scans": []
   },
   "library albums, recently added": {
@@ -36,7 +36,7 @@
       "cold": 20,
       "warm": 20
     },
-    "bytes": 135998,
+    "bytes": 132128,
     "scans": []
   },
   "library artists": {
@@ -44,7 +44,7 @@
       "cold": 13,
       "warm": 12
     },
-    "bytes": 91526,
+    "bytes": 87926,
     "scans": []
   },
   "library tracks": {
@@ -52,7 +52,7 @@
       "cold": 21,
       "warm": 21
     },
-    "bytes": 131386,
+    "bytes": 127588,
     "scans": []
   },
   "library artist and track sorts": {
@@ -60,7 +60,7 @@
       "cold": 69,
       "warm": 66
     },
-    "bytes": 436958,
+    "bytes": 423044,
     "scans": []
   },
   "library genres": {
@@ -76,7 +76,7 @@
       "cold": 21,
       "warm": 20
     },
-    "bytes": 155001,
+    "bytes": 150357,
     "scans": []
   },
   "library status filter": {
@@ -84,7 +84,7 @@
       "cold": 34,
       "warm": 32
     },
-    "bytes": 233327,
+    "bytes": 225677,
     "scans": []
   },
   "library filter": {
@@ -92,7 +92,7 @@
       "cold": 21,
       "warm": 20
     },
-    "bytes": 139360,
+    "bytes": 135454,
     "scans": []
   },
   "artist page": {
@@ -100,7 +100,7 @@
       "cold": 60,
       "warm": 57
     },
-    "bytes": 130619,
+    "bytes": 126965,
     "scans": []
   },
   "album page": {
@@ -108,7 +108,7 @@
       "cold": 25,
       "warm": 24
     },
-    "bytes": 16567,
+    "bytes": 16099,
     "scans": []
   },
   "favorites": {
@@ -116,7 +116,7 @@
       "cold": 56,
       "warm": 53
     },
-    "bytes": 254263,
+    "bytes": 246703,
     "scans": []
   },
   "search": {
@@ -132,7 +132,7 @@
       "cold": 28,
       "warm": 28
     },
-    "bytes": 12110,
+    "bytes": 9050,
     "scans": []
   },
   "discover releases": {
@@ -140,7 +140,7 @@
       "cold": 26,
       "warm": 18
     },
-    "bytes": 19539,
+    "bytes": 14475,
     "scans": [
       "library_artists"
     ]
@@ -150,7 +150,7 @@
       "cold": 27,
       "warm": 27
     },
-    "bytes": 44475,
+    "bytes": 33081,
     "scans": [
       "library_artists"
     ]
@@ -160,7 +160,7 @@
       "cold": 52,
       "warm": 45
     },
-    "bytes": 2180,
+    "bytes": 2198,
     "scans": [],
     "calls": {
       "metadata": {
@@ -392,7 +392,7 @@
       "cold": 15,
       "warm": 15
     },
-    "bytes": 44045,
+    "bytes": 44240,
     "scans": []
   },
   "subsonic getGenres": {
@@ -480,7 +480,7 @@
       "cold": 24,
       "warm": 24
     },
-    "bytes": 43998,
+    "bytes": 44494,
     "scans": []
   }
 }

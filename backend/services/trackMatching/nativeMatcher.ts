@@ -7,8 +7,9 @@ import {
   RELEASE_MIX_VARIANTS,
   stripPromoDescriptors,
 } from "./semanticPolicy.ts";
-import { foldDiacritics } from "../providers/metadataRanking.ts";
-import { discFolderNumber, isVariousArtistsCredit, withoutFeaturedArtists } from "./titleText.ts";
+import { foldDiacritics, symbolText } from "../providers/metadataRanking.ts";
+import { discFolderNumber, withoutFeaturedArtists } from "./titleText.ts";
+import { isVariousArtistsCredit } from "../../../lib/artistCredit.ts";
 import { implausibleBitrateKbps } from "./candidateNormalizer.ts";
 import type { NameList, ReleaseTrack } from "./semanticPolicy.ts";
 import { UUID_REGEX } from "../../../lib/uuid.ts";
@@ -89,9 +90,14 @@ type RecordingCandidate = {
 export function normalizeMatchText(value: string | null | undefined) {
   return foldDiacritics(String(value || "").normalize("NFKD"))
     .toLowerCase()
+    .replace(/\p{Variation_Selector}/gu, "")
     .replace(/[^\p{L}\p{N}\p{M}]+/gu, " ")
     .trim()
     .replace(/\s+/g, " ");
+}
+
+export function titleMatchText(title: string | null | undefined) {
+  return normalizeMatchText(title) || symbolText(title);
 }
 
 function listingDisc(segments: string[], encoded: number | null, album: string | null | undefined) {
@@ -145,6 +151,7 @@ export function keySimilarity(a: string | null | undefined, b: string | null | u
   if (!a || !b) return 0;
   if (a.length > 512 || b.length > 512) return 0;
   if (a === b) return 1;
+  if (/^\p{S}/u.test(a) || /^\p{S}/u.test(b)) return 0;
   return 1 - distance(a, b) / Math.max(a.length, b.length);
 }
 
@@ -594,9 +601,7 @@ export function isSiblingTrackPosition(
   if (!(expected > 0 && actual > 0 && expected !== actual) || Number(actualDiscNumber) > 1)
     return false;
   const siblingTitle = request.albumTrackTitles?.[actual - 1];
-  return (
-    Boolean(siblingTitle) && normalizeMatchText(siblingTitle) !== normalizeMatchText(request.title)
-  );
+  return Boolean(siblingTitle) && titleMatchText(siblingTitle) !== titleMatchText(request.title);
 }
 
 // Without a length, the place on the requested album tells a song from its
@@ -629,9 +634,8 @@ export function verifyDownloadedRecording(
     observed.fileNameTitle &&
     (nonLatinTitleContradiction(request.title, observed.fileNameTitle) ||
       (result.titleSimilarity >= policy.minTitleSimilarity &&
-        normalizeMatchText(observed.fileNameTitle) &&
-        similarity(coreMatchTitle(request.title), coreMatchTitle(observed.fileNameTitle)) <
-          policy.minTitleSimilarity))
+        titleMatchText(observed.fileNameTitle) &&
+        titleSimilarity(request.title, observed.fileNameTitle) < policy.minTitleSimilarity))
   ) {
     result.contradictions.push("filename-title");
   }
@@ -662,7 +666,7 @@ export function verifyDownloadedRecording(
 
 // The comparable core of a title, without versions, guests, and promotion.
 export function titleKey(title: string | null | undefined) {
-  return normalizeMatchText(coreMatchTitle(title));
+  return titleMatchText(coreMatchTitle(title));
 }
 
 export function titleSimilarity(

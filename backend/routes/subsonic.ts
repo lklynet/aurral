@@ -51,7 +51,7 @@ import {
   toIndexArtist,
   updateSubsonicPlaylist,
   unstarMany,
-  queueEntryForSong,
+  resolveSong,
 } from "../services/subsonicLibraryService.ts";
 import { nowPlayingSongs } from "../services/localPeople.ts";
 import {
@@ -475,18 +475,20 @@ async function handleSubsonicRequest(c: Context<AppEnv>, requestedMethod: string
       getParameter(params, "submission").toLowerCase(),
     );
     ids.forEach((id, index) => {
-      const song = getSong(id, user);
-      if (!song) return;
+      const resolved = resolveSong(id, user);
+      if (!resolved) return;
+      const { song, entry, albumMbid, artistMbid } = resolved;
       const track = {
         trackId: song.id,
         title: song.title,
         artist: song.artist,
         album: song.album,
         albumId: song.albumId,
+        albumMbid,
+        artistMbid,
+        trackMbid: song.musicBrainzId,
         durationMs: Number(song.duration || 0) * 1000,
       };
-      const found = queueEntryForSong(user, song.id);
-      const entry = found?.job ? { jobId: found.job.id } : found;
       if (submission) {
         const event = recordPlayEvent(user.id, {
           ...track,

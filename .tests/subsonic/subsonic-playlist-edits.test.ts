@@ -309,3 +309,47 @@ test("Subsonic edits wait behind other playlist mutations", async () => {
   }
   assert.equal(flowPlaylistConfig.getStaticPlaylist(playlistId)?.name, "After Ordered Edit");
 });
+
+test("Subsonic playlist edits keep pinned edition and disc metadata from playlist jobs", async () => {
+  const sourceId = "subsonic-edition-source";
+  const releaseMbid = "22222222-2222-4222-8222-222222222222";
+  const albumMbid = "33333333-3333-4333-8333-333333333333";
+  const jobId = downloadTracker.addJob(
+    {
+      artistName: "Edition Artist",
+      albumName: "Double Album",
+      trackName: "Disc Two Opener",
+      albumMbid,
+      releaseMbid,
+      discNumber: 2,
+      trackNumber: 1,
+    },
+    "library",
+    { startedByPlaylist: sourceId },
+  );
+  assert.ok(jobId != null);
+  flowPlaylistConfig.createStaticPlaylist({
+    id: sourceId,
+    name: "Edition Source",
+    ownerUserId: user.id,
+    tracks: [
+      {
+        artistName: "Edition Artist",
+        albumName: "Double Album",
+        trackName: "Disc Two Opener",
+        albumMbid,
+        releaseMbid,
+        discNumber: 2,
+        trackNumber: 1,
+        canonicalJobId: jobId,
+      },
+    ],
+  });
+
+  const created = await subsonic.createSubsonicPlaylist(user, {
+    name: "Copied Edition",
+    songIds: [`shared-song:${sourceId}:${jobId}`],
+  });
+  assert.equal(created?.tracks[0]?.releaseMbid, releaseMbid);
+  assert.equal(created?.tracks[0]?.discNumber, 2);
+});

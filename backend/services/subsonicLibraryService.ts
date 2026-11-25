@@ -165,6 +165,7 @@ type SubsonicAlbum = {
   starred?: string;
   musicBrainzId: string;
   year?: number;
+  releaseTypes?: string[];
 } & SubsonicGenreFields &
   SubsonicRatingFields;
 type SubsonicArtist = {
@@ -240,7 +241,7 @@ const includesAurralMusicFolder = (options: SubsonicQuery = {}) => {
   return !musicFolderId || musicFolderId === "1";
 };
 
-const genreNames = (value: unknown) =>
+const tagValues = (value: unknown) =>
   (Array.isArray(value) ? value : [value])
     .flatMap((entry) => String(entry || "").split(";"))
     .map((entry) => entry.trim())
@@ -248,6 +249,16 @@ const genreNames = (value: unknown) =>
 
 const readField = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
+
+// Clients match the lowercase names Picard writes to RELEASETYPE, so types
+// from MusicBrainz are lowercased too.
+const albumReleaseTypes = ({ metadata }: LibraryAlbum) => {
+  const primary = metadata?.albumType || metadata?.releaseType;
+  const types = primary
+    ? [primary, readField(metadata, "secondaryTypes")]
+    : [readField(readField(metadata, "tags"), "releasetype")];
+  return [...new Set(types.flatMap(tagValues).map((type) => type.toLowerCase()))];
+};
 
 type GenreEntity = { metadata?: object | null } | null | undefined;
 
@@ -259,7 +270,7 @@ const entityGenres = (entity: GenreEntity) => {
     readField(metadata, "genre"),
     readField(readField(metadata, "tags"), "genre"),
   ]
-    .flatMap(genreNames)
+    .flatMap(tagValues)
     .filter((genre, index, values) => values.indexOf(genre) === index);
 };
 
@@ -424,6 +435,8 @@ const albumData = (library: IndexedLibrary, album: LibraryAlbum) => {
     value.genre = genres[0];
     value.genres = genres.map((name) => ({ name }));
   }
+  const types = albumReleaseTypes(album);
+  if (types.length) value.releaseTypes = types;
   return {
     tracks,
     value,
@@ -472,7 +485,7 @@ const toArtist = (library: IndexedLibrary, artist: LibraryArtist) => {
   };
 };
 
-export const toChildAlbum = ({ name, songCount, ...album }: SubsonicAlbum) => ({
+export const toChildAlbum = ({ name, songCount, releaseTypes, ...album }: SubsonicAlbum) => ({
   ...album,
   parent: album.artistId,
   isDir: true,
@@ -697,18 +710,28 @@ export function getAlbum(value: string, user?: SubsonicUser) {
   return album?.identityKey ? toAlbum(library, album) : null;
 }
 
-export function getSong(value: string, user?: SubsonicUser) {
+export function resolveSong(value: string, user?: SubsonicUser) {
   const playlistEntry = playlistJobFromId(user, value);
   if (playlistEntry) {
-    const customArtwork = getCustomArtworkMap("playlist-track", [playlistEntry.job.id]);
-    return toPlaylistSong(
-      playlistEntry.playlist,
-      playlistEntry.kind,
-      playlistEntry.job,
+    const { playlist, kind, job } = playlistEntry;
+    const owned = findAvailableLibraryTrack(trackFromJob(job));
+    const customArtwork = getCustomArtworkMap("playlist-track", [job.id]);
+    const song = toPlaylistSong(
+      playlist,
+      kind,
+      job,
       viewerFor(user),
-      undefined,
-      customArtwork.get(String(playlistEntry.job.id)) || null,
+      owned,
+      customArtwork.get(String(job.id)) || null,
     );
+    return {
+      song,
+      entry: owned ? { trackId: owned.track.id } : { jobId: job.id },
+      albumMbid: owned
+        ? findAlbumForTrack(owned.library, owned.track)?.releaseGroupMbid
+        : job.albumMbid,
+      artistMbid: owned ? song.artists[0]?.musicBrainzId : job.artistMbid,
+    };
   }
 
   const parsed = parseId(value);
@@ -722,7 +745,19 @@ export function getSong(value: string, user?: SubsonicUser) {
     viewerFor(user),
   );
   const track = findLibraryEntry(library, parsed);
-  return track?.identityKey ? toSong(library, track) : null;
+  if (!track?.identityKey) return null;
+  const album = findAlbumForTrack(library, track);
+  const song = toSong(library, track, album);
+  return {
+    song,
+    entry: { trackId: track.id },
+    albumMbid: album?.releaseGroupMbid,
+    artistMbid: song.artists[0]?.musicBrainzId,
+  };
+}
+
+export function getSong(value: string, user?: SubsonicUser) {
+  return resolveSong(value, user)?.song ?? null;
 }
 
 const radioSeedFor = (parsed: ParsedId | null, artistOnly: boolean): RadioSeed | null => {
@@ -993,15 +1028,18 @@ const trackFromJob = (job: DownloadJob | null | undefined) => {
     albumName: job?.albumName,
     artistMbid: job?.artistMbid,
     albumMbid: job?.albumMbid,
+    releaseMbid: job?.releaseMbid,
     trackMbid: job?.trackMbid,
     releaseYear: job?.releaseYear,
     durationMs: job?.durationMs,
     trackNumber: job?.trackNumber,
+    discNumber: job?.discNumber,
     artistAliases: job?.artistAliases,
   });
   return (
     track && {
       ...track,
+      filePath: job?.finalPath,
       albumTrackCount: job?.albumTrackCount,
       albumTrackTitles: job?.albumTrackTitles,
     }
@@ -1079,7 +1117,7 @@ export function keepPlaylistStarsInLibrary(playlistId: string) {
   })();
 }
 
-const findAvailableLibraryTrack = (track: PlaylistTrackInput | null | undefined) =>
+const findAvailableLibraryTrack = (track: ReturnType<typeof trackFromJob>) =>
   resolveLibraryTracks([track])[0];
 
 // Map playlist-song star rows to their library song row when the entry is a library track.

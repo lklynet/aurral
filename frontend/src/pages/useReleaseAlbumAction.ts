@@ -14,7 +14,7 @@ export type RecentRelease = InferResponseType<
   200
 >[number];
 
-const releaseKey = (album: RecentRelease) => album.mbid || album.foreignAlbumId || album.id;
+const releaseKey = (album: RecentRelease) => album.releaseGroupMbid || album.id;
 
 export function useReleaseAlbumAction() {
   const { hasPermission } = useAuth();
@@ -24,8 +24,7 @@ export function useReleaseAlbumAction() {
   const onAlbumAction = useCallback(
     async (album: RecentRelease) => {
       const albumKey = releaseKey(album);
-      const albumMbid = album.mbid || album.foreignAlbumId;
-      const artistMbid = album.artistMbid || album.foreignArtistId;
+      const { releaseGroupMbid: albumMbid, artistMbid } = album;
       if (!albumMbid || !artistMbid || !albumKey) return;
       setPendingIds((prev) => ({ ...prev, [albumKey]: true }));
       try {

@@ -16,7 +16,6 @@ import {
   finalizeRecommendationAccumulator,
   isChartPick,
   mergeResolvedRecommendations,
-  normalizeArtistIdentityKeys,
   rerankRecommendations,
   type DiscoveryRecommendation,
   type DiscoverySeed,
@@ -30,7 +29,7 @@ import {
   hydrateRecommendationCandidateTags,
   type SourceHealth,
 } from "./tasteProfile.ts";
-import type { ArtistMatchFields } from "./artistKeys.ts";
+import { matchesArtistKeys, type ArtistMatchFields } from "../../../lib/artistMatch.ts";
 
 const getSeedTags = async (
   seed: ArtistMatchFields,
@@ -101,7 +100,7 @@ const toBridgeSeed = (bridge: DiscoveryRecommendation) => {
   return {
     mbid: bridge.id || bridge.mbid || null,
     artistName: bridge.name!,
-    source: isChartPick(bridge) ? STARTER_SEED_SOURCE : "lastfm_related",
+    source: isChartPick(bridge) ? STARTER_SEED_SOURCE : "similar",
     profileBucket: "two_hop_bridge",
     weight,
     affinityWeight: weight,
@@ -170,10 +169,7 @@ export const buildRecommendationsFromSeeds = async ({
         (Array.isArray(candidate.matchedTags) ? candidate.matchedTags : candidate.tags || [])
           .length > 0,
     )
-    .filter(
-      (candidate) =>
-        !normalizeArtistIdentityKeys(candidate).some((key) => bridgeExclusionKeys.has(key)),
-    )
+    .filter((candidate) => !matchesArtistKeys(candidate, bridgeExclusionKeys))
     .map(toBridgeSeed)
     .filter((bridge) => bridge.bridgeTags.length > 0)
     .slice(0, secondHopSampling.seedLimit);

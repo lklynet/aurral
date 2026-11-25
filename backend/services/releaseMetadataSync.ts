@@ -87,6 +87,6 @@ export async function refreshReleaseMetadata({
       at: now,
     });
   });
-  logger.info("library", "Release calendar refreshed from ListenBrainz", result);
+  logger.info("library", "Release calendar refreshed", result);
   return result;
 }

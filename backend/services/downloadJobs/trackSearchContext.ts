@@ -443,7 +443,7 @@ async function fetchReleaseContext(
   if (cachedContext !== undefined) return cachedContext;
   const promise = (async () => {
     try {
-      const album = await getAlbumByMbid(key, { withFallbackReleases: true });
+      const album = await getAlbumByMbid(key, { withFallbackReleases: "required" });
       const artists = (Array.isArray(album?.artists) ? album.artists : []).toSorted(
         (left, right) => Number(right.id === album.artistId) - Number(left.id === album.artistId),
       );
@@ -507,7 +507,7 @@ async function applyReleaseManifest(
 }
 
 // A complete release identity can skip release discovery. Its
-// recording ID is still checked against the cached BrainzMash tracklist so
+// recording ID is still checked against the cached metadata tracklist so
 // jobs created before that rule can be repaired safely.
 function hasReleaseIdentity(track: ResolvedTrack) {
   return (
@@ -552,7 +552,9 @@ export async function resolveTrackSearchContext(
   let releaseContext: ReleaseContext | UnknownAlbum | null = null;
   if (base.albumMbid) {
     releaseContext = await fetchReleaseContext(base.albumMbid);
-    unreachable = !releaseContext;
+    if (!releaseContext) {
+      return { ...base, trackMbid: null, metadataUnreachable: true };
+    }
     const album = releaseContext?.unknown ? null : releaseContext;
     const renamed =
       album?.albumName && base.albumName && !matchesAlbumTitle(album.albumName, base.albumName);
@@ -594,14 +596,6 @@ export async function resolveTrackSearchContext(
         base.artistAliases = await fetchArtistAliases(base.artistMbid);
       }
       return base;
-    } else {
-      // The ID cannot be proven to be a recording while metadata is
-      // unavailable. Title, artist, album, and duration checks still apply.
-      base.trackMbid = null;
-      if (base.artistAliases.length === 0 && base.artistMbid) {
-        base.artistAliases = await fetchArtistAliases(base.artistMbid);
-      }
-      return unreachable ? { ...base, metadataUnreachable: true } : base;
     }
   }
 

@@ -8,6 +8,10 @@ import { parseFile } from "music-metadata";
 import taglib from "node-taglib-sharp";
 
 import { readAurralIdentity, writeAudioMetadata } from "../../backend/services/downloadUtils.ts";
+import {
+  upsertLibraryAlbum,
+  upsertLibraryArtist,
+} from "../../backend/services/libraryMediaStore.ts";
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), "aurral-audio-tags-"));
 const job = {
@@ -162,6 +166,29 @@ test("tracks from uploaders of different releases get the one release Aurral pic
   for (const filePath of files) {
     assert.equal((await parseFile(filePath)).common.musicbrainz_albumid, releaseMbid);
   }
+});
+
+test("a download for an album without a release group is tagged with its release, never as a release group", async () => {
+  const releaseMbid = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+  const artist = upsertLibraryArtist({ identityKey: `mbid:${job.artistMbid}`, name: "Daft Punk" });
+  upsertLibraryAlbum({
+    identityKey: `album:${releaseMbid}`,
+    mbid: releaseMbid,
+    artistId: artist.id,
+    title: "Discovery",
+  });
+  const filePath = makeAudio("groupless.flac", ["-c:a", "flac"]);
+  tagAsUploader(filePath, (file) => {
+    file.tag.musicBrainzReleaseGroupId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    file.tag.musicBrainzReleaseId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  });
+
+  await writeAudioMetadata(filePath, { ...job, albumMbid: releaseMbid });
+
+  const metadata = await parseFile(filePath);
+  assert.equal(metadata.common.musicbrainz_releasegroupid, undefined);
+  assert.equal(metadata.common.musicbrainz_albumid, releaseMbid);
+  assert.equal(readAurralIdentity(metadata)?.albumMbid, undefined);
 });
 
 test("tagging a hardlinked download leaves the other link as it was", async () => {

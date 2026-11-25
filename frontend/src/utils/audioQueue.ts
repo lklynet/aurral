@@ -9,19 +9,7 @@ import type { LibraryTrack } from "./libraryPageData.ts";
 import { shuffle } from "../../../lib/shuffle.ts";
 import type { buildStaticPlaylistTrackPayload } from "./staticPlaylists.ts";
 
-const FORMAT_BY_EXTENSION: Partial<Record<string, string[]>> = {
-  mp3: ["mp3"],
-  mpeg: ["mp3"],
-  m4a: ["m4a"],
-  mp4: ["m4a"],
-  aac: ["aac"],
-  flac: ["flac"],
-  ogg: ["ogg"],
-  oga: ["ogg"],
-  wav: ["wav"],
-};
-
-const DEFAULT_FORMAT_ATTEMPTS = ["mp3", "m4a", "flac", "ogg", "aac"];
+const STREAM_FORMATS = new Set(["mp3", "mpeg", "m4a", "mp4", "aac", "flac", "ogg", "oga", "wav"]);
 
 export type RadioSeed = Omit<
   InferRequestType<typeof libraryRadioClient.radio.$post>["json"],
@@ -113,22 +101,8 @@ export function resolveTrackStreamFormat(track: QueueTrackInput | null | undefin
     extensionFromPath(track?.src) ||
     extensionFromPath(track?.streamUrl) ||
     extensionFromPath(track?.preview_url);
-  if (direct && Object.hasOwn(FORMAT_BY_EXTENSION, direct)) return direct;
+  if (direct && STREAM_FORMATS.has(direct)) return direct;
   return qualityToFormat(track?.quality);
-}
-
-export function getFormatLoadAttempts(
-  track: QueueTrackInput | null | undefined,
-): [string, ...string[]] {
-  const primary = resolveTrackStreamFormat(track) || "mp3";
-  return [primary, ...DEFAULT_FORMAT_ATTEMPTS.filter((format) => format !== primary)];
-}
-
-export function getHowlerFormat(formatKey: string) {
-  const known = Object.hasOwn(FORMAT_BY_EXTENSION, formatKey)
-    ? FORMAT_BY_EXTENSION[formatKey]
-    : undefined;
-  return known || [formatKey];
 }
 
 function usesTrackArtwork(track: QueueTrackInput) {

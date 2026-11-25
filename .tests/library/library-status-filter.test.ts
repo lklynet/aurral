@@ -87,6 +87,12 @@ test("status filters split albums and artists by monitoring and by the partial c
     metadata: monitored,
     releaseDate: "2999-01-01",
   });
+  const inherited = addAlbum(followed.id, "Inherited", {
+    tracks: 1,
+    files: 1,
+    metadata: monitored,
+  });
+  setLibraryManagement({ entityKind: "album", entityId: inherited.id });
   addAlbum(imported.id, "Loose", { tracks: 2, files: 1 });
   addAlbum(imported.id, "Paused", {
     tracks: 1,
@@ -95,6 +101,7 @@ test("status filters split albums and artists by monitoring and by the partial c
     metadata: { monitored: true },
   });
   addAlbum(finished.id, "Whole", { tracks: 1, files: 1 });
+  addAlbum(finished.id, "Dropped", { tracks: 1, files: 1, metadata: monitored });
   addAlbum(finished.id, "Untagged", { tracks: 1, files: 1, managed: "monitored", metadata: {} });
 
   const titles = (status?: LibraryStatus) =>
@@ -106,8 +113,15 @@ test("status filters split albums and artists by monitoring and by the partial c
       .items.map((artist) => artist.name)
       .sort();
 
-  assert.deepEqual(titles("monitored"), ["Complete", "Partial", "Upcoming"]);
-  assert.deepEqual(titles("unmonitored"), ["Loose", "Paused", "Untagged", "Whole"]);
+  assert.deepEqual(titles("monitored"), ["Complete", "Inherited", "Partial", "Upcoming"]);
+  assert.deepEqual(titles("unmonitored"), ["Dropped", "Loose", "Paused", "Untagged", "Whole"]);
+  assert.deepEqual(
+    getLibraryPage({ kind: "albums", availableOnly: LIBRARY_VIEW, pageSize: 100 })
+      .items.filter((album) => album.monitored)
+      .map((album) => album.title)
+      .sort(),
+    titles("monitored"),
+  );
   assert.deepEqual(titles("missing"), ["Loose", "Partial"]);
   assert.deepEqual(
     titles("missing"),

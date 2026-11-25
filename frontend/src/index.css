@@ -2029,7 +2029,8 @@ textarea:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .sidebar-resize-handle:hover::after {
+  .sidebar-resize-handle:hover::after,
+  .player-rail-resize-handle:hover::after {
     background: var(--aurral-text-muted);
   }
 }
@@ -13436,7 +13437,62 @@ button.playlist-detail__cover {
   }
 }
 
+.player-rail-resize-handle {
+  display: none;
+}
+
 @media (min-width: 1024px) {
+  .player-rail {
+    --player-queue-width: min(var(--player-panel-width, 22rem), 40vw);
+  }
+
+  .player-rail.is-resizing {
+    transition: none;
+  }
+
+  .player-rail-resize-handle {
+    position: relative;
+    display: block;
+    width: 0;
+    flex: none;
+    z-index: var(--aurral-z-raised);
+    touch-action: none;
+  }
+
+  .player-rail-resize-handle::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    left: -0.5rem;
+    width: 1rem;
+    cursor: col-resize;
+  }
+
+  .player-rail-resize-handle::after {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    left: -1px;
+    width: 2px;
+    border-radius: var(--aurral-radius-round);
+    background: transparent;
+    transition: background-color var(--aurral-duration-fast) var(--aurral-ease-standard);
+  }
+
+  .player-rail-resize-handle.is-active::after,
+  .player-rail-resize-handle:focus-visible::after {
+    background: var(--aurral-text-muted);
+  }
+
+  .player-rail-resize-handle:focus-visible {
+    outline: none;
+  }
+
+  .player-rail-resize-handle:focus-visible::before {
+    outline: 2px solid var(--aurral-ring);
+    outline-offset: -2px;
+  }
+
   .btn.player-rail-edge {
     margin-right: 0;
   }
@@ -15356,6 +15412,116 @@ button.section-show-all {
   text-underline-offset: 0.125rem;
 }
 
+.login-header .login-subtitle {
+  margin-top: 0.5rem;
+  text-align: center;
+}
+
+.hosted-server-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--aurral-border);
+  border-bottom: 1px solid var(--aurral-border);
+}
+
+.hosted-server-row {
+  display: flex;
+  width: 100%;
+  min-height: 3.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.625rem 0;
+  border: 0;
+  border-top: 1px solid var(--aurral-border);
+  background: transparent;
+  color: var(--aurral-text);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--aurral-duration-fast) var(--aurral-ease-standard);
+}
+
+.hosted-server-row:first-child {
+  border-top: 0;
+}
+
+.hosted-server-row:focus-visible {
+  outline: 2px solid var(--aurral-ring);
+  outline-offset: -2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hosted-server-row:hover {
+    background: var(--aurral-surface-hover);
+  }
+}
+
+.hosted-server-row__main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.hosted-server-row__name {
+  color: var(--aurral-text);
+  font-size: var(--aurral-font-base);
+  font-weight: 600;
+}
+
+.hosted-server-row__name--offline {
+  color: var(--aurral-text-muted);
+}
+
+.hosted-server-row__host {
+  overflow: hidden;
+  color: var(--aurral-text-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--aurral-font-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hosted-server-row__meta {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-xs);
+  white-space: nowrap;
+}
+
+.hosted-server-row__meta svg {
+  width: var(--aurral-icon-sm);
+  height: var(--aurral-icon-sm);
+}
+
+.hosted-footer {
+  margin: 0;
+  color: var(--aurral-text-subtle);
+  font-size: var(--aurral-font-base);
+  text-align: center;
+}
+
+.hosted-footer__action {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--aurral-text);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--aurral-border-strong);
+  text-underline-offset: 0.125rem;
+  cursor: pointer;
+}
+
+.hosted-footer__action:focus-visible {
+  border-radius: var(--aurral-radius-xs);
+  outline: 2px solid var(--aurral-ring);
+  outline-offset: 2px;
+}
+
 .sso-complete-page {
   align-items: center;
   padding-block: 2rem;
@@ -15500,7 +15666,9 @@ button.section-show-all {
   }
 
   .login-title,
-  .hosted-address {
+  .login-header .login-subtitle,
+  .hosted-address,
+  .hosted-footer {
     text-align: left;
   }
 

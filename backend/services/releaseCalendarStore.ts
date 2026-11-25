@@ -1,7 +1,7 @@
 import * as v from "valibot";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import { listOf } from "../db/helpers/storedSchemas.ts";
-import { MONITORED_AURRAL_ALBUM_CONDITION } from "./monitoring.ts";
+import { albumIsMonitored } from "./albumOwnership.ts";
 import type { LibraryReleaseCalendarRow, ReleaseFeedRow } from "../db/rows.ts";
 
 type CalendarEntryRow = LibraryReleaseCalendarRow & {
@@ -270,10 +270,8 @@ export function getReleaseCalendarEntries({
       COUNT(DISTINCT CASE WHEN media.available = 1 THEN relation.track_id END) AS available_track_count,
       COALESCE(SUM(CASE WHEN media.available = 1 THEN media.size ELSE 0 END), 0) AS size_on_disk,
       EXISTS (
-        SELECT 1
-        FROM library_management AS management
-        JOIN library_albums AS album ON album.id = management.entity_id
-        WHERE album.id = matched.album_id AND ${MONITORED_AURRAL_ALBUM_CONDITION}
+        SELECT 1 FROM library_albums AS album
+        WHERE album.id = matched.album_id AND ${albumIsMonitored("album")}
       ) AS requested
     FROM calendar_page AS calendar
     JOIN library_artists AS artist ON artist.id = calendar.artist_id
@@ -294,14 +292,10 @@ export function getReleaseCalendarEntries({
     const availableTrackCount = Number(row.available_track_count || 0);
     return {
       id: row.release_group_mbid,
-      providerId: row.release_group_mbid,
       artistId: String(row.artist_id),
       artistName: row.artist_name,
       artistMbid: row.artist_mbid || null,
-      foreignArtistId: row.artist_mbid || null,
-      mbid: row.release_group_mbid,
       releaseGroupMbid: row.release_group_mbid,
-      foreignAlbumId: row.release_group_mbid,
       albumName: row.title,
       title: row.title,
       releaseDate: row.release_date,

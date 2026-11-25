@@ -18,6 +18,7 @@ import {
   buildPlaylistTrackIdentity,
   filterMissingPlaylistTracks,
   normalizePlaylistTrack,
+  recordingsConflict,
   tracksShareMembership,
 } from "./playlistTracks.ts";
 import {
@@ -36,7 +37,7 @@ import { withPlaylistMutation } from "../downloadJobs/mutationGuards.ts";
 import { withLock } from "../jobs/queue.ts";
 import { flowRunSpec } from "../flows/flowTrackSource.ts";
 import type { DownloadJob } from "../downloadJobs/downloadTracker.ts";
-import type { ArtistMatchFields } from "../discovery/artistKeys.ts";
+import type { ArtistMatchFields } from "../../../lib/artistMatch.ts";
 import type { FlowConfig, StaticPlaylist } from "./flowPlaylistConfig.ts";
 import type { PlaylistTrack, PlaylistTrackInput } from "./playlistTracks.ts";
 import { schedulePlaylistMbidEnrichment } from "../playlistMbidEnrichmentService.ts";
@@ -576,7 +577,11 @@ function matchCurrentTracks(
     }
     incoming.forEach((track, index) => {
       if (assigned.has(index)) return;
-      const match = byKey.get(key(track))?.find((candidate) => unused.has(candidate));
+      const match = byKey.get(key(track))?.find((candidate) => {
+        const current = unused.get(candidate);
+        if (!current || recordingsConflict(current, track)) return false;
+        return !recordingsConflict(downloadTracker.getJob(current.canonicalJobId), track);
+      });
       if (match === undefined) return;
       assigned.set(index, unused.get(match)!);
       unused.delete(match);

@@ -14,7 +14,12 @@ import { logger } from "../logger.ts";
 import type { FlowConfig } from "../playlists/flowPlaylistConfig.ts";
 import { getBlockedArtistKeys } from "../discovery/feedback.ts";
 import { getBlockedTagKeys, hasBlockedTag, withoutBlockedTags } from "../discovery/blockedTags.ts";
-import { buildArtistMatchKeySet, getArtistMatchKeys } from "../discovery/artistKeys.ts";
+import {
+  artistMatchKeys,
+  buildArtistMatchKeySet,
+  matchesArtistKeys,
+  type ArtistMatchFields,
+} from "../../../lib/artistMatch.ts";
 import { getYear } from "../providers/metadataRanking.ts";
 import { buildLibraryReadModel } from "../libraryReadModel.ts";
 import {
@@ -23,7 +28,6 @@ import {
 } from "../libraryQueryService.ts";
 import { getRecentListeningArtists } from "./flowTemplates.ts";
 import BoundedMap from "../boundedMap.ts";
-import type { ArtistMatchFields } from "../discovery/artistKeys.ts";
 import type { NormalizedTrack } from "../providers/metadataMappers.ts";
 import type { getRecentMissingReleases } from "../discovery/recentReleases.ts";
 import { shuffle } from "../../../lib/shuffle.ts";
@@ -32,6 +36,7 @@ import { getAlbumTracksByAlbumMbid, getArtistByMbid } from "../providers/metadat
 type ArtistTopTrack = {
   name: string;
   albumName: string | null;
+  albumMbid?: string | null;
   mbid: string | null;
   durationMs: number | null;
   popularity: number;
@@ -112,13 +117,7 @@ type FlowFilters = {
 
 type RecentRelease = Pick<
   Awaited<ReturnType<typeof getRecentMissingReleases>>[number],
-  | "artistName"
-  | "artistMbid"
-  | "foreignArtistId"
-  | "releaseDate"
-  | "albumName"
-  | "mbid"
-  | "foreignAlbumId"
+  "artistName" | "artistMbid" | "releaseDate" | "albumName" | "releaseGroupMbid"
 >;
 
 type HarvestArtist = ArtistMatchFields & { tags?: string[] | null; reason?: string };
@@ -551,7 +550,7 @@ export class FlowTrackSource {
     };
     const earliest = new Map<string, YearRelease>();
     const addRelease = (candidate: YearRelease) => {
-      const key = this._releaseKey(candidate.title);
+      const key = candidate.albumMbid || this._releaseKey(candidate.title);
       const known = earliest.get(key);
       if (!known || candidate.year < known.year) {
         earliest.set(key, candidate);
@@ -592,19 +591,23 @@ export class FlowTrackSource {
     const releases = await this._releasesInYears(artistName, filters, owned, artistMbid);
     if (releases.length === 0) return null;
     const byTitle = new Map(releases.map((release) => [this._releaseKey(release.title), release]));
+    const byMbid = new Map(releases.map((release) => [release.albumMbid, release]));
+    const releaseFor = (track: ArtistTopTrack) =>
+      track.albumMbid
+        ? byMbid.get(track.albumMbid)
+        : byTitle.get(this._releaseKey(track.albumName));
     const isOwned = (title: string) => owned?.ownedTitles.has(title.trim().toLowerCase()) === true;
     const hit = this._pickTrackFromRanges(
       await this._getArtistTopTrackList(artistName, artistMbid),
       this._deepDiveRanges(deepDive),
-      (track) =>
-        Boolean(track.albumName && byTitle.has(this._releaseKey(track.albumName))) &&
-        !isOwned(track.name),
+      (track) => Boolean(releaseFor(track)) && !isOwned(track.name),
     );
-    const hitRelease = hit?.albumName ? byTitle.get(this._releaseKey(hit.albumName)) : null;
+    const hitRelease = hit && releaseFor(hit);
     if (hit && hitRelease) {
       return {
         trackName: hit.name,
         albumName: hitRelease.title,
+        albumMbid: hit.albumMbid,
         trackMbid: hit.mbid,
         durationMs: hit.durationMs,
         releaseYear: String(hitRelease.year),
@@ -621,6 +624,7 @@ export class FlowTrackSource {
       return {
         trackName: track.title,
         albumName: release.title,
+        albumMbid: release.albumMbid,
         trackMbid: track.recordingId || null,
         durationMs: track.durationMs ?? null,
         releaseYear: String(release.year),
@@ -662,6 +666,7 @@ export class FlowTrackSource {
         ? {
             trackName: picked.pick.name,
             albumName: picked.albumName || picked.pick.albumName,
+            albumMbid: picked.pick.albumMbid,
             trackMbid: picked.pick.mbid,
             durationMs: picked.pick.durationMs,
           }
@@ -672,6 +677,7 @@ export class FlowTrackSource {
       ? {
           trackName: pick.name,
           albumName: pick.albumName,
+          albumMbid: pick.albumMbid,
           trackMbid: pick.mbid,
           durationMs: pick.durationMs,
         }
@@ -682,7 +688,7 @@ export class FlowTrackSource {
     const { filters, excludeArtistKeys, blockedTags, pick } = options;
     const end = Math.min(artists.length, options.maxArtists ?? artists.length);
     const tracks: FlowTrackEntry[] = [];
-    const seen = new Set<string>();
+    const seenArtistKeys = new Set<string>();
     let cursor = 0;
     while (tracks.length < limit && cursor < end) {
       const batch: { artist: HarvestArtist; name: string }[] = [];
@@ -691,10 +697,9 @@ export class FlowTrackSource {
         cursor += 1;
         if (!artist) continue;
         const name = String(artist?.name || artist?.artistName || "").trim();
-        const key = this._artistKey(name);
-        if (!key || seen.has(key)) continue;
-        if (getArtistMatchKeys(artist).some((entry) => excludeArtistKeys.has(entry))) continue;
-        seen.add(key);
+        if (!this._artistKey(name) || matchesArtistKeys(artist, seenArtistKeys)) continue;
+        if (matchesArtistKeys(artist, excludeArtistKeys)) continue;
+        artistMatchKeys(artist).forEach((key) => seenArtistKeys.add(key));
         batch.push({ artist, name });
       }
       const eligible = await this._keepByTags(batch, filters, blockedTags);
@@ -722,8 +727,8 @@ export class FlowTrackSource {
     const picked = [];
     for (const candidate of candidates) {
       if (picked.length >= count) break;
-      const artistKeys = getArtistMatchKeys(candidate);
-      if (artistKeys.length === 0 || artistKeys.some((key) => usedArtistKeys.has(key))) continue;
+      const artistKeys = artistMatchKeys(candidate);
+      if (artistKeys.length === 0 || matchesArtistKeys(candidate, usedArtistKeys)) continue;
       artistKeys.forEach((key) => usedArtistKeys.add(key));
       picked.push(candidate);
     }
@@ -889,17 +894,17 @@ export class FlowTrackSource {
         pick: async (_artist, name) => {
           const track = chartTracks.get(name);
           if (!track) return null;
-          if (!this._hasYears(filters)) {
-            return { trackName: track.trackName, albumName: track.albumName };
-          }
-          const release = track.albumName
+          const { trackName, albumName, durationMs } = track;
+          if (!this._hasYears(filters)) return { trackName, albumName, durationMs };
+          const release = albumName
             ? (await this._releasesInYears(name, filters, null)).find(
-                (entry) => normalizeTitle(entry.title) === normalizeTitle(track.albumName),
+                (entry) => normalizeTitle(entry.title) === normalizeTitle(albumName),
               )
             : null;
           return release
             ? {
-                trackName: track.trackName,
+                trackName,
+                durationMs,
                 albumName: release.title,
                 releaseYear: String(release.year),
               }
@@ -990,21 +995,23 @@ export class FlowTrackSource {
         artists: await this._getTagArtists(tag, perGroup).catch(() => []),
       })),
     ]);
-    const pool = new Map<string, HarvestArtist>();
+    const pool: HarvestArtist[] = [];
+    const pooledKeys = new Set<string>();
     const deepest = Math.max(0, ...groups.map((group) => group.artists.length));
     for (let rank = 0; rank < deepest; rank += 1) {
       for (const { reason, artists } of groups) {
         const name = String(artists[rank]?.name || "").trim();
-        const key = this._artistKey(name);
-        if (!key || pool.has(key)) continue;
-        pool.set(key, {
+        const artist = {
           name,
           artistMbid: String(artists[rank]?.mbid || "").trim() || null,
           reason,
-        });
+        };
+        if (!this._artistKey(name) || matchesArtistKeys(artist, pooledKeys)) continue;
+        artistMatchKeys(artist).forEach((key) => pooledKeys.add(key));
+        pool.push(artist);
       }
     }
-    return [...pool.values()];
+    return pool;
   }
 
   async getFocusTracks(limit: number, flow: FlowRunSpec, context: Partial<SourceContext> = {}) {
@@ -1124,31 +1131,31 @@ export class FlowTrackSource {
     const albums = await this._getRecentReleases(
       this._isFiltered(filters) ? FILTERED_ARTIST_LIMIT : limit,
     );
-    const albumsByArtist = Map.groupBy(albums, (album) => album.artistName);
+    const releaseArtistKey = (artist: HarvestArtist) =>
+      artistMbidOf(artist) ?? `name:${this._artistKey(String(artist.name ?? ""))}`;
+    const releaseArtists = albums.map((album) => ({
+      album,
+      artist: {
+        name: album.artistName,
+        artistMbid: album.artistMbid || null,
+        reason: "New release",
+      },
+    }));
+    const albumsByArtist = Map.groupBy(releaseArtists, ({ artist }) => releaseArtistKey(artist));
     return this._harvestArtists(
-      [...albumsByArtist.values()].flatMap(([album]) =>
-        album
-          ? [
-              {
-                name: album.artistName,
-                artistMbid: album.artistMbid || album.foreignArtistId || null,
-                reason: "New release",
-              },
-            ]
-          : [],
-      ),
+      [...albumsByArtist.values()].flatMap(([entry]) => (entry ? [entry.artist] : [])),
       limit,
       {
         filters,
         excludeArtistKeys,
-        pick: async (_artist, name) => {
-          for (const album of albumsByArtist.get(name) ?? []) {
+        pick: async (artist) => {
+          for (const { album } of albumsByArtist.get(releaseArtistKey(artist)) ?? []) {
             const releaseYear = String(album.releaseDate || "").slice(0, 4) || null;
             if (!this._matchesYearRange(releaseYear, filters.yearFrom, filters.yearTo)) continue;
             const pick = await this._pickTrackFromRelease({
               artistName: album.artistName,
               albumTitle: album.albumName,
-              albumMbid: album.mbid || album.foreignAlbumId || null,
+              albumMbid: album.releaseGroupMbid || null,
               releaseYear,
             });
             if (pick) return pick;

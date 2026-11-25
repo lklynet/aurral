@@ -86,6 +86,7 @@ test("flows drop trending and focus artists carrying a blocked genre", async () 
     artistName,
     trackName: `${artistName} Song`,
     albumName: null,
+    durationMs: null,
   });
   const searchedTags: string[] = [];
   source._getLibraryArtistKeySet = async () => new Set<string>();

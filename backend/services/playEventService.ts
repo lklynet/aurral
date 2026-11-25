@@ -1,16 +1,19 @@
 import * as v from "valibot";
-import { db } from "../config/db-sqlite.ts";
+import { db, dbHelpers } from "../config/db-sqlite.ts";
 import { playEventQueue } from "./jobs/queues.ts";
 import { shareNowPlaying } from "./hubFriends.ts";
 import { setLocalNowPlaying, setNowPlayingFromScrobble } from "./localNowPlaying.ts";
 import { entryForStreamPath, type QueueEntry } from "./queueEntry.ts";
 import { scrobbleConnectionStore } from "./scrobbleConnectionStore.ts";
 import { getKoitoListenBrainzBaseUrl } from "./koitoClient.ts";
-import type { PlayEventsRow } from "../db/rows.ts";
+import type { LibraryAlbumsRow, LibraryTracksRow, PlayEventsRow } from "../db/rows.ts";
+import type { ListenbrainzSubmitEvent } from "./apiClients/listenbrainz.ts";
 import { userOps } from "../db/helpers/index.ts";
 import { emitPluginEvent } from "./plugins/pluginEvents.ts";
 import { logger } from "./logger.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { artistNames } from "../../lib/artistCredit.ts";
+import { MBID_PATTERN } from "../../lib/mbid.ts";
 
 type PlayEventInput = {
   trackId?: unknown;
@@ -35,7 +38,18 @@ const resolveAlbumKeyStmt = db.prepare<[string, string, string, string], { ident
   WHERE identity_key = ?
     OR mbid = ?
     OR release_group_mbid = ?
-    OR CAST(id AS TEXT) = ?
+    OR id = ?
+  LIMIT 2
+`);
+const libraryTrackStmt = db.prepare<
+  [string, string],
+  Pick<LibraryTracksRow, "metadata_json"> & Pick<LibraryAlbumsRow, "mbid" | "release_group_mbid">
+>(`
+  SELECT track.metadata_json, album.mbid, album.release_group_mbid
+  FROM library_albums AS album
+  JOIN library_album_tracks AS link ON link.album_id = album.id
+  JOIN library_tracks AS track ON track.id = link.track_id
+  WHERE album.identity_key = ? AND track.title = ? COLLATE NOCASE
   LIMIT 2
 `);
 const getHistoryStmt = db.prepare<[number, number, number], PlayEventsRow>(
@@ -92,6 +106,41 @@ const resolveAlbumKey = (input: PlayEventInput) => {
     if (match && matches.length === 1) return match.identity_key;
   }
   return null;
+};
+
+const trackTagsSchema = v.looseObject({
+  tags: v.optional(
+    v.looseObject({
+      musicbrainz_artistid: v.optional(v.unknown()),
+      artists: v.optional(v.unknown()),
+    }),
+  ),
+});
+
+const tagMbids = (value: unknown) => [
+  ...new Set(
+    [value].flat().flatMap((id) => {
+      const normalized = text(id, 100).toLowerCase();
+      return MBID_PATTERN.test(normalized) ? [normalized] : [];
+    }),
+  ),
+];
+
+const libraryListenIds = (albumKey: string | null, title: string) => {
+  const matches = albumKey ? libraryTrackStmt.all(albumKey, title) : [];
+  const [track] = matches;
+  if (!track || matches.length > 1) return {};
+  const tags = dbHelpers.readJSON(trackTagsSchema, track.metadata_json, "library track tags")?.tags;
+  const artistMbids = tagMbids(tags?.musicbrainz_artistid);
+  const names = artistNames(tags?.artists);
+  return {
+    albumMbid: track.release_group_mbid,
+    releaseMbid: track.mbid === track.release_group_mbid ? null : track.mbid,
+    ...(artistMbids.length > 0 && {
+      artistMbids,
+      artistNames: names.length === artistMbids.length ? names : [],
+    }),
+  };
 };
 
 const toPublicEvent = (row: PlayEventsRow | undefined) =>
@@ -223,17 +272,8 @@ export const playEventDeliverySchema = v.looseObject({
 });
 
 type ScrobbleConnection = NonNullable<ReturnType<typeof scrobbleConnectionStore.getConnection>>;
-type Listen = {
-  artist: string;
-  title: string;
-  album: string | null;
-  durationMs: number | null;
-  trackMbid: string | null;
-  albumMbid: string | null;
-  artistMbid: string | null;
-} & ({ listenType: "single"; playedAt: number } | { listenType: "playing_now" });
 
-const sendListen = async (connection: ScrobbleConnection, listen: Listen) => {
+const sendListen = async (connection: ScrobbleConnection, listen: ListenbrainzSubmitEvent) => {
   const { listenbrainzSubmit } = await import("./apiClients/listenbrainz.ts");
   await listenbrainzSubmit({
     token: connection.token,
@@ -253,16 +293,18 @@ export const sendNowPlaying = (
   const title = text(input.title, 500);
   const artist = text(input.artist, 500);
   if (!title || !artist) throw new Error("title and artist are required");
-  const listen: Listen = {
+  const connections = Object.values(scrobbleConnectionStore.getConnections(userId));
+  const listen = {
     listenType: "playing_now",
     title,
     artist,
     album: text(input.album, 500) || null,
     durationMs: positiveInt(input.durationMs),
-    artistMbid: text(input.artistMbid, 100) || null,
+    artistMbids: [text(input.artistMbid, 100) || null],
     albumMbid: text(input.albumMbid, 100) || null,
     trackMbid: text(input.trackMbid, 100) || null,
-  };
+    ...(connections.length > 0 && libraryListenIds(resolveAlbumKey(input), title)),
+  } satisfies ListenbrainzSubmitEvent;
   setLocalNowPlaying(userId, {
     title,
     artist,
@@ -272,7 +314,7 @@ export const sendNowPlaying = (
   });
   return Promise.all([
     shareNowPlaying(userId, { title, artist, album: listen.album, durationMs: listen.durationMs }),
-    ...Object.values(scrobbleConnectionStore.getConnections(userId)).map((connection) =>
+    ...connections.map((connection) =>
       sendListen(connection, listen).catch((error: unknown) => {
         logger.info("scrobbling", `${connection.provider} did not take now playing`, {
           error: asAppError(error)?.message,
@@ -308,5 +350,10 @@ export const deliverPlayEvent = async ({
     connection.connectionRevision !== connectionRevision
   )
     return;
-  await sendListen(connection, { ...event, listenType: "single" });
+  await sendListen(connection, {
+    ...event,
+    artistMbids: [event.artistMbid],
+    ...libraryListenIds(event.albumKey, event.title),
+    listenType: "single",
+  });
 };

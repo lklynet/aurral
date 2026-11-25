@@ -3,7 +3,8 @@ import { test, beforeAll, afterAll } from "vite-plus/test";
 import { readFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import Ajv from "ajv";
+import Ajv, { type ValidateFunction } from "ajv";
+import * as v from "valibot";
 import { XmlDocument, XmlElement, XmlValidateError, XsdValidator } from "libxml2-wasm";
 
 import {
@@ -12,6 +13,8 @@ import {
   setupIsolatedBackend,
   startServerProcess,
 } from "../helpers/backendTestHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
+import { subsonicPayload, type SubsonicResponse } from "./subsonicPayload.ts";
 
 const [
   isolatedState,
@@ -31,28 +34,55 @@ const [
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
 );
 
-const spec = JSON.parse(
-  await readFile(new URL("./schemas/opensubsonic-openapi.json", import.meta.url), "utf8"),
+type JsonSchema = { $ref?: string; allOf?: JsonSchema[]; properties?: Record<string, unknown> };
+const jsonSchemaObject: v.GenericSchema<JsonSchema> = v.looseObject({
+  $ref: v.optional(v.string()),
+  allOf: v.optional(v.array(v.lazy(() => jsonSchemaObject))),
+  properties: v.optional(v.record(v.string(), v.unknown())),
+});
+const SpecResponse = v.object({
+  $ref: v.optional(v.string()),
+  content: v.optional(
+    v.object({
+      "application/json": v.optional(v.object({ schema: v.record(v.string(), v.unknown()) })),
+    }),
+  ),
+});
+const spec = v.parse(
+  v.object({
+    paths: v.record(
+      v.string(),
+      v.object({ get: v.optional(v.object({ responses: v.object({ "200": SpecResponse }) })) }),
+    ),
+    components: v.looseObject({
+      responses: v.record(v.string(), SpecResponse),
+      schemas: v.record(v.string(), jsonSchemaObject),
+    }),
+  }),
+  JSON.parse(
+    await readFile(new URL("./schemas/opensubsonic-openapi.json", import.meta.url), "utf8"),
+  ),
 );
 const ajv = new Ajv({ strict: false, validateFormats: false, allErrors: true });
-const validators = new Map();
+const validators = new Map<string, ValidateFunction<SubsonicResponse>>();
 
 function validatorFor(method: string) {
-  if (!validators.has(method)) {
-    const operation = spec.paths[`/rest/${method}`]?.get;
-    assert.ok(operation, `spec has no GET /rest/${method}`);
-    let response = operation.responses["200"];
-    if (response.$ref) {
-      response = spec.components.responses[response.$ref.replace("#/components/responses/", "")];
-    }
-    const schema = response.content["application/json"].schema;
-    validators.set(method, ajv.compile({ ...schema, components: spec.components }));
-  }
-  return validators.get(method);
+  const cached = validators.get(method);
+  if (cached) return cached;
+  const operation = spec.paths[`/rest/${method}`]?.get;
+  assert.ok(operation, `spec has no GET /rest/${method}`);
+  const ok = operation.responses["200"];
+  const response = ok.$ref
+    ? spec.components.responses[ok.$ref.replace("#/components/responses/", "")]
+    : ok;
+  const schema = response?.content?.["application/json"]?.schema;
+  assert.ok(schema, `spec has no JSON response for GET /rest/${method}`);
+  const validate = ajv.compile<SubsonicResponse>({ ...schema, components: spec.components });
+  validators.set(method, validate);
+  return validate;
 }
 
-type JsonSchema = { $ref?: string; allOf?: JsonSchema[]; properties?: Record<string, unknown> };
-const jsonSchemas: Record<string, JsonSchema> = spec.components.schemas;
+const jsonSchemas = spec.components.schemas;
 
 function jsonSchemaFields(schema: JsonSchema): string[] {
   if (schema.$ref) return jsonSchemaFields(jsonSchemas[schema.$ref.split("/").at(-1) ?? ""] ?? {});
@@ -205,7 +235,7 @@ async function assertValid(method: string, params = {}) {
 }
 
 async function assertValidJson(method: string, params = {}) {
-  const body = JSON.parse(await call(method, params));
+  const body: unknown = JSON.parse(await call(method, params));
   const validate = validatorFor(method);
   assert.ok(
     validate(body),
@@ -243,6 +273,7 @@ beforeAll(async () => {
         title: "Schema Song",
         track: { no: 1, of: null },
         genre: ["Rock"],
+        releasetype: ["album", "compilation"],
         musicbrainz_albumartistid: ["11111111-1111-4111-8111-111111111111"],
         musicbrainz_releasegroupid: "22222222-2222-4222-8222-222222222222",
         musicbrainz_recordingid: "33333333-3333-4333-8333-333333333333",
@@ -310,11 +341,12 @@ test("system and browsing responses match the Subsonic and OpenSubsonic schemas"
   await assertValid("getUser", { username: "alice" });
 
   const artists = await assertValid("getArtists");
-  const artistId = artists.artists.index[0].artist[0].id;
+  const artistId = requireFixture(requireFixture(artists.artists.index[0]).artist[0]).id;
   const artist = await assertValid("getArtist", { id: artistId });
-  const albumId = artist.artist.album[0].id;
+  const albumId = requireFixture(artist.artist.album[0]).id;
   const album = await assertValid("getAlbum", { id: albumId });
-  const songId = album.album.song[0].id;
+  assert.match(JSON.stringify(album), /"releaseTypes":\["album","compilation"\]/);
+  const songId = requireFixture(album.album.song[0]).id;
   await assertValid("getSong", { id: songId });
   await assertValid("getMusicDirectory", { id: "1" });
   await assertValid("getMusicDirectory", { id: artistId });
@@ -353,9 +385,9 @@ test("list, search, playlist and annotation responses match the Subsonic and Ope
   await assertValid("search2", { query: "Schema" });
 
   const artists = await assertValid("getArtists");
-  const artistId = artists.artists.index[0].artist[0].id;
-  const album = (await assertValid("getArtist", { id: artistId })).artist.album[0];
-  const songId = (await assertValid("getAlbum", { id: album.id })).album.song[0].id;
+  const artistId = requireFixture(requireFixture(artists.artists.index[0]).artist[0]).id;
+  const album = requireFixture((await assertValid("getArtist", { id: artistId })).artist.album[0]);
+  const songId = requireFixture((await assertValid("getAlbum", { id: album.id })).album.song[0]).id;
 
   await assertValid("star", { id: songId, albumId: album.id, artistId });
   await assertValid("getStarred");
@@ -367,7 +399,7 @@ test("list, search, playlist and annotation responses match the Subsonic and Ope
   assert.ok(JSON.stringify(nowPlaying).includes(`"username":"alice"`));
 
   const playlists = await assertValid("getPlaylists");
-  const playlistId = playlists.playlists.playlist[0].id;
+  const playlistId = requireFixture(playlists.playlists.playlist[0]).id;
   await assertValid("getPlaylist", { id: playlistId });
   const created = await assertValidJson("createPlaylist", { name: "Schema Created", songId });
   const createdId = created.playlist.id;
@@ -383,22 +415,22 @@ test("error responses match the Subsonic and OpenSubsonic schemas", async () => 
   const token = await fetch(
     `http://127.0.0.1:${aurral.port}/rest/ping.view?u=alice&t=deadbeef&s=salt&v=1.16.1&c=schema-test&f=json`,
   );
-  const body = JSON.parse(await token.text());
+  const body: unknown = JSON.parse(await token.text());
   assert.ok(validatorFor("ping")(body), ajv.errorsText(validatorFor("ping").errors));
   assert.equal(body["subsonic-response"].error.code, 41);
 
   const conflicting = await fetch(
     `http://127.0.0.1:${aurral.port}/rest/ping.view?u=alice&p=password123&t=deadbeef&s=salt&v=1.16.1&c=schema-test&f=json`,
   );
-  assert.equal((await conflicting.json())["subsonic-response"].error.code, 43);
+  assert.equal(subsonicPayload(await conflicting.text()).error.code, 43);
 
   const apiKey = await fetch(
     `http://127.0.0.1:${aurral.port}/rest/ping.view?apiKey=unsupported&v=1.16.1&c=schema-test&f=json`,
   );
-  assert.equal((await apiKey.json())["subsonic-response"].error.code, 42);
+  assert.equal(subsonicPayload(await apiKey.text()).error.code, 42);
 
   const apiKeyWithUsername = await fetch(
     `http://127.0.0.1:${aurral.port}/rest/ping.view?u=alice&apiKey=unsupported&v=1.16.1&c=schema-test&f=json`,
   );
-  assert.equal((await apiKeyWithUsername.json())["subsonic-response"].error.code, 43);
+  assert.equal(subsonicPayload(await apiKeyWithUsername.text()).error.code, 43);
 });

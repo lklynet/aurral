@@ -374,6 +374,45 @@ test("post-download verification requires corroboration and rejects original tag
   );
 });
 
+test("a title written only in emoji is verified by the same emoji and no other", () => {
+  for (const [expected, offered, decision] of [
+    ["👋", "👋", "matched"],
+    ["❤️", "❤", "matched"],
+    ["🌈 (Live)", "🌈 [Live]", "matched"],
+    ["❤️", "☀️", "no_match"],
+    ["👋🌈", "👋🌍", "no_match"],
+  ]) {
+    const wanted = {
+      title: expected,
+      artists: ["Coldplay"],
+      durationMs: 200000,
+      albumName: "Moon",
+    };
+    assert.equal(
+      verifyDownloadedRecording(wanted, {
+        ...wanted,
+        title: offered,
+        filename: `03 ${offered}.flac`,
+        fileNameTitle: offered,
+      }).decision,
+      decision,
+      `${expected}/${offered}`,
+    );
+  }
+  const onAlbum = {
+    title: "👋",
+    artists: ["Coldplay"],
+    durationMs: 200000,
+    albumName: "Moon",
+    trackNumber: 3,
+    albumTrackTitles: ["Opener", "Second", "👋", "Fourth", "🌈"],
+  };
+  assert.equal(
+    verifyDownloadedRecording(onAlbum, { ...onAlbum, album: "Moon", trackNumber: 5 }).decision,
+    "no_match",
+  );
+});
+
 test("a Various Artists credit on the request neither conflicts with nor confirms an artist", () => {
   const wanted = { title: "Hooked on a Feeling", artists: ["Various Artists"], durationMs: 173000 };
   const file = { title: "Hooked on a Feeling", artists: ["Blue Swede"], durationMs: 173000 };

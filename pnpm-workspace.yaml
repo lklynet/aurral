@@ -4,6 +4,7 @@ packages:
   - docs
   - hub
   - hosted
+  - relay
 
 engineStrict: true
 

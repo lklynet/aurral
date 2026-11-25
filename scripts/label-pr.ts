@@ -25,7 +25,7 @@ const SIZE_LABELS = [
   { below: Infinity, label: "size:XXL" },
 ];
 
-const event: PullRequestEvent = JSON.parse(await readFile(env("GITHUB_EVENT_PATH"), "utf8"));
+const event = JSON.parse(await readFile(env("GITHUB_EVENT_PATH"), "utf8")) as PullRequestEvent;
 const { number, title, additions, deletions } = event.pull_request;
 const current = event.pull_request.labels.map((label) => label.name);
 

@@ -13,29 +13,36 @@ import {
 export function resolveShareManifest(
   target: Parameters<typeof resolveShareTarget>[0],
   input: unknown,
+  { includeFiles = true }: { includeFiles?: boolean } = {},
 ) {
   if (target.kind === "playlist") {
     const playlist = flowPlaylistConfig.getStaticPlaylist(target.targetRef);
     if (!playlist) return null;
-    const files = resolvePlaylistShareTracks(playlist);
+    const needsLibrary =
+      includeFiles ||
+      playlist.tracks.some((track) => !track.artistMbid || !track.albumMbid || !track.trackMbid);
+    const files = needsLibrary ? resolvePlaylistShareTracks(playlist) : [];
     const tracks = playlist.tracks.map((track, index) => {
       const file = files[index];
+      const albumMatchesFile =
+        !track.albumMbid || !file?.albumMbid || track.albumMbid === file.albumMbid;
       return {
         title: track.trackName,
         artistName: track.artistName,
         albumTitle: track.albumName,
-        artistMbid: track.artistMbid,
-        albumMbid: track.albumMbid,
-        trackMbid: track.trackMbid,
-        releaseMbid: track.releaseMbid,
-        durationMs: track.durationMs,
+        artistMbid: track.artistMbid || file?.artistMbid || null,
+        albumMbid: track.albumMbid || file?.albumMbid || null,
+        trackMbid: track.trackMbid || file?.trackMbid || null,
+        releaseMbid: track.releaseMbid || (albumMatchesFile ? file?.releaseMbid || null : null),
+        durationMs: track.durationMs ?? file?.durationMs ?? null,
         trackNumber: track.trackNumber,
         discNumber: track.discNumber,
-        ...(file && {
-          path: `tracks/${file.albumId}/${file.trackId}`,
-          size: file.file.size,
-          format: file.file.format,
-        }),
+        ...(includeFiles &&
+          file && {
+            path: `tracks/${file.albumId}/${file.trackId}`,
+            size: file.file.size,
+            format: file.file.format,
+          }),
       };
     });
     return parseShareManifest({ kind: "playlist", title: playlist.name, tracks });
@@ -74,7 +81,7 @@ export function resolveShareManifest(
                 albumArtistName: artist?.name,
                 artistMbid: artist?.mbid,
                 albumMbid: album.releaseGroupMbid,
-                releaseMbid: album.mbid !== album.releaseGroupMbid ? album.mbid : null,
+                releaseMbid: album.mbid,
                 trackMbid: track.mbid,
                 trackNumber: position?.trackNumber,
                 discNumber: position?.discNumber,

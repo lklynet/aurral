@@ -58,6 +58,7 @@ function playlistManifest(playlistId: string) {
   const manifest = resolveShareManifest(
     { kind: "playlist", targetRef: playlistId, albumRef: null },
     null,
+    { includeFiles: false },
   );
   if (!manifest) return null;
   const details = withoutShareFiles(manifest);

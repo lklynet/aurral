@@ -1,6 +1,3 @@
-export const VARIOUS_ARTISTS_MBID = "89ad4ac3-39f7-470e-963a-56509c546377";
-
-const VARIOUS_ARTISTS_NAMES = new Set(["various artists", "various", "va", "v a"]);
 const EDITION_WORDS =
   /\b(?:deluxe|edition|remaster(?:ed)?|expanded|anniversary|bonus|special|collector'?s|version|explicit|clean|reissue|mono|stereo)\b/iu;
 const SOUNDTRACK_WORDS =
@@ -31,18 +28,6 @@ export const isSilenceTrack = (title: unknown) => /^\s*\[silence\]\s*$/iu.test(S
 // MusicBrainz titles a track nobody has named yet "[unknown]", which no
 // download source can search for.
 export const isUnknownTitle = (title: unknown) => /^\s*\[unknown\]\s*$/iu.test(String(title ?? ""));
-
-// "Various Artists" credits a compilation, not a performer.
-export function isVariousArtistsCredit(
-  name: string | null | undefined,
-  mbid: string | null = null,
-) {
-  return (
-    String(mbid || "")
-      .trim()
-      .toLowerCase() === VARIOUS_ARTISTS_MBID || VARIOUS_ARTISTS_NAMES.has(plainWords(name))
-  );
-}
 
 const FEATURED_ARTISTS = /\s(?:feat\.?|ft\.?|featuring)\s[\s\S]+/iu;
 

@@ -68,7 +68,7 @@ export const requireRecentAuth = (maxAgeMinutes?: number) =>
   });
 
 export const requireStreamAuth = createMiddleware<AppEnv>(async (c, next) => {
-  if (!c.get("user") && isAuthRequiredByConfig()) {
+  if (!c.get("user") && (c.var.viaConnect || isAuthRequiredByConfig())) {
     return c.json({ error: "Unauthorized", message: "Authentication required" }, 401);
   }
   await next();
@@ -82,6 +82,7 @@ const openPaths = new Set([
   "/api/filesystem/ensure",
   "/api/auth/login",
   "/api/auth/pair",
+  "/api/auth/connect-exchange",
   "/api/auth/oidc/login",
   "/api/auth/oidc/exchange",
   "/api/auth/google/login",
@@ -89,11 +90,25 @@ const openPaths = new Set([
   "/api/mcp",
 ]);
 
+const connectOpenPaths = new Set([
+  "/api/health",
+  "/api/health/live",
+  "/api/health/bootstrap",
+  "/api/auth/login",
+  "/api/auth/pair",
+  "/api/auth/connect-exchange",
+]);
+
 const isOpen = (method: string, path: string) =>
   openPaths.has(path) ||
   ((method === "GET" || method === "HEAD") &&
     (path.startsWith("/api/image-proxy/") || path.startsWith("/api/deezer/preview/"))) ||
   (method === "GET" && /^\/api\/feeds\/lidarr\/flows\/[^/]+\.json$/i.test(path));
+
+const isConnectOpen = (method: string, path: string) =>
+  connectOpenPaths.has(path) ||
+  ((method === "GET" || method === "HEAD") &&
+    (path.startsWith("/api/image-proxy/") || path.startsWith("/api/deezer/preview/")));
 
 const tokenPaths = [
   /^\/api\/library\/stream\/[^/]+\/[^/]+$/i,
@@ -137,4 +152,18 @@ export const authenticate = createMiddleware<AppEnv>(async (c, next) => {
     c.res.headers.set("Cross-Origin-Resource-Policy", "cross-origin");
   } else if (crossSite || !linkToken) return unauthorized(c);
   return next();
+});
+
+export const authenticateConnect = createMiddleware<AppEnv>(async (c, next) => {
+  const { method, path } = c.req;
+  if (!path.startsWith("/api") || isConnectOpen(method, path)) return next();
+  const credentials = requestCredentials(c);
+  const linkToken = acceptsLinkToken(method, path);
+  const user = linkToken ? resolveTokenUser(credentials) : resolveRequestUser(credentials);
+  if (user) {
+    c.set("user", user);
+    c.res.headers.set("Cross-Origin-Resource-Policy", "cross-origin");
+    return next();
+  }
+  return unauthorized(c);
 });

@@ -6,7 +6,7 @@ import { recordMissingTrackSearch } from "./aurralHistoryService.ts";
 import { AURRAL_ALBUM_CONDITION, monitoredTrackCondition } from "./monitoring.ts";
 import { isAnyDownloadSourceConfigured } from "./downloadSourceService.ts";
 import { libraryManager } from "./libraryManager.ts";
-import { ALBUM_IS_OWNED } from "./libraryMediaStore.ts";
+import { albumIsOwned } from "./albumOwnership.ts";
 import { albumMediaCondition } from "./libraryQueryService.ts";
 import { logger } from "./logger.ts";
 import { isUnknownTitle } from "./trackMatching/titleText.ts";
@@ -50,7 +50,7 @@ const candidateAlbumsStmt = db.prepare<[{ dueBefore: number; today: string }], C
   JOIN library_albums AS album ON album.id = management.entity_id
   JOIN library_artists AS artist ON artist.id = album.artist_id
   WHERE ${AURRAL_ALBUM_CONDITION}
-    AND ${ALBUM_IS_OWNED}
+    AND ${albumIsOwned("album")}
     AND COALESCE(album.mbid, album.release_group_mbid) IS NOT NULL
     AND (album.release_date IS NULL OR substr(album.release_date, 1, 10) <= :today)
     AND (

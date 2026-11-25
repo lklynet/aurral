@@ -653,6 +653,72 @@ test("playlists use an indexed Library file whose folder and name Aurral did not
   assert.deepEqual([job.artistMbid, job.albumMbid], ["hellyeah", "undeniable"]);
 });
 
+test("playlists use a Library file credited to several artists when the request names them all", async () => {
+  const filePath = path.join(downloadRoot, "Artist A", "Album", "01 - Song.mp3");
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, "audio");
+  const artist = libraryStore.upsertLibraryArtist({
+    identityKey: "name:artist a",
+    name: "Artist A",
+  });
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: "name:artist a:album",
+    artistId: artist.id,
+    title: "Album",
+  });
+  const libraryTrack = libraryStore.upsertLibraryTrack({
+    identityKey: "name:artist a:album:1:1:song",
+    title: "Song",
+    artistName: "Artist A, Artist B",
+  });
+  libraryStore.linkLibraryAlbumTrack({
+    albumId: album.id,
+    trackId: libraryTrack.id,
+    trackNumber: 1,
+  });
+  libraryStore.upsertLibraryMediaFile({
+    trackId: libraryTrack.id,
+    albumId: album.id,
+    source: "aurral",
+    path: filePath,
+  });
+
+  const reuse = () =>
+    reuseTrackForPlaylist(
+      { artistName: "Artist A, Artist B", trackName: "Song", albumName: "Album" },
+      "static-playlist",
+      { downloadRoot, skipHistory: true },
+    );
+
+  const result = await reuse();
+  assert.equal(result.reused, true);
+  assert.equal(result.finalPath, filePath);
+
+  downloadTracker.clearAll();
+  libraryStore.upsertLibraryTrack({
+    identityKey: "name:artist a:album:1:1:song",
+    title: "Song",
+    artistName: "Artist A",
+  });
+  assert.equal((await reuse()).reused, false);
+
+  const duetPath = path.join(downloadRoot, "Artist A", "Album", "02 - Song.mp3");
+  await fs.writeFile(duetPath, "audio");
+  const duet = libraryStore.upsertLibraryTrack({
+    identityKey: "name:artist a:album:1:2:song",
+    title: "Song",
+    artistName: "Artist A, Artist B",
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: duet.id, trackNumber: 2 });
+  libraryStore.upsertLibraryMediaFile({
+    trackId: duet.id,
+    albumId: album.id,
+    source: "aurral",
+    path: duetPath,
+  });
+  assert.equal((await reuse()).finalPath, duetPath);
+});
+
 test("jobs follow the Library files a scan changed", async () => {
   const album = path.join(downloadRoot, "Deftones", "White Pony");
   const replacedPath = path.join(album, "01 - Feiticeira.mp3");

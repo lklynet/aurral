@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import { artistNames } from "../../../lib/artistCredit.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { downloadTracker, type DownloadJob, type DownloadTrackInput } from "./downloadTracker.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
@@ -421,28 +422,31 @@ export async function removePlaylistFileIfUnshared(
   return { action: "deleted" };
 }
 
+// A multi-artist credit like "Artist A, Artist B" belongs to the Library
+// artist of any name in it, but a name with a comma in it comes first.
+const creditedNames = (credit: unknown) => {
+  const whole = String(credit || "").trim();
+  return whole ? [...new Set([whole, ...artistNames(whole.split(","))])] : [];
+};
+
 function findMatchingArtist(artists: ReadArtist[], track: DownloadTrackInput) {
   const artistMbid = String(track?.artistMbid || "").trim();
   if (artistMbid) {
+    const match = artists.find((artist) => String(artist?.mbid || "").trim() === artistMbid);
+    if (match) return match;
+  }
+  for (const name of creditedNames(track?.artistName)) {
+    const artistKey = normalizeText(name);
     const match = artists.find(
-      (artist) =>
-        String(artist?.mbid || "").trim() === artistMbid ||
-        String(artist?.foreignArtistId || "").trim() === artistMbid,
+      (artist) => normalizeText(artist?.artistName || artist?.name) === artistKey,
     );
     if (match) return match;
   }
-  const artistKey = normalizeText(track?.artistName);
-  if (!artistKey) return null;
-  return (
-    artists.find((artist) => normalizeText(artist?.artistName || artist?.name) === artistKey) ||
-    null
-  );
+  return null;
 }
 
 const albumHasMbid = (album: ReadAlbum, albumMbid: string) =>
-  [album.mbid, album.foreignAlbumId, album.releaseGroupMbid].some(
-    (value) => String(value || "").trim() === albumMbid,
-  );
+  [album.mbid, album.releaseGroupMbid].some((value) => String(value || "").trim() === albumMbid);
 
 function rankAlbums(albums: ReadAlbum[], track: DownloadTrackInput) {
   const albumMbid = String(track?.albumMbid || "").trim();
@@ -464,11 +468,7 @@ function rankAlbums(albums: ReadAlbum[], track: DownloadTrackInput) {
 function findMatchingTrack(tracks: ReadTrack[], track: DownloadTrackInput, strictAlbum = false) {
   const trackMbid = String(track?.trackMbid || "").trim();
   if (trackMbid) {
-    const match = tracks.find(
-      (entry) =>
-        String(entry?.mbid || "").trim() === trackMbid ||
-        String(entry?.foreignTrackId || "").trim() === trackMbid,
-    );
+    const match = tracks.find((entry) => String(entry?.mbid || "").trim() === trackMbid);
     if (match) return match;
     if (strictAlbum) return null;
   }
@@ -492,13 +492,12 @@ async function findLibraryFolderSource(
 ): Promise<ReuseSource | null> {
   const { label, external } = FOLDER_SOURCES[source];
   const strictAlbum = options.targetPlaylistType === "library";
-  const { artists, albums, tracks } = buildLibraryReadModel(
-    getLibraryForArtistReferences({
-      source,
-      availableOnly: false,
-      references: [track?.artistMbid, track?.artistName],
-    }),
-  );
+  const library = getLibraryForArtistReferences({
+    source,
+    availableOnly: false,
+    references: [track?.artistMbid, ...creditedNames(track?.artistName)],
+  });
+  const { artists, albums, tracks } = buildLibraryReadModel(library);
   const artist =
     findLibraryArtist(artists, track?.artistMbid) || findMatchingArtist(artists, track);
   if (!artist) {
@@ -518,6 +517,15 @@ async function findLibraryFolderSource(
     return null;
   }
 
+  const credit = normalizeText(track?.artistName);
+  const splitCredit =
+    normalizeText(artist.artistName || artist.name) !== credit &&
+    !(track?.artistMbid && artist.mbid === track.artistMbid);
+  const creditFits = (matched: ReadTrack) =>
+    !splitCredit ||
+    Boolean(track?.trackMbid && matched.mbid === track.trackMbid) ||
+    normalizeText(library.tracks.find((entry) => entry.id === matched.id)?.artistName) === credit;
+
   let foundTitleOnAnyAlbum = false;
   const rankedAlbums = rankAlbums(artistAlbums, track);
   const albumsToCheck = strictAlbum
@@ -530,7 +538,7 @@ async function findLibraryFolderSource(
     : rankedAlbums;
   for (const album of albumsToCheck) {
     const albumTracks = findLibraryTracksForAlbum(tracks, album.id);
-    const matchedTrack = findMatchingTrack(albumTracks, track, strictAlbum);
+    const matchedTrack = findMatchingTrack(albumTracks.filter(creditFits), track, strictAlbum);
     if (!matchedTrack) continue;
     foundTitleOnAnyAlbum = true;
     if (matchedTrack.hasFile !== true || !matchedTrack.path) {

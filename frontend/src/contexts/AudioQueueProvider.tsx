@@ -11,10 +11,8 @@ import {
 import {
   AUTOPLAY_SOURCE,
   getUpcomingTracks,
-  getFormatLoadAttempts,
   isAutoplayEntry,
   radioSeedFor,
-  getHowlerFormat,
   initialQueueState,
   normalizeQueueTrack,
   normalizeStreamQueueTrack,
@@ -49,9 +47,10 @@ import { useWebSocketChannel } from "../hooks/useWebSocket";
 import { playEventsClient } from "../utils/api/clients/playEvents.ts";
 import { libraryRadioClient } from "../utils/api/clients/libraryRadio.ts";
 import { getReleaseGroupCover } from "../utils/api/endpoints/artists";
-import { createAudioEngine } from "../utils/audioEngine";
+import { createAudioEngine, flacFallback } from "../utils/audioEngine";
 import {
   MEDIA_SESSION_SEEK_SECONDS,
+  mediaKeyAction,
   mediaSessionArtwork,
   mediaSessionPosition,
 } from "../utils/mediaSession";
@@ -82,7 +81,7 @@ const PASSIVE_ACTIONS = new Set([
 const SHARED_AUDIO_KEYS: (string | null)[] = [SHARED_VOLUME_KEY, SHARED_MUTED_KEY];
 
 type StoredAudio = { volume: number; muted: boolean };
-type LoadTrackOptions = { formatAttemptIndex?: number; autoplay?: boolean };
+type LoadTrackOptions = { flac?: boolean; autoplay?: boolean };
 
 function normalizeVolume(value: string | number) {
   const parsed = Number.parseFloat(String(value));
@@ -225,14 +224,13 @@ function trackAt(state: QueueState, playbackIndex: number) {
   return queueIndex == null ? null : (state.queue[queueIndex] ?? null);
 }
 
-function trackSignature(
-  state: QueueState,
-  playbackIndex: number,
-  track: QueueEntry,
-  formatKey: string,
-) {
-  return `${state.queueRevision}:${track.entryId ?? state.playbackOrder[playbackIndex]}:${track.src}:${formatKey}`;
+function trackSignature(state: QueueState, playbackIndex: number, track: QueueEntry) {
+  return `${state.queueRevision}:${track.entryId ?? state.playbackOrder[playbackIndex]}:${track.src}`;
 }
+
+const undecodable = (error: MediaError | null) =>
+  error != null &&
+  (error.code === error.MEDIA_ERR_DECODE || error.code === error.MEDIA_ERR_SRC_NOT_SUPPORTED);
 
 const isMissing = (src: string) =>
   fetch(src, { method: "HEAD", credentials: "same-origin", redirect: "manual" })
@@ -309,15 +307,14 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     (
       s: QueueState,
       playbackIndex: number,
-      { formatAttemptIndex = 0, autoplay = true }: LoadTrackOptions = {},
+      { flac = false, autoplay = true }: LoadTrackOptions = {},
     ) => {
       const track = trackAt(s, playbackIndex);
-      const src = track?.src;
+      const original = track?.src;
+      if (!track || !original) return;
+      const src = flac ? flacFallback(original) : original;
       if (!src) return;
-      const formatAttempts = getFormatLoadAttempts(track);
-      const formatKey = formatAttempts[formatAttemptIndex];
-      if (!formatKey) return;
-      const signature = trackSignature(s, playbackIndex, track, formatKey);
+      const signature = trackSignature(s, playbackIndex, track);
       if (loadedSignatureRef.current === signature) return;
       loadedSignatureRef.current = signature;
       const resumeAt = resumeAtRef.current;
@@ -325,12 +322,11 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
 
       engine.load({
         src,
-        format: getHowlerFormat(formatKey),
         autoplay,
         startAt: resumeAt?.entryId === track.entryId ? resumeAt.position : 0,
-        onLoadError: async () => {
+        onLoadError: async (error) => {
           loadedSignatureRef.current = null;
-          const missing = formatAttemptIndex === 0 && (await isMissing(src));
+          const missing = !flac && (await isMissing(src));
           const cur = stateRef.current;
           if (trackAt(cur, cur.currentIndex)?.entryId !== track.entryId) return;
           if (missing) {
@@ -343,19 +339,13 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
             );
             return;
           }
-          if (formatAttemptIndex + 1 >= formatAttempts.length) {
-            resumeAtRef.current = null;
-            dispatch({
-              type: "SET_ERROR",
-              error: "Track unavailable. Restore the file or refresh the Library.",
-            });
-            engine.pause();
+          if (!flac && undecodable(error) && flacFallback(original)) {
+            loadTrackRef.current(stateRef.current, playbackIndex, { flac: true, autoplay });
             return;
           }
-          loadTrackRef.current(stateRef.current, playbackIndex, {
-            formatAttemptIndex: formatAttemptIndex + 1,
-            autoplay,
-          });
+          resumeAtRef.current = null;
+          dispatch({ type: "SET_ERROR", error: "Couldn't play this track." });
+          engine.pause();
         },
         onStart: () => sendNowPlaying(track),
         onPlayed: () => recordPlay(track),
@@ -399,10 +389,7 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
         engine.discardPreload();
         return;
       }
-      engine.preload({
-        src: track.src,
-        format: getHowlerFormat(getFormatLoadAttempts(track)[0]),
-      });
+      engine.preload(track.src);
     };
     preloadUpcoming();
     const interval = window.setInterval(preloadUpcoming, 1000);
@@ -997,8 +984,8 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
   ]);
 
   useEffect(() => {
+    if (!isActive) return undefined;
     const mediaSession = navigator.mediaSession;
-    if (!mediaSession || !isActive) return undefined;
     const isRunning = () => {
       const snapshot = engine.getSnapshot();
       return snapshot.isPlaying || snapshot.isStarting;
@@ -1022,18 +1009,27 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
         seekBy(-(details?.seekOffset || MEDIA_SESSION_SEEK_SECONDS)),
       stop: clearQueue,
     } satisfies Partial<Record<MediaSessionAction, MediaSessionActionHandler>>;
+    const handleMediaKey = (event: KeyboardEvent) => {
+      const action = mediaKeyAction(event.key);
+      if (!action || event.defaultPrevented || event.repeat) return;
+      event.preventDefault();
+      if (action === "playpause") togglePlayPause();
+      else handlers[action]();
+    };
+    window.addEventListener("keydown", handleMediaKey);
     for (const [action, handler] of Object.entries(handlers) as [
       MediaSessionAction,
       MediaSessionActionHandler,
     ][]) {
       try {
-        mediaSession.setActionHandler(action, handler);
+        mediaSession?.setActionHandler(action, handler);
       } catch {}
     }
     return () => {
+      window.removeEventListener("keydown", handleMediaKey);
       for (const action of Object.keys(handlers) as MediaSessionAction[]) {
         try {
-          mediaSession.setActionHandler(action, null);
+          mediaSession?.setActionHandler(action, null);
         } catch {}
       }
     };

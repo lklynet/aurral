@@ -1075,8 +1075,15 @@ test("an ID lookup asks for 100 keys at a time, and a Deezer album resolves by i
       ],
     );
 
+    dbOps.setDeezerMbidCache("dz:302127", "old-provider-guess");
+    dbOps.setDeezerMbidCache("aa:linked artist\0linked album", "old-title-guess");
+    assert.equal(
+      await resolveDeezerAlbumToMbid("Linked Artist", "Linked Album", 302127),
+      "linked-album",
+    );
     assert.equal(await resolveDeezerAlbumToMbid("", "", 302127), "linked-album");
-    assert.deepEqual(asked.at(-1), ["deezer-album:302127"]);
+    assert.deepEqual(asked.slice(2), [["deezer-album:302127"]]);
+    assert.equal(dbOps.getDeezerMbidCache("dz:302127"), "linked-album");
   } finally {
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
@@ -1126,4 +1133,34 @@ test("a rate limited search waits out Retry-After in the background and fails at
     get.mockRestore();
     clearMetadataProviderCaches();
   }
+});
+
+test("a failed ID batch keeps the IDs from completed batches", async (t) => {
+  const asked: number[] = [];
+  const lookup = vi.spyOn(http, "get").mockImplementation(async (url, options) => {
+    assert.equal(new URL(url).pathname, "/v1/ids");
+    const keys = String(options?.query?.keys).split(",");
+    asked.push(keys.length);
+    if (keys.length < 100) {
+      throw new HttpError(
+        "ID lookup refused",
+        { method: "GET", url },
+        { response: { status: 403, statusText: "Forbidden", headers: {}, data: {} } },
+      );
+    }
+    return {
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      data: { ids: { "deezer-album:2": { albumId: "linked-album" } } },
+    };
+  });
+  t.onTestFinished(() => {
+    lookup.mockRestore();
+    clearMetadataProviderCaches();
+  });
+  const isrcs = Array.from({ length: 100 }, (_, index) => `isrc:USCAE06${10000 + index}`);
+  const partial = await metadataProvider.lookupIds([...isrcs, "deezer-album:2"]);
+  assert.equal(partial.get("deezer-album:2")?.albumMbid, "linked-album");
+  assert.deepEqual(asked, [100, 1]);
 });

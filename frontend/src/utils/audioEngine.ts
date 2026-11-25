@@ -12,12 +12,11 @@ type AudioHandlers = {
   onEnd?: () => void;
   onStart?: () => void;
   onPlayed?: () => void;
-  onLoadError?: (...args: unknown[]) => void;
+  onLoadError?: (error: MediaError | null) => void;
 };
 
 type AudioEntry = {
   src: string;
-  format: string[];
   wantsPlay: boolean;
   startAt: number;
   loaded: boolean;
@@ -32,7 +31,6 @@ type AudioEntry = {
 
 type PreloadEntry = {
   src: string;
-  format: string[];
   loudness: Loudness | null;
 };
 
@@ -68,16 +66,16 @@ function isOwnStream(src: string) {
   }
 }
 
-function sameSnapshot(a: AudioSnapshot, b: AudioSnapshot) {
-  return (Object.keys(IDLE_SNAPSHOT) as (keyof AudioSnapshot)[]).every((key) => a[key] === b[key]);
+export function flacFallback(src: string) {
+  if (!isOwnStream(src)) return null;
+  const url = new URL(src, window.location.href);
+  if (url.searchParams.has("format")) return null;
+  url.searchParams.set("format", "flac");
+  return url.href;
 }
 
-function sameSource(
-  entry: Pick<AudioEntry, "src" | "format"> | PreloadEntry | null,
-  src: string,
-  format: string[],
-) {
-  return entry?.src === src && String(entry.format) === String(format);
+function sameSnapshot(a: AudioSnapshot, b: AudioSnapshot) {
+  return (Object.keys(IDLE_SNAPSHOT) as (keyof AudioSnapshot)[]).every((key) => a[key] === b[key]);
 }
 
 function fetchLoudness(src: string): Loudness {
@@ -217,14 +215,14 @@ export function createAudioEngine(createNode: () => HTMLAudioElement = () => new
     entry.handlers?.onEnd?.();
     if (current === entry) emit();
   });
-  node.addEventListener("error", (event) => {
+  node.addEventListener("error", () => {
     const entry = current;
     if (!entry) return;
     entry.loading = false;
     entry.playing = false;
     entry.wantsPlay = false;
     emit();
-    entry.handlers?.onLoadError?.(event, node.error);
+    entry.handlers?.onLoadError?.(node.error);
   });
   node.addEventListener("timeupdate", () => {
     const entry = current;
@@ -253,7 +251,6 @@ export function createAudioEngine(createNode: () => HTMLAudioElement = () => new
     },
     load({
       src,
-      format,
       autoplay = true,
       startAt = 0,
       onEnd,
@@ -262,18 +259,16 @@ export function createAudioEngine(createNode: () => HTMLAudioElement = () => new
       onLoadError,
     }: AudioHandlers & {
       src: string;
-      format: string[];
       autoplay?: boolean;
       startAt?: number;
     }) {
-      const upcoming = sameSource(preloaded, src, format) ? preloaded : null;
+      const upcoming = preloaded?.src === src ? preloaded : null;
       const loudness = upcoming?.loudness ?? null;
       if (upcoming) upcoming.loudness = null;
       discardPreload();
       current?.loudness?.controller.abort();
       const entry: AudioEntry = {
         src,
-        format,
         wantsPlay: autoplay,
         startAt,
         loaded: false,
@@ -296,10 +291,10 @@ export function createAudioEngine(createNode: () => HTMLAudioElement = () => new
       if (autoplay) attemptPlay(entry);
       emit();
     },
-    preload({ src, format }: { src: string; format: string[] }) {
-      if (!src || sameSource(current, src, format) || sameSource(preloaded, src, format)) return;
+    preload(src: string) {
+      if (!src || current?.src === src || preloaded?.src === src) return;
       discardPreload();
-      preloaded = { src, format, loudness: null };
+      preloaded = { src, loudness: null };
       requestLoudness(preloaded);
     },
     discardPreload,

@@ -14,14 +14,16 @@ import { asAppError } from "../../../lib/errors.ts";
 import { MBID_PATTERN } from "../../../lib/mbid.ts";
 import { APP_NAME, APP_VERSION, LISTENBRAINZ_API } from "../../config/constants.ts";
 
-type ListenbrainzSubmitEvent = {
+export type ListenbrainzSubmitEvent = {
   artist: string;
   title: string;
   album?: string | null;
   durationMs?: number | null;
   trackMbid?: string | null;
   albumMbid?: string | null;
-  artistMbid?: string | null;
+  releaseMbid?: string | null;
+  artistMbids?: (string | null)[];
+  artistNames?: string[];
 } & ({ listenType?: "single"; playedAt: number | string } | { listenType: "playing_now" });
 
 interface ListenbrainzErrorDetails {
@@ -38,6 +40,7 @@ const listenbrainzLimiter = createRateLimiter(350, { shared: LISTENBRAINZ_API })
 const LISTENBRAINZ_USER_AGENT = `${APP_NAME}/${APP_VERSION} ( https://github.com/lklynet/aurral )`;
 
 const LISTENBRAINZ_TIMEOUT_MS = 6000;
+const LISTENBRAINZ_SUBMIT_TIMEOUT_MS = 30_000;
 const LISTENBRAINZ_MAX_RETRIES = 2;
 
 const LISTENBRAINZ_MAX_RATE_LIMIT_WAIT_SECONDS = 15;
@@ -87,7 +90,7 @@ const listenbrainzWrite = async (
         Authorization: `Token ${String(token || "").trim()}`,
         "User-Agent": LISTENBRAINZ_USER_AGENT,
       },
-      timeoutMs: LISTENBRAINZ_TIMEOUT_MS,
+      timeoutMs: LISTENBRAINZ_SUBMIT_TIMEOUT_MS,
     }),
   );
   return response.data;
@@ -136,7 +139,7 @@ export const listenbrainzSubmit = async ({
   if (listenedAt !== undefined && !(Number.isFinite(listenedAt) && listenedAt > 0)) {
     throw new Error("listenbrainzSubmit requires a numeric playedAt timestamp");
   }
-  const artistMbid = mbid(event.artistMbid);
+  const artistMbids = (event.artistMbids ?? []).flatMap((id) => mbid(id) ?? []);
   const payload = {
     listen_type: event.listenType ?? "single",
     payload: [
@@ -150,8 +153,10 @@ export const listenbrainzSubmit = async ({
             submission_client: "Aurral",
             duration_ms: event.durationMs || undefined,
             recording_mbid: mbid(event.trackMbid),
+            release_mbid: mbid(event.releaseMbid),
             release_group_mbid: mbid(event.albumMbid),
-            artist_mbids: artistMbid && [artistMbid],
+            artist_mbids: artistMbids.length ? artistMbids : undefined,
+            artist_names: event.artistNames?.length ? event.artistNames : undefined,
           },
         },
       },

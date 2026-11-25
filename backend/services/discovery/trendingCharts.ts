@@ -4,6 +4,7 @@ import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { deezerArtistSchema, deezerPreviewPath, deezerTrackSchema } from "../apiClients/deezer.ts";
 import { guessArtistMbid } from "../artistMatch.ts";
+import { lookupIds } from "../providers/metadataProvider.ts";
 import {
   EDITORIAL_GENRES,
   deezerList,
@@ -247,25 +248,24 @@ async function fetchArtists() {
   const page = await deezerList(deezerArtistSchema, "/chart/0/artists", {
     limit: ARTIST_LIMIT,
   });
-  const items = await mapWithConcurrency(
-    page.items.filter((artist) => text(artist.name)),
-    3,
-    async (artist) => {
-      const key = text(artist.id);
-      const name = text(artist.name);
-      const [details, mbid] = await Promise.all([
-        deezerRequest(deezerArtistSchema, `/artist/${key}`).catch(() => null),
-        guessArtistMbid(name),
-      ]);
-      return {
-        key,
-        name,
-        imageUrl: artist.picture_xl || artist.picture_big || null,
-        fans: Number(details?.nb_fan) || null,
-        mbid: mbid || null,
-      };
-    },
-  );
+  const artists = page.items.filter((artist) => text(artist.name));
+  const artistKey = (id: number) => `deezer-artist:${id}`;
+  const ids = await lookupIds(artists.map((artist) => artistKey(artist.id))).catch(() => null);
+  const items = await mapWithConcurrency(artists, 3, async (artist) => {
+    const key = text(artist.id);
+    const name = text(artist.name);
+    const [details, mbid] = await Promise.all([
+      deezerRequest(deezerArtistSchema, `/artist/${key}`).catch(() => null),
+      ids?.get(artistKey(artist.id))?.artistMbid || guessArtistMbid(name),
+    ]);
+    return {
+      key,
+      name,
+      imageUrl: artist.picture_xl || artist.picture_big || null,
+      fans: Number(details?.nb_fan) || null,
+      mbid: mbid || null,
+    };
+  });
   if (items.length === 0) throw new Error("Deezer returned an empty artist chart");
   return { items };
 }
@@ -560,7 +560,12 @@ export function getChartTracks(limit: number) {
   const songs = readChart(selectChartStmt.get("songs"), songsChartSchema)?.items ?? [];
   return uniqueByKey([...songs, ...interleaveLists(...readGenreCharts())])
     .slice(0, limit)
-    .map(({ artistName, trackName, albumName }) => ({ artistName, trackName, albumName }));
+    .map(({ artistName, trackName, albumName, durationMs }) => ({
+      artistName,
+      trackName,
+      albumName,
+      durationMs,
+    }));
 }
 
 export function getTrendingGenreChart(genreId: number) {

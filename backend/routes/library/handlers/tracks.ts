@@ -14,12 +14,7 @@ import { deezerPreviewSearchPath } from "../../../../lib/deezerPreview.ts";
 import fsp from "fs/promises";
 import path from "path";
 import { logger } from "../../../services/logger.ts";
-import {
-  findLibraryTracksForAlbum,
-  getLibraryReadModelForAlbumReferences,
-} from "../../../services/libraryReadModel.ts";
 import { getLibraryForTrackIds } from "../../../services/libraryQueryService.ts";
-import { stripFilesystemPaths } from "../../../services/publicLibrary.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import { isErrorStatus, isFailure } from "../../shared/errorStatus.ts";
 
@@ -73,8 +68,6 @@ const queueQuery = v.object({ page: v.optional(v.string()), pageSize: v.optional
 const tracksQuery = v.object({
   albumId: v.optional(v.string()),
   releaseGroupMbid: v.optional(v.string()),
-  readPath: v.optional(v.string()),
-  source: v.optional(v.string()),
   artistName: v.optional(v.string()),
   albumTitle: v.optional(v.string()),
   releaseType: v.optional(v.string()),
@@ -164,47 +157,6 @@ export default new Hono<AppEnv>()
     const query = c.req.valid("query");
     try {
       const { albumId, releaseGroupMbid } = query;
-      if (query.readPath === "library") {
-        let readModel = albumId
-          ? getLibraryReadModelForAlbumReferences({
-              source: query.source || "all",
-              availableOnly: true,
-              references: [albumId],
-            })
-          : getLibraryReadModelForAlbumReferences({
-              source: query.source || "all",
-              availableOnly: true,
-              references: releaseGroupMbid ? [releaseGroupMbid] : [],
-            });
-        if (albumId && readModel.albums.length === 0 && releaseGroupMbid) {
-          readModel = getLibraryReadModelForAlbumReferences({
-            source: query.source || "all",
-            availableOnly: true,
-            references: [releaseGroupMbid],
-          });
-        }
-        const { albums, tracks } = readModel;
-        const album = [albumId, releaseGroupMbid]
-          .filter(Boolean)
-          .map((reference) =>
-            albums.find((candidate) =>
-              [candidate.id, candidate.providerId, candidate.mbid, candidate.foreignAlbumId].some(
-                (value) => String(value ?? "") === String(reference),
-              ),
-            ),
-          )
-          .find(Boolean);
-        const libraryTracks = album
-          ? findLibraryTracksForAlbum(tracks, album.id).map((track) => ({
-              ...stripFilesystemPaths(track),
-              streamPath: track.hasFile
-                ? `/library/stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`
-                : null,
-            }))
-          : [];
-        return c.json(libraryTracks, 200);
-      }
-
       let tracks: TrackListEntry[] = [];
 
       if (albumId) {

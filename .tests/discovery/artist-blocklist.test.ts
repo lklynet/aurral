@@ -33,7 +33,7 @@ const { FlowTrackSource } = flowTrackSourceModule;
 beforeEach(() => resetDatabase(db));
 afterAll(async () => cleanupIsolatedState(isolatedState));
 
-test("artist blocks are per-user and match ids, names, and track aliases", () => {
+test("artist blocks are per-user and match ids, names, and track aliases, but not a namesake with another MBID", () => {
   discovery.addDiscoveryFeedback("7", {
     artistId: "11111111-1111-1111-1111-111111111111",
     artistName: "Blocked Artist",
@@ -45,13 +45,27 @@ test("artist blocks are per-user and match ids, names, and track aliases", () =>
     { artistName: "Blocked Artist" },
     { artistMbid: "11111111-1111-1111-1111-111111111111", artistName: "Alias" },
     { artistName: "Alias", artistAliases: ["Blocked Artist"] },
+    { artistMbid: "22222222-2222-2222-2222-222222222222", artistName: "Blocked Artist" },
   ]);
 
   assert.deepEqual(
-    allowed.map((artist) => artist.name || artist.artistName),
-    ["Allowed Artist"],
+    allowed.map((artist) => [artist.name || artist.artistName, artist.artistMbid]),
+    [
+      ["Allowed Artist", undefined],
+      ["Blocked Artist", "22222222-2222-2222-2222-222222222222"],
+    ],
   );
   assert.equal(discovery.filterBlockedArtistsForUser("8", [{ name: "Blocked Artist" }]).length, 1);
+
+  discovery.addDiscoveryFeedback("7", {
+    artistId: "22222222-2222-2222-2222-222222222222",
+    artistName: "Blocked Artist",
+    action: "block_artist",
+  });
+  assert.deepEqual(
+    discovery.getDiscoveryFeedback("7").map((entry) => entry.artistId),
+    ["22222222-2222-2222-2222-222222222222", "11111111-1111-1111-1111-111111111111"],
+  );
 });
 
 test("resetting discovery tastes preserves artist blocks", () => {

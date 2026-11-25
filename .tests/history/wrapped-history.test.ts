@@ -381,3 +381,85 @@ test("custom artwork set in the Library replaces the covers and colors in a reca
   );
   assert.equal(after.topAlbums[0]?.artwork, albumUrl);
 });
+
+test("ListenBrainz release MBIDs stay distinct from release-group MBIDs and resolve to the Library group", async () => {
+  const listenbrainz = await import("../../backend/services/apiClients/listenbrainz.ts");
+  const store = await import("../../backend/services/libraryMediaStore.ts");
+  const deezer = await import("../../backend/services/apiClients/deezer.ts");
+  const beats = await import("../../backend/services/wrapped/beats.ts");
+  const { updateListenHistory } = await import("../../backend/services/listeningHistory.ts");
+  vi.spyOn(deezer, "deezerGetTrackPreview").mockResolvedValue(null);
+  vi.spyOn(beats, "songBeats").mockResolvedValue(null);
+
+  const artistMbid = "11111111-1111-4111-8111-111111111111";
+  const releaseMbid = "22222222-2222-4222-8222-222222222222";
+  const groupMbid = "33333333-3333-4333-8333-333333333333";
+  const recordingMbid = "44444444-4444-4444-8444-444444444444";
+
+  const artist = store.upsertLibraryArtist({
+    identityKey: `mbid:${artistMbid}`,
+    mbid: artistMbid,
+    name: "Artist",
+  });
+  const album = store.upsertLibraryAlbum({
+    identityKey: `release:${releaseMbid}`,
+    artistId: artist.id,
+    mbid: releaseMbid,
+    releaseGroupMbid: groupMbid,
+    title: "Edition Title",
+  });
+  const track = store.upsertLibraryTrack({
+    identityKey: `recording:${recordingMbid}`,
+    mbid: recordingMbid,
+    title: "Song",
+    artistName: "Artist",
+  });
+  store.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  store.upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "aurral",
+    path: "/library/artist/edition/song.flac",
+    available: true,
+  });
+
+  updateListenHistory(one.id, { listenbrainz: "listener-one" });
+  vi.spyOn(listenbrainz, "listenbrainzRequest").mockResolvedValue({
+    payload: {
+      listens: [
+        {
+          listened_at: Math.floor((period.start + 1000) / 1000),
+          recording_msid: "msid-1",
+          track_metadata: {
+            track_name: "Song",
+            artist_name: "Artist",
+            release_name: "Different Edition Title",
+            additional_info: {
+              recording_mbid: recordingMbid,
+              artist_mbids: [artistMbid],
+              release_mbid: releaseMbid,
+            },
+          },
+        },
+        {
+          listened_at: Math.floor((period.start + 600_000) / 1000),
+          recording_msid: "msid-2",
+          track_metadata: {
+            track_name: "Unowned Song",
+            artist_name: "Other Artist",
+            release_name: "Unowned Edition",
+            additional_info: {
+              release_mbid: "55555555-5555-4555-8555-555555555555",
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  const summary = await history.buildWrappedSummary(one.id, period);
+  const ownedAlbum = summary.topAlbums.find((entry) => entry.name === "Different Edition Title");
+  const unownedAlbum = summary.topAlbums.find((entry) => entry.name === "Unowned Edition");
+  assert.equal(ownedAlbum?.mbid, groupMbid);
+  assert.equal(unownedAlbum?.mbid, null);
+});

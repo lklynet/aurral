@@ -6,7 +6,7 @@ import {
   type DiscoveryRecommendation,
   type DiscoverySeed,
 } from "./recommendationPipeline.ts";
-import type { ArtistMatchFields } from "./artistKeys.ts";
+import type { ArtistMatchFields } from "../../../lib/artistMatch.ts";
 
 export type SourceHealth = { success: number; failure: number };
 type ArtistTag = { name: string; count: number };

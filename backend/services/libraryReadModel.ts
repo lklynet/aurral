@@ -1,7 +1,5 @@
 import {
-  getLibraryArtistPage,
   getLibraryForAlbumReferences,
-  getLibraryForArtistReferences,
   getLibraryForArtists,
   getLibraryTrackPath,
   type LibraryTrackFile,
@@ -9,6 +7,7 @@ import {
 import { getManagementMap } from "./libraryManagementStore.ts";
 import { selectCanonicalFile } from "./canonicalFileSelector.ts";
 import type { LibraryMetadata } from "./libraryMetadata.ts";
+import { isAlbumMonitored } from "./albumOwnership.ts";
 
 type ManagementByEntityId = ReturnType<typeof getManagementMap>;
 
@@ -74,7 +73,7 @@ const albumFiles = (track: LibraryTrackRecord, albumId: number) =>
 const recordMatches = (record: ReadArtist, reference: unknown) => {
   const value = String(reference ?? "").trim();
   if (!value) return false;
-  return [record.id, record.providerId, record.mbid, record.identityKey].some(
+  return [record.id, record.mbid, record.identityKey].some(
     (candidate) => String(candidate ?? "").trim() === value,
   );
 };
@@ -92,17 +91,14 @@ const buildArtist = (
   const sizeOnDisk = hasSummary
     ? Number(artist.sizeOnDisk || 0)
     : artistAlbums.reduce((total, album) => total + album.statistics.sizeOnDisk, 0);
-  const providerId = artist.metadata?.id ?? null;
   const management = managementByArtistId.get(Number(artist.id)) || null;
   return {
     id: artist.id,
     identityKey: artist.identityKey,
-    providerId,
     source: artist.source || (artist.sources?.length === 1 ? artist.sources[0] : null),
     managed: Boolean(management),
     monitorMode: management?.monitorMode ?? null,
     mbid: artist.mbid,
-    foreignArtistId: artist.metadata?.foreignArtistId || artist.mbid || artist.identityKey,
     artistName: artist.name,
     name: artist.name,
     sortName: artist.sortName,
@@ -135,28 +131,23 @@ const buildAlbum = (
   const trackFileCount = albumTracks.filter((track) =>
     albumFiles(track, album.id).some((file) => file.available),
   ).length;
-  const providerId = album.metadata?.id ?? null;
   const management = managementByAlbumId.get(Number(album.id)) || null;
   return {
     id: album.id,
     identityKey: album.identityKey,
-    providerId,
     source: album.source || (album.sources?.length === 1 ? album.sources[0] : null),
     managed: Boolean(management),
     monitorMode: management?.monitorMode ?? null,
-    providerArtistId: album.metadata?.artistId ?? null,
     artistId: album.artistId,
     artistMbid: artist?.mbid || null,
     artistName: artist?.name || album.albumArtist,
-    mbid: album.mbid || album.releaseGroupMbid,
+    mbid: album.mbid,
     releaseGroupMbid: album.releaseGroupMbid || null,
-    foreignAlbumId:
-      album.metadata?.foreignAlbumId || album.mbid || album.releaseGroupMbid || album.identityKey,
     albumName: album.title,
     title: album.title,
     releaseDate: album.releaseDate,
     addedAt: null,
-    monitored: Boolean(album.metadata?.monitored),
+    monitored: isAlbumMonitored(album.metadata, management),
     trackListComplete:
       !management ||
       album.metadata?.trackListComplete === true ||
@@ -178,15 +169,9 @@ const buildTrack = (track: LibraryTrackRecord, album: ReadAlbum) => {
   const relation = track.albums.find((entry) => entry.albumId === album.id);
   return {
     id: track.id,
-    providerId: track.metadata?.id ?? null,
     albumId: album.id,
     artistId: album.artistId,
     mbid: track.mbid,
-    foreignTrackId:
-      track.metadata?.foreignRecordingId ||
-      track.metadata?.foreignTrackId ||
-      track.mbid ||
-      track.identityKey,
     trackName: track.title,
     title: track.title,
     trackNumber: relation?.trackNumber || 0,
@@ -235,28 +220,6 @@ export function buildLibraryReadModel(library: LibraryReadInput) {
   return { artists: readArtists, albums: readAlbums, tracks: readTracks };
 }
 
-export function getLibraryReadModelForArtistPage({
-  source = "all",
-  availableOnly = true,
-  limit = 10000,
-  offset = 0,
-}: { source?: unknown; availableOnly?: boolean; limit?: number; offset?: number } = {}) {
-  const library = getLibraryArtistPage({
-    source,
-    availableOnly,
-    limit,
-    offset,
-    includeStats: true,
-  });
-  return {
-    artists: (library.artists as LibraryArtistRecord[]).map((artist) =>
-      buildArtist(artist, new Map(), getManagementMap("artist")),
-    ),
-    albums: [],
-    tracks: [],
-  };
-}
-
 export function getLibraryReadModelForArtists({
   source = "all",
   availableOnly = true,
@@ -270,22 +233,6 @@ export function getLibraryReadModelForArtists({
 } = {}) {
   return buildLibraryReadModel(
     getLibraryForArtists({ source, availableOnly, mbids, includeSharedAlbums }),
-  );
-}
-
-export function getLibraryReadModelForArtistReferences({
-  source = "all",
-  availableOnly = false,
-  references = [],
-  includeSharedAlbums = false,
-}: {
-  source?: unknown;
-  availableOnly?: boolean;
-  references?: unknown[];
-  includeSharedAlbums?: boolean;
-} = {}) {
-  return buildLibraryReadModel(
-    getLibraryForArtistReferences({ source, availableOnly, references, includeSharedAlbums }),
   );
 }
 

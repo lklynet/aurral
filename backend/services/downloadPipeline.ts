@@ -76,6 +76,7 @@ export type PipelinePayload = PipelineStep &
     releaseWaits?: number | null;
     upgradeWaits?: number;
     delaySeconds?: number;
+    workerExits?: number;
   };
 
 const pipelineStepSchema = v.looseObject({
@@ -258,6 +259,7 @@ const sourceSearchReset = () => ({
   queueUuids: null,
   pendingId: null,
   downloadedPath: null,
+  workerExits: 0,
 });
 
 // A track request whose quick search imported nothing tries its release
@@ -441,6 +443,8 @@ const ALBUM_GRAB_FAILED_REASON = "The album download failed and will start again
 const MAX_FAILED_ALBUM_ATTEMPTS = 3;
 const NO_ALBUM_SOURCE_REASON = "No album download source is enabled; searching for the track";
 const UPGRADE_WAIT_SECONDS = 60;
+const MAX_WORKER_EXITS = 2;
+const WORKER_EXITS_REASON = "The download worker stopped twice while working on this track";
 
 // Pins an attempt past its search, and the tracks it holds, to the release
 // its leading track resolves to now, or to none.
@@ -521,6 +525,14 @@ async function processSourcePayload(payload: PipelinePayload): Promise<PipelineP
     await discardSlskdSearch(payload);
     return null;
   }
+  if ((payload.workerExits ?? 0) >= MAX_WORKER_EXITS) {
+    logger.warn("downloads", WORKER_EXITS_REASON, {
+      jobId: payload.jobId,
+      source: payload.source ?? null,
+      phase: payload.phase,
+    });
+    return failPipelineStep(payload, WORKER_EXITS_REASON);
+  }
   const currentJob = downloadTracker.getJob(payload.jobId);
   const inactiveOwner = deferForInactiveOwner(payload, currentJob);
   if (inactiveOwner) return inactiveOwner;
@@ -565,7 +577,7 @@ async function processSourcePayload(payload: PipelinePayload): Promise<PipelineP
       if (job) await failJob(job, getNoSourceMessage(job));
       return null;
     }
-    return processSourcePayload(nextPayload);
+    return processSourcePayload({ ...nextPayload, workerExits: payload.workerExits });
   }
   const { source, jobId } = payload;
   if (payload.albumGrab === true && ["search", "finalize"].includes(payload.phase) && currentJob) {

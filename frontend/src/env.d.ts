@@ -7,4 +7,5 @@ interface ImportMetaEnv {
   readonly VITE_APP_VERSION?: string;
   readonly VITE_RELEASE_CHANNEL?: string;
   readonly VITE_HOSTED: boolean;
+  readonly VITE_HUB_ORIGIN?: string;
 }

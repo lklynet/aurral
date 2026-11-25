@@ -56,13 +56,6 @@ export const FACTORY_MONITOR_RULES: MonitorRules = Object.freeze({
 
 export const AURRAL_ALBUM_CONDITION = `management.entity_kind = 'album'`;
 
-export const MONITORED_AURRAL_ALBUM_CONDITION = `
-  ${AURRAL_ALBUM_CONDITION}
-  AND COALESCE(management.monitor_mode, '') != 'unmonitored'
-  AND json_valid(album.metadata_json)
-  AND json_extract(album.metadata_json, '$.monitored') = 1
-`;
-
 export const monitoredTrackCondition = (trackAlias: string) => `${trackAlias}.monitored = 1`;
 
 type InvalidRulesMessage =

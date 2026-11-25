@@ -64,6 +64,20 @@ test("the same song across sources groups together even when their MBIDs disagre
   assert.equal(summary.topSongs[0]?.plays, 2);
 });
 
+test("genre spellings that differ only by case, spaces, hyphens or underscores count as one genre", () => {
+  const summary = calculateWrapped(
+    [
+      play({ genres: ["Hip Hop"] }),
+      play({ genres: ["hip-hop"], title: "Two" }),
+      play({ genres: ["Hip_Hop", "HipHop", "Unknown"], title: "Three" }),
+    ],
+    period,
+  );
+  assert.equal(summary.uniqueGenres, 1);
+  assert.equal(summary.genrePlays, 3);
+  assert.deepEqual(summary.topGenres, [{ name: "hip hop", plays: 3 }]);
+});
+
 test("days, streaks and months follow the listener's timezone", () => {
   const newYork = wrappedPeriod(2026, "America/New_York", at("2027-01-01T05:00:00Z"));
   const summary = calculateWrapped(

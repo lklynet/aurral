@@ -20,6 +20,7 @@ import {
   type LibraryTrack,
 } from "./libraryQueryService.ts";
 import { readRawLibraryMetadata, type LibraryMetadata } from "./libraryMetadata.ts";
+import { albumIsMonitored } from "./albumOwnership.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import { selectCanonicalFile } from "./canonicalFileSelector.ts";
 import { scheduleLibraryScan } from "./libraryScanWorker.ts";
@@ -70,7 +71,6 @@ import {
 import {
   isStudioAlbum,
   listArtistReleases,
-  MONITORED_AURRAL_ALBUM_CONDITION,
   monitoredTrackCondition,
   monitoringToken,
   nextArtistMonitoring,
@@ -102,18 +102,15 @@ import {
 } from "./providers/metadataRanking.ts";
 import { enqueueSystemTask } from "./jobs/systemTasks.ts";
 import { scheduleReleaseMetadataRefresh } from "./releaseMetadataSync.ts";
-import { loadFreshReleasesByArtists } from "./discovery/freshReleases.ts";
+import { loadFreshReleasesByArtist } from "./discovery/freshReleases.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
 import { logger } from "./logger.ts";
 import {
   getAlbumByMbid as getMetadataAlbumByMbid,
   getArtistByMbid as getMetadataArtistByMbid,
 } from "./providers/metadataProvider.ts";
-import {
-  isSilenceTrack,
-  isUnknownTitle,
-  isVariousArtistsCredit,
-} from "./trackMatching/titleText.ts";
+import { isSilenceTrack, isUnknownTitle } from "./trackMatching/titleText.ts";
+import { VARIOUS_ARTISTS_MBID, isVariousArtistsCredit } from "../../lib/artistCredit.ts";
 import { recordTrackJobQueued } from "./aurralHistoryService.ts";
 const metadataLookups = new PQueue({ concurrency: 4 });
 
@@ -141,11 +138,9 @@ const _albumMonitoringUpdates = new Map<number, Promise<unknown>>();
 const _artistMonitoringUpdates = new Map<number, Promise<unknown>>();
 const _trackMonitoringUpdates = new Map<number, Promise<unknown>>();
 
-const monitoredAlbumStmt = db.prepare(`
-  SELECT 1 FROM library_management AS management
-  JOIN library_albums AS album ON album.id = management.entity_id
-  WHERE management.entity_id = ? AND ${MONITORED_AURRAL_ALBUM_CONDITION}
-`);
+const monitoredAlbumStmt = db.prepare(
+  `SELECT 1 FROM library_albums AS album WHERE album.id = ? AND ${albumIsMonitored("album")}`,
+);
 
 const isMonitoredAlbum = (albumId: unknown) => Boolean(monitoredAlbumStmt.get(Number(albumId)));
 
@@ -381,20 +376,16 @@ function mapLibraryAlbum(
   const trackCount = albumTracks.length;
   return {
     id: String(album.id),
-    providerId: album.metadata?.id ?? null,
     artistId: String(album.artistId),
     artistName: artist?.name || album.albumArtist || null,
     artistMbid: artist?.mbid || null,
-    mbid: album.releaseGroupMbid || album.mbid || null,
+    mbid: album.mbid || null,
     releaseGroupMbid: album.releaseGroupMbid || null,
-    foreignAlbumId:
-      album.metadata?.foreignAlbumId || album.releaseGroupMbid || album.mbid || album.identityKey,
     albumName: album.title,
     title: album.title,
-    path: album.metadata?.path || null,
     addedAt: album.metadata?.added || null,
     releaseDate: album.releaseDate || null,
-    monitored: album.metadata?.monitored === true,
+    monitored: album.monitored === true,
     managed: Boolean(album.managed),
     monitorMode: album.monitorMode || null,
     sources: album.sources,
@@ -413,15 +404,9 @@ function mapLibraryTrack(track: LibraryTrackRecord, album: LibraryAlbumRecord | 
   const relation = (track.albums || []).find((entry) => entry.albumId === album?.id);
   return {
     id: String(track.id),
-    providerId: track.metadata?.id ?? null,
     albumId: album ? String(album.id) : null,
     artistId: album ? String(album.artistId) : null,
     mbid: track.mbid || null,
-    foreignTrackId:
-      track.metadata?.foreignRecordingId ||
-      track.metadata?.foreignTrackId ||
-      track.mbid ||
-      track.identityKey,
     trackName: track.title,
     title: track.title,
     trackNumber: relation?.trackNumber || 0,
@@ -825,11 +810,14 @@ export class LibraryManager {
         downloadTracker.updateMetadata(job.id, { releaseMbid });
       if (restarted || requestKind === "album") downloadTracker.setRequestKind(job.id, requestKind);
     };
-    const compilation = isVariousArtistsCredit(artist?.name, artist?.mbid);
     // A compilation track's job keeps the album's "Various Artists" credit,
-    // which tags and media servers group the album by, and matches files by
-    // the track's own artist under any of its names, such as "The Jackson 5"
-    // for "The Jacksons".
+    // whichever artist the album is filed under, since tags and media servers
+    // group the album by it. It matches files by the track's own artist under
+    // any of its names, such as "The Jackson 5" for "The Jacksons".
+    const credit = isVariousArtistsCredit(album.albumArtist)
+      ? { name: album.albumArtist, mbid: VARIOUS_ARTISTS_MBID }
+      : { name: artist?.name || album.albumArtist || "Unknown Artist", mbid: artist?.mbid || null };
+    const compilation = isVariousArtistsCredit(credit.name, credit.mbid);
     const artistAliasesFor = (track: LibraryTrackRecord) =>
       compilation
         ? [...new Set([track.artistName, ...(track.metadata?.artistAliases || [])])].filter(
@@ -968,10 +956,10 @@ export class LibraryManager {
         () =>
           downloadTracker.addJob(
             {
-              artistName: artist?.name || album.albumArtist || "Unknown Artist",
+              artistName: credit.name,
               trackName: track.title,
               albumName: album.title,
-              artistMbid: artist?.mbid || null,
+              artistMbid: credit.mbid,
               albumMbid,
               releaseMbid,
               trackMbid: track.mbid || null,
@@ -1528,22 +1516,47 @@ export class LibraryManager {
       const artist = libraryArtistFallback(artistId);
       return artist?.mbid ? [{ artist, mbid: artist.mbid, entry }] : [];
     });
-    const announced = Map.groupBy(
-      await loadFreshReleasesByArtists(artists.map(({ mbid }) => mbid)),
-      (release) => release.artistMbid,
-    );
+    const announced = await loadFreshReleasesByArtist(artists.map(({ mbid }) => mbid));
     let queuedAlbums = 0;
     let queuedTracks = 0;
     let failedArtists = 0;
     for (const { artist, mbid, entry } of artists) {
-      const news = announced.get(mbid);
-      if (news) {
-        await refreshArtistMissingReleases(
-          mbid,
-          news.map((release) => release.releaseGroupMbid),
-        );
-      }
       const effective = resolveArtistMonitoring(entry.monitorRules, defaults);
+      if (!effective) continue;
+      const news = announced.get(mbid);
+      if (news && (effective.rules.catalog !== "none" || effective.rules.newReleases)) {
+        const exclusions = indexArtistExclusions(mbid);
+        const eligible = selectMonitoredReleases(
+          news.map((release) => ({
+            id: release.releaseGroupMbid,
+            type: release.type,
+            secondaryTypes: release.secondaryTypes,
+            releaseStatuses: [],
+            firstReleaseDate: release.releaseDate,
+          })),
+          effective.rules,
+          effective,
+        ).filter((release) => {
+          if (exclusions.isAlbumExcluded(release.id)) return false;
+          const existing = libraryAlbumForReference(release.id);
+          const override = existing
+            ? getLibraryManagementEntry("album", Number(existing.id))
+            : null;
+          if (override?.monitorMode === "unmonitored") return false;
+          if (existing && existing.statistics.percentOfTracks >= 100) {
+            return (
+              effective.rules.edition === "expanded" && !this.albumWantsExpandedEdition(release.id)
+            );
+          }
+          return true;
+        });
+        if (eligible.length > 0) {
+          await refreshArtistMissingReleases(
+            mbid,
+            eligible.map((release) => release.id),
+          );
+        }
+      }
       const plan = await this.planArtistMonitoring(artist, effective);
       if (plan.error) {
         failedArtists += 1;
@@ -1570,8 +1583,8 @@ export class LibraryManager {
     return { artists: monitoredArtists.length, queuedAlbums, queuedTracks, failedArtists };
   }
 
-  _resolveAlbum(canonicalId: unknown) {
-    const reference = String(canonicalId ?? "").trim();
+  _resolveAlbum(albumId: unknown) {
+    const reference = String(albumId ?? "").trim();
     const id = Number(reference);
     if (!/^\d+$/.test(reference) || !Number.isSafeInteger(id) || id <= 0) {
       return {
@@ -1611,7 +1624,7 @@ export class LibraryManager {
     };
   }
 
-  async setAlbumMonitoring(canonicalId: unknown, { monitored }: { monitored?: unknown } = {}) {
+  async setAlbumMonitoring(albumId: unknown, { monitored }: { monitored?: unknown } = {}) {
     if (typeof monitored !== "boolean") {
       return {
         error: "monitored must be true or false",
@@ -1619,8 +1632,8 @@ export class LibraryManager {
         code: "invalid_monitored",
       };
     }
-    return serializeMonitoringUpdate(_albumMonitoringUpdates, Number(canonicalId), async () => {
-      const resolved = this._resolveAlbum(canonicalId);
+    return serializeMonitoringUpdate(_albumMonitoringUpdates, Number(albumId), async () => {
+      const resolved = this._resolveAlbum(albumId);
       if (failed(resolved)) return resolved;
       const { album, mappedAlbum } = resolved;
       this._setAlbumMonitored(album, monitored);
@@ -1662,13 +1675,13 @@ export class LibraryManager {
     invalidateLibraryQueryCache({ persistedGenres: false });
   }
 
-  getAlbumStatus(canonicalId: string | number) {
-    const [status] = this.getAlbumStatuses([canonicalId]);
+  getAlbumStatus(albumId: string | number) {
+    const [status] = this.getAlbumStatuses([albumId]);
     return status ?? { error: "Album was not found in the library", statusCode: 404 };
   }
 
-  getAlbumStatuses(canonicalIds: (string | number)[]) {
-    const resolved = canonicalIds.map((canonicalId) => this._resolveAlbum(canonicalId));
+  getAlbumStatuses(albumIds: (string | number)[]) {
+    const resolved = albumIds.map((albumId) => this._resolveAlbum(albumId));
     const jobsForAlbum = indexAlbumJobs(
       resolved.flatMap((entry) => (failed(entry) ? [] : albumJobKeys(entry.album))),
     );
@@ -1683,7 +1696,7 @@ export class LibraryManager {
   }
 
   async setTrackMonitoring(
-    canonicalId: unknown,
+    libraryTrackId: unknown,
     { monitored, albumMbid = null }: { monitored?: unknown; albumMbid?: string | null } = {},
   ) {
     if (typeof monitored !== "boolean") {
@@ -1693,7 +1706,7 @@ export class LibraryManager {
         code: "invalid_monitored",
       } as const;
     }
-    const reference = String(canonicalId ?? "").trim();
+    const reference = String(libraryTrackId ?? "").trim();
     const trackId = Number(reference);
     if (!/^\d+$/.test(reference) || !Number.isSafeInteger(trackId) || trackId <= 0) {
       return {
@@ -1804,18 +1817,18 @@ export class LibraryManager {
     return result?.error || result?.albumManaged === false ? null : result;
   }
 
-  async searchAlbumMissingTracks(canonicalId: string | number) {
-    const albumId = Number(canonicalId);
-    return serializeMonitoringUpdate(_albumMonitoringUpdates, albumId, () =>
-      this._finishAlbum(albumId, {
+  async searchAlbumMissingTracks(albumId: string | number) {
+    const id = Number(albumId);
+    return serializeMonitoringUpdate(_albumMonitoringUpdates, id, () =>
+      this._finishAlbum(id, {
         skipCancelledTracks: true,
         cause: { kind: "missing", playlistId: null },
       }),
     );
   }
 
-  async cancelAlbum(canonicalId: unknown) {
-    const resolved = this._resolveAlbum(canonicalId);
+  async cancelAlbum(albumId: unknown) {
+    const resolved = this._resolveAlbum(albumId);
     if (failed(resolved)) return resolved;
     const { album, mappedAlbum } = resolved;
     const result = await cancelAlbumJobs(albumJobKeys(album));
@@ -1862,8 +1875,8 @@ export class LibraryManager {
     return { success: true, releaseMbid: release.id };
   }
 
-  async deleteAlbum(canonicalId: unknown, deleteFiles = false) {
-    const resolved = this._resolveAlbum(canonicalId);
+  async deleteAlbum(albumId: unknown, deleteFiles = false) {
+    const resolved = this._resolveAlbum(albumId);
     if (failed(resolved)) return resolved;
     const { album, artist, library, mappedAlbum } = resolved;
     const artistState = getLibraryManagementEntry("artist", Number(album.artistId));
@@ -2111,9 +2124,13 @@ export class LibraryManager {
       ) ||
       providerArtists[0] ||
       null;
-    // A compilation keeps "Various Artists" on the album and names each
-    // track's own artist.
-    const compilation = isVariousArtistsCredit(artist.name, artist.mbid);
+    // A compilation keeps "Various Artists" on the album, whichever of its
+    // artists it was requested from, and names each track's own artist.
+    const albumArtist = isVariousArtistsCredit(null, metadata?.artistId)
+      ? "Various Artists"
+      : artist.name || providerArtist?.name;
+    const compilation =
+      isVariousArtistsCredit(artist.name, artist.mbid) || isVariousArtistsCredit(albumArtist);
     const trackArtists = new Map(
       providerArtists.map((entry) => [
         String(entry?.id || "")
@@ -2157,11 +2174,10 @@ export class LibraryManager {
     const saveAlbum = () => {
       const albumRecord = upsertLibraryAlbum({
         identityKey: buildIdentityKey("release-group", normalizedAlbumMbid),
-        mbid: normalizedAlbumMbid,
         releaseGroupMbid: normalizedAlbumMbid,
         artistId: artist.id,
         title: resolvedAlbumName,
-        albumArtist: artist.name || providerArtist?.name || null,
+        albumArtist: albumArtist || null,
         releaseDate: metadata?.releaseDate || selectedRelease?.releaseDate || null,
         metadata: {
           id: normalizedAlbumMbid,

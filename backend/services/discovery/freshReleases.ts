@@ -40,9 +40,23 @@ export function refreshFreshReleases() {
 
 const isStale = () => !snapshot || Date.now() - snapshot.fetchedAt >= FRESH_RELEASES_TTL_MS;
 
-export async function loadFreshReleasesByArtists(artistMbids: Iterable<string | null | undefined>) {
+export async function loadFreshReleasesByArtist(artistMbids: Iterable<string | null | undefined>) {
   if (isStale()) await refreshFreshReleases();
-  return getFreshReleasesByArtists(artistMbids);
+  const wanted = new Map<string, string>();
+  for (const mbid of artistMbids) {
+    if (mbid) wanted.set(mbid.toLowerCase(), mbid);
+  }
+  const grouped = new Map<string, FreshRelease[]>();
+  for (const release of snapshot?.releases || []) {
+    for (const artistMbid of new Set(release.artistMbids)) {
+      const target = wanted.get(artistMbid.toLowerCase());
+      if (!target) continue;
+      const entries = grouped.get(target);
+      if (entries) entries.push(release);
+      else grouped.set(target, [release]);
+    }
+  }
+  return grouped;
 }
 
 export function getFreshReleasesByArtists(artistMbids: Iterable<string | null | undefined>) {
@@ -54,14 +68,10 @@ export function getFreshReleasesByArtists(artistMbids: Iterable<string | null | 
       ? [
           {
             id: release.releaseGroupMbid,
-            providerId: release.releaseGroupMbid,
             artistId: artistMbid,
             artistName: release.artistName,
             artistMbid,
-            foreignArtistId: artistMbid,
-            mbid: release.releaseGroupMbid,
             releaseGroupMbid: release.releaseGroupMbid,
-            foreignAlbumId: release.releaseGroupMbid,
             albumName: release.title,
             title: release.title,
             releaseDate: release.releaseDate,

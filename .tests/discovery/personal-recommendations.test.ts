@@ -1,7 +1,7 @@
 import { testUser } from "../helpers/userFixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import type { DiscoveryRecommendation } from "../../backend/services/discovery/recommendationPipeline.ts";
-import type { ArtistMatchFields } from "../../backend/services/discovery/artistKeys.ts";
+import type { ArtistMatchFields } from "../../lib/artistMatch.ts";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
@@ -40,14 +40,15 @@ const FROM_LIKED = { name: "From Liked", mbid: mbid(11) };
 const FROM_PLAYED = { name: "From Played", mbid: mbid(12) };
 const FROM_LIBRARY = { name: "From Library", mbid: mbid(13) };
 const FROM_DISLIKED = { name: "From Disliked", mbid: mbid(14) };
+const LIBRARY_NAMESAKE = { name: LIBRARY.name, mbid: mbid(15) };
 const SHOEGAZE_TOP_ARTISTS = [
   { name: "Shoegaze Leader", mbid: mbid(21) },
   FROM_PLAYED,
   { name: "Shoegaze Third", mbid: mbid(22) },
 ];
 
+const similarByMbid = new Map([[LIKED.mbid, [FROM_LIKED, BLOCKED, LIBRARY, LIBRARY_NAMESAKE]]]);
 const similarBySeed = new Map([
-  [LIKED.name, [FROM_LIKED, BLOCKED, LIBRARY]],
   ["Played Artist", [FROM_PLAYED]],
   [LIBRARY.name, [FROM_LIBRARY]],
   ["Disliked Artist", [FROM_DISLIKED]],
@@ -56,7 +57,7 @@ const seedNames = [...similarBySeed.keys()];
 const knownArtists = [
   LIKED,
   LIBRARY,
-  ...[...similarBySeed.values()].flat(),
+  ...[...similarByMbid.values(), ...similarBySeed.values()].flat(),
   ...SHOEGAZE_TOP_ARTISTS,
 ];
 const TAGS = ["female vocalists", "shoegaze", "seen live", "dream-pop", "indie"];
@@ -84,7 +85,18 @@ const respond = (url: URL) => {
     const id = url.pathname.slice("/v1/artist/".length);
     const artist = knownArtists.find((entry) => entry.mbid === id);
     return artist
-      ? { id: artist.mbid, name: artist.name, genres: TAGS, links: [], albums: [] }
+      ? {
+          id: artist.mbid,
+          name: artist.name,
+          genres: TAGS,
+          links: [],
+          albums: [],
+          similar: (similarByMbid.get(artist.mbid) ?? []).map(({ mbid, name }) => ({
+            id: mbid,
+            name,
+            score: 0.8,
+          })),
+        }
       : null;
   }
   if (url.hostname === "data.aurral.org") return null;
@@ -154,7 +166,7 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("personal refresh seeds from liked artists, local plays and the library, never disliked or blocked artists", async () => {
+test("personal refresh seeds from liked artists, local plays and the library, never disliked or blocked artists, and keeps a Library namesake", async () => {
   const result = await discovery.updateUserDiscoveryCache(alice.id);
   assert.equal("refreshed" in result && result.refreshed, true);
 
@@ -166,7 +178,11 @@ test("personal refresh seeds from liked artists, local plays and the library, ne
   assert.equal(body.basedOn.find((artist) => artist.name === LIKED.name)!.source, "feedback");
   assert.deepEqual(
     body.recommendations.map((artist) => artist.name).sort(),
-    [FROM_LIBRARY.name, FROM_LIKED.name, FROM_PLAYED.name].sort(),
+    [FROM_LIBRARY.name, FROM_LIKED.name, FROM_PLAYED.name, LIBRARY_NAMESAKE.name].sort(),
+  );
+  assert.equal(
+    body.recommendations.find((artist) => artist.name === LIBRARY.name)?.id,
+    LIBRARY_NAMESAKE.mbid,
   );
   assert.deepEqual([...body.topGenres].sort(), ["dream pop", "indie", "shoegaze"]);
   for (const artist of body.recommendations) {

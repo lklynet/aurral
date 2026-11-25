@@ -1,4 +1,5 @@
 import type { WrappedBeats } from "./beats.ts";
+import { genreKey } from "../../../lib/genreKey.ts";
 export const WRAPPED_SOURCES = [
   "aurral",
   "listenbrainz",
@@ -21,6 +22,7 @@ export type WrappedPlay = {
   trackMbid?: string | null;
   artistMbid?: string | null;
   albumMbid?: string | null;
+  releaseMbid?: string | null;
   durationMs?: number | null;
   listenedMs?: number | null;
   genres?: string[];
@@ -120,6 +122,7 @@ export function mergeWrappedPlays(input: WrappedPlay[]) {
     mirror.trackMbid ||= play.trackMbid;
     mirror.artistMbid ||= play.artistMbid;
     mirror.albumMbid ||= play.albumMbid;
+    mirror.releaseMbid ||= play.releaseMbid;
     mirror.artwork ||= play.artwork;
     if (mirror.libraryTrackId == null) {
       mirror.libraryTrackId = play.libraryTrackId;
@@ -258,12 +261,16 @@ export function calculateWrapped(
     const hour = Number(hourOf.format(play.playedAt)) % 24;
     hours[hour] = (hours[hour] ?? 0) + 1;
 
-    const tags = new Set(
-      (play.genres ?? []).map((genre) => genre.trim().toLowerCase()).filter(Boolean),
+    const tags = new Map(
+      (play.genres ?? []).map((genre) => [genreKey(genre), genre.trim().toLowerCase()] as const),
     );
+    tags.delete("");
     tags.delete("unknown");
     if (tags.size) genrePlays++;
-    for (const name of tags) genres.set(name, { name, plays: (genres.get(name)?.plays ?? 0) + 1 });
+    for (const [key, name] of tags) {
+      const genre = genres.get(key) ?? { name, plays: 0 };
+      genres.set(key, { name: genre.name, plays: genre.plays + 1 });
+    }
   }
 
   const averageMs = timedPlays ? timedMs / timedPlays : 0;

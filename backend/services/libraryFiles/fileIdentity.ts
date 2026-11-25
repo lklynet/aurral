@@ -31,6 +31,7 @@ function jobMetadata(filePath: string) {
         trackName: job.trackName,
         artistMbid: job.artistMbid,
         albumMbid: job.albumMbid,
+        releaseMbid: job.releaseMbid,
         trackMbid: job.trackMbid,
         releaseYear: job.releaseYear,
         trackNumber: job.trackNumber,

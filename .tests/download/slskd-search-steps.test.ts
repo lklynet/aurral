@@ -272,6 +272,65 @@ test("a failed Soulseek poll moves on to the next query", async () => {
   assert.equal(created.mock.calls.length, 2);
 });
 
+test("a search step that stopped the downloads worker twice gives up on that source", async (t) => {
+  const settings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...settings,
+    integrations: { ...settings.integrations, ytdlp: { enabled: false } },
+  });
+  t.onTestFinished(() => dbOps.updateSettings(settings));
+  const { polled } = mockSearch(t, [{ state: "InProgress", responses: [] }]);
+  const jobId = createTrackedJob(
+    downloadTracker,
+    { artistName: "Hanging Band", trackName: "Heavy Song", durationMs: 200000 },
+    "library",
+  );
+
+  const started = await processPipelinePayload({ phase: "search", jobId, workerExits: 1 });
+  assert.ok(isStepFrom(started, "slskd"));
+  assert.equal(started.workerExits, 1);
+  const polling = await processPipelinePayload(started);
+  assert.ok(isStepFrom(polling, "slskd"));
+  assert.equal(polling.workerExits, 1);
+  assert.equal(polled.mock.calls.length, 1);
+
+  assert.equal(await processPipelinePayload({ ...polling, workerExits: 2 }), null);
+  assert.equal(polled.mock.calls.length, 1);
+  const failed = trackedJob(downloadTracker, jobId);
+  assert.equal(failed.status, "failed");
+  assert.match(String(failed.error), /stopped twice/);
+});
+
+test("a running search keeps going after a restart lost the queries before it", async (t) => {
+  const responses = folderResponses("Kept Band", "Kept Album", ["Kept Song"]);
+  const { created } = mockSearch(t, [{ state: "Completed, Succeeded", fileCount: 3, responses }]);
+  const jobId = createTrackedJob(
+    downloadTracker,
+    { artistName: "Kept Band", trackName: "Kept Song", durationMs: 200000 },
+    "library",
+  );
+
+  const next = await processPipelinePayload({
+    phase: "search",
+    source: "slskd",
+    jobId,
+    searchQueries: ["kept band kept song lost", "kept band kept song running"],
+    searchQueryIndex: 1,
+    searchIds: ["lost-search", "running-search"],
+    activeSearch: {
+      id: "running-search",
+      query: "kept band kept song running",
+      startedAt: Date.now(),
+    },
+  });
+
+  assert.ok(isStepFrom(next, "slskd"));
+  assert.equal(next.phase, "download");
+  assert.equal(created.mock.calls.length, 0);
+  assert.ok(next.candidates != null);
+  assert.match(candidateFile(next.candidates[0]), /Kept Album\\01 - Kept Song\.flac$/);
+});
+
 async function startSoulseek(t: import("vite-plus/test").TestContext) {
   const soulseek: {
     loggedIn: boolean;

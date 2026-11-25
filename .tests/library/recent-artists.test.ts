@@ -122,7 +122,6 @@ test("recent artists carry artwork and library identities, with or without a Mus
     new RegExp(`^/api/library/artists/${aurral.id}/cover\\?v=`),
   );
   assert.equal(requireFixture(recent[1]).mbid, null);
-  assert.equal(recent[1]?.foreignArtistId, "123@deezer");
   assert.equal(recent[1]?.id, String(readOnly.id));
   assert.deepEqual(recent[1]?.images, otherImages);
 });

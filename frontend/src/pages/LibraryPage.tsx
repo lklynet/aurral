@@ -92,6 +92,7 @@ import {
   waitForLibraryScan,
 } from "./library/libraryShared.tsx";
 import { getApiErrorMessage, getApiErrorText } from "../utils/api/errors.ts";
+import { genreKey } from "../../../lib/genreKey.ts";
 
 type LibraryData = LibraryViewLibrary;
 
@@ -119,8 +120,8 @@ const metadataGenres = (entity: GenreSource | null | undefined) => {
 
 const hasGenre = (genre: string, ...entities: (GenreSource | null | undefined)[]) => {
   if (!genre) return true;
-  const wanted = genre.toLocaleLowerCase();
-  return entities.flatMap(metadataGenres).some((value) => value.toLocaleLowerCase() === wanted);
+  const wanted = genreKey(genre);
+  return entities.flatMap(metadataGenres).some((value) => genreKey(value) === wanted);
 };
 
 const QUERY_DEBOUNCE_MS = 250;
@@ -743,8 +744,7 @@ function LibraryPage() {
   };
 
   const artistMbidMenuItems = (artist: LibraryArtist | null | undefined) =>
-    actions.canEditArtistMbid &&
-    (artist && "providerId" in artist ? artist.providerId : undefined) == null
+    actions.canEditArtistMbid
       ? [
           {
             id: "mbid",

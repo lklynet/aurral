@@ -1046,3 +1046,78 @@ test("playlist shares republish changes daily and stop once their creator loses 
   );
   assert.deepEqual((await callApi("GET", "", { user: curator })).body.links, []);
 });
+
+test("playlist share manifests inherit known Library MBIDs without overriding pinned editions or leaking file details", async () => {
+  const { flowPlaylistConfig } =
+    await import("../../backend/services/playlists/flowPlaylistConfig.ts");
+  const { resolveShareManifest } = await import("../../backend/services/shareLinks/metadata.ts");
+
+  const artist = media.upsertLibraryArtist({
+    identityKey: `mbid:${ARTIST_MBID}`,
+    mbid: ARTIST_MBID,
+    name: "Share Band",
+  });
+  const releaseMbid = "75555555-5555-4555-8555-555555555555";
+  const pinnedReleaseMbid = "76666666-6666-4666-8666-666666666666";
+  const trackMbid = "77777777-7777-4777-8777-777777777777";
+  const album = media.upsertLibraryAlbum({
+    identityKey: `release:${releaseMbid}`,
+    mbid: releaseMbid,
+    releaseGroupMbid: FIRST_ALBUM_MBID,
+    artistId: artist.id,
+    title: "Share Album",
+    albumArtist: artist.name,
+  });
+  const track = media.upsertLibraryTrack({
+    identityKey: `recording:${trackMbid}`,
+    mbid: trackMbid,
+    title: "Share Track",
+    artistName: artist.name,
+  });
+  media.linkLibraryAlbumTrack({
+    albumId: album.id,
+    trackId: track.id,
+    discNumber: 1,
+    trackNumber: 1,
+  });
+  const file = await seedFile("Share Band/Share Album/01 Share Track.flac", 4096);
+  media.upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "aurral",
+    path: file.filePath,
+    size: 4096,
+    format: "flac",
+    available: true,
+  });
+
+  const playlistId = "share-mbid-enrichment";
+  flowPlaylistConfig.createStaticPlaylist({
+    id: playlistId,
+    name: "MBID Share",
+    ownerUserId: owner.id,
+    tracks: [
+      { artistName: artist.name, trackName: track.title, albumName: album.title },
+      {
+        artistName: artist.name,
+        trackName: track.title,
+        albumName: album.title,
+        albumMbid: FIRST_ALBUM_MBID,
+        releaseMbid: pinnedReleaseMbid,
+      },
+    ],
+  });
+
+  const detailsOnly = resolveShareManifest(
+    { kind: "playlist", targetRef: playlistId, albumRef: null },
+    null,
+    { includeFiles: false },
+  );
+  assert.ok(detailsOnly);
+  assert.equal(detailsOnly.tracks[0]?.artistMbid, ARTIST_MBID);
+  assert.equal(detailsOnly.tracks[0]?.albumMbid, FIRST_ALBUM_MBID);
+  assert.equal(detailsOnly.tracks[0]?.trackMbid, trackMbid);
+  assert.equal(detailsOnly.tracks[0]?.releaseMbid, releaseMbid);
+  assert.equal(detailsOnly.tracks[0]?.path, null);
+  assert.equal(detailsOnly.tracks[1]?.releaseMbid, pinnedReleaseMbid);
+});

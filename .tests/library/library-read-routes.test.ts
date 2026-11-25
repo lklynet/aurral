@@ -69,21 +69,22 @@ test("library track reads remove nested filesystem paths", async () => {
     assert.equal((await deleted.json()).message, "Permission required: deleteTrack or deleteAlbum");
 
     let body: {
-      id: number;
+      id: string;
       title: string;
       quality: unknown;
       streamPath: string;
       streamFormat: string;
     }[] = await (
       await asUser.request(
-        `/library/tracks?${new URLSearchParams({ readPath: "library", releaseGroupMbid })}`,
+        `/library/tracks?${new URLSearchParams({ albumId: String(seededAlbum.id) })}`,
       )
     ).json();
 
     assert.equal(body.length, 1);
     assert.equal("path" in requireFixture(body[0]), false);
-    assert.deepEqual(body[0]?.quality, { audioFormat: "FLAC", nested: {} });
-    assert.match(body[0].streamPath, /\/library\/stream\/\d+\/\d+$/);
+    assert.equal(JSON.stringify(body).includes(root), false);
+    assert.equal(body[0]?.quality, "FLAC");
+    assert.match(body[0].streamPath, /\/library\/file-stream\/\d+\/\d+$/);
     assert.equal(body[0]?.streamFormat, "flac");
 
     const filesPath = `/library/tracks/${body[0].id}/files`;
@@ -94,20 +95,6 @@ test("library track reads remove nested filesystem paths", async () => {
     assert.equal(adminFiles.status, 200);
     assert.deepEqual(await adminFiles.json(), { paths: [filePath] });
     assert.equal((await asAdmin.request("/library/tracks/999999999/files")).status, 404);
-
-    body = await (
-      await asUser.request(
-        `/library/tracks?${new URLSearchParams({
-          readPath: "library",
-          albumId: "999999999",
-          releaseGroupMbid,
-        })}`,
-      )
-    ).json();
-    assert.deepEqual(
-      body.map((track) => track.title),
-      ["Route Track"],
-    );
 
     const artist = db
       .prepare<unknown[], { id: number; identityKey: string; mbid: string | null }>(
@@ -121,7 +108,7 @@ test("library track reads remove nested filesystem paths", async () => {
     ]) {
       body = await (
         await asUser.request(
-          `/library/albums?${new URLSearchParams({ readPath: "library", artistId: String(artistId) })}`,
+          `/library/albums?${new URLSearchParams({ artistId: String(artistId) })}`,
         )
       ).json();
       assert.ok(Array.isArray(body), JSON.stringify(body));

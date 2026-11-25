@@ -1,6 +1,6 @@
 import { WORKER_GROUPS } from "./jobs/groups.ts";
 import { ownsQueueHere } from "./jobs/queue.ts";
-import { logger } from "./logger.ts";
+import { logger, safeLogDiagnostic } from "./logger.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
 
@@ -8,6 +8,17 @@ const group = WORKER_GROUPS.find((name) => name === process.env.AURRAL_BACKGROUN
 if (!group || !process.send) {
   throw new Error("Background worker process requires a supervised queue group");
 }
+
+function exitAfterReporting(label: string) {
+  return (error: unknown) => {
+    logger.error("system", label, error ?? undefined);
+    if (!process.connected) process.exit(1);
+    const reason = `Worker crashed: ${safeLogDiagnostic(error)}`;
+    process.send!({ type: "crashed", reason }, () => process.exit(1));
+  };
+}
+process.on("uncaughtException", exitAfterReporting("Uncaught Exception:"));
+process.on("unhandledRejection", exitAfterReporting("Unhandled Rejection:"));
 
 (await import("./logs.ts")).startWorkerLogging();
 

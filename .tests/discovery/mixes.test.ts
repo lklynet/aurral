@@ -163,8 +163,8 @@ test("listening mixes rank Library tracks by when and how often they were played
 
 test("Daily Mixes group the most played artists by shared genre", async () => {
   for (const [name, genre, plays] of [
-    ["Avalon", "house", 9],
-    ["Bicep", "house", 8],
+    ["Avalon", "deep house", 9],
+    ["Bicep", "Deep-House", 8],
     ["Coltrane", "jazz", 7],
     ["Davis", "jazz", 6],
   ] as const) {

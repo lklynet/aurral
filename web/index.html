@@ -341,71 +341,51 @@
         text-align: center;
       }
 
-      .hero-atmosphere {
-        height: 800px;
+      .sky {
         inset: 0 0 auto;
-        isolation: isolate;
-        mask-image: linear-gradient(#000 40%, transparent 100%);
+        opacity: 0;
         overflow: hidden;
         pointer-events: none;
-        position: fixed;
+        position: absolute;
+        transition: opacity 900ms ease;
         z-index: -1;
       }
 
-      .hero-light,
-      .hero-glow,
-      .hero-grain {
+      .sky.is-drawn {
+        opacity: 1;
+      }
+
+      .sky-stars,
+      .sky-ground,
+      .sky canvas {
         inset: 0;
         position: absolute;
       }
 
-      .hero-light,
-      .hero-glow {
-        filter: brightness(var(--light-power, 1));
-        transform: scale(var(--light-power, 1));
-        transform-origin: left top;
-        will-change: transform;
-      }
-
-      .hero-light {
-        background:
-          radial-gradient(
-            ellipse 24% 34% at var(--pulled-x, 0%) var(--pulled-y, 0%),
-            rgb(211 200 176 / var(--pulled-energy, 0)),
-            transparent 75%
-          ),
-          radial-gradient(
-            ellipse 95% 130% at var(--source-x, 0%) var(--source-y, -8%),
-            color-mix(in srgb, #f3e5c5 var(--source-energy, 100%), transparent) 0%,
-            color-mix(in srgb, #b5afa2b0 var(--source-energy, 100%), transparent) 18%,
-            color-mix(in srgb, #65625880 var(--source-energy, 100%), transparent) 40%,
-            transparent 73%
-          );
-      }
-
-      .hero-glow {
-        display: none;
+      .sky canvas {
+        display: block;
         height: 100%;
-        opacity: var(--pull-opacity, 0);
         width: 100%;
       }
 
-      .hero-grain {
-        background-image: url("spotlight-grain.svg");
-        mask-image: linear-gradient(145deg, #000, transparent 85%);
-        mix-blend-mode: soft-light;
-        opacity: calc(0.6 * var(--light-power, 1));
+      .sky-ground {
+        background: var(--chrome) var(--grain);
+        background-size: 256px 256px;
       }
 
-      @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
-        .hero-glow {
-          display: block;
+      @keyframes sky-drift {
+        to {
+          transform: translateY(900px);
         }
       }
 
-      @media (prefers-reduced-motion: reduce) {
-        .hero-light {
-          transform: none;
+      @supports (animation-timeline: scroll()) {
+        @media (prefers-reduced-motion: no-preference) {
+          .sky-stars {
+            animation: sky-drift linear both;
+            animation-range: 0 2000px;
+            animation-timeline: scroll(root);
+          }
         }
       }
 
@@ -999,56 +979,12 @@
 
     <a class="skip" href="#main">Skip to content</a>
 
-    <div class="hero-atmosphere" aria-hidden="true">
-      <div class="hero-light" aria-hidden="true"></div>
-      <svg class="hero-glow" viewBox="0 0 720 440" preserveAspectRatio="none" aria-hidden="true">
-        <defs>
-          <filter
-            id="hero-merge"
-            filterUnits="userSpaceOnUse"
-            x="-160"
-            y="-160"
-            width="1040"
-            height="760"
-            color-interpolation-filters="sRGB"
-          >
-            <feGaussianBlur stdDeviation="12" />
-            <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 14 -3.8" />
-            <feGaussianBlur stdDeviation="14" />
-          </filter>
-          <mask
-            id="hero-light-mask"
-            maskUnits="userSpaceOnUse"
-            x="0"
-            y="0"
-            width="720"
-            height="440"
-            style="mask-type: alpha"
-          >
-            <g filter="url(#hero-merge)" fill="white">
-              <g transform="translate(5 -10)">
-                <ellipse rx="180" ry="155" />
-                <path data-light-neck d="M0 0 Z" />
-                <circle data-light-blob r="0" />
-              </g>
-            </g>
-          </mask>
-          <linearGradient
-            id="hero-warmth"
-            gradientUnits="userSpaceOnUse"
-            x1="0"
-            y1="0"
-            x2="117"
-            y2="0"
-          >
-            <stop data-source-warmth stop-color="#f3e5c5" />
-            <stop offset="0.5" stop-color="#a8a598" />
-            <stop offset="1" stop-color="#d3c8b0" />
-          </linearGradient>
-        </defs>
-        <rect width="720" height="440" fill="url(#hero-warmth)" mask="url(#hero-light-mask)" />
-      </svg>
-      <div class="hero-grain" aria-hidden="true"></div>
+    <div class="sky" aria-hidden="true" data-sky>
+      <div class="sky-stars">
+        <canvas></canvas>
+        <canvas></canvas>
+      </div>
+      <div class="sky-ground"></div>
     </div>
 
     <header class="nav" data-nav>
@@ -1611,193 +1547,423 @@
 
     <script type="module">
       const hero = document.querySelector(".hero");
-      const atmosphere = document.querySelector(".hero-atmosphere");
-      const nav = document.querySelector("[data-nav]");
-      const lightNeck = atmosphere.querySelector("[data-light-neck]");
-      const lightBlob = atmosphere.querySelector("[data-light-blob]");
-      const warmth = atmosphere.querySelector("#hero-warmth");
-      const sourceWarmth = atmosphere.querySelector("[data-source-warmth]");
-      let fadeDistance = 1;
-      let lightPower = 1;
-      const interactiveLight = matchMedia(
-        "(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)",
-      );
-      let lightX = 0;
-      let lightY = 0;
-      let shoulderX = 0;
-      let shoulderY = 0;
-      let velocityX = 0;
-      let velocityY = 0;
-      let targetX = lightX;
-      let targetY = lightY;
-      let lightFrame = 0;
-      let lastLightTime = 0;
-      let cursorX = 0;
-      let cursorY = 0;
-      let hasLightPointer = false;
+      const sky = document.querySelector("[data-sky]");
+      const [base, live] = sky.querySelectorAll("canvas");
+      const ground = sky.querySelector(".sky-ground");
+      const motion = matchMedia("(prefers-reduced-motion: no-preference)");
 
-      const boundReach = (reach, x, y) => {
-        if (!hasLightPointer || !lightPower) return reach;
-        const edge = 1 / Math.hypot(x / 180, y / 155);
-        const available = Math.max(0, (cursorX * x + cursorY * y) / lightPower - edge * 0.65 + 4);
-        const limit = Math.max(available / (1.4 + 52 / 105), (available - 52) / 1.4);
-        return Math.min(reach, limit);
+      const hash = (x, y, seed) => {
+        let h =
+          (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(seed, 982451653)) | 0;
+        h = Math.imul(h ^ (h >>> 13), 1274126177);
+        return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
       };
-      const paintLight = () => {
-        const reach = Math.hypot(lightX, lightY);
-        const x = reach ? lightX / reach : 1;
-        const y = reach ? lightY / reach : 0;
-        const shoulderReach = Math.hypot(shoulderX, shoulderY);
-        const baseX = shoulderReach ? shoulderX / shoulderReach : x;
-        const baseY = shoulderReach ? shoulderY / shoulderReach : y;
-        const edge = 1 / Math.hypot(x / 180, y / 155);
-        const baseEdge = 1 / Math.hypot(baseX / 180, baseY / 155);
-        const radius = 52 * Math.min(1, reach / 105);
-        const tipX = x * (edge * 0.65 + reach * 1.4);
-        const tipY = y * (edge * 0.65 + reach * 1.4);
-        const draw = Math.min(1, reach / 185);
-        const glowX = (tipX / 720) * 100;
-        const glowY = (tipY / 440) * 100;
-        atmosphere.style.setProperty("--pull-opacity", String(draw * 0.45));
-        atmosphere.style.setProperty("--source-energy", `${100 - draw * 60}%`);
-        atmosphere.style.setProperty("--source-x", `${glowX * draw * 0.22}%`);
-        atmosphere.style.setProperty("--source-y", `${-8 + (glowY + 8) * draw * 0.22}%`);
-        atmosphere.style.setProperty("--pulled-x", `${glowX}%`);
-        atmosphere.style.setProperty("--pulled-y", `${glowY}%`);
-        atmosphere.style.setProperty("--pulled-energy", String(draw * 0.24));
-        sourceWarmth.setAttribute("stop-opacity", String(1 - draw * 0.55));
-        warmth.setAttribute("x2", String(tipX));
-        warmth.setAttribute("y2", String(tipY));
-        const rootX = baseX * baseEdge * 0.72;
-        const rootY = baseY * baseEdge * 0.72;
-        const neckX = rootX * 0.45 + tipX * 0.55;
-        const neckY = rootY * 0.45 + tipY * 0.55;
-        const neckWidth = Math.max(10, 35 - reach * 0.13);
-        const joinX = tipX - x * radius * 0.35;
-        const joinY = tipY - y * radius * 0.35;
-        const point = (cx, cy, width) =>
-          `${(cx - y * width).toFixed(2)} ${(cy + x * width).toFixed(2)}`;
-        lightNeck.setAttribute(
-          "d",
-          [
-            `M${point(rootX, rootY, 75)}`,
-            `C${point(rootX + x * 40, rootY + y * 40, 75)} ${point(neckX - x * 40, neckY - y * 40, neckWidth)} ${point(neckX, neckY, neckWidth)}`,
-            `C${point(neckX + x * 35, neckY + y * 35, neckWidth)} ${point(joinX - x * radius * 0.6, joinY - y * radius * 0.6, radius * 0.85)} ${point(joinX, joinY, radius * 0.85)}`,
-            `L${point(joinX, joinY, -radius * 0.85)}`,
-            `C${point(joinX - x * radius * 0.6, joinY - y * radius * 0.6, -radius * 0.85)} ${point(neckX + x * 35, neckY + y * 35, -neckWidth)} ${point(neckX, neckY, -neckWidth)}`,
-            `C${point(neckX - x * 40, neckY - y * 40, -neckWidth)} ${point(rootX + x * 40, rootY + y * 40, -75)} ${point(rootX, rootY, -75)} Z`,
-          ].join(" "),
+      const noise = (x, y, seed) => {
+        const xi = Math.floor(x);
+        const yi = Math.floor(y);
+        const xf = x - xi;
+        const yf = y - yi;
+        const u = xf * xf * (3 - 2 * xf);
+        const v = yf * yf * (3 - 2 * yf);
+        const a = hash(xi, yi, seed);
+        const b = hash(xi + 1, yi, seed);
+        const c = hash(xi, yi + 1, seed);
+        const d = hash(xi + 1, yi + 1, seed);
+        return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+      };
+      const fbm = (x, y, seed, octaves) => {
+        let sum = 0;
+        let amp = 0.5;
+        let scale = 1;
+        let norm = 0;
+        for (let i = 0; i < octaves; i++) {
+          sum += amp * noise(x * scale, y * scale, seed + i * 17);
+          norm += amp;
+          amp *= 0.5;
+          scale *= 2.03;
+        }
+        return sum / norm;
+      };
+      const random = (seed) => () => {
+        seed = (seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+      const smooth = (from, to, x) => {
+        const t = Math.min(1, Math.max(0, (x - from) / (to - from)));
+        return t * t * (3 - 2 * t);
+      };
+      const starColors = [
+        [-0.3, [162, 184, 255]],
+        [0, [205, 218, 255]],
+        [0.3, [244, 246, 255]],
+        [0.6, [255, 244, 232]],
+        [0.9, [255, 228, 196]],
+        [1.4, [255, 206, 156]],
+        [2, [255, 184, 124]],
+      ];
+      const starColor = (bv) => {
+        for (let i = 1; i < starColors.length; i++) {
+          const [b1, c1] = starColors[i];
+          const [b0, c0] = starColors[i - 1];
+          if (bv > b1) continue;
+          const t = Math.max(0, (bv - b0) / (b1 - b0));
+          return c0.map((c, k) => Math.round(c + (c1[k] - c) * t));
+        }
+        return starColors.at(-1)[1];
+      };
+
+      const band = { x: -0.12, y: 1.31, dx: 0.74, dy: -1.49, width: 0.23 };
+      const bandLength = Math.hypot(band.dx, band.dy);
+      const galaxy = (x, y) => {
+        const ax = x - band.x;
+        const ay = y - band.y;
+        const along = (ax * band.dx + ay * band.dy) / bandLength;
+        const across = (ay * band.dx - ax * band.dy) / bandLength;
+        const warp = (fbm(along * 1.9, 1.3, 28, 3) - 0.5) * band.width * 0.9;
+        const d = (across - warp) / band.width;
+        const sx = x * 5.8;
+        const sy = y * 5.8;
+        const clouds = fbm(sx, sy, 23, 5);
+        const grain = fbm(sx * 4, sy * 4, 26, 3);
+        const core = Math.exp(-(x * x + (y - 1.02) ** 2) / 0.084);
+        const lanes =
+          smooth(0.5, 0.72, fbm(sx * 1.6 + 7, sy * 1.6, 32, 5)) * Math.exp(-((d + 0.12) ** 2) * 6);
+        const rift =
+          smooth(0.15, 0, Math.abs(d + 0.08 - (clouds - 0.5) * 0.5)) * 0.75 * (0.5 + core);
+        const dust = Math.min(0.92, lanes * 0.9 + rift);
+        const profile = Math.exp(-d * d * 1.4) * (0.55 + 0.9 * clouds) + core * 1.1;
+        return {
+          light: Math.max(0, profile * (0.75 + 0.5 * grain * grain) * 1.15 * (1 - dust)),
+          dust,
+          density: Math.exp(-d * d * 1.1) + core,
+          core,
+          d,
+        };
+      };
+
+      const starSprite = (flux, [r, g, b], dpr) => {
+        const core = Math.min(2.4, 0.7 + Math.sqrt(flux) * 0.35) * dpr;
+        const halo = core * (2.6 + Math.min(4, Math.log2(flux + 1)));
+        const sprite = document.createElement("canvas");
+        sprite.width = sprite.height = Math.ceil(halo * 2) + 2;
+        const middle = sprite.width / 2;
+        const context = sprite.getContext("2d");
+        const glow = context.createRadialGradient(middle, middle, 0, middle, middle, halo);
+        glow.addColorStop(0, "rgb(255 255 255)");
+        glow.addColorStop((core / halo) * 0.5, `rgb(${r} ${g} ${b} / 0.95)`);
+        glow.addColorStop(core / halo, `rgb(${r} ${g} ${b} / 0.35)`);
+        glow.addColorStop(Math.min(0.99, (core / halo) * 2.2), `rgb(${r} ${g} ${b} / 0.06)`);
+        glow.addColorStop(1, `rgb(${r} ${g} ${b} / 0)`);
+        context.fillStyle = glow;
+        context.fillRect(0, 0, sprite.width, sprite.height);
+        return sprite;
+      };
+
+      const paintSky = () => {
+        const width = sky.clientWidth;
+        const horizon = hero.getBoundingClientRect().bottom + scrollY - 40;
+        const height = Math.ceil(horizon + 100);
+        const dpr = Math.min(2, devicePixelRatio || 1);
+        sky.style.height = `${height}px`;
+        for (const canvas of [base, live]) {
+          canvas.width = Math.round(width * dpr);
+          canvas.height = Math.round(height * dpr);
+        }
+        const ridge = (x) => {
+          const c = x - width / 2;
+          return (
+            horizon - (fbm(c / 227 + 40, 0.5, 71, 6) - 0.45) * 123 - Math.sin(c / 303 + 0.6) * 28
+          );
+        };
+        const skyline = [];
+        for (let x = 0; x <= width + 4; x += 4) skyline.push(`${x} ${ridge(x).toFixed(1)}`);
+        ground.style.clipPath = `path("M${skyline.join(" L")} L${width + 4} ${height} L0 ${height} Z")`;
+        const text = [...hero.children].map((child) => child.getBoundingClientRect());
+        const nearText = (x, y) =>
+          text.some(
+            (rect) =>
+              x > rect.left - 16 &&
+              x < rect.right + 16 &&
+              y > rect.top + scrollY - 16 &&
+              y < rect.bottom + scrollY + 16,
+          );
+        const veilRadius = horizon * 0.65;
+        const visibility = (x, y) =>
+          (1 - 0.38 * Math.max(0, 1 - Math.hypot(x - width / 2, y - horizon * 0.5) / veilRadius)) *
+          (1 - Math.max(0, (y - horizon * 0.86) / (horizon * 0.33)));
+
+        const cell = 4;
+        const columns = Math.ceil(width / cell);
+        const rows = Math.ceil(height / cell);
+        const density = new Float32Array(columns * rows);
+        const nebula = document.createElement("canvas");
+        nebula.width = columns;
+        nebula.height = rows;
+        const nebulaContext = nebula.getContext("2d");
+        const pixels = nebulaContext.createImageData(columns, rows);
+        for (let row = 0; row < rows; row++) {
+          const y = (row * cell) / horizon;
+          const fall = 0.84 * y;
+          for (let column = 0; column < columns; column++) {
+            const x = (column * cell - width / 2) / horizon;
+            const field = galaxy(x, y);
+            const warm = Math.min(1, field.core * 1.6);
+            const light = field.light * 62;
+            const hydrogen =
+              smooth(0.62, 0.78, fbm(x * 3.2 + 3, y * 3.2, 54, 4)) *
+              Math.exp(-(field.d ** 2) * 2) *
+              9;
+            const low = smooth(0.35, 1, fall);
+            const air = fbm(x * 2, fall * 8, 64, 3);
+            const dome = Math.exp(-(((x + 0.59) * 1.42) ** 2) - ((1 - fall) * 4) ** 2);
+            const i = row * columns + column;
+            density[i] = Math.min(1, field.density * 0.8) * (1 - field.dust);
+            pixels.data[i * 4] =
+              3 + 2 * fall + light * (0.86 + 0.18 * warm) + hydrogen + low * 2.5 + dome * 16;
+            pixels.data[i * 4 + 1] =
+              4 + 2 * fall + light * (0.88 + 0.04 * warm) + low * (5 + 6 * air) + dome * 11;
+            pixels.data[i * 4 + 2] =
+              9 + 3 * fall + light * (1 - 0.22 * warm) + hydrogen * 0.35 + low * 1.5 + dome * 6;
+            pixels.data[i * 4 + 3] = 255;
+          }
+        }
+        nebulaContext.putImageData(pixels, 0, 0);
+        const context = base.getContext("2d");
+        context.drawImage(nebula, 0, 0, base.width, base.height);
+
+        const rand = random(23);
+        const densityAt = (x, y) =>
+          density[Math.floor(y / cell) * columns + Math.floor(x / cell)] ?? 0;
+        const animate = motion.matches;
+        const bright = [];
+        const specks = context.createImageData(base.width, base.height);
+        const speck = (x, y, [r, g, b], alpha, size) => {
+          const reach = Math.max(1, Math.round(size));
+          const light = (alpha * size * size) / (reach * reach);
+          const left = Math.floor(x * dpr - reach / 2);
+          const top = Math.floor(y * dpr - reach / 2);
+          for (let row = Math.max(0, top); row < Math.min(base.height, top + reach); row++) {
+            for (
+              let column = Math.max(0, left);
+              column < Math.min(base.width, left + reach);
+              column++
+            ) {
+              const i = (row * base.width + column) * 4;
+              specks.data[i] += r * light;
+              specks.data[i + 1] += g * light;
+              specks.data[i + 2] += b * light;
+              specks.data[i + 3] = 255;
+            }
+          }
+        };
+        context.globalCompositeOperation = "lighter";
+        const stars = Math.round(width * height * 0.0216);
+        for (let n = 0; n < stars; n++) {
+          const x = rand() * width;
+          const y = rand() * height;
+          if (rand() > 0.16 + 0.84 * densityAt(x, y) || y > ridge(x)) continue;
+          const magnitude = 11.5 + Math.log10(Math.max(1e-6, rand())) / 0.42;
+          const flux = 10 ** (-0.4 * (magnitude - 6.2));
+          const bv =
+            rand() < 0.04 ? -0.15 + rand() * 0.3 : 0.35 + (rand() + rand() + rand() - 1.5) * 0.7;
+          const [r, g, b] = starColor(bv);
+          if (flux < 0.9) {
+            const size = dpr * (0.55 + Math.min(0.55, flux * 0.6));
+            speck(x, y, [r, g, b], Math.min(1, 0.05 + Math.sqrt(flux) * 0.85), size);
+            continue;
+          }
+          if (nearText(x, y)) continue;
+          const sprite = starSprite(flux, [r, g, b], dpr);
+          const left = x * dpr - sprite.width / 2;
+          const top = y * dpr - sprite.height / 2;
+          if (animate) {
+            bright.push({
+              sprite,
+              left,
+              top,
+              alpha: visibility(x, y),
+              depth: (y / ridge(x)) ** 2,
+              seed: rand() * 1000,
+              rate: 3 + rand() * 4,
+            });
+          } else {
+            context.drawImage(sprite, left, top);
+          }
+        }
+        const dust = Math.round(width * height * 0.06);
+        for (let n = 0; n < dust; n++) {
+          const x = rand() * width;
+          const y = rand() * height;
+          if (rand() > densityAt(x, y) * 1.1) continue;
+          speck(x, y, starColor(0.5 + (rand() - 0.5) * 0.8), 0.05 + rand() ** 3 * 0.22, dpr * 0.8);
+        }
+        const speckLayer = document.createElement("canvas");
+        speckLayer.width = base.width;
+        speckLayer.height = base.height;
+        speckLayer.getContext("2d").putImageData(specks, 0, 0);
+        context.drawImage(speckLayer, 0, 0);
+        context.globalCompositeOperation = "source-over";
+        const veil = context.createRadialGradient(
+          (width / 2) * dpr,
+          horizon * 0.5 * dpr,
+          0,
+          (width / 2) * dpr,
+          horizon * 0.5 * dpr,
+          veilRadius * dpr,
         );
-        lightBlob.setAttribute("cx", String(tipX));
-        lightBlob.setAttribute("cy", String(tipY));
-        lightBlob.setAttribute("r", String(radius));
+        veil.addColorStop(0, "rgb(0 0 0 / 0.38)");
+        veil.addColorStop(1, "rgb(0 0 0 / 0)");
+        context.fillStyle = veil;
+        context.fillRect(0, 0, base.width, base.height);
+        const fade = context.createLinearGradient(0, horizon * 0.86 * dpr, 0, horizon * 1.19 * dpr);
+        fade.addColorStop(0, "rgb(0 0 0 / 0)");
+        fade.addColorStop(1, "rgb(0 0 0)");
+        context.fillStyle = fade;
+        context.fillRect(0, 0, base.width, base.height);
+        sky.classList.add("is-drawn");
+        const liveContext = live.getContext("2d");
+        return { width, horizon, dpr, bright, visibility, context: liveContext, rand: random(99) };
       };
-      const moveLight = (time) => {
-        lightFrame = 0;
-        const elapsed = lastLightTime ? Math.min(time - lastLightTime, 40) : 16;
-        lastLightTime = time;
-        const amount = 1 - Math.exp(-elapsed / 250);
-        shoulderX += (targetX - shoulderX) * amount;
-        shoulderY += (targetY - shoulderY) * amount;
-        const steps = Math.ceil(elapsed / 8);
-        const dt = elapsed / steps / 1000;
-        for (let step = 0; step < steps; step++) {
-          velocityX += ((targetX - lightX) * 25 - velocityX * 12) * dt;
-          velocityY += ((targetY - lightY) * 25 - velocityY * 12) * dt;
-          lightX += velocityX * dt;
-          lightY += velocityY * dt;
-        }
-        const settled =
-          Math.hypot(targetX - lightX, targetY - lightY) < 0.1 &&
-          Math.hypot(targetX - shoulderX, targetY - shoulderY) < 0.1 &&
-          Math.hypot(velocityX, velocityY) < 0.5;
-        if (settled) {
-          lightX = targetX;
-          lightY = targetY;
-          shoulderX = targetX;
-          shoulderY = targetY;
-          velocityX = 0;
-          velocityY = 0;
-          lastLightTime = 0;
-        } else {
-          lightFrame = requestAnimationFrame(moveLight);
-        }
-        paintLight();
+
+      let scene = null;
+      let meteor = null;
+      let nextMeteor = 0;
+      let lastTwinkle = 0;
+      let frame = 0;
+      let timer = 0;
+      let onScreen = true;
+
+      const launchMeteor = (now) => {
+        const { width, horizon, rand } = scene;
+        const angle = Math.PI * (0.6 + rand() * 0.14);
+        const dx = Math.cos(angle);
+        const dy = Math.sin(angle);
+        const speed = 750 + rand() * 450;
+        const fromTop = rand() < 0.7;
+        const x = fromTop ? width * (0.2 + rand() * 0.85) : width;
+        const y = fromTop ? 0 : horizon * (0.05 + rand() * 0.35);
+        meteor = {
+          x: x - dx * 8,
+          y: y - dy * 8,
+          dx,
+          dy,
+          speed,
+          tail: 120 + rand() * 70,
+          start: now,
+          life: (8 / speed + 0.45 + rand() * 0.4) * 1000,
+          peak: 0.6 + rand() * 0.35,
+        };
+        nextMeteor = now + 15000 + rand() * 20000;
       };
-      const stopLight = () => {
-        cancelAnimationFrame(lightFrame);
-        lightFrame = 0;
-        lastLightTime = 0;
-        lightX = 0;
-        lightY = 0;
-        shoulderX = 0;
-        shoulderY = 0;
-        velocityX = 0;
-        velocityY = 0;
-        targetX = 0;
-        targetY = 0;
-        hasLightPointer = false;
-        paintLight();
-      };
-      const releaseLight = () => {
-        hasLightPointer = false;
-        targetX = 0;
-        targetY = 0;
-        if (!lightFrame && (lightX || lightY || shoulderX || shoulderY)) {
-          lightFrame = requestAnimationFrame(moveLight);
-        }
-      };
-      document.addEventListener("pointermove", (event) => {
-        if (!interactiveLight.matches || event.pointerType === "touch" || !lightPower) return;
-        const bounds = atmosphere.getBoundingClientRect();
-        if (event.clientY > bounds.bottom) {
-          releaseLight();
+      const drawMeteor = (now) => {
+        const { context, dpr, visibility } = scene;
+        const t = (now - meteor.start) / meteor.life;
+        if (t >= 1) {
+          meteor = null;
           return;
         }
-        const x = ((event.clientX - bounds.left) / bounds.width) * 720 - 5;
-        const y = ((event.clientY - bounds.top) / bounds.height) * 440 + 10;
-        cursorX = x;
-        cursorY = y;
-        hasLightPointer = true;
-        const distance = Math.hypot(x, y);
-        const directionX = distance ? x / distance : 1;
-        const directionY = distance ? y / distance : 0;
-        const proximity = Math.hypot(x / (180 * lightPower), y / (155 * lightPower));
-        const influence = Math.min(1, Math.max(0, (3.4 - proximity) / 1.6));
-        const stretch = Math.min(1, Math.max(0, (proximity - 0.35) / 1.5));
-        const reach = boundReach(
-          185 * stretch ** 2 * (3 - 2 * stretch) * influence ** 2 * (3 - 2 * influence),
-          directionX,
-          directionY,
+        const travel = (meteor.speed * (now - meteor.start)) / 1000;
+        const x = meteor.x + meteor.dx * travel;
+        const y = meteor.y + meteor.dy * travel;
+        const light = meteor.peak * Math.min(1, (1 - t) / 0.4) * visibility(x, y);
+        const tail = context.createLinearGradient(
+          x * dpr,
+          y * dpr,
+          (x - meteor.dx * meteor.tail) * dpr,
+          (y - meteor.dy * meteor.tail) * dpr,
         );
-        targetX = directionX * reach;
-        targetY = directionY * reach;
-        if (!lightFrame && (reach || lightX || lightY || shoulderX || shoulderY)) {
-          lightFrame = requestAnimationFrame(moveLight);
+        tail.addColorStop(0, `rgb(240 255 245 / ${light})`);
+        tail.addColorStop(0.25, `rgb(200 225 255 / ${light * 0.45})`);
+        tail.addColorStop(1, "rgb(200 220 255 / 0)");
+        context.strokeStyle = tail;
+        context.lineWidth = 1.3 * dpr;
+        context.lineCap = "round";
+        context.beginPath();
+        context.moveTo((x - meteor.dx * meteor.tail) * dpr, (y - meteor.dy * meteor.tail) * dpr);
+        context.lineTo(x * dpr, y * dpr);
+        context.stroke();
+      };
+      const drawLive = (now) => {
+        const { context, bright } = scene;
+        context.clearRect(0, 0, live.width, live.height);
+        const seconds = lastTwinkle / 1000;
+        for (const star of bright) {
+          const flicker = noise(seconds * star.rate + star.seed, star.seed, 7) - 0.5;
+          const amount = 0.24 + 1.2 * star.depth;
+          context.globalAlpha = Math.max(0, Math.min(1, star.alpha * (1 + flicker * amount)));
+          context.drawImage(star.sprite, star.left, star.top);
         }
-      });
-      document.documentElement.addEventListener("pointerleave", releaseLight);
-      addEventListener("blur", releaseLight);
-      document.addEventListener("pointercancel", releaseLight);
-      interactiveLight.addEventListener("change", stopLight);
-      document.addEventListener("visibilitychange", () => {
-        if (document.hidden) stopLight();
-      });
+        context.globalAlpha = 1;
+        if (meteor) drawMeteor(now);
+      };
+      const tick = (now) => {
+        frame = 0;
+        if (!nextMeteor) nextMeteor = now + 3000 + scene.rand() * 3000;
+        if (!meteor && now >= nextMeteor) launchMeteor(now);
+        const twinkle = scene.bright.length > 0 && now - lastTwinkle >= 50;
+        if (twinkle) lastTwinkle = now;
+        if (twinkle || meteor) drawLive(now);
+        if (scene.bright.length || meteor) {
+          frame = requestAnimationFrame(tick);
+        } else {
+          timer = setTimeout(() => {
+            timer = 0;
+            play();
+          }, nextMeteor - now);
+        }
+      };
+      const pause = () => {
+        cancelAnimationFrame(frame);
+        clearTimeout(timer);
+        frame = 0;
+        timer = 0;
+      };
+      const play = () => {
+        if (frame || timer || !scene || !onScreen || document.hidden || !motion.matches) return;
+        frame = requestAnimationFrame(tick);
+      };
+      const redraw = () => {
+        pause();
+        meteor = null;
+        scene = paintSky();
+        play();
+      };
 
+      let size = "";
+      let pending = 0;
+      const resize = new ResizeObserver(() => {
+        const next = `${sky.clientWidth}:${hero.offsetHeight}`;
+        if (next === size) return;
+        size = next;
+        clearTimeout(pending);
+        pending = setTimeout(redraw, 120);
+      });
+      resize.observe(hero);
+      resize.observe(sky);
+      new IntersectionObserver(([entry]) => {
+        onScreen = entry.isIntersecting;
+        if (onScreen) play();
+        else pause();
+      }).observe(sky);
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) pause();
+        else play();
+      });
+      motion.addEventListener("change", redraw);
+    </script>
+
+    <script type="module">
+      const hero = document.querySelector(".hero");
+      const nav = document.querySelector("[data-nav]");
+      let fadeDistance = 1;
       const onScroll = () => {
         nav.classList.toggle("is-scrolled", scrollY > 0);
-        const power = 1 - Math.min(1, Math.max(0, scrollY) / fadeDistance);
-        if (power === lightPower) return;
-        lightPower = power;
-        atmosphere.hidden = !power;
-        atmosphere.style.setProperty("--light-power", String(power));
-        nav.style.setProperty("--nav-opacity", String(0.8 * (1 - power)));
-        if (!power) stopLight();
-      };
-      const sizeAtmosphere = () => {
-        fadeDistance = hero.getBoundingClientRect().bottom + scrollY;
-        atmosphere.style.height = `${fadeDistance + 240}px`;
-        onScroll();
+        nav.style.setProperty(
+          "--nav-opacity",
+          String(0.8 * Math.min(1, Math.max(0, scrollY) / fadeDistance)),
+        );
       };
       const shotImages = document.querySelectorAll(".shot.layered img");
       const shotButtons = document.querySelectorAll(".shot-modes button");
@@ -1815,9 +1981,11 @@
         });
       }
 
-      new ResizeObserver(sizeAtmosphere).observe(hero);
+      new ResizeObserver(() => {
+        fadeDistance = hero.getBoundingClientRect().bottom + scrollY;
+        onScroll();
+      }).observe(hero);
       addEventListener("scroll", onScroll, { passive: true });
-      sizeAtmosphere();
 
       document.querySelector("[data-integration-count]").textContent = String(
         document.querySelectorAll("[data-integration]").length,

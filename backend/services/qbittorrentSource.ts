@@ -48,13 +48,19 @@ async function searchReleases(album: AlbumQuery, upgrade: Upgrade) {
     musicSearch: musicIndexers.length > 0,
     albumGrab: true,
   });
+  const errors: unknown[] = [];
   for (const query of queries) {
-    const releases = await prowlarrClient.search(
-      query,
-      isProwlarrMusicQuery(query)
-        ? { protocol: "torrent", type: "music", indexers: musicIndexers }
-        : { protocol: "torrent", indexers },
-    );
+    const releases = await prowlarrClient
+      .search(
+        query,
+        isProwlarrMusicQuery(query)
+          ? { protocol: "torrent", type: "music", indexers: musicIndexers }
+          : { protocol: "torrent", indexers },
+      )
+      .catch((error: unknown) => {
+        errors.push(error);
+        return [];
+      });
     const ranked = rankUsenetReleases(
       releases
         .filter((release) => release.seeders !== 0)
@@ -73,6 +79,7 @@ async function searchReleases(album: AlbumQuery, upgrade: Upgrade) {
     });
     if (ordered.length > 0) return ordered;
   }
+  if (errors.length > 0 && errors.length === queries.length) throw errors.at(-1);
   return [];
 }
 

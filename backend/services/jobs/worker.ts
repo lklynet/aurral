@@ -347,7 +347,8 @@ export function createJobWorker<Payload extends object>(
   }
 
   function start() {
-    if (running || shuttingDown || !ownsQueueHere(name)) return loopPromise ?? undefined;
+    if (running) return Promise.resolve();
+    if (shuttingDown || !ownsQueueHere(name)) return undefined;
     if (onStart && !onStart()) return;
     running = true;
     stopRequested = false;

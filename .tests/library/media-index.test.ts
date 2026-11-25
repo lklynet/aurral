@@ -1,4 +1,6 @@
 import { requireFixture } from "../playlists/fixtures.ts";
+import { resumePausedServices } from "../../backend/services/apiClients/outagePause.ts";
+import { stubMissingMusicbrainz } from "../helpers/stubFetch.ts";
 import type * as Rows from "../../backend/db/rows.ts";
 import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
@@ -8,6 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import Database from "better-sqlite3";
 import { db } from "../../backend/config/db-sqlite.ts";
 import {
   getLibrary,
@@ -19,6 +22,7 @@ import {
 import {
   buildFallbackIdentityKey,
   linkLibraryAlbumTrack,
+  reconcileLibraryAlbums,
   removeLibraryTrackIfNoAvailableMedia,
   upsertLibraryAlbum,
   upsertLibraryArtist,
@@ -27,12 +31,15 @@ import {
   withLibraryScan,
 } from "../../backend/services/libraryMediaStore.ts";
 import {
+  applyMetadataEnrichment,
+  buildMetadataRecord,
   createPathScopeMatcher,
   scanMusicRoot,
   scanMusicRoots,
 } from "../../backend/services/libraryFileScanner.ts";
 import { scanConfiguredLibrary } from "../../backend/services/libraryIndexService.ts";
 import { libraryManager } from "../../backend/services/libraryManager.ts";
+import { downloadTracker } from "../../backend/services/downloadJobs/downloadTracker.ts";
 import { setLibraryManagement } from "../../backend/services/libraryManagementStore.ts";
 import { dbOps } from "../../backend/db/helpers/index.ts";
 import { clearMetadataProviderCaches } from "../../backend/services/providers/metadataProvider.ts";
@@ -1194,6 +1201,51 @@ test("a song an album keeps after its untagged file is gone is listed once", asy
   });
 });
 
+test("an untagged download takes its job's release on a rescan and keeps its track list", async (t: import("vite-plus/test").TestContext) => {
+  const downloads = await mkdtemp(path.join(tmpdir(), "aurral-job-release-"));
+  const artist = `Job Release ${process.pid}`;
+  const title = `Job Release Album ${process.pid}`;
+  const album = listedAlbum(artist, uuid("dddddddd", 5), title, 50, ["One"]);
+  const release = uuid("bbbbbbbb", 50);
+  const filePath = await makeTrack(path.join(downloads, artist, title, "01 One.flac"), {
+    ARTIST: artist,
+    ALBUMARTIST: artist,
+    ALBUM: title,
+    TITLE: "One",
+    TRACKNUMBER: 1,
+  });
+  const job = requireValue(
+    downloadTracker.ensureLibraryTrackJob(
+      { artistName: artist, trackName: "One", albumName: title, albumMbid: album.releaseGroup },
+      filePath,
+    ),
+  );
+  t.onTestFinished(async () => {
+    downloadTracker.removeJob(job.id);
+    removeArtistsNamed(artist);
+    await rm(downloads, { recursive: true, force: true });
+  });
+  const albumIds = () =>
+    db
+      .prepare<[string], Pick<Rows.LibraryAlbumsRow, "mbid" | "release_group_mbid">>(
+        "SELECT mbid, release_group_mbid FROM library_albums WHERE title = ?",
+      )
+      .get(title);
+  await withReleaseGroups({ [album.releaseGroup]: album.group }, async (provider) => {
+    await scanConfiguredLibrary({ musicRoot: downloads, includeReadOnly: false });
+    assert.deepEqual(albumIds(), { mbid: null, release_group_mbid: album.releaseGroup });
+    const groupLookups = () => provider.requests.filter((id) => id === album.releaseGroup).length;
+    assert.equal(groupLookups(), 1);
+
+    downloadTracker.updateMetadata(job.id, { releaseMbid: release });
+    clearMetadataProviderCaches();
+    await scanConfiguredLibrary({ musicRoot: downloads, includeReadOnly: false, force: true });
+
+    assert.deepEqual(albumIds(), { mbid: release, release_group_mbid: album.releaseGroup });
+    assert.equal(groupLookups(), 1);
+  });
+});
+
 test("an album lists the edition its files come from: a bonus track of another edition leaves it standard, and that edition's bonus tracks make it that edition until they go, listing again by new rules only from cached metadata", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-edition-"));
   const artist = `Edition List ${process.pid}`;
@@ -2055,7 +2107,9 @@ test("an album someone asked for keeps the release it lists after its files are 
   });
 });
 
-test("an album the metadata provider does not know keeps its songs and does not stop the others being listed", async () => {
+test("an album the metadata provider does not know keeps its songs and does not stop the others being listed", async (t) => {
+  stubMissingMusicbrainz(t);
+  resumePausedServices();
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-unknown-"));
   const artist = `Unknown List ${process.pid}`;
   const artistMbid = uuid("dddddddd", 2);
@@ -2835,6 +2889,20 @@ test("an untagged file joins the one of an artist's same-titled releases that li
   }
 });
 
+test("a Library tidy with nothing to change never waits for another process's write", () => {
+  reconcileLibraryAlbums();
+  const other = new Database(db.name);
+  db.pragma("busy_timeout = 0");
+  try {
+    other.exec("BEGIN IMMEDIATE");
+    reconcileLibraryAlbums();
+  } finally {
+    other.exec("ROLLBACK");
+    other.close();
+    db.pragma("busy_timeout = 5000");
+  }
+});
+
 test("a scan removes albums nobody can play or asked for, and keeps the ones someone asked for", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-owners-"));
   const artistName = `Owners ${process.pid}`;
@@ -3485,6 +3553,38 @@ test("scanMusicRoot reads Aurral identity markers from portable comments", async
     if (filePath) deleteIndexedFile(source, filePath);
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("scan metadata keeps recording, release-track, release group, and edition IDs distinct", () => {
+  const file = "/music/Artist/Album/01 Track.flac";
+  const group = "11111111-1111-4111-8111-111111111111";
+  const edition = "22222222-2222-4222-8222-222222222222";
+  const releaseTrack = "33333333-3333-4333-8333-333333333333";
+  const recording = "44444444-4444-4444-8444-444444444444";
+  const metadata = { common: { musicbrainz_trackid: releaseTrack }, format: {} };
+  const groupOnly = buildMetadataRecord(
+    applyMetadataEnrichment(metadata, { albumMbid: group }),
+    file,
+    "/music",
+  );
+  assert.deepEqual(
+    [groupOnly.releaseGroupMbid, groupOnly.albumMbid, groupOnly.trackMbid],
+    [group, null, null],
+  );
+
+  const matched = buildMetadataRecord(
+    applyMetadataEnrichment(metadata, {
+      albumMbid: group,
+      releaseMbid: edition,
+      trackMbid: recording,
+    }),
+    file,
+    "/music",
+  );
+  assert.deepEqual(
+    [matched.releaseGroupMbid, matched.albumMbid, matched.trackMbid],
+    [group, edition, recording],
+  );
 });
 
 test("scanMusicRoot reads Aurral identity markers from grouping tags", async () => {

@@ -1,5 +1,14 @@
 import ArtworkImage from "./ArtworkImage";
-import { memo, useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { flushSync } from "react-dom";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -261,8 +270,12 @@ const PANEL_VIEWS = [
 
 const RAIL_OPEN_KEY = "playerRailOpen";
 const RAIL_VIEW_KEY = "playerRailView";
+const RAIL_WIDTH_KEY = "playerRailWidth";
 const DOCKED_QUERY = "(min-width: 1024px)";
 const RAIL_EXIT_MS = 260;
+const RAIL_WIDTH_MIN = 288;
+const RAIL_WIDTH_MAX = 480;
+const RAIL_WIDTH_DEFAULT = 352;
 
 function readStored(key: string) {
   try {
@@ -276,6 +289,76 @@ function store(key: string, value: string) {
   try {
     localStorage.setItem(key, value);
   } catch {}
+}
+
+const railWidthMax = () =>
+  Math.max(RAIL_WIDTH_MIN, Math.min(RAIL_WIDTH_MAX, Math.floor(window.innerWidth * 0.4)));
+
+const clampRailWidth = (width: number) =>
+  Math.max(RAIL_WIDTH_MIN, Math.min(railWidthMax(), Math.round(width)));
+
+function readRailWidth() {
+  const width = Number.parseInt(String(readStored(RAIL_WIDTH_KEY)), 10);
+  return width >= RAIL_WIDTH_MIN && width <= RAIL_WIDTH_MAX ? width : RAIL_WIDTH_DEFAULT;
+}
+
+type RailResizeSession = { pointerId: number; startX: number; startWidth: number };
+
+function useRailWidth() {
+  const [width, setWidthState] = useState(readRailWidth);
+  const widthRef = useRef(width);
+  const sessionRef = useRef<RailResizeSession | null>(null);
+  const [resizing, setResizing] = useState(false);
+
+  const setWidth = useCallback((next: number, persist: boolean) => {
+    const clamped = clampRailWidth(next);
+    widthRef.current = clamped;
+    setWidthState(clamped);
+    if (persist) store(RAIL_WIDTH_KEY, String(clamped));
+  }, []);
+
+  const handleProps = {
+    onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      event.preventDefault();
+      sessionRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startWidth: Math.min(widthRef.current, railWidthMax()),
+      };
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      setResizing(true);
+    },
+    onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => {
+      const session = sessionRef.current;
+      if (!session || session.pointerId !== event.pointerId) return;
+      setWidth(session.startWidth + session.startX - event.clientX, false);
+    },
+    onPointerEnd: (event: ReactPointerEvent<HTMLDivElement>) => {
+      const session = sessionRef.current;
+      if (!session || session.pointerId !== event.pointerId) return;
+      sessionRef.current = null;
+      if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      setResizing(false);
+      store(RAIL_WIDTH_KEY, String(widthRef.current));
+    },
+    onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      const step = event.shiftKey ? 24 : 8;
+      let next = Math.min(widthRef.current, railWidthMax());
+      if (event.key === "ArrowLeft") next += step;
+      else if (event.key === "ArrowRight") next -= step;
+      else if (event.key === "Home") next = RAIL_WIDTH_MIN;
+      else if (event.key === "End") next = railWidthMax();
+      else return;
+      event.preventDefault();
+      setWidth(next, true);
+    },
+    onDoubleClick: () => setWidth(RAIL_WIDTH_DEFAULT, true),
+  };
+
+  return { width, maxWidth: railWidthMax(), resizing, handleProps };
 }
 
 export function usePlayerRail() {
@@ -334,6 +417,7 @@ export function PlayerRail({ rail }: { rail: PlayerRailState }) {
   const [mounted, setMounted] = useState(rail.open);
   const [expanded, setExpanded] = useState(rail.open);
   const { edgeRef, closeRef } = rail;
+  const { width, maxWidth, resizing, handleProps } = useRailWidth();
   if (rail.open && !mounted) setMounted(true);
   if (!rail.open && expanded) setExpanded(false);
 
@@ -357,7 +441,29 @@ export function PlayerRail({ rail }: { rail: PlayerRailState }) {
   return (
     <>
       <PlayerRailEdge rail={rail} hidden={expanded} />
-      <div className={`player-rail${expanded ? " is-open" : ""}`}>
+      {expanded ? (
+        <div
+          className={`player-rail-resize-handle${resizing ? " is-active" : ""}`}
+          role="separator"
+          aria-label="Resize panel"
+          aria-orientation="vertical"
+          aria-valuemin={RAIL_WIDTH_MIN}
+          aria-valuemax={maxWidth}
+          aria-valuenow={Math.min(width, maxWidth)}
+          tabIndex={0}
+          onPointerDown={handleProps.onPointerDown}
+          onPointerMove={handleProps.onPointerMove}
+          onPointerUp={handleProps.onPointerEnd}
+          onPointerCancel={handleProps.onPointerEnd}
+          onLostPointerCapture={handleProps.onPointerEnd}
+          onDoubleClick={handleProps.onDoubleClick}
+          onKeyDown={handleProps.onKeyDown}
+        />
+      ) : null}
+      <div
+        className={`player-rail${expanded ? " is-open" : ""}${resizing ? " is-resizing" : ""}`}
+        style={{ "--player-panel-width": `${width}px` }}
+      >
         {mounted ? <PlayerQueuePanel rail={rail} /> : null}
       </div>
     </>

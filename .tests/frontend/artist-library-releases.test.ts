@@ -12,10 +12,10 @@ const owned = (libraryId: string, title: string, releaseGroupMbid: string | null
   coverUrl: `/api/library/albums/${libraryId}/cover`,
 });
 
-const managed = (mbid: string, monitored: boolean, sizeOnDisk = 0) => ({
-  id: `lidarr-${mbid}`,
-  mbid,
-  albumName: mbid,
+const managed = (releaseGroupMbid: string, monitored: boolean, sizeOnDisk = 0) => ({
+  id: `lidarr-${releaseGroupMbid}`,
+  releaseGroupMbid,
+  albumName: releaseGroupMbid,
   releaseDate: null,
   monitored,
   statistics: { trackCount: 10, trackFileCount: 0, sizeOnDisk, percentOfTracks: 0 },

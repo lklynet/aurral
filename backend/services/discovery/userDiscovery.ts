@@ -15,7 +15,8 @@ import {
   withArtistRouteId,
   type DiscoveryRecommendation,
 } from "./recommendationPipeline.ts";
-import { getLibraryArtistKeys, matchesArtistKeys, type ArtistMatchFields } from "./artistKeys.ts";
+import { matchesArtistKeys, type ArtistMatchFields } from "../../../lib/artistMatch.ts";
+import { getLibraryArtistKeys } from "./artistKeys.ts";
 
 type VisibleArtist = ArtistMatchFields & { tags?: unknown };
 

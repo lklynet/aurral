@@ -1,7 +1,6 @@
 {
   ".tests/api-clients/listenbrainz-submit.test.ts": 1,
   ".tests/api/image-cache.test.ts": 4,
-  ".tests/api/json-contract.test.ts": 127,
   ".tests/api/link-search.test.ts": 14,
   ".tests/api/release-group-details.test.ts": 2,
   ".tests/artist-appears-on.test.ts": 8,
@@ -69,7 +68,7 @@
   ".tests/library/favorites-routes.test.ts": 11,
   ".tests/library/library-ingest.test.ts": 1,
   ".tests/library/library-page-query.test.ts": 1,
-  ".tests/library/library-read-routes.test.ts": 4,
+  ".tests/library/library-read-routes.test.ts": 3,
   ".tests/library/library-refresh.test.ts": 3,
   ".tests/library/library-removal.test.ts": 1,
   ".tests/library/library-watch-process.test.ts": 16,
@@ -78,7 +77,7 @@
   ".tests/library/monitoring.test.ts": 5,
   ".tests/library/read-only-folders.test.ts": 1,
   ".tests/library/recent-artists.test.ts": 4,
-  ".tests/library/stable-library-reads.test.ts": 2,
+  ".tests/library/stable-library-reads.test.ts": 1,
   ".tests/library/storage-health.test.ts": 4,
   ".tests/library/track-album-context.test.ts": 3,
   ".tests/library/wanted-monitoring.test.ts": 2,
@@ -103,16 +102,11 @@
   ".tests/settings/webhook-test.test.ts": 2,
   ".tests/share/share-links.test.ts": 124,
   ".tests/streaming-links-songlink.test.ts": 1,
-  ".tests/subsonic/subsonic-api.int.test.ts": 57,
-  ".tests/subsonic/subsonic-schema.int.test.ts": 87,
-  ".tests/subsonic/subsonic.int.test.ts": 53,
   ".tests/track-matching/fixture-corpus.ts": 1,
   ".tests/track-matching/native-evaluation.mts": 1,
   ".tests/users/identity-link-routes.int.test.ts": 41,
   ".tests/users/theme-routes.int.test.ts": 19,
   ".tests/users/user-permissions-routes.int.test.ts": 2,
   ".tests/web/share-instances.test.ts": 14,
-  ".tests/web/updates.test.ts": 2,
-  "backend/services/flows/flowPlanProcess.ts": 1,
-  "scripts/label-pr.ts": 1
+  ".tests/web/updates.test.ts": 2
 }

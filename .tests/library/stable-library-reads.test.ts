@@ -58,71 +58,6 @@ test("artist key reads use identity columns and preserve metadata foreign IDs", 
   }
 });
 
-test("library artist compatibility reads apply SQL pagination", async () => {
-  const key = `canonical-artist-route:${process.pid}:${Date.now()}`;
-  const artists: import("../../backend/db/rows.ts").LibraryArtistsRow[] = [];
-  const albums: import("../../backend/db/rows.ts").LibraryAlbumsRow[] = [];
-  const tracks: import("../../backend/db/rows.ts").LibraryTracksRow[] = [];
-  const paths: string[] = [];
-  for (const name of ["A", "B"]) {
-    const artist = upsertLibraryArtist({
-      identityKey: `${key}:artist:${name}`,
-      name: `${key} ${name}`,
-      sortName: `${key} ${name}`,
-      metadata: { librarySource: "aurral" },
-    });
-    const album = upsertLibraryAlbum({
-      identityKey: `${key}:album:${name}`,
-      artistId: artist.id,
-      title: `${key} Album ${name}`,
-    });
-    const track = upsertLibraryTrack({
-      identityKey: `${key}:track:${name}`,
-      title: `${key} Track ${name}`,
-    });
-    const filePath = `/tmp/${key}/${name}.flac`;
-    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
-    upsertLibraryMediaFile({
-      trackId: track.id,
-      albumId: album.id,
-      source: "readonly",
-      path: filePath,
-      available: true,
-    });
-    artists.push(artist);
-    albums.push(album);
-    tracks.push(track);
-    paths.push(filePath);
-  }
-
-  try {
-    const response = await app.request(
-      `/library/artists?${new URLSearchParams({ readPath: "library", source: "readonly", limit: "1", offset: "1" })}`,
-    );
-    const body: (ReturnType<
-      typeof import("../../backend/services/libraryReadModel.ts").getLibraryReadModelForArtistPage
-    >["artists"][number] & { added: string | null })[] = await response.json();
-    assert.deepEqual(requireValue(body.map((artist) => artist.name)), [`${key} B`]);
-    assert.equal(String(requireValue(body[0]).id), String(requireFixture(artists[1]).id));
-    assert.equal(requireValue(body[0]).statistics.trackCount, 1);
-    assert.equal(requireValue(body[0]).added, requireValue(body[0]).addedAt);
-  } finally {
-    db.prepare("DELETE FROM library_media_files WHERE path IN (?, ?)").run(...paths);
-    db.prepare(
-      "DELETE FROM library_album_tracks WHERE album_id IN (?, ?) OR track_id IN (?, ?)",
-    ).run(...albums.map((album) => album.id), ...tracks.map((track) => track.id));
-    db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)").run(
-      ...albums.map((album) => album.id),
-    );
-    db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)").run(
-      ...artists.map((artist) => artist.id),
-    );
-    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(
-      ...tracks.map((track) => track.id),
-    );
-  }
-});
-
 test("library paginated reads keep tied rows stable", () => {
   const key = `canonical-stable-order:${process.pid}:${Date.now()}`;
   const artistName = `${key} Artist`;
@@ -382,16 +317,15 @@ test("an artist with unreadable metadata fields keeps the rest of its details", 
     db.prepare("UPDATE library_artists SET metadata_json = ? WHERE id = ?").run(
       JSON.stringify({
         foreignArtistId: 42,
-        monitorNewItems: "all",
         qualityProfile: { name: 5 },
-        addOptions: "all",
+        monitored: true,
+        added: "2020-01-02T03:04:05.000Z",
       }),
       artist.id,
     );
     const [projection] = getLibraryArtistProjection({ reference: artist.id });
-    assert.equal(projection?.foreignArtistId, artist.identity_key);
-    assert.equal(projection?.monitorNewItems, "all");
-    assert.equal(projection?.quality, "standard");
+    assert.equal(projection?.monitored, true);
+    assert.equal(projection?.addedAt, "2020-01-02T03:04:05.000Z");
   } finally {
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   }

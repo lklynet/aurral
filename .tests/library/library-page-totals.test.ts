@@ -4,12 +4,14 @@ import { test, afterAll } from "vite-plus/test";
 import Database from "better-sqlite3";
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 
-const [state, { db }, store, { getLibraryPage }] = await setupIsolatedBackend(
-  "library-page-totals",
-  () => import("../../backend/config/db-sqlite.ts"),
-  () => import("../../backend/services/libraryMediaStore.ts"),
-  () => import("../../backend/services/libraryQueryService.ts"),
-);
+const [state, { db }, store, { getLibraryPage }, { setLibraryManagement }] =
+  await setupIsolatedBackend(
+    "library-page-totals",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/services/libraryMediaStore.ts"),
+    () => import("../../backend/services/libraryQueryService.ts"),
+    () => import("../../backend/services/libraryManagementStore.ts"),
+  );
 afterAll(() => cleanupIsolatedState(state));
 
 test("page totals stay exact after local writes, worker commits, and rollbacks", () => {
@@ -124,16 +126,15 @@ test("an album track page carries the album's provider id and monitored state", 
     title: "Summary Album",
     metadata: { id: 512, monitored: true, monitor: "all" },
   });
+  setLibraryManagement({ entityKind: "album", entityId: album.id, monitorMode: "monitored" });
   const track = store.upsertLibraryTrack({ identityKey: "summary:track", title: "Summary Track" });
   store.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
 
   const page = getLibraryPage({ kind: "tracks", albumId: album.id, availableOnly: false });
   const summaryAlbum = requireFixture(page.albums[0]);
   assert.equal(summaryAlbum.id, album.id);
-  assert.equal(summaryAlbum.providerId, 512);
   assert.equal(summaryAlbum.monitored, true);
   const summaryArtist = requireFixture(page.artists[0]);
-  assert.equal("providerId" in summaryArtist && summaryArtist.providerId, 41);
   assert.equal("monitored" in summaryArtist && summaryArtist.monitored, true);
 });
 

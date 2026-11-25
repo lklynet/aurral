@@ -109,6 +109,10 @@ export const downloadPipelineQueue = defineQueue<PipelinePayload>({
     const base = isOwnKey(PIPELINE_PHASE_PRIORITY, phase) ? PIPELINE_PHASE_PRIORITY[phase] : 0;
     return base - (payload.upgrade ? 100 : 0);
   },
+  onAbandoned: (job) => {
+    const payload = parseJobPayload(job.payload);
+    return payload && { ...payload, workerExits: Number(payload.workerExits || 0) + 1 };
+  },
 });
 
 export const playlistMbidEnrichmentQueue = defineQueue<
@@ -216,7 +220,7 @@ export const playEventQueue = defineQueue<v.InferOutput<typeof playEventDelivery
   name: "play-events",
   group: "play-events",
   leaseMs: 2 * MINUTE,
-  maxAttempts: 5,
+  maxAttempts: 12,
   retryDelayMs: 30_000,
   backoff: "exponential",
   timeoutMs: 15 * MINUTE,

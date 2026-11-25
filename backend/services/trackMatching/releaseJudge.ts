@@ -11,6 +11,7 @@ import {
   prepareRecordingRequest,
   readRecordingMbid,
   titleKey,
+  titleMatchText,
 } from "./nativeMatcher.ts";
 import {
   labelContradictions,
@@ -23,9 +24,9 @@ import {
   hasNonLatinLetter,
   inOtherScript as otherScript,
   isReleaseNoiseWord,
-  isVariousArtistsCredit,
   otherProductMarker,
 } from "./titleText.ts";
+import { isVariousArtistsCredit } from "../../../lib/artistCredit.ts";
 import { implausibleBitrateKbps } from "./candidateNormalizer.ts";
 import type {
   ReleaseManifest as BuiltReleaseManifest,
@@ -255,7 +256,7 @@ function preparedRequest(manifest: ReleaseManifest) {
 }
 
 function titleFacts(title: string | null | undefined) {
-  const text = normalizeMatchText(title);
+  const text = titleMatchText(title);
   return {
     text,
     key: titleKey(title),

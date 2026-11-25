@@ -172,6 +172,7 @@ export interface HubLinksRow {
   linked_at: number | null;
   broken: number;
   share_listening: number;
+  account_id: string | null;
 }
 
 export interface HubPublicationsRow {
@@ -289,6 +290,7 @@ export interface LibraryEntityGenresRow {
   entity_kind: string;
   entity_id: number;
   name: string;
+  genre_key: string;
 }
 
 export interface LibraryFileOperationItemsRow {
@@ -341,6 +343,7 @@ export interface LibraryMediaFilesRow {
   created_at: number;
   updated_at: number;
   artist_tag: string | null;
+  release_tagged: number;
 }
 
 export interface LibraryMonitoringExclusionsRow {

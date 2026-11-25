@@ -24,7 +24,12 @@ import { imageSizes } from "../../lib/imageSizes.ts";
 import { sendImageFile } from "./shared/sendImageFile.ts";
 
 const name = v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(500));
-const artQuery = v.object({ artist: name, album: v.optional(name), w: v.optional(v.string()) });
+const artQuery = v.object({
+  artist: name,
+  album: v.optional(name),
+  mbid: v.optional(name),
+  w: v.optional(v.string()),
+});
 
 export default new Hono<AppEnv>()
   .basePath("/hub-link")
@@ -51,9 +56,9 @@ export default new Hono<AppEnv>()
     }
   })
   .get("/friends/art", validate("query", artQuery), async (c) => {
-    const { artist, album, w } = c.req.valid("query");
+    const { artist, album, mbid, w } = c.req.valid("query");
     const width = Number(w) || 0;
-    const art = await friendArt(artist, album);
+    const art = await friendArt(artist, album, mbid);
     const missing = () => {
       c.header("Cache-Control", "private, max-age=3600");
       return c.json({ error: "Artwork not found" }, 404);

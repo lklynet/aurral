@@ -241,6 +241,7 @@ export function fallbackAlbumGrabToTracks<Payload extends AlbumGrabPayload>(
     searchQueryIndex: 0,
     activeSearch: null,
     history: null,
+    workerExits: 0,
   };
 }
 

@@ -84,6 +84,14 @@ const respond = (url: URL) => {
       ? json({ feed: { results: albums } })
       : new Response("<html>Internal Server Error</html>", { status: 500 });
   }
+  if (url.hostname === "data.aurral.org" && url.pathname === "/v1/ids") {
+    const keys = url.searchParams.get("keys")?.split(",") ?? [];
+    return json({
+      ids: keys.includes("deezer-artist:77")
+        ? { "deezer-artist:77": { artistId: ARTIST_MBID } }
+        : {},
+    });
+  }
   if (url.hostname !== "api.deezer.com") return json({ error: "unexpected" }, 404);
   if (url.pathname === "/infos") return json({ country_iso: source.region });
   if (url.pathname === "/search/playlist") {
@@ -147,6 +155,10 @@ afterAll(async () => {
 });
 
 test("a refresh stores every chart for the server's region", async () => {
+  dbOps.setMusicbrainzArtistMbidCache("chart star", "00000000-0000-4000-8000-000000000012");
+  const fallbackMbid = "00000000-0000-4000-8000-000000000013";
+  source.chartArtists.push("Unmapped Artist");
+  dbOps.setMusicbrainzArtistMbidCache("unmapped artist", fallbackMbid);
   assert.equal(await refreshAt(DAY_ONE), true);
 
   const charts = getTrendingCharts(USER_ID);
@@ -180,7 +192,10 @@ test("a refresh stores every chart for the server's region", async () => {
   });
   assert.deepEqual(
     charts.artists?.map((artist) => [artist.name, artist.fans, artist.mbid]),
-    [["Chart Star", 4200, ARTIST_MBID]],
+    [
+      ["Chart Star", 4200, ARTIST_MBID],
+      ["Unmapped Artist", null, fallbackMbid],
+    ],
   );
   assert.deepEqual(
     charts.genres.map((genre) => [genre.id, genre.name, genre.artists]),
@@ -191,6 +206,10 @@ test("a refresh stores every chart for the server's region", async () => {
     ["Song 501", "Song 502"],
   );
   assert.equal(getTrendingGenreChart(152), null);
+  assert.deepEqual(
+    requests.filter((url) => url.pathname === "/v1/ids").map((url) => url.searchParams.get("keys")),
+    ["deezer-artist:77,deezer-artist:78"],
+  );
 });
 
 test("trending follows the main charts, then each genre chart in turn", async () => {
@@ -212,6 +231,7 @@ test("trending follows the main charts, then each genre chart in turn", async ()
     ["Song 1", "Song 2", "Song 3", "Song 601", "Song 501"],
   );
   assert.equal(getChartTracks(4).length, 4);
+  assert.equal(getChartTracks(1)[0]?.durationMs, 180000);
 });
 
 test("a region without its own charts falls back to worldwide songs and US albums", async () => {

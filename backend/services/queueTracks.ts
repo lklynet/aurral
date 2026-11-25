@@ -31,7 +31,7 @@ export function toQueueTracks(trackIds: number[]) {
         streamFormat: file.format || null,
         quality: file.quality?.quality?.name || file.quality?.audioFormat || null,
         durationMs: file.durationMs ?? null,
-        artistMbid: artist?.mbid ?? null,
+        artistMbid: creditedToArtist ? (artist?.mbid ?? null) : null,
         albumMbid: album.releaseGroupMbid || album.mbid || null,
         trackMbid: track.mbid ?? null,
         libraryTrackId: track.id,

@@ -104,6 +104,9 @@ test("a complete listing pairs every track with its own file in any file order",
       order.join(),
     );
   }
+  const emoji = release(["👋", "🌈", "Song"]);
+  const reversed = [2, 1, 0].map((index) => fileFor(emoji, index, { trackNumber: null }));
+  assert.deepEqual(judgeRelease(emoji, listing(emoji, reversed)).fileForTrack, [2, 1, 0]);
 });
 
 test("repeated titles pair by place, then by the closest lengths", () => {

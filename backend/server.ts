@@ -16,6 +16,7 @@ import { warnAboutConfigDeprecations } from "./services/deprecatedUsage.ts";
 import { syncSchedules } from "./services/jobs/schedules.ts";
 import { initializeAppRuntime } from "./services/appRuntime.ts";
 import { registerShutdownHandler, shutdownJobWorkers } from "./services/jobs/worker.ts";
+import { stopConnect, syncConnect } from "./services/connect/connectClient.ts";
 import { stopShareListener, syncShareListener } from "./services/shareLinks/shareListener.ts";
 import { stopAllPlugins } from "./services/plugins/pluginHost.ts";
 import { refreshInstalledPlugins } from "./services/plugins/pluginService.ts";
@@ -71,6 +72,7 @@ const gracefulShutdown = async (signal: NodeJS.Signals) => {
   stopPlaylistStatusBroadcasts();
   stopAllPlugins();
   await shutdownJobWorkers({ timeoutMs: 5000 });
+  await stopConnect();
   await stopShareListener();
   await new Promise<void>((resolve) => {
     httpServer.close(() => resolve());
@@ -103,6 +105,7 @@ httpServer.listen(PORT, async () => {
   warnAboutConfigDeprecations();
   syncSchedules();
   initializeAppRuntime();
+  void syncConnect();
   void syncShareListener();
   refreshInstalledPlugins().catch((error) =>
     logger.warn("system", "Couldn't read the plugins folder", {

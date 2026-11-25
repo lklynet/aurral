@@ -1,0 +1,12 @@
+{
+	email {$ACME_EMAIL}
+}
+
+relay.aurral.dev, *.aurral.dev {
+	tls {
+		dns cloudflare {$CLOUDFLARE_API_TOKEN}
+	}
+	reverse_proxy relay:8080 {
+		flush_interval -1
+	}
+}

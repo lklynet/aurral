@@ -5,7 +5,7 @@ import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
 import { useDiscoveryStatus } from "../hooks/useDiscoveryStatus";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import { discoveryQueryOptions } from "../queryOptions.ts";
-import { artistsShareDiscoveryIdentity } from "../utils/discoveryFeedback";
+import { isSameArtist } from "../../../lib/artistMatch.ts";
 import type { ArtistFeedbackSource } from "../utils/artistTaste.ts";
 import {
   readStoredDiscoveryData,
@@ -72,8 +72,8 @@ export function useDiscoveryRecommendations() {
           const list = current[key] || [];
           hidden[key] = list
             .map((candidate, index) => ({ candidate, index }))
-            .filter(({ candidate }) => artistsShareDiscoveryIdentity(candidate, artist));
-          next[key] = list.filter((candidate) => !artistsShareDiscoveryIdentity(candidate, artist));
+            .filter(({ candidate }) => isSameArtist(candidate, artist));
+          next[key] = list.filter((candidate) => !isSameArtist(candidate, artist));
         }
         return next;
       });
@@ -85,7 +85,7 @@ export function useDiscoveryRecommendations() {
             if (!entries) continue;
             const list = [...(current[key] || [])];
             for (const { candidate, index } of entries) {
-              if (!list.some((existing) => artistsShareDiscoveryIdentity(existing, candidate))) {
+              if (!list.some((existing) => isSameArtist(existing, candidate))) {
                 list.splice(Math.min(index, list.length), 0, candidate);
               }
             }

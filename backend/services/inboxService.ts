@@ -153,10 +153,10 @@ async function buildReleaseItems(userId: number, now: number) {
 
   return rawAlbums
     .map((album) => {
-      const releaseMbid = String(album?.foreignAlbumId || "").trim();
+      const releaseMbid = String(album?.mbid || album?.releaseGroupMbid || "").trim();
       const releaseDate = album?.releaseDate || null;
       const releaseTime = toTime(releaseDate);
-      const artistMbid = String(album?.foreignArtistId || album?.artistMbid || "").trim();
+      const artistMbid = String(album?.artistMbid || "").trim();
       const artistName = String(album?.artistName || "").trim();
       if (
         !releaseMbid ||
@@ -178,7 +178,7 @@ async function buildReleaseItems(userId: number, now: number) {
         sourceKey,
         title: String(album?.title || "Upcoming release"),
         subtitle: `${artistName} · ${releaseDate}`,
-        href: albumPath(releaseMbid),
+        href: albumPath(album.releaseGroupMbid || album.id),
         metadata: {
           albumMbid: releaseMbid,
           albumName: String(album?.title || "Upcoming release"),

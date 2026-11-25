@@ -25,6 +25,7 @@ import {
   buildStaticPlaylistTrackPayload,
   reserveUniquePlaylistName,
 } from "../../utils/staticPlaylists.ts";
+import { albumTrackArtist, formatArtistCredit } from "../../../../lib/artistCredit.ts";
 
 export function OwnedTrackMark() {
   return (
@@ -193,6 +194,14 @@ export function useReleaseTracks({
     const isOwned = isOwnedReleaseTrack(track);
     const canPlay = Boolean(track.preview_url);
     const membershipTrack = releaseTrackPayload(release, track, artistName, artistMbid);
+    const playlistTrack = {
+      ...membershipTrack,
+      artistName: albumTrackArtist(
+        artistName,
+        artistMbid,
+        track.credits?.length ? formatArtistCredit(track.credits) : null,
+      ),
+    };
     const downloading =
       !isOwned &&
       (albumDownloading || isTrackDownloading(track) || isTrackDownloading(membershipTrack));
@@ -249,18 +258,18 @@ export function useReleaseTracks({
             <TrackPlaylistSubmenu
               label="Add to playlist"
               icon={Plus}
-              track={membershipTrack}
+              track={playlistTrack}
               playlists={playlists.staticPlaylists}
               loading={playlists.playlistsLoading}
               saving={playlists.playlistSavingKey === id}
               error={playlists.playlistsError}
               defaultNewPlaylistName={defaultPlaylistName}
               onSelect={(target: PlaylistSelection) => {
-                if (!membershipTrack.artistName || !membershipTrack.trackName) {
+                if (!playlistTrack.artistName || !playlistTrack.trackName) {
                   showError("Track details are incomplete");
                   return;
                 }
-                void playlists.savePlaylistTracks([membershipTrack], target, {
+                void playlists.savePlaylistTracks([playlistTrack], target, {
                   key: id,
                   label: "Track",
                   defaultName: defaultPlaylistName,

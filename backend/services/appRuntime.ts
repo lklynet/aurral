@@ -239,6 +239,16 @@ export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeL
       });
     },
     onExit(group, _code, _signal, _pid, reason, retired) {
+      if (group === "downloads" && !retired) {
+        backgroundProcessSupervisor!
+          .request("downloads", "startIfPending", [], { timeoutMs: 5 * 60_000 })
+          .catch((error) => {
+            logger.warn?.(
+              "[AppRuntime] Could not resume downloads after the worker exited:",
+              asAppError(error)?.message || error,
+            );
+          });
+      }
       const recovery = recoverAbandonedJobs(reason || "Background worker process exited", group)
         .then(async () => {
           if (group !== "downloads") return;

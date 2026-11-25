@@ -3,6 +3,9 @@ import { fileURLToPath } from "node:url";
 import { flowTrackSource, type FlowRunPlan, type FlowRunSpec } from "./flowTrackSource.ts";
 
 type FlowPlanChildMessage = { type?: string; plan?: FlowRunPlan; error?: string } | null;
+export type FlowPlanParentMessage =
+  | { type: "build-flow-plan"; flow: FlowRunSpec }
+  | { type: "flow-plan-ack" };
 
 const ENTRY = fileURLToPath(new URL("./flowPlanProcess.ts", import.meta.url));
 const PLAN_TIMEOUT_MS = 30 * 60 * 1000;
@@ -53,7 +56,7 @@ export function createFlowPlanRunner({ forkProcess = fork, timeoutMs = PLAN_TIME
             child.removeListener("error", onError);
           });
           try {
-            child.send({ type: "flow-plan-ack" }, (sendError) => {
+            child.send({ type: "flow-plan-ack" } satisfies FlowPlanParentMessage, (sendError) => {
               if (!sendError) return;
               clearTimeout(exitTimer);
               try {
@@ -93,7 +96,7 @@ export function createFlowPlanRunner({ forkProcess = fork, timeoutMs = PLAN_TIME
       child.on("error", onError);
       child.once("exit", onExit);
       try {
-        child.send({ type: "build-flow-plan", flow });
+        child.send({ type: "build-flow-plan", flow } satisfies FlowPlanParentMessage);
       } catch (error) {
         finish(error);
       }

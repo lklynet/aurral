@@ -7,6 +7,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { DownloadJob } from "../../backend/services/downloadJobs/downloadTracker.ts";
 import { testUser } from "../helpers/userFixtures.ts";
+import { VARIOUS_ARTISTS_MBID } from "../../lib/artistCredit.ts";
 import {
   setupIsolatedBackend,
   cleanupIsolatedState,
@@ -54,6 +55,7 @@ beforeEach(() => {
 afterAll(() => cleanupIsolatedState(state));
 
 type Track = { artistName: string; albumName: string; trackName: string };
+type LibraryFile = Track & { albumArtist?: string; tags?: Record<string, string> };
 
 const synced = {
   provider: "spotify-playlist",
@@ -63,13 +65,26 @@ const synced = {
   keepRemovedTracks: false,
 };
 
-async function writeAudio({ artistName, albumName, trackName }: Track) {
+async function writeAudio({
+  artistName,
+  albumName,
+  trackName,
+  albumArtist = artistName,
+  tags = {},
+}: LibraryFile) {
   const file = path.join(
     requireFixture(process.env.WEEKLY_FLOW_FOLDER),
-    artistName,
+    albumArtist,
     albumName,
     `${trackName}.flac`,
   );
+  const metadata = {
+    album_artist: albumArtist,
+    artist: artistName,
+    album: albumName,
+    title: trackName,
+    ...tags,
+  };
   await fs.mkdir(path.dirname(file), { recursive: true });
   await promisify(execFile)("ffmpeg", [
     "-hide_banner",
@@ -81,14 +96,7 @@ async function writeAudio({ artistName, albumName, trackName }: Track) {
     "lavfi",
     "-i",
     "sine=frequency=440:duration=0.1",
-    "-metadata",
-    `album_artist=${artistName}`,
-    "-metadata",
-    `artist=${artistName}`,
-    "-metadata",
-    `album=${albumName}`,
-    "-metadata",
-    `title=${trackName}`,
+    ...Object.entries(metadata).flatMap(([key, value]) => ["-metadata", `${key}=${value}`]),
     file,
   ]);
   return file;
@@ -96,7 +104,7 @@ async function writeAudio({ artistName, albumName, trackName }: Track) {
 
 const scan = () => scanMusicRoot({ rootPath: process.env.WEEKLY_FLOW_FOLDER, source: "aurral" });
 
-async function addLibraryFile(track: Track) {
+async function addLibraryFile(track: LibraryFile) {
   const file = await writeAudio(track);
   await scan();
   return file;
@@ -158,11 +166,29 @@ const dropAllUpstream = (playlistId: string) =>
 test("a playlist adds its tracks to the Library and deleting it keeps every file", async () => {
   const reused = { artistName: "Reuse Band", albumName: "Reuse Record", trackName: "Already Here" };
   const fetched = { artistName: "Fresh Band", albumName: "Fresh Record", trackName: "Fetched" };
+  const compiled = {
+    artistName: "Guest Band",
+    albumName: "Various Hits",
+    trackName: "On The Compilation",
+    artistMbid: VARIOUS_ARTISTS_MBID,
+    albumMbid: "33333333-3333-4333-8333-333333333333",
+    trackMbid: "44444444-4444-4444-8444-444444444444",
+  };
   const libraryFile = await addLibraryFile(reused);
-  const { playlist, jobFor } = await createPlaylist([reused, fetched]);
+  const compilationFile = await addLibraryFile({
+    ...compiled,
+    albumArtist: "Various Artists",
+    tags: {
+      MUSICBRAINZ_RELEASEGROUPID: compiled.albumMbid,
+      MUSICBRAINZ_TRACKID: compiled.trackMbid,
+    },
+  });
+  const { playlist, jobFor } = await createPlaylist([reused, fetched, compiled]);
   assert.equal(jobFor(reused).playlistType, "library");
   assert.equal(jobFor(reused).finalPath, libraryFile);
   assert.equal(jobFor(reused).startedByPlaylist, null);
+  assert.equal(jobFor(compiled).status, "done");
+  assert.equal(jobFor(compiled).finalPath, compilationFile);
   assert.equal(jobFor(fetched).playlistType, "library");
   assert.equal(jobFor(fetched).startedByPlaylist, playlist.id);
   const fetchedFile = await finishDownload(jobFor(fetched));
@@ -174,6 +200,7 @@ test("a playlist adds its tracks to the Library and deleting it keeps every file
 
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(playlist.id), null);
   await assertStillInLibrary(libraryFile);
+  await assertStillInLibrary(compilationFile);
   await assertStillInLibrary(fetchedFile);
 });
 

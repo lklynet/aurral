@@ -1,8 +1,9 @@
 import type Database from "better-sqlite3";
+import { createHash } from "node:crypto";
 import { createAurral3Schema } from "./aurral-3-schema.ts";
 import { NOTIFICATION_EVENTS } from "../../lib/notificationEvents.ts";
 import { isRecord } from "../../lib/isRecord.ts";
-import { trackArtistCreditFromTags } from "../../lib/artistCredit.ts";
+import { tagValues, trackArtistCreditFromTags } from "../../lib/artistCredit.ts";
 import type { LibraryTracksRow, SettingsRow, UsersRow } from "../db/rows.ts";
 
 type Migration = (db: Database.Database) => void;
@@ -459,6 +460,147 @@ const indexPlaysByArtistId: Migration = (db) =>
       ON play_events(user_id, artist_mbid);
   `);
 
+const renameDiscoverySourceLabels: Migration = (db) =>
+  db.exec(`
+    UPDATE discovery_cache
+    SET value = replace(replace(value, '"lastfm_related"', '"similar"'), '"lastfm_artist"', '"artist"')
+    WHERE instr(value, '"lastfm_') > 0;
+  `);
+
+// Adding an album and importing an untagged download once stored the release
+// group as the album's release.
+const clearReleaseGroupsStoredAsReleases: Migration = (db) =>
+  db.exec("UPDATE library_albums SET mbid = NULL WHERE mbid = release_group_mbid");
+
+// A track list remembers the album ID and files it was listed for, so clearing
+// those IDs had every such album look its tracks up again on the next scan.
+// Each one listed for the release group in the ID's place keeps its list.
+const keepTrackListsOfClearedReleases: Migration = (db) => {
+  const albums = db
+    .prepare<[], { id: number; releaseGroupMbid: string; listedFor: string }>(
+      `SELECT id, release_group_mbid AS releaseGroupMbid, metadata_json ->> '$.trackList.for' AS listedFor
+       FROM library_albums
+       WHERE mbid IS NULL AND release_group_mbid IS NOT NULL
+         AND json_valid(metadata_json) AND metadata_json ->> '$.trackList.for' IS NOT NULL`,
+    )
+    .all();
+  const files = db.prepare<[number], { path: string; mtimeMs: number | null }>(
+    `SELECT DISTINCT track.mbid, track.title, media.path, media.mtime_ms AS mtimeMs
+     FROM library_album_tracks AS link
+     JOIN library_tracks AS track ON track.id = link.track_id
+     JOIN library_media_files AS media ON media.track_id = track.id
+       AND (media.album_id = link.album_id OR media.album_id IS NULL)
+     WHERE link.album_id = ?
+     ORDER BY media.path`,
+  );
+  const listedFor = (mbid: string | null, songs: { path: string; mtimeMs: number | null }[]) =>
+    createHash("sha1")
+      .update(JSON.stringify([mbid, songs.map((file) => [file.path, file.mtimeMs])]))
+      .digest("hex");
+  const relist = db.prepare<[string, number]>(
+    "UPDATE library_albums SET metadata_json = json_set(metadata_json, '$.trackList.for', ?) WHERE id = ?",
+  );
+  for (const album of albums) {
+    const songs = files.all(album.id);
+    if (album.listedFor === listedFor(album.releaseGroupMbid, songs)) {
+      relist.run(listedFor(null, songs), album.id);
+    }
+  }
+};
+
+const listTracksForFilesOnly: Migration = (db) => {
+  const albums = db
+    .prepare<[], { id: number; mbid: string | null; listedFor: string }>(
+      `SELECT id, mbid, metadata_json ->> '$.trackList.for' AS listedFor
+       FROM library_albums
+       WHERE release_group_mbid IS NOT NULL
+         AND json_valid(metadata_json) AND metadata_json ->> '$.trackList.for' IS NOT NULL`,
+    )
+    .all();
+  const files = db.prepare<[number], { path: string; mtimeMs: number | null }>(
+    `SELECT DISTINCT track.mbid, track.title, media.path, media.mtime_ms AS mtimeMs
+     FROM library_album_tracks AS link
+     JOIN library_tracks AS track ON track.id = link.track_id
+     JOIN library_media_files AS media ON media.track_id = track.id
+       AND (media.album_id = link.album_id OR media.album_id IS NULL)
+     WHERE link.album_id = ?
+     ORDER BY media.path`,
+  );
+  const hash = (value: unknown) => createHash("sha1").update(JSON.stringify(value)).digest("hex");
+  const relist = db.prepare<[string, number]>(
+    "UPDATE library_albums SET metadata_json = json_set(metadata_json, '$.trackList.for', ?) WHERE id = ?",
+  );
+  for (const album of albums) {
+    const songs = files.all(album.id).map((file) => [file.path, file.mtimeMs]);
+    if (album.listedFor === hash([album.mbid, songs])) relist.run(hash(songs), album.id);
+  }
+};
+
+const storeFileReleaseTags: Migration = (db) => {
+  if (
+    db
+      .prepare(
+        "SELECT 1 FROM pragma_table_info('library_media_files') WHERE name = 'release_tagged'",
+      )
+      .get()
+  )
+    return;
+  const namesRelease = `json_valid(metadata_json)
+    AND (coalesce(json_extract(metadata_json, '$.tags.musicbrainz_releasegroupid'), '') <> ''
+      OR coalesce(json_extract(metadata_json, '$.tags.musicbrainz_albumid'), '') <> '')`;
+  db.exec(`
+    ALTER TABLE library_media_files ADD COLUMN release_tagged INTEGER NOT NULL DEFAULT 0;
+    UPDATE library_media_files AS media SET release_tagged = 1
+    WHERE EXISTS (
+        SELECT 1 FROM library_album_tracks AS link
+        JOIN library_albums ON library_albums.id = link.album_id
+        WHERE link.track_id = media.track_id
+          AND (media.album_id = link.album_id OR media.album_id IS NULL)
+          AND ${namesRelease}
+      )
+      OR (
+        EXISTS (SELECT 1 FROM library_tracks WHERE id = media.track_id AND ${namesRelease})
+        AND NOT EXISTS (
+          SELECT 1 FROM library_media_files AS other
+          WHERE other.track_id = media.track_id AND other.id <> media.id
+        )
+      );
+  `);
+};
+
+const storeHubAccountId: Migration = (db) => {
+  if (db.prepare("SELECT 1 FROM pragma_table_info('hub_links') WHERE name = 'account_id'").get()) {
+    return;
+  }
+  db.exec("ALTER TABLE hub_links ADD COLUMN account_id TEXT");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_hub_links_account ON hub_links (origin, account_id)");
+};
+
+const dropAlbumArtistTagSeparators: Migration = (db) => {
+  let changed = false;
+  for (const [table, column] of [
+    ["library_artists", "name"],
+    ["library_albums", "album_artist"],
+    ["download_jobs", "artist_name"],
+  ] as const) {
+    const rows = db
+      .prepare<[], { id: number | string; value: string }>(
+        `SELECT id, ${column} AS value FROM ${table} WHERE instr(CAST(${column} AS BLOB), X'00') > 0`,
+      )
+      .all();
+    const update = db.prepare<[string, number | string]>(
+      `UPDATE ${table} SET ${column} = ? WHERE id = ?`,
+    );
+    for (const row of rows) {
+      const [name] = tagValues(row.value);
+      if (!name) continue;
+      update.run(name, row.id);
+      changed = true;
+    }
+  }
+  if (changed) db.prepare("DELETE FROM settings WHERE key = 'librarySearchIndexVersion'").run();
+};
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -491,6 +633,13 @@ export const migrations: Migration[] = [
   moveMetadataToDataAurral,
   forgetArtistCoverAlbums,
   indexPlaysByArtistId,
+  renameDiscoverySourceLabels,
+  clearReleaseGroupsStoredAsReleases,
+  keepTrackListsOfClearedReleases,
+  listTracksForFilesOnly,
+  storeFileReleaseTags,
+  storeHubAccountId,
+  dropAlbumArtistTagSeparators,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

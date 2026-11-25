@@ -1,7 +1,7 @@
 import { db } from "../config/db-sqlite.ts";
 import type { LibraryArtistsRow } from "../db/rows.ts";
 import * as musicData from "./musicDataSource/index.ts";
-import { matchesArtistKeys } from "./discovery/artistKeys.ts";
+import { isSameArtist, matchesArtistKeys } from "../../lib/artistMatch.ts";
 import { getBlockedArtistKeys } from "./discovery/feedback.ts";
 import { getBlockedTagKeys, hasBlockedTag } from "./discovery/blockedTags.ts";
 
@@ -101,7 +101,10 @@ function resolveSeed(seed: RadioSeed) {
   const ids = uniqueText(artistRefs.map((artist) => artist.id));
   const mbids = uniqueText(artistRefs.map((artist) => artist.mbid));
   const names = uniqueText(artistRefs.map((artist) => artist.name));
-  const matchedArtists =
+  const refMatches = (ref: RadioArtistRef, artist: ArtistRow & { identityKey: string }) =>
+    Boolean(ref.id?.trim() && [String(artist.id), artist.identityKey].includes(ref.id.trim())) ||
+    isSameArtist({ mbid: ref.mbid, name: ref.name }, { mbid: artist.mbid, name: artist.name });
+  const candidateArtists =
     ids.length || mbids.length || names.length
       ? db
           .prepare<string[], ArtistRow & { identityKey: string }>(
@@ -111,15 +114,12 @@ function resolveSeed(seed: RadioSeed) {
           )
           .all(...ids, ...ids, ...mbids, ...names)
       : [];
+  const matchedArtists = candidateArtists.filter((artist) =>
+    artistRefs.some((ref) => refMatches(ref, artist)),
+  );
   const external = artistRefs.filter(
     (ref) =>
-      Boolean(ref.mbid || ref.name) &&
-      !matchedArtists.some(
-        (artist) =>
-          (ref.id && (String(artist.id) === ref.id || artist.identityKey === ref.id)) ||
-          (ref.mbid && artist.mbid === ref.mbid) ||
-          (ref.name && artist.name.toLowerCase() === ref.name.toLowerCase()),
-      ),
+      Boolean(ref.mbid || ref.name) && !matchedArtists.some((artist) => refMatches(ref, artist)),
   );
 
   const artistIds = [
@@ -134,7 +134,7 @@ function resolveSeed(seed: RadioSeed) {
   const requestedArtistIds = matchedArtists.map((artist) => artist.id);
   const genreRows = db
     .prepare<number[], { kind: string; id: number; genre: string }>(
-      `SELECT entity_kind AS kind, entity_id AS id, lower(name) AS genre FROM library_entity_genres
+      `SELECT entity_kind AS kind, entity_id AS id, genre_key AS genre FROM library_entity_genres
        WHERE (entity_kind = 'artists' AND entity_id IN (${placeholders(artistIds)}))
           OR (entity_kind = 'albums' AND entity_id IN (${placeholders(albumIds)}))
           OR (entity_kind = 'albums' AND entity_id IN (
@@ -201,10 +201,9 @@ async function similarArtistScores(
   }
   const libraryArtists = db.prepare<string[], ArtistRow>(branches.join(" UNION ")).all(...params);
   for (const entry of similar) {
-    const name = entry.name.toLowerCase();
     const match = Math.max(0, Math.min(1, entry.match));
     for (const artist of libraryArtists) {
-      if ((entry.mbid && artist.mbid === entry.mbid) || artist.name.toLowerCase() === name) {
+      if (isSameArtist(entry, { mbid: artist.mbid, name: artist.name })) {
         scores.set(artist.id, Math.max(scores.get(artist.id) ?? 0, 0.35 + 0.6 * match));
       }
     }
@@ -218,7 +217,7 @@ const untagged = (kind: string, id: string) =>
 
 const taggedWith = (kind: string, genres: string[]) =>
   `SELECT entity_id FROM library_entity_genres
-   WHERE entity_kind = '${kind}' AND lower(name) IN (${placeholders(genres)})`;
+   WHERE entity_kind = '${kind}' AND genre_key IN (${placeholders(genres)})`;
 
 function genreArtistScores(genres: string[]) {
   const scores = new Map<number, number>();
@@ -226,20 +225,20 @@ function genreArtistScores(genres: string[]) {
   const rows = db
     .prepare<unknown[], { artistId: number; overlap: number }>(
       `SELECT artistId, COUNT(*) AS overlap FROM (
-         SELECT album.artist_id AS artistId, lower(genres.name) AS genre
+         SELECT album.artist_id AS artistId, genres.genre_key AS genre
          FROM library_entity_genres AS genres
          JOIN library_album_tracks AS link ON link.track_id = genres.entity_id
          JOIN library_albums AS album ON album.id = link.album_id
-         WHERE genres.entity_kind = 'tracks' AND lower(genres.name) IN (${placeholders(genres)})
+         WHERE genres.entity_kind = 'tracks' AND genres.genre_key IN (${placeholders(genres)})
          UNION
-         SELECT album.artist_id, lower(genres.name) FROM library_entity_genres AS genres
+         SELECT album.artist_id, genres.genre_key FROM library_entity_genres AS genres
          JOIN library_albums AS album ON album.id = genres.entity_id
-         WHERE genres.entity_kind = 'albums' AND lower(genres.name) IN (${placeholders(genres)})
+         WHERE genres.entity_kind = 'albums' AND genres.genre_key IN (${placeholders(genres)})
            AND EXISTS (SELECT 1 FROM library_album_tracks AS link
              WHERE link.album_id = album.id AND ${untagged("tracks", "link.track_id")})
          UNION
-         SELECT genres.entity_id, lower(genres.name) FROM library_entity_genres AS genres
-         WHERE genres.entity_kind = 'artists' AND lower(genres.name) IN (${placeholders(genres)})
+         SELECT genres.entity_id, genres.genre_key FROM library_entity_genres AS genres
+         WHERE genres.entity_kind = 'artists' AND genres.genre_key IN (${placeholders(genres)})
            AND EXISTS (SELECT 1 FROM library_albums AS album
              JOIN library_album_tracks AS link ON link.album_id = album.id
              WHERE album.artist_id = genres.entity_id

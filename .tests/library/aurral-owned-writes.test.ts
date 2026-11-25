@@ -191,6 +191,13 @@ test("Aurral writes library album state, queues missing tracks, and refuses an a
     );
     assert.equal(request.jobIds.length, 2);
     assert.equal(new Set(request.jobIds.map((id) => getJob(id).requestGroupId)).size, 1);
+    assert.deepEqual(
+      db
+        .prepare("SELECT mbid, release_group_mbid FROM library_albums WHERE release_group_mbid = ?")
+        .raw()
+        .all(albumMbid),
+      [[null, albumMbid]],
+    );
 
     const duplicate = await libraryManager.requestAlbumFromSearch({
       albumMbid,

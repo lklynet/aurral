@@ -36,10 +36,16 @@ import {
   readAurralIdentity,
   type AurralIdentity,
   type DownloadTrackFields,
+  withJobRelease,
 } from "./downloadUtils.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { isPathWithin } from "./libraryFolders.ts";
-import { trackArtistCreditFromTags } from "../../lib/artistCredit.ts";
+import {
+  tagValues,
+  trackArtistCreditFromTags,
+  VARIOUS_ARTISTS_MBID,
+  isVariousArtistsCredit,
+} from "../../lib/artistCredit.ts";
 
 type ScannedMetadata = {
   common?: Partial<ICommonTagsResult>;
@@ -130,7 +136,9 @@ const applyMetadataEnrichment = (
   if ((!enrichment || typeof enrichment !== "object") && Object.keys(embedded).length === 0) {
     return metadata;
   }
-  const trusted: DownloadTrackFields = { ...embedded, ...(enrichment || {}) };
+  const trusted = withJobRelease({ ...embedded, ...(enrichment || {}) });
+  const taggedGroup = normalizeMbid(common.musicbrainz_releasegroupid);
+  const otherGroup = taggedGroup !== null && taggedGroup !== normalizeMbid(trusted.albumMbid);
   const fallbackFields = {
     albumartist: trusted.artistName,
     artist: trusted.artistName,
@@ -141,10 +149,9 @@ const applyMetadataEnrichment = (
     disk: trusted.discNumber,
     musicbrainz_artistid: trusted.artistMbid,
     musicbrainz_albumartistid: trusted.artistMbid,
-    musicbrainz_albumid: trusted.albumMbid,
+    musicbrainz_albumid: otherGroup ? null : trusted.releaseMbid,
     musicbrainz_releasegroupid: trusted.albumMbid,
     musicbrainz_recordingid: trusted.trackMbid,
-    musicbrainz_trackid: trusted.trackMbid,
   };
   for (const [key, value] of Object.entries(fallbackFields)) {
     if (value == null || String(value).trim() === "") continue;
@@ -170,7 +177,8 @@ function readPathFallback(filePath: string, rootPath: string) {
 function buildMetadataRecord(metadata: ScannedMetadata, filePath: string, rootPath: string) {
   const common = normalizeMetadata(metadata);
   const fallback = readPathFallback(filePath, rootPath);
-  const artistName = text(common.albumartist || common.artist) || fallback.artistName;
+  const [taggedAlbumArtist = ""] = tagValues(common.albumartist);
+  const artistName = taggedAlbumArtist || tagValues(common.artist)[0] || fallback.artistName;
   const albumName = text(common.album) || fallback.albumName;
   const title = text(common.title) || fallback.title;
   const trackNumber = numberPart(common.track, fallback.trackNumber);
@@ -184,11 +192,13 @@ function buildMetadataRecord(metadata: ScannedMetadata, filePath: string, rootPa
             .filter((mbid) => mbid !== null),
         ),
       ]
-    : [normalizeMbid(common.musicbrainz_artistid)].filter((mbid) => mbid !== null);
+    : isVariousArtistsCredit(taggedAlbumArtist)
+      ? [VARIOUS_ARTISTS_MBID]
+      : [normalizeMbid(common.musicbrainz_artistid)].filter((mbid) => mbid !== null);
   const artistMbid = artistMbids.length === 1 ? artistMbids[0] : null;
   const albumMbid = normalizeMbid(common.musicbrainz_albumid);
   const releaseGroupMbid = normalizeMbid(common.musicbrainz_releasegroupid);
-  const trackMbid = normalizeMbid(common.musicbrainz_recordingid || common.musicbrainz_trackid);
+  const trackMbid = normalizeMbid(common.musicbrainz_recordingid);
   const artistKey =
     (artistMbid && buildIdentityKey("mbid", artistMbid)) ||
     buildFallbackIdentityKey("artist", artistName);
@@ -215,7 +225,7 @@ function buildMetadataRecord(metadata: ScannedMetadata, filePath: string, rootPa
     title,
     trackNumber,
     discNumber,
-    albumArtist: text(common.albumartist) || artistName,
+    albumArtist: taggedAlbumArtist || artistName,
     releaseDate:
       text(common.originaldate || common.originalyear || common.releasedate || common.date) || null,
     artistMetadata: { tags: common },
@@ -564,6 +574,7 @@ export async function scanMusicRoot({
             durationMs: record.durationMs,
             quality: record.quality,
             artistTag: record.trackArtistName,
+            releaseTagged: !untagged,
             scanId,
           });
           if (before) releaseLibraryFileRows(before, { albumId: album.id, trackId: track.id });

@@ -406,29 +406,15 @@ export const restoreLibraryFavorites = (
     parseResponse(libraryClient.favorites.restore.$post({ json: { favorites } })),
   );
 
-const fetchLibraryArtist = async (mbid: string | null, { signal }: SignalOptions = {}) => {
-  const artist = await parseResponse(
+const fetchLibraryArtist = (mbid: string | null, { signal }: SignalOptions = {}) =>
+  parseResponse(
     libraryArtistsClient.artists[":mbid"].$get(
       { param: { mbid: encodeURIComponent(String(mbid)) } },
       { init: { signal } },
     ),
   );
-  return artist && !artist.foreignArtistId ? { ...artist, foreignArtistId: artist.mbid } : artist;
-};
 
 export type LibraryArtist = Awaited<ReturnType<typeof fetchLibraryArtist>>;
-
-export const getLibraryArtist = (
-  mbid: string | null,
-  { signal, bypassCache = false }: SignalOptions & { bypassCache?: boolean } = {},
-) => {
-  if (signal && !bypassCache) return fetchLibraryArtist(mbid, { signal });
-  return queryClient.fetchQuery({
-    queryKey: queryKeys.libraryArtist(mbid),
-    queryFn: ({ signal: querySignal }) => fetchLibraryArtist(mbid, { signal: querySignal }),
-    staleTime: bypassCache ? 0 : 15_000,
-  });
-};
 
 const fetchLibraryArtistLookup = (
   mbid: string | null | undefined,
@@ -542,31 +528,6 @@ const refreshActiveDownloadsAfter = async <T>(request: Promise<T>): Promise<T> =
   } finally {
     void refreshActiveDownloads();
   }
-};
-
-const fetchLibraryAlbums = async (artistId: string | number, { signal }: SignalOptions = {}) => {
-  const albums = await parseResponse(
-    libraryAlbumsClient.albums.$get(
-      { query: { artistId: String(artistId) } },
-      { init: { signal } },
-    ),
-  );
-  return albums.map((album) => ({
-    ...album,
-    foreignAlbumId: album.foreignAlbumId || album.mbid,
-  }));
-};
-
-export const getLibraryAlbums = (
-  artistId: string | number,
-  { signal, bypassCache = false }: SignalOptions & { bypassCache?: boolean } = {},
-) => {
-  if (signal && !bypassCache) return fetchLibraryAlbums(artistId, { signal });
-  return queryClient.fetchQuery({
-    queryKey: queryKeys.libraryAlbums(artistId),
-    queryFn: ({ signal: querySignal }) => fetchLibraryAlbums(artistId, { signal: querySignal }),
-    staleTime: bypassCache ? 0 : 15_000,
-  });
 };
 
 type AlbumRequestPayload = {

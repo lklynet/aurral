@@ -4,6 +4,24 @@ import { csrf } from "hono/csrf";
 import { validator } from "hono/validator";
 import * as v from "valibot";
 import { authFor, socialProviders } from "./auth.ts";
+import {
+  CONNECT_CLIENTS,
+  connectJwks,
+  createConnectAuthCode,
+  disableConnectServer,
+  discoverConnectServers,
+  exchangeConnectAuthCode,
+  getConnectAccountSummary,
+  isAllowedRedirectUri,
+  issueConnectAssertion,
+  issueTunnelTicket,
+  registerConnectServer,
+  resolveConnectClientAccount,
+  revokeConnectClientToken,
+  updateConnectServer,
+  updateRelayStatus,
+  type ConnectClientId,
+} from "./connect.ts";
 import { friendLists, removeFriend, requestFriend } from "./friends.ts";
 import { claimHandle, deleteAccount, handleOf } from "./handles.ts";
 import {
@@ -21,6 +39,7 @@ import {
   approveLink,
   linkStatus,
   linkedAccountId,
+  linkedLinkDetails,
   normalizeCode,
   pendingLink,
   revokeLink,
@@ -39,6 +58,8 @@ import {
 } from "./publications.ts";
 import {
   accountPage,
+  connectAuthorizePage,
+  connectErrorPage,
   deletePage,
   handlePage,
   linkCodePage,
@@ -52,6 +73,11 @@ export type Bindings = {
   DB: D1Database;
   LINK_LIMITER: RateLimit;
   HUB_ORIGIN: string;
+  APP_ORIGIN?: string;
+  CONNECT_DOMAIN?: string;
+  CONNECT_RELAY_URL?: string;
+  CONNECT_SIGNING_KEY?: string;
+  CONNECT_RELAY_SECRET?: string;
   AUTH_SECRET: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
@@ -68,28 +94,106 @@ const PROVIDER_LABELS: Record<string, string> = {
   eden: "Eden",
 };
 
+const CLIENT_LABELS: Record<ConnectClientId, string> = {
+  hosted: "music.aurral.org",
+  desktop: "Aurral Desktop",
+  mobile: "Aurral",
+};
+
 export const signInProviders = (env: Bindings) => [
   ...Object.keys(socialProviders(env)),
   ...(env.EDEN_OIDC_ISSUER ? ["eden"] : []),
 ];
 
 const TOKEN = v.pipe(v.string(), v.regex(/^[A-Za-z0-9_-]{43}$/));
+const PKCE_CHALLENGE = /^[A-Za-z0-9_-]{43}$/;
+const PKCE_VERIFIER = v.pipe(v.string(), v.regex(/^[A-Za-z0-9._~-]{43,128}$/));
+const STATE_PATTERN = /^[A-Za-z0-9._~-]{1,128}$/;
 const instance = { instanceId: v.string(), secret: v.string() };
+const cleanLabel = v.pipe(
+  v.string(),
+  v.transform((name) =>
+    name
+      .replace(/\p{Cc}/gu, " ")
+      .trim()
+      .slice(0, 64),
+  ),
+  v.minLength(1),
+);
+const lanHintsField = v.optional(v.pipe(v.array(v.string()), v.maxLength(16)));
 const startSchema = v.object({
   ...instance,
   token: TOKEN,
-  userName: v.pipe(
-    v.string(),
-    v.transform((name) =>
-      name
-        .replace(/\p{Cc}/gu, " ")
-        .trim()
-        .slice(0, 64),
-    ),
-    v.minLength(1),
-  ),
+  userName: cleanLabel,
 });
 const revokeSchema = v.object({ ...instance, tokenHash: v.pipe(v.string(), v.hexadecimal()) });
+const connectRegisterSchema = v.object({
+  ...instance,
+  slug: v.string(),
+  name: cleanLabel,
+  lanHints: lanHintsField,
+  startTrial: v.optional(v.boolean()),
+});
+const connectUpdateSchema = v.object({
+  slug: v.optional(v.string()),
+  name: v.optional(cleanLabel),
+  lanHints: lanHintsField,
+});
+const connectTicketSchema = v.object({
+  ...instance,
+  lanHints: lanHintsField,
+});
+const connectTokenSchema = v.object({
+  code: TOKEN,
+  codeVerifier: PKCE_VERIFIER,
+  redirectUri: v.pipe(v.string(), v.minLength(1), v.maxLength(512)),
+});
+const connectAssertionSchema = v.object({
+  instanceId: v.pipe(v.string(), v.minLength(1), v.maxLength(64)),
+});
+const connectRelayStatusSchema = v.object({
+  updates: v.pipe(
+    v.array(v.object({ instanceId: v.string(), online: v.boolean() })),
+    v.maxLength(500),
+  ),
+});
+
+const connectConfig = (env: Bindings) => ({
+  appOrigin: (env.APP_ORIGIN ?? "https://music.aurral.org").replace(/\/+$/, ""),
+  connectDomain: (env.CONNECT_DOMAIN ?? "aurral.dev").replace(/^\.+|\.+$/g, "").toLowerCase(),
+  relayUrl: env.CONNECT_RELAY_URL ?? "wss://relay.aurral.dev/tunnel",
+});
+
+async function sameSecret(left: string, right: string) {
+  const [a, b] = await Promise.all([sha256Hex(left), sha256Hex(right)]);
+  let difference = a.length ^ b.length;
+  for (let index = 0; index < b.length; index += 1) {
+    difference |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  }
+  return difference === 0;
+}
+
+const rawBearer = (c: Context<Env>) => {
+  const header = c.req.header("authorization") ?? "";
+  return header.startsWith("Bearer ") ? header.slice(7).trim() : null;
+};
+
+const CONNECT_ERRORS = {
+  subscription_required: 403,
+  server_already_owned: 409,
+  server_limit_reached: 403,
+  slug_invalid: 400,
+  slug_reserved: 422,
+  slug_not_allowed: 422,
+  slug_taken: 409,
+  not_found: 404,
+  forbidden: 403,
+  connect_unconfigured: 503,
+  connect_not_enabled: 404,
+  handle_required: 403,
+  server_not_linked: 404,
+  server_user_limit_reached: 403,
+} as const;
 
 const json = <Schema extends v.GenericSchema>(schema: Schema) =>
   validator("json", (value, c) => {
@@ -232,6 +336,157 @@ const v1 = new Hono<Env>()
   .get("/playlists/:id", async (c) => {
     const playlist = await publicPlaylist(c.env.DB, c.req.param("id"));
     return playlist ? c.json(playlist) : c.json({ error: "not_public" }, 404);
+  })
+  .use("/connect/*", async (c, next) => {
+    const { appOrigin } = connectConfig(c.env);
+    const origin = c.req.header("origin") ?? "";
+    c.header("vary", "Origin");
+    if (origin === appOrigin) {
+      c.header("access-control-allow-origin", origin);
+      if (c.req.method === "OPTIONS") {
+        c.header("access-control-allow-methods", "GET, POST, OPTIONS");
+        c.header("access-control-allow-headers", "Content-Type, Authorization");
+        c.header("access-control-max-age", "600");
+        return c.body(null, 204);
+      }
+    }
+    await next();
+  })
+  .get("/connect/keys", async (c) =>
+    c.json({ keys: await connectJwks(c.env.CONNECT_SIGNING_KEY) }, 200, {
+      "cache-control": "public, max-age=3600",
+    }),
+  )
+  .post("/connect/token", json(connectTokenSchema), async (c) => {
+    const body = c.req.valid("json");
+    const exchanged = await exchangeConnectAuthCode(c.env.DB, body);
+    if (!exchanged) return c.json({ error: "invalid_grant" }, 400);
+    return c.json({ token: exchanged.token, expiresAt: exchanged.expiresAt });
+  })
+  .post("/connect/sign-out", async (c) => {
+    const token = bearer(c);
+    if (token) await revokeConnectClientToken(c.env.DB, token);
+    return c.body(null, 204);
+  })
+  .get("/connect/servers", async (c) => {
+    const token = bearer(c);
+    const accountId = token && (await resolveConnectClientAccount(c.env.DB, token));
+    if (!accountId) return c.json({ error: "unauthorized" }, 401);
+    const { connectDomain } = connectConfig(c.env);
+    return c.json(await discoverConnectServers(c.env.DB, { accountId, connectDomain }));
+  })
+  .post("/connect/assertions", json(connectAssertionSchema), async (c) => {
+    const token = bearer(c);
+    const accountId = token && (await resolveConnectClientAccount(c.env.DB, token));
+    if (!accountId) return c.json({ error: "unauthorized" }, 401);
+    const { connectDomain } = connectConfig(c.env);
+    const issued = await issueConnectAssertion(c.env.DB, {
+      accountId,
+      instanceId: c.req.valid("json").instanceId,
+      signingKey: c.env.CONNECT_SIGNING_KEY,
+      hubOrigin: c.env.HUB_ORIGIN,
+      connectDomain,
+    });
+    if (!issued.ok) return c.json({ error: issued.error }, CONNECT_ERRORS[issued.error]);
+    return c.json({
+      token: issued.token,
+      expiresAt: issued.expiresAt,
+      connectUrl: issued.connectUrl,
+    });
+  })
+  .get("/connect/account", async (c) => {
+    const token = bearer(c);
+    const link = token && (await linkedLinkDetails(c.env.DB, await sha256Hex(token)));
+    if (!link) return linkRevoked(c);
+    return c.json(await getConnectAccountSummary(c.env.DB, link.account_id));
+  })
+  .post("/connect/servers", json(connectRegisterSchema), async (c) => {
+    const token = bearer(c);
+    const link = token && (await linkedLinkDetails(c.env.DB, await sha256Hex(token)));
+    if (!link) return linkRevoked(c);
+    const body = c.req.valid("json");
+    if (link.instance_id !== body.instanceId) return c.json({ error: "wrong_instance" }, 403);
+    if (!(await authorizeInstance(c.env.DB, body.instanceId, body.secret))) {
+      return c.json({ error: "wrong_secret" }, 403);
+    }
+    const { connectDomain } = connectConfig(c.env);
+    const registered = await registerConnectServer(c.env.DB, {
+      instanceId: body.instanceId,
+      ownerAccountId: link.account_id,
+      slug: body.slug,
+      name: body.name,
+      lanHints: body.lanHints,
+      startTrial: body.startTrial,
+      connectDomain,
+    });
+    if (!registered.ok) {
+      return c.json({ error: registered.error }, CONNECT_ERRORS[registered.error]);
+    }
+    return c.json({ server: registered.server, entitlement: registered.entitlement }, 201);
+  })
+  .patch("/connect/servers/:instanceId", json(connectUpdateSchema), async (c) => {
+    const token = bearer(c);
+    const link = token && (await linkedLinkDetails(c.env.DB, await sha256Hex(token)));
+    if (!link) return linkRevoked(c);
+    const instanceId = c.req.param("instanceId");
+    if (link.instance_id !== instanceId) return c.json({ error: "wrong_instance" }, 403);
+    const body = c.req.valid("json");
+    const { connectDomain } = connectConfig(c.env);
+    const updated = await updateConnectServer(c.env.DB, {
+      instanceId,
+      ownerAccountId: link.account_id,
+      slug: body.slug,
+      name: body.name,
+      lanHints: body.lanHints,
+      connectDomain,
+    });
+    if (!updated.ok) return c.json({ error: updated.error }, CONNECT_ERRORS[updated.error]);
+    return c.json({ server: updated.server });
+  })
+  .delete("/connect/servers/:instanceId", async (c) => {
+    const token = bearer(c);
+    const link = token && (await linkedLinkDetails(c.env.DB, await sha256Hex(token)));
+    if (!link) return linkRevoked(c);
+    const instanceId = c.req.param("instanceId");
+    if (link.instance_id !== instanceId) return c.json({ error: "wrong_instance" }, 403);
+    const disabled = await disableConnectServer(c.env.DB, {
+      instanceId,
+      ownerAccountId: link.account_id,
+    });
+    if (!disabled.ok) return c.json({ error: disabled.error }, CONNECT_ERRORS[disabled.error]);
+    return c.body(null, 204);
+  })
+  .post("/connect/ticket", json(connectTicketSchema), async (c) => {
+    const body = c.req.valid("json");
+    if (!(await authorizeInstance(c.env.DB, body.instanceId, body.secret))) {
+      return c.json({ error: "wrong_secret" }, 403);
+    }
+    const { connectDomain, relayUrl } = connectConfig(c.env);
+    const issued = await issueTunnelTicket(c.env.DB, {
+      instanceId: body.instanceId,
+      signingKey: c.env.CONNECT_SIGNING_KEY,
+      hubOrigin: c.env.HUB_ORIGIN,
+      connectDomain,
+      relayUrl,
+      lanHints: body.lanHints,
+    });
+    if (!issued.ok) return c.json({ error: issued.error }, CONNECT_ERRORS[issued.error]);
+    return c.json({
+      ticket: issued.ticket,
+      expiresAt: issued.expiresAt,
+      slug: issued.slug,
+      connectUrl: issued.connectUrl,
+      relayUrl: issued.relayUrl,
+    });
+  })
+  .post("/connect/relay/status", json(connectRelayStatusSchema), async (c) => {
+    const secret = c.env.CONNECT_RELAY_SECRET;
+    const provided = rawBearer(c);
+    if (!secret || !provided || !(await sameSecret(provided, secret))) {
+      return c.json({ error: "unauthorized" }, 401);
+    }
+    await updateRelayStatus(c.env.DB, c.req.valid("json").updates);
+    return c.body(null, 204);
   });
 
 const forwardCookies = (c: Context<Env>, headers: Headers) => {
@@ -247,7 +502,18 @@ async function sessionOf(c: Context<Env>) {
   return response;
 }
 
-const returnTo = (code: string | null, error?: string) => {
+const normalizeNext = (input: string | undefined | null) => {
+  if (!input || input.length > 1024 || /[\r\n\\]/.test(input)) return null;
+  return input.startsWith("/connect/authorize?") ? input : null;
+};
+
+const returnTo = (code: string | null, error?: string, next: string | null = null) => {
+  if (next) {
+    if (!error) return next;
+    const url = new URL(next, "https://aurral.local");
+    url.searchParams.set("error", error);
+    return `${url.pathname}${url.search}`;
+  }
   const params = new URLSearchParams(code ? { code } : {});
   if (error) params.set("error", error);
   return `${code ? "/link" : "/account"}${params.size ? `?${params}` : ""}`;
@@ -255,30 +521,76 @@ const returnTo = (code: string | null, error?: string) => {
 
 const formCode = async (c: Context<Env>) => {
   const form = await c.req.formData();
-  return { form, code: normalizeCode(String(form.get("code") ?? "")) };
+  return {
+    form,
+    code: normalizeCode(String(form.get("code") ?? "")),
+    next: normalizeNext(String(form.get("next") ?? "")),
+  };
 };
 
-async function signedIn(c: Context<Env>, code: string | null) {
+async function signedIn(c: Context<Env>, code: string | null, next: string | null = null) {
   const session = await sessionOf(c);
   if (!session) {
     const providers = signInProviders(c.env).map((id) => ({
       id,
       label: PROVIDER_LABELS[id] ?? id,
     }));
-    return { page: c.html(signInPage(providers, c.req.query("error") !== undefined, code)) };
+    return {
+      page: c.html(signInPage(providers, c.req.query("error") !== undefined, code, next)),
+    };
   }
   const handle = await handleOf(c.env.DB, session.user.id);
-  if (!handle) return { page: c.html(handlePage("", null, code)) };
+  if (!handle) return { page: c.html(handlePage("", null, code, next)) };
   return { accountId: session.user.id, sessionId: session.session.id, handle };
 }
+
+function parseAuthorizeParams(
+  source: {
+    clientId: string;
+    redirectUri: string;
+    codeChallenge: string;
+    state: string;
+  },
+  appOrigin: string,
+) {
+  const clientId = CONNECT_CLIENTS.find((candidate) => candidate === source.clientId);
+  if (!clientId) return null;
+  if (!isAllowedRedirectUri(clientId, source.redirectUri, appOrigin)) return null;
+  if (!PKCE_CHALLENGE.test(source.codeChallenge)) return null;
+  if (!STATE_PATTERN.test(source.state)) return null;
+  const query = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: source.redirectUri,
+    code_challenge: source.codeChallenge,
+    state: source.state,
+  });
+  return {
+    clientId,
+    redirectUri: source.redirectUri,
+    codeChallenge: source.codeChallenge,
+    state: source.state,
+    next: `/connect/authorize?${query}`,
+  };
+}
+
+function formActionForRedirect(redirectUri: string) {
+  if (redirectUri.startsWith("aurral://")) return "'self' aurral:";
+  try {
+    return `'self' ${new URL(redirectUri).origin}`;
+  } catch {
+    return "'self'";
+  }
+}
+
+const pageCsp = (formAction = "'self'") =>
+  `default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; form-action ${formAction}; frame-ancestors 'none'; base-uri 'none'`;
 
 const pages = new Hono<Env>()
   .use(async (c, next) => {
     await next();
-    c.header(
-      "content-security-policy",
-      "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
-    );
+    if (!c.res.headers.has("content-security-policy")) {
+      c.header("content-security-policy", pageCsp());
+    }
     c.header("cache-control", "no-store");
     c.header("referrer-policy", "same-origin");
     c.header("x-content-type-options", "nosniff");
@@ -305,38 +617,39 @@ const pages = new Hono<Env>()
     const provider = c.req.param("provider");
     if (!signInProviders(c.env).includes(provider)) return c.notFound();
     const code = normalizeCode(c.req.query("code"));
+    const next = normalizeNext(c.req.query("next"));
     const { headers, response } = await authFor(c.env).api.signInSocial({
       body: {
         provider,
-        callbackURL: returnTo(code),
-        errorCallbackURL: returnTo(code, "sign_in"),
+        callbackURL: returnTo(code, undefined, next),
+        errorCallbackURL: returnTo(code, "sign_in", next),
         disableRedirect: true,
       },
       returnHeaders: true,
     });
-    if (!response.url) return c.redirect(returnTo(code, "sign_in"));
+    if (!response.url) return c.redirect(returnTo(code, "sign_in", next));
     forwardCookies(c, headers);
     return c.redirect(response.url);
   })
   .post("/account/handle", async (c) => {
     const session = await sessionOf(c);
-    const { form, code } = await formCode(c);
-    if (!session) return c.redirect(returnTo(code));
+    const { form, code, next } = await formCode(c);
+    if (!session) return c.redirect(returnTo(code, undefined, next));
     const value = String(form.get("handle") ?? "");
     const claim = await claimHandle(c.env.DB, session.user.id, value);
     if (claim === "claimed" || (await handleOf(c.env.DB, session.user.id))) {
-      return c.redirect(returnTo(code));
+      return c.redirect(returnTo(code, undefined, next));
     }
-    return c.html(handlePage(value, claim, code), 422);
+    return c.html(handlePage(value, claim, code, next), 422);
   })
   .post("/account/sign-out", async (c) => {
-    const { code } = await formCode(c);
+    const { code, next } = await formCode(c);
     const { headers } = await authFor(c.env).api.signOut({
       headers: c.req.raw.headers,
       returnHeaders: true,
     });
     forwardCookies(c, headers);
-    return c.redirect(returnTo(code));
+    return c.redirect(returnTo(code, undefined, next));
   })
   .get("/account/delete", async (c) => {
     const session = await sessionOf(c);
@@ -388,6 +701,54 @@ const pages = new Hono<Env>()
     return (await approveLink(c.env.DB, code, user.accountId))
       ? c.redirect("/account")
       : c.html(linkCodePage("missing"), 404);
+  })
+  .get("/connect/authorize", async (c) => {
+    const { appOrigin } = connectConfig(c.env);
+    const params = parseAuthorizeParams(
+      {
+        clientId: c.req.query("client_id") ?? "",
+        redirectUri: c.req.query("redirect_uri") ?? "",
+        codeChallenge: c.req.query("code_challenge") ?? "",
+        state: c.req.query("state") ?? "",
+      },
+      appOrigin,
+    );
+    if (!params) {
+      return c.html(connectErrorPage("That sign-in request isn't valid. Try starting again."), 400);
+    }
+    const user = await signedIn(c, null, params.next);
+    if ("page" in user) return user.page;
+    c.header("content-security-policy", pageCsp(formActionForRedirect(params.redirectUri)));
+    return c.html(connectAuthorizePage(user.handle, CLIENT_LABELS[params.clientId], params));
+  })
+  .post("/connect/authorize", async (c) => {
+    const { appOrigin } = connectConfig(c.env);
+    const form = await c.req.formData();
+    const params = parseAuthorizeParams(
+      {
+        clientId: String(form.get("client_id") ?? ""),
+        redirectUri: String(form.get("redirect_uri") ?? ""),
+        codeChallenge: String(form.get("code_challenge") ?? ""),
+        state: String(form.get("state") ?? ""),
+      },
+      appOrigin,
+    );
+    if (!params) {
+      return c.html(connectErrorPage("That sign-in request isn't valid. Try starting again."), 400);
+    }
+    const user = await signedIn(c, null, params.next);
+    if ("page" in user) return user.page;
+    const { code } = await createConnectAuthCode(c.env.DB, {
+      accountId: user.accountId,
+      clientId: params.clientId,
+      redirectUri: params.redirectUri,
+      codeChallenge: params.codeChallenge,
+    });
+    const destination = new URL(params.redirectUri);
+    destination.searchParams.set("code", code);
+    destination.searchParams.set("state", params.state);
+    c.header("content-security-policy", pageCsp(formActionForRedirect(params.redirectUri)));
+    return c.redirect(destination.toString(), 302);
   });
 
 const hub = new Hono<Env>().route("/v1", v1).route("/", pages);

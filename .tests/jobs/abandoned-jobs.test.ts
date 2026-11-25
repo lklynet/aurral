@@ -6,8 +6,8 @@ import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTe
 
 const [
   state,
-  { recoverAbandonedJobs },
-  { libraryScanQueue: queue, discoveryUserRefreshQueue },
+  { recoverAbandonedJobs, parseJobPayload },
+  { libraryScanQueue: queue, discoveryUserRefreshQueue, downloadPipelineQueue },
   { beginLibraryScanJob, onLibraryScanSuccess, scanRegistrySchema, scheduleLibraryScan },
   { dbOps },
 ] = await setupIsolatedBackend(
@@ -99,6 +99,18 @@ test("a full rescan whose worker dies on its last attempt is not revived by the 
     includeReadOnly: true,
     changedPaths: [changedPath],
   });
+});
+
+test("a download step counts each time its worker died running it", async (t: import("vite-plus/test").TestContext) => {
+  const jobId = downloadPipelineQueue.enqueue({ phase: "search", source: "slskd", jobId: "hung" });
+  t.onTestFinished(() => {
+    downloadPipelineQueue.cancel(jobId);
+  });
+  for (const exits of [1, 2]) {
+    assert.equal(downloadPipelineQueue.claim("downloads:killed")?.id, jobId);
+    await recoverAbandonedJobs("downloads worker stopped responding", "downloads");
+    assert.equal(parseJobPayload(downloadPipelineQueue.getJob(jobId)?.payload)?.workerExits, exits);
+  }
 });
 
 test("a scan left running when Aurral stopped runs again at startup with the files it was scanning", async (t: import("vite-plus/test").TestContext) => {

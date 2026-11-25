@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import pMap, { pMapSkip } from "p-map";
 import * as v from "valibot";
 import { dbOps } from "../../db/helpers/index.ts";
-import type { ArtistMatchFields } from "./artistKeys.ts";
+import type { ArtistMatchFields } from "../../../lib/artistMatch.ts";
 
 export const DISCOVERY_QUALITY_INITIAL = "initial";
 export const DISCOVERY_QUALITY_ENRICHING = "enriching";
@@ -182,7 +182,7 @@ export const canInheritTagsFromSeeds = (item: {
   tagSource?: string;
   tags?: unknown[];
 }) => {
-  if (item.candidateTagsHydrated && item.tagSource === "lastfm_artist") return false;
+  if (item.candidateTagsHydrated && item.tagSource === "artist") return false;
   const seedTagCount = Array.isArray(item.tags) ? item.tags.length : 0;
   return seedTagCount >= INHERITED_TAG_MINIMUM;
 };

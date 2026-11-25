@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { searchDocument, searchKey } from "../services/searchText.ts";
+import { genreNameSql } from "./library-genre-index.ts";
 
 const SEARCH_INDEX_VERSION = "3";
 const GENRE_STATS_SETTING_PREFIX = "libraryGenreStats:";
@@ -68,7 +69,7 @@ export function computeLibraryGenreStats(
     const media = genreMediaExists(kind, sourceFilter, availableOnly);
     parameters.push(...media.parameters);
     return `SELECT '${kind}' AS entity_kind, ${id} AS entity_id,
-      genres.name
+      genres.genre_key
       FROM ${from}
       JOIN library_entity_genres AS genres
         ON genres.entity_kind = '${kind}' AND genres.entity_id = ${id}
@@ -80,15 +81,15 @@ export function computeLibraryGenreStats(
       { name: string; artists: number | null; albums: number | null; tracks: number | null }
     >(
       `WITH genre_entities AS (
-       SELECT DISTINCT entity_kind, entity_id, name
+       SELECT DISTINCT entity_kind, entity_id, genre_key
        FROM (${rows.join(" UNION ALL ")})
      )
-     SELECT name,
+     SELECT ${genreNameSql("genre_entities.genre_key")} AS name,
        SUM(entity_kind = 'artists') AS artists,
        SUM(entity_kind = 'albums') AS albums,
        SUM(entity_kind = 'tracks') AS tracks
      FROM genre_entities
-     GROUP BY name
+     GROUP BY genre_key
      ORDER BY name COLLATE NOCASE`,
     )
     .all(...parameters)

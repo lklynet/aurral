@@ -232,6 +232,7 @@ test("a year range reads artist releases and album tracks from data.aurral.org w
   assert.deepEqual(pick, {
     trackName: "Fresh Cut",
     albumName: "Comeback LP",
+    albumMbid,
     trackMbid: recordingMbid,
     durationMs: 215000,
     releaseYear: "2025",
@@ -245,6 +246,7 @@ test("tags filter trending artists and match spelling variants", async () => {
     artistName,
     trackName: `${artistName} Song`,
     albumName: null,
+    durationMs: null,
   });
   source._getTrendingChart = async () => [chartTrack("Pop Star"), chartTrack("Rapper")];
   source._getArtistTopTagLists = async (artists) =>
@@ -257,6 +259,24 @@ test("tags filter trending artists and match spelling variants", async () => {
   assert.deepEqual(
     tracks.map((track) => [track.artistName, track.reason]),
     [["Rapper", "Trending this week"]],
+  );
+});
+
+test("trending picks keep the chart's track length, with and without a year range", async () => {
+  const source = new FlowTrackSource();
+  source._getTrendingChart = async () => [
+    { artistName: "Chart Act", trackName: "Hit", albumName: "Debut", durationMs: 201000 },
+  ];
+  source._releasesInYears = async () => [
+    { albumMbid: null, deezerId: null, title: "Debut", year: 2026 },
+  ];
+
+  const plain = await source.getTrendingTracks(1);
+  const inYears = await source.getTrendingTracks(1, { filters: years(source, 2025, 2026) });
+
+  assert.deepEqual(
+    [...plain, ...inYears].map((track) => track.durationMs),
+    [201000, 201000],
   );
 });
 
@@ -317,7 +337,7 @@ test("discover filters by an artist's own tags, not tags borrowed from its seeds
       matchPercent: 80,
       tags: ["Hip-Hop"],
       candidateTagsHydrated: true,
-      tagSource: "lastfm_artist",
+      tagSource: "artist",
     },
   ];
   source._getArtistTopTagLists = async (artists) => {
@@ -419,29 +439,45 @@ test("Deep Dive with a year range keeps preferring tracks ranked 10 to 25", asyn
   assert.equal(pick?.trackName, "Track 12");
 });
 
-test("new releases try an artist's older release when the newest has no usable track", async () => {
+test("new releases try an artist's older release when the newest has no usable track, and keep a namesake apart", async () => {
   const source = new FlowTrackSource();
-  const release = (albumName: string, releaseDate: string) => ({
+  const band = "00000000-0000-4000-8000-0000000000a1";
+  const namesake = "00000000-0000-4000-8000-0000000000a2";
+  const release = (albumName: string, releaseDate: string, artistMbid = band) => ({
     artistName: "Band",
-    artistMbid: null,
-    foreignArtistId: null,
+    artistMbid,
     releaseDate,
     albumName,
-    mbid: "",
-    foreignAlbumId: "",
+    releaseGroupMbid: "",
   });
   source._getRecentReleases = async () => [
     release("Newest", "2026-03-01"),
+    release("Namesake EP", "2026-02-01", namesake),
     release("Older", "2026-01-01"),
   ];
   source._pickTrackFromRelease = async ({ albumTitle }) =>
-    albumTitle === "Older" ? { trackName: "Older Single", albumName: "Older" } : null;
+    albumTitle === "Newest" ? null : { trackName: `${albumTitle} Single`, albumName: albumTitle };
 
   const tracks = await source.getNewReleaseTracks(5);
 
   assert.deepEqual(
-    tracks.map((track) => track.trackName),
-    ["Older Single"],
+    tracks.map((track) => [track.trackName, track.artistMbid]),
+    [
+      ["Older Single", band],
+      ["Namesake EP Single", namesake],
+    ],
+  );
+});
+
+test("flow picks carry the release group from the catalogue track", async () => {
+  const source = new FlowTrackSource();
+  source._getArtistTopTrackList = async () => [
+    { ...topTrack("Single", "Single Album"), albumMbid: "single-group" },
+  ];
+
+  assert.equal(
+    (await source._pickTrack("Artist", source._buildFilters({}, new Set()), false))?.albumMbid,
+    "single-group",
   );
 });
 

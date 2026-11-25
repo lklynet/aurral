@@ -630,7 +630,7 @@ test("concurrent album disable and enable leaves the last choice active", async 
   await runQueuedMonitoringTasks();
   const album = db
     .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryAlbumsRow["id"] }>(
-      "SELECT id FROM library_albums WHERE mbid = ?",
+      "SELECT id FROM library_albums WHERE release_group_mbid = ?",
     )
     .get(releases.firstAlbum.id);
   assert.ok(album);
@@ -673,7 +673,7 @@ test("an album override survives artist monitoring changes and unmonitoring keep
   downloadTracker.setDone(finishedJob.id, "/aurral/Monitor Artist/Latest EP/01.flac", "Latest EP");
   const album = db
     .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryAlbumsRow["id"] }>(
-      "SELECT id FROM library_albums WHERE mbid = ?",
+      "SELECT id FROM library_albums WHERE release_group_mbid = ?",
     )
     .get(releases.latestEp.id);
   assert.ok(album);
@@ -769,7 +769,7 @@ test("daily reconciliation queues new releases once, saves upcoming ones for rel
     title: "Older Album",
     date: "2020-01-01",
   };
-  metadataState.extraReleases = [newRelease, newSingle];
+  metadataState.extraReleases = [newRelease];
   metadataState.otherReleases = [upcoming, olderRelease];
   const providerGet = http.get.bind(http);
   vi.spyOn(http, "get").mockImplementation(async (url, options) =>
@@ -819,6 +819,82 @@ test("daily reconciliation queues new releases once, saves upcoming ones for rel
   clearMetadataProviderCaches();
   await processSystemTask({ kind: "aurral-monitoring-reconcile" });
   assert.ok(savedAlbumMbids().includes("a5555555-5555-4555-8555-555555555503"));
+});
+
+test("daily reconciliation wakes every monitored artist on a collaboration release and skips refreshes for excluded announcements", async () => {
+  await addArtist({ monitored: true });
+  await runQueuedMonitoringTasks();
+  await callRoute("POST /artists", {
+    body: {
+      foreignArtistId: otherArtistMbid,
+      artistName: "Other Artist",
+      monitoring: customRules({ catalog: "none" }),
+    },
+  });
+  await processSystemTask({ kind: "aurral-monitoring-reconcile" });
+
+  const collabRelease = {
+    id: "a6666666-6666-4666-8666-666666666601",
+    title: "Shared Album",
+    type: "Album",
+    date: futureDate(5),
+  };
+  const excludedSingle = {
+    id: "a6666666-6666-4666-8666-666666666602",
+    title: "Unwanted Single",
+    type: "Single",
+    date: futureDate(5),
+  };
+  const excludedAlbum = {
+    id: "a6666666-6666-4666-8666-666666666603",
+    title: "Excluded Album",
+    type: "Album",
+    date: futureDate(5),
+  };
+  monitoringStore.addMonitoringExclusion({
+    kind: "album",
+    mbid: excludedAlbum.id,
+    artistMbid,
+    title: excludedAlbum.title,
+  });
+
+  const providerGet = http.get.bind(http);
+  let freshReleases = [
+    { ...excludedSingle, artistIds: [artistMbid] },
+    { ...excludedAlbum, artistIds: [artistMbid] },
+  ];
+  vi.spyOn(http, "get").mockImplementation(async (url, options) =>
+    url.endsWith("/v1/fresh-releases")
+      ? {
+          status: 200,
+          statusText: "OK",
+          headers: {},
+          data: {
+            releases: freshReleases.map((release) => ({
+              id: release.id,
+              title: release.title,
+              type: release.type,
+              releaseDate: release.date,
+              artistIds: release.artistIds,
+            })),
+          },
+        }
+      : providerGet(url, options),
+  );
+
+  vi.setSystemTime(Date.now() + 7 * 60 * 60 * 1000);
+  metadataState.artistRequests = [];
+  await processSystemTask({ kind: "aurral-monitoring-reconcile" });
+  assert.deepEqual(metadataState.artistRequests, []);
+
+  metadataState.extraReleases = [collabRelease];
+  metadataState.otherReleases = [{ ...collabRelease, artistMbid: otherArtistMbid }];
+  freshReleases = [{ ...collabRelease, artistIds: [artistMbid, otherArtistMbid] }];
+  vi.setSystemTime(Date.now() + 7 * 60 * 60 * 1000);
+  metadataState.artistRequests = [];
+  await processSystemTask({ kind: "aurral-monitoring-reconcile" });
+  assert.deepEqual(metadataState.artistRequests.sort(), [artistMbid, otherArtistMbid]);
+  assert.ok(savedAlbumMbids().includes(collabRelease.id));
 });
 
 test("saving rules again keeps the cutoff for new releases while new releases stay on", async () => {
@@ -925,7 +1001,7 @@ test("a deleted album stays out of monitoring until someone asks for it again", 
   await runQueuedMonitoringTasks();
   const album = db
     .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryAlbumsRow["id"] }>(
-      "SELECT id FROM library_albums WHERE mbid = ?",
+      "SELECT id FROM library_albums WHERE release_group_mbid = ?",
     )
     .get(releases.secondAlbum.id);
   assert.ok(album);
@@ -978,7 +1054,7 @@ test("allowing an excluded album again lets monitoring take it back", async () =
   await runQueuedMonitoringTasks();
   const album = db
     .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryAlbumsRow["id"] }>(
-      "SELECT id FROM library_albums WHERE mbid = ?",
+      "SELECT id FROM library_albums WHERE release_group_mbid = ?",
     )
     .get(releases.firstAlbum.id);
   assert.ok(album);

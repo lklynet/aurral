@@ -82,5 +82,10 @@ export const deleteAccount = (db: D1Database, accountId: string, now = Date.now(
     db
       .prepare("UPDATE handles SET account_id = NULL, released_at = ? WHERE account_id = ?")
       .bind(now, accountId),
+    db
+      .prepare(
+        "UPDATE connect_slugs SET instance_id = NULL, released_at = ? WHERE instance_id IN (SELECT instance_id FROM connect_servers WHERE owner_account_id = ?)",
+      )
+      .bind(now, accountId),
     db.prepare("DELETE FROM accounts WHERE id = ?").bind(accountId),
   ]);

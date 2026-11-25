@@ -2,6 +2,7 @@ import * as v from "valibot";
 import { isOwnKey } from "../../../lib/ownKey.ts";
 import { lenient, listOf } from "../../db/helpers/storedSchemas.ts";
 import { UUID_REGEX } from "../../../lib/uuid.ts";
+import { artistMatchKeys, artistProbeKeys, matchesArtistKeys } from "../../../lib/artistMatch.ts";
 
 export interface ArtistIdentity {
   id?: string | null;
@@ -269,7 +270,7 @@ const mergeTags = (target: Set<string>, sourceTags: string[] = []) => {
 const normalizeTagList = (tags: string[] = []) =>
   (Array.isArray(tags) ? tags : []).map(normalizeText).filter(Boolean);
 
-export const normalizeArtistIdentityKeys = (artist: ArtistIdentity) => {
+const normalizeArtistIdentityKeys = (artist: ArtistIdentity) => {
   const keys: string[] = [];
   const mbids = [artist?.id, artist?.mbid, artist?.foreignArtistId]
     .map(normalizeMbid)
@@ -282,16 +283,6 @@ export const normalizeArtistIdentityKeys = (artist: ArtistIdentity) => {
     keys.push(`name:${name}`);
   }
   return [...new Set(keys)];
-};
-
-export const buildExistingArtistKeySet = (artists: ArtistIdentity[] = []) => {
-  const keys = new Set<string>();
-  for (const artist of Array.isArray(artists) ? artists : []) {
-    for (const key of normalizeArtistIdentityKeys(artist)) {
-      keys.add(key);
-    }
-  }
-  return keys;
 };
 
 export const applyHydratedCandidateTags = (
@@ -308,7 +299,7 @@ export const applyHydratedCandidateTags = (
       ...recommendation,
       tags: normalizedTags,
       candidateTagsHydrated: true,
-      tagSource: options.source || "lastfm_artist",
+      tagSource: options.source || "artist",
     };
   }
 
@@ -343,7 +334,7 @@ export const applyHydratedCandidateTags = (
     scoreTotal,
     score: scoreTotal,
     candidateTagsHydrated: true,
-    tagSource: options.source || "lastfm_artist",
+    tagSource: options.source || "artist",
   };
 };
 
@@ -469,8 +460,7 @@ export const selectDiscoverySeeds = ({
   limit?: number;
   excludedKeys?: Set<string>;
 } = {}) => {
-  const isAllowed = (artist: SeedArtistInput) =>
-    !normalizeArtistIdentityKeys(artist).some((key) => excludedKeys.has(key));
+  const isAllowed = (artist: SeedArtistInput) => !matchesArtistKeys(artist, excludedKeys);
   const liked = likedArtists.filter(isAllowed);
   const history = historyArtists.filter(isAllowed);
   const library = libraryArtists.filter(isAllowed);
@@ -503,7 +493,9 @@ export const selectDiscoverySeeds = ({
   const starters = starterArtists
     .filter((artist) => {
       const keys = normalizeArtistIdentityKeys(artist);
-      if (keys.some((key) => takenKeys.has(key) || excludedKeys.has(key))) return false;
+      if (keys.some((key) => takenKeys.has(key)) || matchesArtistKeys(artist, excludedKeys)) {
+        return false;
+      }
       keys.forEach((key) => takenKeys.add(key));
       return true;
     })
@@ -567,11 +559,7 @@ export const addRecommendationCandidate = (
   const mbid = normalizeMbid(candidate?.mbid);
   if (!name && !mbid) return;
 
-  const candidateKeys = normalizeArtistIdentityKeys({
-    id: mbid,
-    name,
-  });
-  if (candidateKeys.some((key) => existingArtistKeys.has(key))) return;
+  if (matchesArtistKeys({ mbid, name }, existingArtistKeys)) return;
 
   const candidateKey = mbid || `name:${normalizeText(name)}`;
   if (!candidateKey) return;
@@ -808,11 +796,7 @@ const buildFeedbackSignals = (feedbackList: RecommendationFeedback[] = []) => {
     .filter((entry) => isActiveFeedback(entry, now))
     .map((entry) => ({
       action: entry.action,
-      keys: normalizeArtistIdentityKeys({
-        id: entry.artistId,
-        mbid: entry.artistId,
-        name: entry.artistName,
-      }),
+      keys: new Set(artistMatchKeys({ id: entry.artistId, name: entry.artistName })),
       tags: new Set(normalizeTagList(entry.tagContext)),
       seeds: new Set(normalizeTagList(entry.seedContext)),
     }));
@@ -831,7 +815,7 @@ const feedbackAdjustmentForCandidate = (
   signals: ReturnType<typeof buildFeedbackSignals>,
 ) => {
   if (signals.length === 0) return { adjustment: 0, hidden: false };
-  const candidateKeys = new Set(normalizeArtistIdentityKeys(candidate));
+  const candidateKeys = artistProbeKeys(candidate);
   const candidateTags = [...new Set(normalizeTagList(candidate.matchedTags))];
   const candidateSeeds = (candidate.supportingSeeds || [])
     .map((seed) => normalizeText(seed?.artistName))
@@ -839,7 +823,7 @@ const feedbackAdjustmentForCandidate = (
   let adjustment = 0;
 
   for (const signal of signals) {
-    const exactMatch = signal.keys.some((key) => candidateKeys.has(key));
+    const exactMatch = candidateKeys.some((key) => signal.keys.has(key));
     if (signal.action === "block_artist") {
       if (exactMatch) return { adjustment: adjustment - 100000, hidden: true };
       continue;
@@ -1137,7 +1121,7 @@ export const mergeRetainedRecommendationPool = ({
   const existing = Array.isArray(existingRecommendations) ? existingRecommendations : [];
   const chartPickNames = new Set(existing.filter(isChartPick).map(({ name }) => name));
   const viaChartPicks = ({ sourceTypes = [], sourceArtists = [] }: DiscoveryRecommendation) =>
-    sourceTypes.every((source) => source === "lastfm_related") &&
+    sourceTypes.every((source) => source === "similar") &&
     sourceArtists.length > 0 &&
     sourceArtists.every((name) => chartPickNames.has(name));
   const retained = existing
@@ -1165,18 +1149,30 @@ export const mergeResolvedRecommendations = (
   recommendations: DiscoveryRecommendation[] = [],
   existingArtistKeys: Set<string> = new Set(),
 ) => {
-  const merged = new Map<string | null, MergedRecommendation>();
-  const aliases = new Map<string | null, string | null>();
+  const merged = new Map<string, MergedRecommendation>();
+  const byMbid = new Map<string, string>();
+  const byName = new Map<string, string>();
+  const unidentifiedByName = new Map<string, string>();
 
   for (const recommendation of Array.isArray(recommendations) ? recommendations : []) {
-    const keys = normalizeArtistIdentityKeys(recommendation);
-    if (keys.some((key) => existingArtistKeys.has(key))) continue;
+    if (matchesArtistKeys(recommendation, existingArtistKeys)) continue;
     const recommendationMbid =
-      normalizeMbid(recommendation?.id) || normalizeMbid(recommendation?.navigateTo);
+      normalizeMbid(recommendation?.id) ||
+      normalizeMbid(recommendation?.navigateTo) ||
+      normalizeMbid(recommendation?.mbid) ||
+      normalizeMbid(recommendation?.foreignArtistId);
 
     const nameKey = `name:${normalizeText(recommendation?.name)}`;
-    const identityKeys = recommendationMbid ? [recommendationMbid, nameKey] : [nameKey];
-    const identity = identityKeys.find((key) => aliases.has(key)) || recommendationMbid || nameKey;
+    const identity = recommendationMbid
+      ? (byMbid.get(recommendationMbid) ?? unidentifiedByName.get(nameKey) ?? recommendationMbid)
+      : (byName.get(nameKey) ?? nameKey);
+    if (recommendationMbid) {
+      byMbid.set(recommendationMbid, identity);
+      if (unidentifiedByName.get(nameKey) === identity) unidentifiedByName.delete(nameKey);
+    } else if (!merged.has(identity)) {
+      unidentifiedByName.set(nameKey, identity);
+    }
+    if (!byName.has(nameKey)) byName.set(nameKey, identity);
 
     const existing = merged.get(identity);
     if (!existing) {
@@ -1210,9 +1206,6 @@ export const mergeResolvedRecommendations = (
         discoveryDepth: Number(recommendation?.discoveryDepth || 1) || 1,
       };
       merged.set(identity, entry);
-      for (const key of identityKeys) {
-        aliases.set(key, identity);
-      }
       continue;
     }
 
@@ -1318,9 +1311,6 @@ export const mergeResolvedRecommendations = (
           .map((seed) => [normalizeText(seed.artistName), seed]),
       ).values(),
     ];
-    for (const key of identityKeys) {
-      aliases.set(key, identity);
-    }
   }
 
   return [...merged.values()].map((entry) => ({

@@ -1,4 +1,5 @@
 import { signedInAs } from "../helpers/honoApp.ts";
+import { stubMissingMusicbrainz } from "../helpers/stubFetch.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
@@ -46,12 +47,17 @@ const MATCHED_BY_NAME_MBID = "55555555-5555-4555-8555-555555555554";
 const LINKED_MBID = "55555555-5555-4555-8555-555555555555";
 const PICKED_GROUP = "66666666-6666-4666-8666-666666666661";
 const OTHER_GROUP = "66666666-6666-4666-8666-666666666662";
+const TAGGED_RELEASE = "66666666-6666-4666-8666-666666666670";
 const MISSING_GROUP = "66666666-6666-4666-8666-666666666663";
 const ALBUM_ARTIST_MBID = "55555555-5555-4555-8555-555555555557";
 const TRACK_GROUP = "66666666-6666-4666-8666-666666666664";
 const TRACK_RELEASE = "77777777-7777-4777-8777-777777777771";
 const FULL_RECORDING = "88888888-8888-4888-8888-888888888881";
 const NEXT_RECORDING = "88888888-8888-4888-8888-888888888882";
+const ADDED_MBID = "55555555-5555-4555-8555-555555555558";
+const REMATCHED_MBID = "55555555-5555-4555-8555-555555555559";
+const ADDED_GROUP = "66666666-6666-4666-8666-666666666665";
+const REMATCHED_GROUP = "66666666-6666-4666-8666-666666666666";
 
 let providerAvailable = true;
 let server: { url: string; close: () => Promise<void> };
@@ -76,10 +82,12 @@ beforeAll(async () => {
         ],
       },
       [OTHER_MBID]: { id: OTHER_MBID, name: "Other Artist" },
+      [REMATCHED_MBID]: { id: REMATCHED_MBID, name: "Rematched Artist" },
     };
     const groups: Record<string, object> = {
       [PICKED_GROUP]: { id: PICKED_GROUP, title: "Picked Album", releases: [] },
       [OTHER_GROUP]: { id: OTHER_GROUP, title: "Picked Album Live", releases: [] },
+      [REMATCHED_GROUP]: { id: REMATCHED_GROUP, title: "Rematched Album", releases: [] },
       [TRACK_GROUP]: {
         id: TRACK_GROUP,
         title: "Track Album",
@@ -140,7 +148,8 @@ beforeAll(async () => {
   musicRoot = await mkdtemp(path.join(tmpdir(), "aurral-mbid-override-"));
 });
 
-beforeEach(() => {
+beforeEach((t) => {
+  stubMissingMusicbrainz(t);
   providerAvailable = true;
   provider.clearMetadataProviderCaches();
 });
@@ -229,11 +238,6 @@ const albumRow = (id: number) =>
       "SELECT * FROM library_albums WHERE id = ?",
     )
     .get(id);
-
-const setAlbumMetadata = (albumId: number, metadata: object) =>
-  db
-    .prepare("UPDATE library_albums SET metadata_json = ? WHERE id = ?")
-    .run(JSON.stringify(metadata), albumId);
 
 const artistRow = (id: number) =>
   db
@@ -395,6 +399,93 @@ test("a hand-picked release group keeps an untagged album's files through full r
   );
 });
 
+test("rematching an artist and album Aurral added leaves their old MBIDs behind", async () => {
+  const { artist, album } = createArtist("Added Artist", {
+    mbid: ADDED_MBID,
+    metadata: { id: ADDED_MBID, foreignArtistId: ADDED_MBID, librarySource: "aurral" },
+  });
+  db.prepare(
+    "UPDATE library_albums SET identity_key = ?, mbid = ?, release_group_mbid = ?, metadata_json = ? WHERE id = ?",
+  ).run(
+    `release-group:${ADDED_GROUP}`,
+    ADDED_GROUP,
+    ADDED_GROUP,
+    JSON.stringify({
+      id: ADDED_GROUP,
+      foreignAlbumId: ADDED_GROUP,
+      librarySource: "aurral",
+      trackListComplete: true,
+      requestedRelease: TRACK_RELEASE,
+      edition: "expanded",
+    }),
+    album.id,
+  );
+  const missing = libraryStore.upsertLibraryTrack({
+    identityKey: `recording:${NEXT_RECORDING}`,
+    mbid: NEXT_RECORDING,
+    title: "Only On The Old Group",
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: missing.id, trackNumber: 2 });
+
+  assert.equal((await updateMbid(artist.id, REMATCHED_MBID)).status, 200);
+  assert.equal((await updateReleaseGroup(album.id, REMATCHED_GROUP)).status, 200);
+
+  const rematched = v.parse(
+    v.record(v.string(), v.unknown()),
+    JSON.parse(albumRow(album.id)!.metadata_json!),
+  );
+  assert.deepEqual(
+    ["trackListComplete", "requestedRelease", "edition"].filter((key) => key in rematched),
+    [],
+  );
+  assert.equal(
+    db
+      .prepare("SELECT track_id FROM library_album_tracks WHERE album_id = ?")
+      .pluck()
+      .all(album.id)
+      .includes(missing.id),
+    false,
+  );
+  assert.equal(
+    libraryStore.getLibraryAlbumsToList().some((entry) => entry.id === album.id),
+    true,
+  );
+
+  const albumsFor = async (reference: string) => {
+    const response = await app.request(`/library/albums?artistId=${reference}`);
+    return v.parse(
+      v.array(
+        v.looseObject({
+          id: v.string(),
+          mbid: v.nullable(v.string()),
+          releaseGroupMbid: v.nullable(v.string()),
+        }),
+      ),
+      await response.json(),
+    );
+  };
+  const albumLookup = await app.request("/library/albums/lookup/batch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mbids: [ADDED_GROUP, REMATCHED_GROUP] }),
+  });
+
+  assert.deepEqual(await albumsFor(ADDED_MBID), []);
+  assert.deepEqual(
+    (await albumsFor(REMATCHED_MBID)).map((entry) => [
+      entry.id,
+      entry.mbid,
+      entry.releaseGroupMbid,
+    ]),
+    [[String(album.id), null, REMATCHED_GROUP]],
+  );
+  assert.deepEqual(
+    Object.keys(v.parse(v.record(v.string(), v.unknown()), await albumLookup.json())),
+    [REMATCHED_GROUP],
+  );
+  assert.equal(getArtistLibraryLookup(ADDED_MBID).exists, false);
+});
+
 test("an album whose match was removed by hand stays out of automatic matching", async () => {
   const { album } = createArtist("Unmatched Album Artist", { mbid: ALBUM_ARTIST_MBID });
   const untagged = () =>
@@ -409,20 +500,44 @@ test("an album whose match was removed by hand stays out of automatic matching",
   assert.ok(!untagged().includes(album.id));
 });
 
-test("album matches are rejected without changing the album when they cannot be applied", async () => {
+test("album matches are rejected without changing the album when they cannot be applied, including while any of its files is tagged", async () => {
   const { album } = createArtist("Refused Album Artist");
-  const tagged = createArtist("Tagged Album Artist");
-  setAlbumMetadata(tagged.album.id, { tags: { musicbrainz_releasegroupid: OTHER_GROUP } });
+  const root = path.join(musicRoot, "partly-tagged");
+  const folder = path.join(root, "Tagged Album Artist", "Mixed Album");
+  const files = [
+    await writeFlacFixture(path.join(folder, "01 Tagged.flac"), {
+      artist: "Tagged Album Artist",
+      album: "Mixed Album",
+      title: "Tagged",
+      track: "1",
+      MUSICBRAINZ_ALBUMID: TAGGED_RELEASE,
+    }),
+    await writeFlacFixture(path.join(folder, "02 Untagged.flac"), {
+      artist: "Tagged Album Artist",
+      album: "Mixed Album",
+      title: "Untagged",
+      track: "2",
+    }),
+  ];
+  await scanMusicRoot({ rootPath: root, source: "readonly" });
+  await scanMusicRoot({ rootPath: root, source: "readonly", changedPaths: [files[1]!] });
+  const [tagged, ...rest] = files.map((filePath) =>
+    db
+      .prepare<[string], number>("SELECT album_id FROM library_media_files WHERE path = ?")
+      .pluck()
+      .get(filePath),
+  );
+  assert.deepEqual(rest, [tagged]);
 
   const statuses = [
     (await updateReleaseGroup(album.id, MISSING_GROUP)).status,
     (await updateReleaseGroup(album.id, "not-an-mbid")).status,
-    (await updateReleaseGroup(tagged.album.id, OTHER_GROUP)).status,
+    (await updateReleaseGroup(tagged!, OTHER_GROUP)).status,
   ];
 
   assert.deepEqual(statuses, [404, 400, 409]);
   assert.deepEqual(
-    [album, tagged.album].map((entry) => albumRow(entry.id)?.release_group_mbid),
+    [album.id, tagged!].map((id) => albumRow(id)?.release_group_mbid),
     [null, null],
   );
 });

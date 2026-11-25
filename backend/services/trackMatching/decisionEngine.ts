@@ -18,7 +18,7 @@ import {
   readYoutubeUpload,
 } from "./youtubeEvidence.ts";
 import type { buildSoulseekCandidates } from "./providers/soulseekProvider.ts";
-import { isVariousArtistsCredit } from "./titleText.ts";
+import { isVariousArtistsCredit } from "../../../lib/artistCredit.ts";
 
 export type RawSearchResult = RawCandidate & {
   file?: string | null;
