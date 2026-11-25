@@ -427,8 +427,10 @@ test("repairReusableTrackLinks scans after repairing a library track", async () 
   const sourcePath = path.join(isolatedState.baseDir, "library-source.flac");
   await fs.writeFile(sourcePath, "audio");
   libraryStore.upsertLibraryMediaFile({
-    trackId: libraryStore.upsertLibraryTrack({ identityKey: "recording:glory-box", title: "Glory Box" })
-      .id,
+    trackId: libraryStore.upsertLibraryTrack({
+      identityKey: "recording:glory-box",
+      title: "Glory Box",
+    }).id,
     source: "aurral",
     path: sourcePath,
     quality: { format: "FLAC", bitrate: 900_000, sampleRate: 44100, bitsPerSample: 16 },
