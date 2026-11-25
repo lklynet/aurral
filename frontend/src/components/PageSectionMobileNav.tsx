@@ -26,7 +26,6 @@ export function PageSectionMobileNav({
         {label}
       </label>
       <Select
-        className="artist-modal-select"
         id={selectId}
         value={activeId}
         onChange={(sectionId) =>
