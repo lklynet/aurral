@@ -10,9 +10,8 @@ import { playlistJobsClient } from "../utils/api/clients/playlistJobs.ts";
 import type { LibraryAlbum, LibraryArtist, LibraryTrack } from "../utils/libraryPageData.ts";
 import { formatDuration } from "./library/libraryShared.tsx";
 import { ModalBackdrop } from "../components/ModalBackdrop";
-import { formatQuality } from "../../../lib/formatQuality.ts";
+import { formatQuality, type FileQuality } from "../utils/formatQuality.ts";
 
-type LibraryQuality = NonNullable<LibraryTrack["files"][number]["quality"]>;
 type LibraryMetadata = {
   genres?: unknown;
   genre?: unknown;
@@ -43,7 +42,7 @@ interface LibraryInfoEntity {
   durationMs?: number | null;
   metadata?: LibraryMetadata | null;
   streamFormat?: string | null;
-  quality?: LibraryQuality | string | null;
+  quality?: FileQuality | null;
   qualityTier?: string | null;
   qualityLabel?: string | null;
   status?: string;
