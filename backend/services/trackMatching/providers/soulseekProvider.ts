@@ -16,7 +16,7 @@ import {
 import type { SearchTrackRequest } from "../trackIdentity.ts";
 import { getNormalizedText } from "../../providers/metadataRanking.ts";
 import { groupSoulseekSearchResults } from "../../downloadJobs/trackSearchQueries.ts";
-import { isVariousArtistsCredit } from "../titleText.ts";
+import { isVariousArtistsCredit } from "../../../../lib/artistCredit.ts";
 
 type SlskdFile = RawCandidate & { file?: string | null; size?: unknown };
 

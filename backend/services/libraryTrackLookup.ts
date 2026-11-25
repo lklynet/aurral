@@ -11,7 +11,7 @@ import {
   tracksShareMembership,
   type PlaylistTrackInput,
 } from "./playlists/playlistTracks.ts";
-import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
+import { albumTrackArtist } from "../../lib/artistCredit.ts";
 
 export type StarredAt = Map<string, string>;
 export type Rating = { userRating?: number; averageRating: number };
@@ -78,9 +78,8 @@ export const trackFromLibrary = (
 ) => {
   const album = findAlbumForTrack(library, track);
   const owner = findArtistForAlbum(library, album);
-  const ownerCredit = Boolean(owner?.name) && !isVariousArtistsCredit(owner!.name, owner!.mbid);
   return normalizePlaylistTrack({
-    artistName: ownerCredit ? owner!.name : track?.artistName || owner?.name,
+    artistName: albumTrackArtist(owner?.name, owner?.mbid, track?.artistName),
     trackName: track?.title,
     albumName: album?.title,
     artistMbid: owner?.mbid,

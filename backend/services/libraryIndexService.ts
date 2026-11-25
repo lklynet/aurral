@@ -31,7 +31,7 @@ import {
 import { selectAlbumRelease } from "./providers/metadataRanking.ts";
 import type { NormalizedAlbum } from "./providers/metadataMappers.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
-import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
+import { isVariousArtistsCredit } from "../../lib/artistCredit.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
 import { removePlaylistTracksWithoutDownloads } from "./playlists/trackRemoval.ts";
 import { rebuildLibrarySearchIndex } from "./librarySearchIndex.ts";

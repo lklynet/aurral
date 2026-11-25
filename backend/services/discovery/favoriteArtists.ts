@@ -1,6 +1,7 @@
 import { db } from "../../config/db-sqlite.ts";
 import type { LibraryArtistsRow, LibraryTracksRow } from "../../db/rows.ts";
-import { isVariousArtistsCredit, withoutFeaturedArtists } from "../trackMatching/titleText.ts";
+import { withoutFeaturedArtists } from "../trackMatching/titleText.ts";
+import { isVariousArtistsCredit } from "../../../lib/artistCredit.ts";
 
 const favoriteCreditsStmt = db.prepare<
   [{ userId: number }],

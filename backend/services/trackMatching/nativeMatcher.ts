@@ -8,7 +8,8 @@ import {
   stripPromoDescriptors,
 } from "./semanticPolicy.ts";
 import { foldDiacritics, symbolText } from "../providers/metadataRanking.ts";
-import { discFolderNumber, isVariousArtistsCredit, withoutFeaturedArtists } from "./titleText.ts";
+import { discFolderNumber, withoutFeaturedArtists } from "./titleText.ts";
+import { isVariousArtistsCredit } from "../../../lib/artistCredit.ts";
 import { implausibleBitrateKbps } from "./candidateNormalizer.ts";
 import type { NameList, ReleaseTrack } from "./semanticPolicy.ts";
 import { UUID_REGEX } from "../../../lib/uuid.ts";

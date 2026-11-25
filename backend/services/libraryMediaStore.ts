@@ -5,11 +5,8 @@ import { db, dbHelpers } from "../config/db-sqlite.ts";
 import * as v from "valibot";
 import { invalidateLibraryManagementCache } from "./libraryManagementStore.ts";
 import { getLibraryIndexLastModified, invalidateLibraryQueryCache } from "./libraryQueryService.ts";
-import {
-  isSilenceTrack,
-  isVariousArtistsCredit,
-  withoutRemasterLabel,
-} from "./trackMatching/titleText.ts";
+import { isSilenceTrack, withoutRemasterLabel } from "./trackMatching/titleText.ts";
+import { isVariousArtistsCredit } from "../../lib/artistCredit.ts";
 import { isSameSongAtPlace } from "./trackMatching/nativeMatcher.ts";
 import { clearLibraryManagement } from "./libraryManagementStore.ts";
 import { readRawLibraryMetadata } from "./libraryMetadata.ts";
