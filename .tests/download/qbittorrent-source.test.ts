@@ -189,7 +189,7 @@ async function startFake() {
 function release(
   guid: string,
   title: string,
-  seeders: number,
+  seeders?: number,
   link = "/release.torrent",
   field = "downloadUrl",
 ) {
@@ -231,10 +231,12 @@ afterAll(async () => {
   await cleanupIsolatedState(state);
 });
 
-test("an album search keeps seeded torrents of the album, best quality first", async () => {
+test("an album search prefers quality first, then more seeders within a quality tier", async () => {
   fake.releases = [
-    release("mp3", "Glass Coast - Lowlands (2020) [MP3 320]", 40),
-    release("flac", "Glass Coast - Lowlands (2020) [FLAC]", 5),
+    release("mp3", "Glass Coast - Lowlands (2020) [MP3 320]", 100),
+    release("unknown-seeders", "Glass Coast - Lowlands (2020) [FLAC]"),
+    release("flac", "Glass Coast - Lowlands (2020) [FLAC]", 1),
+    release("popular-flac", "Glass Coast - Lowlands (2020) [FLAC]", 50),
     release("dead", "Glass Coast - Lowlands (2020) [FLAC 24bit]", 0),
     release("other", "Glass Coast - Highlands (2022) [FLAC]", 90),
   ];
@@ -252,20 +254,22 @@ test("an album search keeps seeded torrents of the album, best quality first", a
   assert.deepEqual(
     results.map((result) => [result.id, result.title]),
     [
+      ["popular-flac", "Lowlands"],
       ["flac", "Lowlands"],
+      ["unknown-seeders", "Lowlands"],
       ["mp3", "Lowlands"],
     ],
   );
   assert.deepEqual(
     upgrades.map((result) => result.id),
-    ["flac"],
+    ["popular-flac", "flac", "unknown-seeders"],
   );
 
   fake.musicReleases = [release("mp3", "Glass Coast - Lowlands (2020) [MP3 320]", 40)];
   const broader = await search({ currentTier: "mp3-320" });
   assert.deepEqual(
     broader.map((result) => result.id),
-    ["flac"],
+    ["popular-flac", "flac", "unknown-seeders"],
   );
 });
 
