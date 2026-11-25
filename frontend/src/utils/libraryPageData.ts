@@ -162,6 +162,12 @@ export const getCachedAlbumTracks = (
 export const yearOf = (value: string | null | undefined) =>
   /^(\d{4})/.exec(String(value || "").trim())?.[1] || "";
 
+const datedRelease = (album: LibraryAlbum) =>
+  yearOf(album.releaseDate) ? String(album.releaseDate).trim() : "";
+
+export const newestReleaseFirst = (left: LibraryAlbum, right: LibraryAlbum) =>
+  datedRelease(right).localeCompare(datedRelease(left));
+
 const RELEASE_TYPES: Partial<Record<string, string>> = {
   single: "Single",
   ep: "EP",
