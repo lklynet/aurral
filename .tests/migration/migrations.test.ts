@@ -760,3 +760,35 @@ test("upgrading keeps the track lists stored for an album's release and files", 
     [],
   );
 });
+
+test("upgrading keeps only the first of several NUL-separated album artist values", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, -1));
+  db.prepare("INSERT INTO settings (key, value) VALUES ('librarySearchIndexVersion', '3')").run();
+  db.prepare(
+    `INSERT INTO library_artists (identity_key, name, created_at, updated_at)
+     VALUES ('name:artist:proxy', ?, 1, 1), ('name:artist:ac dc', 'AC/DC', 1, 1)`,
+  ).run("Proxy\0﻿\0﻿");
+  db.prepare(
+    `INSERT INTO library_albums (identity_key, artist_id, title, album_artist, created_at, updated_at)
+     VALUES ('name:album:bubble', 1, 'Bubble Bite EP', ?, 1, 1)`,
+  ).run("Proxy\0﻿\0﻿");
+  db.prepare(
+    `INSERT INTO download_jobs (id, artist_name, track_name, owner_id, status, created_at)
+     VALUES ('job', ?, 'Bubble', 'library', 'failed', 1)`,
+  ).run("Proxy\0﻿\0﻿");
+
+  migrate(db);
+
+  assert.deepEqual(db.prepare("SELECT name FROM library_artists ORDER BY id").pluck().all(), [
+    "Proxy",
+    "AC/DC",
+  ]);
+  assert.equal(db.prepare("SELECT album_artist FROM library_albums").pluck().get(), "Proxy");
+  assert.equal(db.prepare("SELECT artist_name FROM download_jobs").pluck().get(), "Proxy");
+  assert.equal(
+    db.prepare("SELECT value FROM settings WHERE key = 'librarySearchIndexVersion'").get(),
+    undefined,
+  );
+});

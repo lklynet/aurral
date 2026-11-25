@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { createAurral3Schema } from "./aurral-3-schema.ts";
 import { NOTIFICATION_EVENTS } from "../../lib/notificationEvents.ts";
 import { isRecord } from "../../lib/isRecord.ts";
-import { trackArtistCreditFromTags } from "../../lib/artistCredit.ts";
+import { tagValues, trackArtistCreditFromTags } from "../../lib/artistCredit.ts";
 import type { LibraryTracksRow, SettingsRow, UsersRow } from "../db/rows.ts";
 
 type Migration = (db: Database.Database) => void;
@@ -576,6 +576,31 @@ const storeHubAccountId: Migration = (db) => {
   db.exec("CREATE INDEX IF NOT EXISTS idx_hub_links_account ON hub_links (origin, account_id)");
 };
 
+const dropAlbumArtistTagSeparators: Migration = (db) => {
+  let changed = false;
+  for (const [table, column] of [
+    ["library_artists", "name"],
+    ["library_albums", "album_artist"],
+    ["download_jobs", "artist_name"],
+  ] as const) {
+    const rows = db
+      .prepare<[], { id: number | string; value: string }>(
+        `SELECT id, ${column} AS value FROM ${table} WHERE instr(CAST(${column} AS BLOB), X'00') > 0`,
+      )
+      .all();
+    const update = db.prepare<[string, number | string]>(
+      `UPDATE ${table} SET ${column} = ? WHERE id = ?`,
+    );
+    for (const row of rows) {
+      const [name] = tagValues(row.value);
+      if (!name) continue;
+      update.run(name, row.id);
+      changed = true;
+    }
+  }
+  if (changed) db.prepare("DELETE FROM settings WHERE key = 'librarySearchIndexVersion'").run();
+};
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -614,6 +639,7 @@ export const migrations: Migration[] = [
   listTracksForFilesOnly,
   storeFileReleaseTags,
   storeHubAccountId,
+  dropAlbumArtistTagSeparators,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

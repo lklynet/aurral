@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import { artistNames } from "../../../lib/artistCredit.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { downloadTracker, type DownloadJob, type DownloadTrackInput } from "./downloadTracker.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
@@ -421,18 +422,27 @@ export async function removePlaylistFileIfUnshared(
   return { action: "deleted" };
 }
 
+// A multi-artist credit like "Artist A, Artist B" belongs to the Library
+// artist of any name in it, but a name with a comma in it comes first.
+const creditedNames = (credit: unknown) => {
+  const whole = String(credit || "").trim();
+  return whole ? [...new Set([whole, ...artistNames(whole.split(","))])] : [];
+};
+
 function findMatchingArtist(artists: ReadArtist[], track: DownloadTrackInput) {
   const artistMbid = String(track?.artistMbid || "").trim();
   if (artistMbid) {
     const match = artists.find((artist) => String(artist?.mbid || "").trim() === artistMbid);
     if (match) return match;
   }
-  const artistKey = normalizeText(track?.artistName);
-  if (!artistKey) return null;
-  return (
-    artists.find((artist) => normalizeText(artist?.artistName || artist?.name) === artistKey) ||
-    null
-  );
+  for (const name of creditedNames(track?.artistName)) {
+    const artistKey = normalizeText(name);
+    const match = artists.find(
+      (artist) => normalizeText(artist?.artistName || artist?.name) === artistKey,
+    );
+    if (match) return match;
+  }
+  return null;
 }
 
 const albumHasMbid = (album: ReadAlbum, albumMbid: string) =>
@@ -486,7 +496,7 @@ async function findLibraryFolderSource(
     getLibraryForArtistReferences({
       source,
       availableOnly: false,
-      references: [track?.artistMbid, track?.artistName],
+      references: [track?.artistMbid, ...creditedNames(track?.artistName)],
     }),
   );
   const artist =
