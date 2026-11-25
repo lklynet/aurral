@@ -734,6 +734,12 @@ test("library sorts follow arrival, plays, release date, and favorites", () => {
     title: "Recently Added",
     releaseDate: "1990-01-01",
   });
+  const undatedAlbum = upsertLibraryAlbum({
+    identityKey: `${key}:undated-album`,
+    artistId: newArtist.id,
+    title: "Undated Album",
+    releaseDate: "Unknown",
+  });
   const listener = requireFixture(userOps.createUser(`${key}-listener`, "unused-hash", "user"));
   const otherListener = requireFixture(userOps.createUser(`${key}-other`, "unused-hash", "user"));
   const oldTrack = upsertLibraryTrack({
@@ -747,7 +753,19 @@ test("library sorts follow arrival, plays, release date, and favorites", () => {
     artistName: "Newest Fixture",
   });
   linkLibraryAlbumTrack({ albumId: oldAlbum.id, trackId: oldTrack.id, trackNumber: 1 });
+  const undatedTrack = upsertLibraryTrack({
+    identityKey: `${key}:undated-track`,
+    title: "Undated Track",
+    artistName: "Zed Newest Fixture",
+  });
   linkLibraryAlbumTrack({ albumId: newAlbum.id, trackId: newTrack.id, trackNumber: 1 });
+  linkLibraryAlbumTrack({ albumId: undatedAlbum.id, trackId: undatedTrack.id, trackNumber: 1 });
+  upsertLibraryMediaFile({
+    trackId: undatedTrack.id,
+    albumId: undatedAlbum.id,
+    source: "aurral",
+    path: `/tmp/${key}/undated.flac`,
+  });
   upsertLibraryMediaFile({
     trackId: oldTrack.id,
     albumId: oldAlbum.id,
@@ -768,6 +786,10 @@ test("library sorts follow arrival, plays, release date, and favorites", () => {
   db.prepare("UPDATE library_media_files SET created_at = ? WHERE path = ?").run(
     now,
     `/tmp/${key}/new.flac`,
+  );
+  db.prepare("UPDATE library_media_files SET created_at = ? WHERE path = ?").run(
+    now - 120_000,
+    `/tmp/${key}/undated.flac`,
   );
 
   try {
@@ -813,7 +835,7 @@ test("library sorts follow arrival, plays, release date, and favorites", () => {
     assert.deepEqual(albumTitles("plays"), ["Old Album", "Recently Added"]);
     assert.deepEqual(albumTitles("played", otherListener.id), ["Old Album"]);
     assert.deepEqual(albumTitles("played", null), []);
-    assert.deepEqual(albumTitles("released"), ["Old Album", "Recently Added"]);
+    assert.deepEqual(albumTitles("released"), ["Old Album", "Recently Added", "Undated Album"]);
 
     const artistNames = (sort: string) =>
       getLibraryPage({
@@ -837,7 +859,11 @@ test("library sorts follow arrival, plays, release date, and favorites", () => {
         sort,
         userId,
       }).items.map((item) => item.title);
-    assert.deepEqual(trackTitles(listener.id, "released"), ["Old Track", "New Track"]);
+    assert.deepEqual(trackTitles(listener.id, "released"), [
+      "Old Track",
+      "New Track",
+      "Undated Track",
+    ]);
     const recordPlay = db.prepare(
       "INSERT INTO play_events (user_id, track_id, title, artist, played_at, source, created_at) VALUES (?, ?, ?, ?, ?, 'test', ?)",
     );
@@ -904,16 +930,22 @@ test("library sorts follow arrival, plays, release date, and favorites", () => {
   } finally {
     db.prepare("DELETE FROM users WHERE id IN (?, ?)").run(listener.id, otherListener.id);
     db.prepare("DELETE FROM library_media_files WHERE path LIKE ?").run(`/tmp/${key}/%`);
-    db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (?, ?)").run(
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (?, ?, ?)").run(
       oldAlbum.id,
       newAlbum.id,
+      undatedAlbum.id,
     );
-    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?) OR identity_key LIKE ?").run(
+    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?, ?) OR identity_key LIKE ?").run(
       oldTrack.id,
       newTrack.id,
+      undatedTrack.id,
       `${key}:broad-%`,
     );
-    db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)").run(oldAlbum.id, newAlbum.id);
+    db.prepare("DELETE FROM library_albums WHERE id IN (?, ?, ?)").run(
+      oldAlbum.id,
+      newAlbum.id,
+      undatedAlbum.id,
+    );
     db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)").run(artist.id, newArtist.id);
   }
 });

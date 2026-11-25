@@ -8,6 +8,7 @@ const {
   favoriteId,
   getCachedAlbumTracks,
   mergeAlbumTrackPageIntoLibrary,
+  newestReleaseFirst,
   releaseTypeOf,
 } = await import("../../frontend/src/utils/libraryPageData.ts");
 const { queryClient, queryKeys } = await import("../../frontend/src/queryClient.ts");
@@ -106,4 +107,14 @@ test("release types come from known labels, not built-in object keys", () => {
   assert.equal(releaseTypeOf(libraryAlbum({ metadata: { albumType: "constructor" } })), null);
   assert.equal(releaseTypeOf(libraryAlbum({ metadata: { albumType: "toString" } })), null);
   assert.equal(releaseTypeOf(libraryAlbum({ metadata: { albumType: "Album" } })), null);
+});
+
+test("albums without a release year sort after dated albums, newest first", () => {
+  const albums = [null, "Unknown", "2011-08-30", "[2011]", "2026-10-01", "30/08/2011", "1998"].map(
+    (releaseDate, id) => libraryAlbum({ id, releaseDate }),
+  );
+  assert.deepEqual(
+    albums.toSorted(newestReleaseFirst).map((album) => album.releaseDate),
+    ["2026-10-01", "2011-08-30", "1998", null, "Unknown", "[2011]", "30/08/2011"],
+  );
 });

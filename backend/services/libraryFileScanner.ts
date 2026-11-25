@@ -40,7 +40,9 @@ import {
 } from "./downloadUtils.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { isPathWithin } from "./libraryFolders.ts";
+import { yearFirstReleaseDate } from "../../lib/releaseDate.ts";
 import {
+  tagValues,
   trackArtistCreditFromTags,
   VARIOUS_ARTISTS_MBID,
   isVariousArtistsCredit,
@@ -176,7 +178,8 @@ function readPathFallback(filePath: string, rootPath: string) {
 function buildMetadataRecord(metadata: ScannedMetadata, filePath: string, rootPath: string) {
   const common = normalizeMetadata(metadata);
   const fallback = readPathFallback(filePath, rootPath);
-  const artistName = text(common.albumartist || common.artist) || fallback.artistName;
+  const [taggedAlbumArtist = ""] = tagValues(common.albumartist);
+  const artistName = taggedAlbumArtist || tagValues(common.artist)[0] || fallback.artistName;
   const albumName = text(common.album) || fallback.albumName;
   const title = text(common.title) || fallback.title;
   const trackNumber = numberPart(common.track, fallback.trackNumber);
@@ -190,7 +193,7 @@ function buildMetadataRecord(metadata: ScannedMetadata, filePath: string, rootPa
             .filter((mbid) => mbid !== null),
         ),
       ]
-    : isVariousArtistsCredit(text(common.albumartist))
+    : isVariousArtistsCredit(taggedAlbumArtist)
       ? [VARIOUS_ARTISTS_MBID]
       : [normalizeMbid(common.musicbrainz_artistid)].filter((mbid) => mbid !== null);
   const artistMbid = artistMbids.length === 1 ? artistMbids[0] : null;
@@ -223,9 +226,16 @@ function buildMetadataRecord(metadata: ScannedMetadata, filePath: string, rootPa
     title,
     trackNumber,
     discNumber,
-    albumArtist: text(common.albumartist) || artistName,
-    releaseDate:
-      text(common.originaldate || common.originalyear || common.releasedate || common.date) || null,
+    albumArtist: taggedAlbumArtist || artistName,
+    releaseDate: yearFirstReleaseDate(
+      text(
+        common.originaldate ||
+          common.originalyear ||
+          common.releasedate ||
+          common.date ||
+          common.year,
+      ),
+    ),
     artistMetadata: { tags: common },
     albumMetadata: { tags: common },
     trackMetadata: { tags: common },

@@ -83,3 +83,42 @@ test("a Various Artists album files under Various Artists when only its tracks c
     identity({ musicbrainz_albumartistid: VARIOUS_ARTISTS_MBID }),
   );
 });
+
+test("an album artist tag holding several NUL-separated values names the album for its first artist", () => {
+  const names = (albumartist: string) => {
+    const { artistName, albumArtist } = buildMetadataRecord(
+      { common: { artist: "Proxy", artists: ["Proxy"], albumartist, albumartists: [albumartist] } },
+      "/music/Proxy/Bubble Bite EP/01 Bubble.mp3",
+      "/music",
+    );
+    return [artistName, albumArtist];
+  };
+
+  assert.deepEqual(names("Proxy\0﻿\0﻿"), ["Proxy", "Proxy"]);
+  assert.deepEqual(names("Mason Maynard\0﻿Green Velvet"), ["Mason Maynard", "Mason Maynard"]);
+});
+
+test("a release date tagged day or month first is stored year first", () => {
+  const releaseDate = (date: string) =>
+    buildMetadataRecord({ common: { date } }, "/music/Artist/Album/01 Song.mp3", "/music")
+      .releaseDate;
+
+  assert.deepEqual(
+    [
+      "25/03/2022",
+      "03/25/2022",
+      "25.03.2022",
+      "05/05/2022",
+      "05/04/2022",
+      "2022-03-25",
+      "Unknown",
+      "",
+    ].map(releaseDate),
+    ["2022-03-25", "2022-03-25", "2022-03-25", "2022-05-05", "2022", "2022-03-25", "Unknown", null],
+  );
+  assert.equal(
+    buildMetadataRecord({ common: { year: 2022 } }, "/music/Artist/Album/01 Song.mp3", "/music")
+      .releaseDate,
+    "2022",
+  );
+});
