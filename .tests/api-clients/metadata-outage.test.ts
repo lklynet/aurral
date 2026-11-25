@@ -10,6 +10,7 @@ const [
   { listenbrainzRequest },
   { deezerGetRelatedArtists },
   { clearApiCaches },
+  { getArtistByMbid },
 ] = await setupIsolatedBackend(
   "metadata-outage",
   () => import("../../lib/http.ts"),
@@ -17,6 +18,7 @@ const [
   () => import("../../backend/services/apiClients/listenbrainz.ts"),
   () => import("../../backend/services/apiClients/deezer.ts"),
   () => import("../../backend/services/apiClients/clearCache.ts"),
+  () => import("../../backend/services/providers/metadataProvider.ts"),
 );
 
 afterAll(() => cleanupIsolatedState(state));
@@ -99,4 +101,30 @@ test("an answer during ListenBrainz retries resets the count toward a pause", as
   assert.equal(get.mock.calls.length, 4);
   assert.equal(await ask(4), "ECONNREFUSED");
   assert.equal(get.mock.calls.length, 5);
+});
+
+test("AurralBrainz pauses for a minute after three requests in a row get no answer", async () => {
+  clearApiCaches();
+  const get = vi.spyOn(http, "get").mockRejectedValue(refused("data.aurral.org"));
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  onTestFinished(() => {
+    get.mockRestore();
+    vi.useRealTimers();
+    clearApiCaches();
+  });
+  const ask = async (n: number) => {
+    const answer = outcome(getArtistByMbid(`artist-${n}`));
+    await vi.runAllTimersAsync();
+    return answer;
+  };
+
+  assert.deepEqual(
+    [await ask(1), await ask(2), await ask(3), await ask(4)],
+    ["ECONNREFUSED", "ECONNREFUSED", "ECONNREFUSED", "PAUSED"],
+  );
+  assert.equal(get.mock.calls.length, 3);
+
+  vi.advanceTimersByTime(61_000);
+  assert.equal(await ask(5), "ECONNREFUSED");
+  assert.equal(get.mock.calls.length, 4);
 });
