@@ -189,32 +189,37 @@ test("getAurralHistoryRequests reconciles completed download jobs", async () => 
   assert.equal(entry?.inQueue, false);
 });
 
-test("queued and downloading activity for deleted jobs leaves the queue as cancelled", async () => {
-  const jobIds = ["Queued Song", "Downloading Song"].map((trackName) =>
-    downloadTracker.addJob({ artistName: "Artist", trackName }, "deleted-playlist"),
+test("activity for deleted jobs leaves the queue as cancelled and is marked removed", async () => {
+  const statuses = ["pending", "processing", "failed"] as const;
+  const jobIds = statuses.map((status) =>
+    downloadTracker.addJob({ artistName: "Artist", trackName: status }, "deleted-playlist"),
   );
-  for (const [index, jobId] of jobIds.entries()) {
+  const liveJobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Live" }, "kept");
+  assert.ok(liveJobId != null);
+  for (const [index, jobId] of [...jobIds, liveJobId].entries()) {
     assert.ok(jobId != null);
     upsertAurralHistory({
       referenceId: jobId,
       kind: "track_download",
-      title: "Queued Song",
+      title: "Song",
       subtitle: "Artist · Playlist",
-      status: index === 0 ? "pending" : "processing",
-      statusLabel: index === 0 ? "Queued" : "Downloading",
+      status: statuses[index] ?? "failed",
       metadata: { jobId, trackName: "Song", artistName: "Artist", playlistId: "deleted-playlist" },
       createdAt: Date.now() - 60 * 1000,
     });
   }
+  downloadTracker.setFailed(liveJobId, "No match");
   downloadTracker.clearByPlaylistId("deleted-playlist");
 
   const entries = await getAurralHistoryRequests();
 
-  for (const jobId of jobIds) {
+  for (const [index, jobId] of jobIds.entries()) {
     const entry = entries.find((item) => item.jobId === jobId);
-    assert.equal(entry?.status, "cancelled");
+    assert.equal(entry?.status, statuses[index] === "failed" ? "failed" : "cancelled");
     assert.equal(entry?.inQueue, false);
+    assert.equal(entry?.jobRemoved, true);
   }
+  assert.equal(entries.find((item) => item.jobId === liveJobId)?.jobRemoved, false);
 });
 
 test("getAurralHistoryRequests reconciles pending queued jobs as reused when tracker job is done", async () => {

@@ -90,6 +90,7 @@ function getRows(item: ActivityInfoItem) {
     ["Source file", item.sourceFilename],
     ["Release", item.releaseTitle],
     ["Details", details],
+    ["Request", item.jobRemoved ? "Removed. Request the track again to download it." : null],
     ["Track fallback", item.albumGrab?.fallbackReason],
     ["Previous errors", item.previousErrors?.join("; ")],
     ["ID", id],

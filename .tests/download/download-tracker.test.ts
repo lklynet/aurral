@@ -361,7 +361,10 @@ test("album track outcomes retain source, failures, and timestamps after retry a
   assert.equal(tracker.getJob(ids[1])!.error, null);
   tracker.clearCompleted();
   const after = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
-  assert.deepEqual(after, before);
+  assert.deepEqual(
+    after,
+    before.map((item) => ({ ...item, jobRemoved: true })),
+  );
 });
 
 test("history limits keep an album together and pruning does not recreate removed track records", async () => {
