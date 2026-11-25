@@ -538,8 +538,8 @@ async function findLibraryFolderSource(
     : rankedAlbums;
   for (const album of albumsToCheck) {
     const albumTracks = findLibraryTracksForAlbum(tracks, album.id);
-    const matchedTrack = findMatchingTrack(albumTracks, track, strictAlbum);
-    if (!matchedTrack || !creditFits(matchedTrack)) continue;
+    const matchedTrack = findMatchingTrack(albumTracks.filter(creditFits), track, strictAlbum);
+    if (!matchedTrack) continue;
     foundTitleOnAnyAlbum = true;
     if (matchedTrack.hasFile !== true || !matchedTrack.path) {
       console.log(

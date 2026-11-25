@@ -701,6 +701,22 @@ test("playlists use a Library file credited to several artists when the request 
     artistName: "Artist A",
   });
   assert.equal((await reuse()).reused, false);
+
+  const duetPath = path.join(downloadRoot, "Artist A", "Album", "02 - Song.mp3");
+  await fs.writeFile(duetPath, "audio");
+  const duet = libraryStore.upsertLibraryTrack({
+    identityKey: "name:artist a:album:1:2:song",
+    title: "Song",
+    artistName: "Artist A, Artist B",
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: duet.id, trackNumber: 2 });
+  libraryStore.upsertLibraryMediaFile({
+    trackId: duet.id,
+    albumId: album.id,
+    source: "aurral",
+    path: duetPath,
+  });
+  assert.equal((await reuse()).finalPath, duetPath);
 });
 
 test("jobs follow the Library files a scan changed", async () => {
