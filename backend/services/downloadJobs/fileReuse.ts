@@ -11,7 +11,8 @@ import {
   findLibraryTracksForAlbum,
 } from "../libraryReadModel.ts";
 import { getLibraryForArtistReferences, getLibraryTrackTitle } from "../libraryQueryService.ts";
-import { getLibraryFileIds, getLibraryMediaFile } from "../libraryMediaStore.ts";
+import { getIndexedLibraryFile, getLibraryMediaFile } from "../libraryMediaStore.ts";
+import type { LibraryMediaFilesRow } from "../../db/rows.ts";
 import { classifyLibraryFileQuality } from "../qualityProfile.ts";
 import { scheduleLibraryScan as scheduleLibraryScanJob } from "../libraryScanWorker.ts";
 import {
@@ -638,7 +639,7 @@ export async function restoreCompletedTrack(job: DownloadJob, options: RestoreOp
         source.externalPath || null,
         {
           reusedLibraryFile: noPlaylistDownloadedFile(sourcePath, job.id),
-          quality: indexedQuality(sourcePath),
+          quality: availableQuality(indexedFile(sourcePath)),
         },
       );
       console.log(
@@ -673,18 +674,14 @@ export async function restoreCompletedTrack(job: DownloadJob, options: RestoreOp
   };
 }
 
-function indexedFile(filePath: string) {
-  for (const source of ["aurral", "readonly", "flow"]) {
-    const media = getLibraryMediaFile({ source, path: filePath });
-    if (media) return media;
-  }
-  return undefined;
-}
+const indexedFile = (filePath: string) =>
+  ["aurral", "readonly", "flow"]
+    .map((source) => getLibraryMediaFile({ source, path: filePath }))
+    .find(Boolean);
 
-const indexedQuality = (filePath: string) => {
-  const media = indexedFile(path.resolve(filePath));
-  return media?.available === 1 ? classifyLibraryFileQuality(media) : undefined;
-};
+const availableQuality = (
+  media: Pick<LibraryMediaFilesRow, "path" | "quality_json" | "available"> | null | undefined,
+) => (media?.available === 1 ? classifyLibraryFileQuality(media) : undefined);
 
 const sameQuality = (job: DownloadJob, quality: ReturnType<typeof classifyLibraryFileQuality>) =>
   (job.qualityTier ?? null) === quality.tier &&
@@ -964,8 +961,11 @@ const ID_KEYS = ["artistMbid", "albumMbid", "trackMbid"] as const;
 
 // A reused file's IDs are already known, to the Library or to the download it
 // came from, so they are not looked up again.
-function knownIds(track: DownloadTrackInput, source: ReuseSource) {
-  const library = getLibraryFileIds(source.sourcePath);
+function knownIds(
+  track: DownloadTrackInput,
+  source: ReuseSource,
+  library: ReturnType<typeof getIndexedLibraryFile>,
+) {
   return Object.fromEntries(
     ID_KEYS.flatMap((key) => {
       const known = library?.[key] || source.sourceJob?.[key];
@@ -1026,6 +1026,7 @@ export async function reuseTrackForPlaylist(
   if (!jobId) {
     return { reused: false, reason: "Failed to create reuse job" };
   }
+  const library = getIndexedLibraryFile(source.sourcePath);
   downloadTracker.setDone(
     jobId,
     finalPath,
@@ -1033,10 +1034,10 @@ export async function reuseTrackForPlaylist(
     source.externalPath || null,
     {
       reusedLibraryFile: noPlaylistDownloadedFile(finalPath, jobId),
-      quality: indexedQuality(finalPath),
+      quality: availableQuality(library),
     },
   );
-  downloadTracker.updateMetadata(jobId, knownIds(track, source));
+  downloadTracker.updateMetadata(jobId, knownIds(track, source, library));
   console.log(
     `[FileReuse] Reused ${source.sourceType} track for ${playlistType}: ${track.artistName} - ${track.trackName}`,
   );
