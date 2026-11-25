@@ -104,10 +104,17 @@ test("a release date tagged day or month first is stored year first", () => {
       .releaseDate;
 
   assert.deepEqual(
-    ["25/03/2022", "03/25/2022", "25.03.2022", "05/04/2022", "2022-03-25", "Unknown", ""].map(
-      releaseDate,
-    ),
-    ["2022-03-25", "2022-03-25", "2022-03-25", "2022", "2022-03-25", "Unknown", null],
+    [
+      "25/03/2022",
+      "03/25/2022",
+      "25.03.2022",
+      "05/05/2022",
+      "05/04/2022",
+      "2022-03-25",
+      "Unknown",
+      "",
+    ].map(releaseDate),
+    ["2022-03-25", "2022-03-25", "2022-03-25", "2022-05-05", "2022", "2022-03-25", "Unknown", null],
   );
   assert.equal(
     buildMetadataRecord({ common: { year: 2022 } }, "/music/Artist/Album/01 Song.mp3", "/music")

@@ -39,7 +39,11 @@ export const yearFirstReleaseDate = (value: string) => {
     /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/.exec(date) ?? [];
   if (!year) return date || null;
   const [day, month] =
-    Number(first) > 12 ? [first, second] : Number(second) > 12 ? [second, first] : [];
+    Number(first) > 12 || Number(first) === Number(second)
+      ? [first, second]
+      : Number(second) > 12
+        ? [second, first]
+        : [];
   return day && month && Number(month) <= 12
     ? `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`
     : year;
