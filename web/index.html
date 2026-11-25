@@ -68,6 +68,7 @@
         font: 400 17px / 1.55 var(--font-sans);
         isolation: isolate;
         margin: 0;
+        position: relative;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
         text-rendering: optimizeLegibility;
@@ -373,9 +374,65 @@
         background-size: 256px 256px;
       }
 
+      .hell {
+        bottom: 0;
+        left: 0;
+        opacity: 0;
+        overflow: hidden;
+        pointer-events: none;
+        position: absolute;
+        right: 0;
+        transition: opacity 900ms ease;
+        z-index: -1;
+      }
+
+      .hell.is-drawn {
+        opacity: 1;
+      }
+
+      .hell-scene,
+      .hell canvas,
+      .hell-range,
+      .hell-ceiling,
+      .hell::after {
+        inset: 0;
+        position: absolute;
+      }
+
+      .hell::after {
+        background: var(--grain);
+        background-size: 256px 256px;
+        content: "";
+      }
+
+      .hell canvas {
+        display: block;
+        height: 100%;
+        width: 100%;
+      }
+
+      .hell-range {
+        background: linear-gradient(to top, rgb(9 3 2), rgb(28 7 4) 130px);
+      }
+
+      .hell-range + .hell-range {
+        background: linear-gradient(to top, rgb(3 1 1), rgb(13 4 2) 70px);
+      }
+
+      .hell-ceiling {
+        background: var(--chrome) var(--grain);
+        background-size: 256px 256px;
+      }
+
       @keyframes sky-drift {
         to {
           transform: translateY(900px);
+        }
+      }
+
+      @keyframes hell-drift {
+        from {
+          transform: translateY(-900px);
         }
       }
 
@@ -384,6 +441,12 @@
           .sky-stars {
             animation: sky-drift linear both;
             animation-range: 0 2000px;
+            animation-timeline: scroll(root);
+          }
+
+          .hell-scene {
+            animation: hell-drift linear both;
+            animation-range: calc(100% - 2000px) 100%;
             animation-timeline: scroll(root);
           }
         }
@@ -1545,6 +1608,16 @@
       </div>
     </footer>
 
+    <div class="hell" aria-hidden="true" data-hell>
+      <div class="hell-scene">
+        <canvas></canvas>
+        <canvas></canvas>
+        <div class="hell-range"></div>
+        <div class="hell-range"></div>
+      </div>
+      <div class="hell-ceiling"></div>
+    </div>
+
     <script type="module">
       const hero = document.querySelector(".hero");
       const sky = document.querySelector("[data-sky]");
@@ -1952,6 +2025,264 @@
         else play();
       });
       motion.addEventListener("change", redraw);
+
+      const hell = document.querySelector("[data-hell]");
+      const overhang = 32;
+      const [depths, sparks] = hell.querySelectorAll("canvas");
+      const ceiling = hell.querySelector(".hell-ceiling");
+      const ranges = hell.querySelectorAll(".hell-range");
+      const closing = document.querySelector(".closing");
+      const footer = document.querySelector(".footer");
+
+      const glow = [
+        [0, [0, 0, 0]],
+        [0.1, [13, 3, 2]],
+        [0.25, [46, 8, 3]],
+        [0.42, [112, 22, 5]],
+        [0.6, [196, 58, 10]],
+        [0.78, [248, 122, 32]],
+        [0.92, [255, 188, 92]],
+        [1.05, [255, 236, 190]],
+      ];
+      const heat = (t) => {
+        for (let i = 1; i < glow.length; i++) {
+          const [t1, c1] = glow[i];
+          if (t > t1) continue;
+          const [t0, c0] = glow[i - 1];
+          const k = Math.max(0, (t - t0) / (t1 - t0));
+          return c0.map((c, n) => c + (c1[n] - c) * k);
+        }
+        return glow.at(-1)[1];
+      };
+      const paintHell = () => {
+        const width = hell.clientWidth;
+        const height = hell.clientHeight;
+        const dpr = Math.min(2, devicePixelRatio || 1);
+        depths.width = Math.round(width * dpr);
+        depths.height = Math.round(height * dpr);
+        const meta = footer.querySelector(".meta").getBoundingClientRect();
+        const horizon = Math.min(height - 24, meta.bottom + 6 - hell.getBoundingClientRect().top);
+        const reach = overhang + 44;
+
+        const rand = random(41);
+        const profile = new Float32Array(width + 1);
+        for (let x = 0; x <= width; x++) {
+          profile[x] =
+            6 +
+            reach * 0.32 * smooth(0.3, 0.85, fbm(x / 190, 0.5, 81, 5)) +
+            7 * fbm(x / 22, 1.5, 83, 3);
+        }
+        const hang = (center, length, half) => {
+          const top = profile[Math.round(center)] - 2;
+          for (
+            let x = Math.max(0, Math.ceil(center - half));
+            x <= Math.min(width, center + half);
+            x++
+          ) {
+            const k = 1 - Math.abs(x - center) / half;
+            profile[x] = Math.max(profile[x], top + length * k ** 1.7);
+          }
+        };
+        for (let n = 0; n < width / 24; n++) {
+          const center = rand() * width;
+          const cluster = smooth(0.4, 0.7, fbm(center / 130, 2.5, 82, 3));
+          const length = reach * (0.12 + 0.88 * rand() ** 2) * (0.25 + 0.75 * cluster);
+          hang(center, length, Math.max(2, length * (0.1 + 0.12 * rand())));
+        }
+        for (let n = 0; n < width / 30; n++) {
+          hang(rand() * width, 3 + rand() ** 2 * 10, 1.5 + rand() * 2);
+        }
+        const edge = [];
+        for (let x = width; x >= 0; x -= 1) edge.push(`${x} ${profile[x].toFixed(1)}`);
+        ceiling.style.clipPath = `path("M0 0 L${width} 0 L${edge.join(" L")} Z")`;
+
+        const cell = 4;
+        const columns = Math.ceil(width / cell) + 1;
+        const rows = Math.ceil(height / cell) + 1;
+        const air = document.createElement("canvas");
+        air.width = columns;
+        air.height = rows;
+        const airContext = air.getContext("2d");
+        const airPixels = airContext.createImageData(columns, rows);
+        for (let row = 0; row < rows; row++) {
+          const y = row * cell;
+          const lift = Math.max(0, horizon - y);
+          for (let column = 0; column < columns; column++) {
+            const x = column * cell;
+            const drift = fbm(x / 420, y / 220, 51, 3) * 1.8;
+            const smoke = fbm(x / 260, y / 120 + drift, 52, 5);
+            const wisps = fbm(x / 80, y / 50 + drift, 53, 4);
+            const light = 0.15 + 0.1 * Math.exp(-lift / 200) + 0.34 * Math.exp(-lift / 70);
+            const thin = Math.exp(-lift / 120);
+            const t =
+              light *
+              (0.3 + 0.35 * thin + (1.4 - 0.6 * thin) * smooth(0.3, 0.78, smoke)) *
+              (0.85 + 0.3 * wisps);
+            const [r, g, b] = heat(t);
+            const gray = (r + g + b) / 3;
+            const i = (row * columns + column) * 4;
+            airPixels.data[i] = r * 0.8 + gray * 0.2;
+            airPixels.data[i + 1] = g * 0.8 + gray * 0.2;
+            airPixels.data[i + 2] = b * 0.8 + gray * 0.2;
+            airPixels.data[i + 3] = 255;
+          }
+        }
+        airContext.putImageData(airPixels, 0, 0);
+        const context = depths.getContext("2d");
+        context.imageSmoothingQuality = "high";
+        context.drawImage(air, 0, 0, columns * cell * dpr, rows * cell * dpr);
+
+        const range = (peak, seed) => {
+          const line = [];
+          for (let x = 0; x <= width + 3; x += 3) {
+            const mass = 0.35 + 0.65 * smooth(0.3, 0.75, fbm(x / 320, 7.5, seed, 3));
+            const crest = horizon - peak * (0.3 + mass * fbm(x / 130, 8.5, seed + 1, 4) ** 1.3);
+            line.push(`${x} ${crest.toFixed(1)}`);
+          }
+          return `path("M0 ${height + 2} L${line.join(" L")} L${width + 3} ${height + 2} Z")`;
+        };
+        ranges[0].style.clipPath = range(110, 71);
+        ranges[1].style.clipPath = range(46, 75);
+
+        hell.classList.add("is-drawn");
+        return { width, horizon, dpr };
+      };
+
+      const emberSprite = (t, dpr) => {
+        const [r, g, b] = heat(t).map(Math.round);
+        const sprite = document.createElement("canvas");
+        sprite.width = sprite.height = Math.ceil(7 * dpr);
+        const middle = sprite.width / 2;
+        const context = sprite.getContext("2d");
+        const light = context.createRadialGradient(middle, middle, 0, middle, middle, middle);
+        light.addColorStop(0, `rgb(${r} ${g} ${b})`);
+        light.addColorStop(0.18, `rgb(${r} ${g} ${b} / 0.85)`);
+        light.addColorStop(0.45, `rgb(${r} ${Math.round(g * 0.6)} ${Math.round(b * 0.5)} / 0.16)`);
+        light.addColorStop(1, `rgb(${r} 0 0 / 0)`);
+        context.fillStyle = light;
+        context.fillRect(0, 0, sprite.width, sprite.height);
+        return sprite;
+      };
+
+      let fire = null;
+      let embers = [];
+      let emberFrame = 0;
+      let emberLast = 0;
+      let hellVisible = false;
+
+      const kindle = (aged = false) => {
+        const { width, horizon, rand, sprites } = fire;
+        const rise = 9 + rand() * 16;
+        const life = 5 + rand() * 6;
+        const age = aged ? rand() * life : 0;
+        return {
+          x: rand() * width,
+          y: horizon - 10 - rand() * 30 - rise * age,
+          rise,
+          seed: rand() * 1000,
+          age,
+          life,
+          sprite: sprites[Math.floor(rand() * sprites.length)],
+          peak: 0.35 + rand() ** 2 * 0.65,
+        };
+      };
+      const drawEmbers = (now, step) => {
+        const { context, top, dpr } = fire;
+        context.clearRect(0, 0, sparks.width, sparks.height);
+        const seconds = now / 1000;
+        for (let i = 0; i < embers.length; i++) {
+          const ember = embers[i];
+          ember.age += step;
+          if (ember.age >= ember.life) {
+            embers[i] = kindle();
+            continue;
+          }
+          ember.y -= ember.rise * step;
+          ember.x += ((noise(seconds * 0.35 + ember.seed, ember.seed, 91) - 0.5) * 14 + 3) * step;
+          const k = ember.age / ember.life;
+          const flicker = 0.65 + 0.7 * noise(seconds * 5 + ember.seed, ember.seed, 92);
+          context.globalAlpha = Math.min(
+            1,
+            ember.peak * smooth(0, 0.12, k) * (1 - smooth(0.45, 1, k)) * flicker,
+          );
+          const half = ember.sprite.width / 2;
+          context.drawImage(ember.sprite, ember.x * dpr - half, (ember.y - top) * dpr - half);
+        }
+        context.globalAlpha = 1;
+      };
+      const burn = (now) => {
+        emberFrame = requestAnimationFrame(burn);
+        if (now - emberLast < 50) return;
+        const step = Math.min(0.1, (now - emberLast) / 1000);
+        emberLast = now;
+        drawEmbers(now, step);
+      };
+      const smother = () => {
+        cancelAnimationFrame(emberFrame);
+        emberFrame = 0;
+      };
+      const stoke = () => {
+        if (emberFrame || !fire || !hellVisible || document.hidden || !motion.matches) return;
+        emberLast = performance.now();
+        emberFrame = requestAnimationFrame(burn);
+      };
+
+      let hellSize = "";
+      let hellNear = false;
+      let hellPending = 0;
+      const repaintHell = () => {
+        const next = `${hell.clientWidth}:${hell.clientHeight}`;
+        if (!hellNear || !hell.clientHeight || next === hellSize) return;
+        hellSize = next;
+        smother();
+        const { width, horizon, dpr } = paintHell();
+        const top = Math.max(0, horizon - 320);
+        const band = horizon + 8 - top;
+        sparks.style.top = `${top}px`;
+        sparks.style.height = `${band}px`;
+        sparks.width = Math.round(width * dpr);
+        sparks.height = Math.round(band * dpr);
+        fire = {
+          width,
+          horizon,
+          top,
+          dpr,
+          rand: random(13),
+          context: sparks.getContext("2d"),
+          sprites: [0.62, 0.72, 0.82, 0.92].map((t) => emberSprite(t, dpr)),
+        };
+        embers = Array.from({ length: Math.round(width / 48) }, () => kindle(true));
+        stoke();
+      };
+      const sizeHell = new ResizeObserver(() => {
+        const logo = closing.querySelector("img").getBoundingClientRect().top;
+        hell.style.height = `${footer.getBoundingClientRect().bottom - logo + overhang}px`;
+        clearTimeout(hellPending);
+        hellPending = setTimeout(repaintHell, 120);
+      });
+      sizeHell.observe(closing);
+      sizeHell.observe(footer);
+      new IntersectionObserver(
+        ([entry]) => {
+          hellNear ||= entry.isIntersecting;
+          repaintHell();
+        },
+        { rootMargin: "0px 0px 100% 0px" },
+      ).observe(hell);
+      new IntersectionObserver(([entry]) => {
+        hellVisible = entry.isIntersecting;
+        if (hellVisible) stoke();
+        else smother();
+      }).observe(hell);
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) smother();
+        else stoke();
+      });
+      motion.addEventListener("change", () => {
+        smother();
+        fire?.context.clearRect(0, 0, sparks.width, sparks.height);
+        stoke();
+      });
     </script>
 
     <script type="module">
