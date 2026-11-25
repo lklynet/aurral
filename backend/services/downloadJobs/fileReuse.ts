@@ -636,9 +636,11 @@ export async function restoreCompletedTrack(job: DownloadJob, options: RestoreOp
         sourcePath,
         source.albumName || job.albumName || null,
         source.externalPath || null,
-        { reusedLibraryFile: noPlaylistDownloadedFile(sourcePath, job.id) },
+        {
+          reusedLibraryFile: noPlaylistDownloadedFile(sourcePath, job.id),
+          quality: indexedQuality(sourcePath),
+        },
       );
-      takeIndexedFileQuality(sourcePath, [job.id]);
       console.log(
         `[FileReuse] Repaired ${job.playlistType} path from ${source.sourceType}: ${job.artistName} - ${job.trackName}`,
       );
@@ -671,10 +673,18 @@ export async function restoreCompletedTrack(job: DownloadJob, options: RestoreOp
   };
 }
 
-const indexedFile = (filePath: string) =>
-  ["aurral", "readonly", "flow"]
-    .map((source) => getLibraryMediaFile({ source, path: filePath }))
-    .find(Boolean);
+function indexedFile(filePath: string) {
+  for (const source of ["aurral", "readonly", "flow"]) {
+    const media = getLibraryMediaFile({ source, path: filePath });
+    if (media) return media;
+  }
+  return undefined;
+}
+
+const indexedQuality = (filePath: string) => {
+  const media = indexedFile(path.resolve(filePath));
+  return media?.available === 1 ? classifyLibraryFileQuality(media) : undefined;
+};
 
 const sameQuality = (job: DownloadJob, quality: ReturnType<typeof classifyLibraryFileQuality>) =>
   (job.qualityTier ?? null) === quality.tier &&
@@ -682,16 +692,6 @@ const sameQuality = (job: DownloadJob, quality: ReturnType<typeof classifyLibrar
   (job.qualityBitrateKbps ?? null) === quality.bitrateKbps &&
   (job.qualitySampleRate ?? null) === quality.sampleRate &&
   (job.qualityBitDepth ?? null) === quality.bitDepth;
-
-export function takeIndexedFileQuality(filePath: string, jobIds: string[]) {
-  const media = indexedFile(path.resolve(filePath));
-  if (media?.available !== 1) return;
-  const quality = classifyLibraryFileQuality(media);
-  for (const jobId of jobIds) {
-    const job = downloadTracker.getJob(jobId);
-    if (job && !sameQuality(job, quality)) downloadTracker.updateQuality(jobId, quality);
-  }
-}
 
 const resolveReplacedFileSource: typeof resolveRepairTrackSource = async (track, options) => {
   const source = await findLibraryFolderSource(track, options, "aurral");
@@ -742,7 +742,15 @@ export async function followChangedLibraryFiles(changedPaths: string[]) {
     const filePath = path.resolve(finalPath);
     followed.set(filePath, [...(followed.get(filePath) || []), job.id]);
   }
-  for (const [filePath, jobIds] of followed) takeIndexedFileQuality(filePath, jobIds);
+  for (const [filePath, jobIds] of followed) {
+    const media = indexedFile(filePath);
+    if (media?.available !== 1) continue;
+    const quality = classifyLibraryFileQuality(media);
+    for (const jobId of jobIds) {
+      const job = downloadTracker.getJob(jobId);
+      if (job && !sameQuality(job, quality)) downloadTracker.updateQuality(jobId, quality);
+    }
+  }
   if (playlistTypes.size > 0) playlistManager.requestPlaylistSync([...playlistTypes]);
 }
 
@@ -1023,9 +1031,11 @@ export async function reuseTrackForPlaylist(
     finalPath,
     source.albumName || track.albumName || null,
     source.externalPath || null,
-    { reusedLibraryFile: noPlaylistDownloadedFile(finalPath, jobId) },
+    {
+      reusedLibraryFile: noPlaylistDownloadedFile(finalPath, jobId),
+      quality: indexedQuality(finalPath),
+    },
   );
-  takeIndexedFileQuality(finalPath, [jobId]);
   downloadTracker.updateMetadata(jobId, knownIds(track, source));
   console.log(
     `[FileReuse] Reused ${source.sourceType} track for ${playlistType}: ${track.artistName} - ${track.trackName}`,

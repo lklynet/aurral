@@ -12,6 +12,7 @@ import { selectCanonicalFile } from "../canonicalFileSelector.ts";
 import {
   buildFallbackIdentityKey,
   buildIdentityKey,
+  getLibraryMediaFile,
   linkLibraryAlbumTrack,
   upsertLibraryAlbum,
   upsertLibraryArtist,
@@ -19,7 +20,7 @@ import {
 } from "../libraryMediaStore.ts";
 import { getLibraryManagementEntry, setLibraryManagement } from "../libraryManagementStore.ts";
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
-import { takeIndexedFileQuality } from "../downloadJobs/fileReuse.ts";
+import { classifyLibraryFileQuality } from "../qualityProfile.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import { playlistManager } from "../playlists/playlistManager.ts";
 import { recordTrackJobQueued } from "../aurralHistoryService.ts";
@@ -198,10 +199,11 @@ export async function importShare(payload: Record<string, unknown>) {
         });
       if (!jobId) throw new Error("The shared track is incomplete.");
       if (local) {
+        const media = getLibraryMediaFile(local);
         downloadTracker.setDone(jobId, local.path, track.albumTitle, null, {
           reusedLibraryFile: true,
+          quality: media && classifyLibraryFileQuality(media),
         });
-        takeIndexedFileQuality(local.path, [jobId]);
       } else if (includeFiles && file?.path) {
         saveShareDownload(jobId, remote!.url, file.path);
         downloadTracker.updateDownloadMetadata(jobId, { downloadSource: "share" });

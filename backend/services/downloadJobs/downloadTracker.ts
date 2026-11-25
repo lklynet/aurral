@@ -1609,9 +1609,7 @@ export class DownloadTracker {
     return id;
   }
 
-  updateQuality(id: string, quality: QualityUpdate = {}) {
-    const job = this.jobs.get(id);
-    if (!job) return false;
+  _applyQuality(job: DownloadJob, quality: QualityUpdate) {
     job.qualityTier = quality.tier || null;
     job.qualityFormat = quality.format || null;
     job.qualityBitrateKbps = quality.bitrateKbps ?? null;
@@ -1621,6 +1619,12 @@ export class DownloadTracker {
     if (quality.upgradeCheckedAt !== undefined) {
       job.qualityUpgradeCheckedAt = quality.upgradeCheckedAt;
     }
+  }
+
+  updateQuality(id: string, quality: QualityUpdate = {}) {
+    const job = this.jobs.get(id);
+    if (!job) return false;
+    this._applyQuality(job, quality);
     this._store(job);
     this._touchRevision();
     return true;
@@ -1969,7 +1973,7 @@ export class DownloadTracker {
     finalPath: string,
     albumName: string | null | undefined = null,
     externalPath: string | null = null,
-    { reusedLibraryFile }: { reusedLibraryFile?: boolean } = {},
+    { reusedLibraryFile, quality }: { reusedLibraryFile?: boolean; quality?: QualityUpdate } = {},
   ) {
     const job = this.jobs.get(id);
     if (!job || this._isCancelledAlbumJob(job)) return false;
@@ -1986,6 +1990,7 @@ export class DownloadTracker {
     job.finalPath = finalPath;
     job.externalPath = externalPath ?? null;
     if (reusedLibraryFile !== undefined) job.reusedLibraryFile = reusedLibraryFile === true;
+    if (quality) this._applyQuality(job, quality);
     const safeAlbum = String(albumName || "").trim();
     if (safeAlbum) {
       job.albumName = safeAlbum;

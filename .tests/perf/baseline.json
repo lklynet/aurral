@@ -421,8 +421,8 @@
   },
   "subsonic edit playlist": {
     "queries": {
-      "cold": 938,
-      "warm": 964
+      "cold": 963,
+      "warm": 989
     },
     "bytes": 22607,
     "scans": [
