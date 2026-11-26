@@ -32,6 +32,66 @@ test("Deezer preview matching requires the requested artist and track", () => {
   assert.equal(preview?.preview, "right.mp3");
 });
 
+test("Deezer previews match accented metadata against unaccented artist names", () => {
+  const candidates = [
+    {
+      id: 1,
+      title: "Fleur de saison (Gypsy Version)",
+      title_short: "Fleur de saison",
+      artist: { name: "Emilie Simon" },
+      preview: "gypsy.mp3",
+    },
+    {
+      id: 2,
+      title: "Fleur De Saison",
+      artist: { name: "Emilie Simon" },
+      preview: "original.mp3",
+    },
+    {
+      id: 3,
+      title: "Desert (Version Francaise)",
+      title_short: "Desert",
+      artist: { name: "Emilie Simon" },
+      preview: "french.mp3",
+    },
+  ];
+  const artistName = "Émilie Simon";
+
+  assert.equal(
+    selectDeezerTrackPreview(candidates, { artistName, trackName: "Fleur de saison" })?.id,
+    2,
+  );
+  assert.equal(
+    selectDeezerTrackPreview(candidates, { artistName, trackName: "Désert (version française)" })
+      ?.id,
+    3,
+  );
+  assert.equal(
+    selectDeezerTrackPreview(candidates, {
+      artistName,
+      trackName: "Fleur de saison (Gypsy Version)",
+    })?.id,
+    1,
+  );
+  assert.equal(
+    selectDeezerTrackPreview(candidates.slice(0, 1), { artistName, trackName: "Fleur de saison" }),
+    null,
+  );
+});
+
+test("Deezer previews prefer an exact spelling among otherwise equal titles", () => {
+  const entry = { title: "Flowers", preview: "preview.mp3" };
+  const candidates = [
+    { ...entry, id: 1, artist: { name: "Emilie Simon" } },
+    { ...entry, id: 2, artist: { name: "Émilie Simon" } },
+  ];
+
+  assert.equal(
+    selectDeezerTrackPreview(candidates, { artistName: "Émilie Simon", trackName: "Flowers" })?.id,
+    2,
+  );
+});
+
 test("Deezer preview matching accepts the main artist of a shared credit only", () => {
   const candidates = [{ id: 1, title: "Gravity", artist: { name: "John" }, preview: "john.mp3" }];
 

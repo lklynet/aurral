@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import { http, type HttpOptions } from "../../../lib/http.ts";
 import { readMany, readOne } from "../integrationData.ts";
+import { foldDiacritics } from "../providers/metadataRanking.ts";
 import createCache from "./simpleCache.ts";
 import createRateLimiter from "./rateLimiter.ts";
 import { createOutagePause } from "./outagePause.ts";
@@ -440,6 +441,22 @@ export function selectDeezerTrackPreview(
   candidates: v.InferOutput<typeof deezerTrackSchema>[],
   { artistName, trackName }: { artistName: string; trackName: string },
 ) {
+  const previewKey = (value: string | undefined) =>
+    value?.normalize("NFC").trim().toLowerCase() ?? "";
+  const exactMatch = (key: typeof previewKey) => {
+    const artist = key(artistName);
+    const title = key(trackName);
+    if (!artist || !title) return undefined;
+    return candidates.find(
+      (candidate) =>
+        candidate.preview &&
+        key(candidate.artist?.name) === artist &&
+        key(candidate.title) === title,
+    );
+  };
+  const exact = exactMatch(previewKey) ?? exactMatch((value) => previewKey(foldDiacritics(value)));
+  if (exact) return exact;
+
   const targetArtist = normalizeTitle(artistName);
   const targetTrack = normalizeTitle(trackName);
   if (!targetArtist || !targetTrack) return null;
