@@ -850,11 +850,10 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
     }
     resumeAtRef.current = null;
     ownsQueueRef.current = true;
-    if (remoteOfferRef.current) {
-      remoteSentRef.current = null;
-      setRemoteOffer(null);
-    }
+    if (remoteOfferRef.current) setRemoteOffer(null);
+    remoteSentRef.current = null;
     channelRef.current?.postMessage({ type: "playing" });
+    saveQueue();
     const interval = window.setInterval(saveQueue, POSITION_SAVE_MS);
     return () => window.clearInterval(interval);
   }, [isPlayingOrStarting, saveQueue]);
