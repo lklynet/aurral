@@ -396,6 +396,14 @@ test("a pending Plex upload stops once its playlist is removed or Send playlists
   await playlistManager.syncPlaylists({ entityIds: [renamed.id, deleted.id] });
   assert.deepEqual(fake.requests, ["upload 3 Kept.m3u", "upload 3 New.m3u"]);
 
+  fake.requests.length = 0;
+  await fs.rm(path.join(libraryRoot, "Kept.m3u"));
+  assert.equal(await runHourlyPlexRetry(), 1);
+  assert.equal(await runHourlyPlexRetry(), 0);
+  assert.deepEqual(fake.requests, []);
+
+  await playlistManager.syncPlaylists({ entityIds: [kept.id], rewrite: true });
+  assert.deepEqual(fake.requests, ["upload 3 Kept.m3u"]);
   plex.savePlexServer({ url: "http://plex.test", token: "token", sendPlaylists: false });
   plex.savePlexServer({ url: "http://plex.test", token: "token", sendPlaylists: true });
   assert.equal(await runHourlyPlexRetry(), 0);

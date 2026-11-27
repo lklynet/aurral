@@ -240,7 +240,7 @@ type PlaylistFile = { title: string; path: string; empty: boolean };
 const fileExists = (file: string) =>
   fs.access(file).then(
     () => true,
-    () => false,
+    (error) => asAppError(error)?.code !== "ENOENT",
   );
 
 async function retriedUploads(incoming: PlaylistFile[], removals: string[]) {
@@ -264,8 +264,11 @@ export async function sendPlaylistsToPlex(
   const server = getPlexServer();
   if (!server?.sendPlaylists) return;
   const removals = [...new Set([...pendingRemovals(), ...remove])];
-  const batch = [...(await retriedUploads(upload, removals)), ...upload];
-  if (!batch.length && !removals.length) return;
+  const batch = [...(await retriedUploads(upload, remove)), ...upload];
+  if (!batch.length && !removals.length) {
+    if (pendingUploads().length) setPendingUploads([]);
+    return;
+  }
   const files = batch.filter((file) => !file.empty);
   const pending = new Set(files.map((file) => file.path));
   let note = plexPlaylistStatus().note;
