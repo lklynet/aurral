@@ -28,6 +28,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: true
+          cache-toolchain: true
           run-install: |
             - args: ["--frozen-lockfile"]
 
@@ -54,6 +55,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: true
+          cache-toolchain: true
           run-install: |
             - args: ["--frozen-lockfile"]
 
@@ -74,6 +76,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: true
+          cache-toolchain: true
           run-install: |
             - args: ["--frozen-lockfile"]
 
