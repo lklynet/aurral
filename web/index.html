@@ -34,7 +34,8 @@
         --surface: #111111;
         --text: #f5f5f5;
         --text-muted: rgb(255 255 255 / 58%);
-        --text-subtle: rgb(255 255 255 / 46%);
+        --text-soft: rgb(255 255 255 / 72%);
+        --text-subtle: rgb(255 255 255 / 50%);
         --border: rgb(255 255 255 / 8%);
         --border-strong: rgb(255 255 255 / 14%);
         --hover: rgb(255 255 255 / 9%);
@@ -179,6 +180,7 @@
       .brand {
         align-items: center;
         display: inline-flex;
+        flex-shrink: 0;
         font-size: 17px;
         font-weight: 600;
         gap: 10px;
@@ -211,7 +213,6 @@
       }
 
       .nav ul a span {
-        color: var(--text-subtle);
         font-variant-numeric: tabular-nums;
       }
 
@@ -233,6 +234,7 @@
         gap: 8px;
         height: 40px;
         justify-content: center;
+        background: rgb(0 0 0 / 40%);
         padding-inline: 16px;
         transition:
           background-color 150ms ease,
@@ -273,7 +275,7 @@
         }
 
         .button:hover {
-          background: var(--hover);
+          background: rgb(51 51 51 / 45%);
           border-color: rgb(255 255 255 / 22%);
         }
 
@@ -301,7 +303,7 @@
       /* Type */
 
       h1 {
-        font-size: clamp(36px, 6vw, 72px);
+        font-size: min(10vw, clamp(36px, 6vw, 72px));
         font-weight: 600;
         letter-spacing: -0.035em;
         line-height: 1.02;
@@ -313,17 +315,25 @@
         letter-spacing: -0.025em;
         line-height: 1.15;
         max-width: 34ch;
+        text-wrap: balance;
       }
 
-      .quiet {
-        color: var(--text-muted);
+      .lead {
+        display: grid;
+        gap: 12px;
+      }
+
+      .lead .body {
+        max-width: 60ch;
+        text-wrap: balance;
       }
 
       .lede {
-        color: var(--text-muted);
+        color: var(--text-soft);
         font-size: clamp(18px, 1.6vw, 20px);
         line-height: 1.5;
         max-width: 38ch;
+        text-wrap: balance;
       }
 
       .meta {
@@ -420,8 +430,7 @@
       }
 
       .hell-ceiling {
-        background: var(--chrome) var(--grain);
-        background-size: 256px 256px;
+        background: var(--chrome);
       }
 
       @keyframes sky-drift {
@@ -455,6 +464,10 @@
       .hero .actions {
         justify-content: center;
         margin-top: 8px;
+      }
+
+      .hero .meta {
+        color: var(--text);
       }
 
       .shot {
@@ -546,17 +559,23 @@
       .features {
         display: grid;
         gap: 28px 32px;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+
+      @media (min-width: 560px) {
+        .features {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (min-width: 960px) {
+        .features {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
       }
 
       .features li {
         display: grid;
         gap: 4px;
-      }
-
-      .features .icon {
-        color: var(--text);
-        margin-bottom: 8px;
       }
 
       .features h3,
@@ -572,6 +591,7 @@
         color: var(--text-muted);
         font-size: 15px;
         line-height: 1.5;
+        text-wrap: pretty;
       }
 
       /* Numbers */
@@ -592,6 +612,7 @@
         display: flex;
         flex-direction: column-reverse;
         gap: 4px;
+        justify-content: flex-end;
       }
 
       .numbers dd {
@@ -605,15 +626,15 @@
       .numbers dt {
         color: var(--text-muted);
         font-size: 15px;
+        text-wrap: balance;
       }
 
       /* The rest */
 
       .rest ul {
         display: grid;
-        gap: 8px;
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-        margin-inline: -16px;
+        gap: 8px 0;
+        margin: -16px;
       }
 
       .rest a {
@@ -630,9 +651,15 @@
         align-content: start;
       }
 
+      @media (min-width: 560px) {
+        .rest ul {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
       @media (min-width: 960px) {
         .rest ul {
-          grid-template-columns: repeat(4, 1fr);
+          grid-template-columns: repeat(4, minmax(0, 1fr));
         }
       }
 
@@ -646,6 +673,18 @@
         display: grid;
         gap: 32px 24px;
         grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      }
+
+      @media (min-width: 560px) {
+        .stack .groups {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+
+      @media (min-width: 960px) {
+        .stack .groups {
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+        }
       }
 
       .stack h3 {
@@ -748,14 +787,16 @@
       .body {
         color: var(--text-muted);
         max-width: 44ch;
+        text-wrap: pretty;
       }
 
       .body code {
         color: var(--text);
         font: 400 0.9em var(--font-mono);
+        white-space: nowrap;
       }
 
-      @media (max-width: 767px) {
+      @media (max-width: 959px) {
         .code pre {
           font-size: 13px;
         }
@@ -801,7 +842,7 @@
 
       .footer {
         border-top: 1px solid var(--border);
-        color: var(--text-muted);
+        color: var(--text-soft);
         font-size: 15px;
         padding-block: 48px;
       }
@@ -841,7 +882,13 @@
       }
 
       .footer .meta {
+        color: inherit;
         grid-column: 1 / -1;
+      }
+
+      .footer .meta a {
+        text-decoration: underline;
+        text-underline-offset: 3px;
       }
 
       @media (min-width: 768px) {
@@ -869,7 +916,7 @@
         }
 
         .footer .wrap {
-          grid-template-columns: 2fr repeat(3, minmax(0, 1fr));
+          grid-template-columns: 2fr repeat(2, minmax(0, 1fr));
         }
 
         .footer .about {
@@ -877,8 +924,29 @@
         }
       }
 
-      @media (max-width: 440px) {
-        .nav .hide-narrow {
+      @media (max-width: 400px) {
+        .code pre {
+          font-size: 12px;
+        }
+      }
+
+      @media (max-width: 360px) {
+        .button {
+          padding-inline: 12px;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .nav .wrap {
+          gap: 8px;
+        }
+
+        .nav ul a {
+          padding-inline: 8px;
+        }
+
+        .nav .hide-narrow,
+        .nav ul a span {
           display: none;
         }
       }
@@ -898,34 +966,6 @@
   </head>
   <body>
     <svg width="0" height="0" style="position: absolute" aria-hidden="true">
-      <symbol id="i-inbox" viewBox="0 0 24 24">
-        <path d="M22 12h-6l-2 3h-4l-2-3H2" />
-        <path
-          d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"
-        />
-      </symbol>
-      <symbol id="i-news" viewBox="0 0 24 24">
-        <path
-          d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"
-        />
-        <path d="M18 14h-8" />
-        <path d="M15 18h-5" />
-        <path d="M10 6h8v4h-8V6Z" />
-      </symbol>
-      <symbol id="i-palette" viewBox="0 0 24 24">
-        <path
-          d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z"
-        />
-        <path d="M13.5 6.5h.01" />
-        <path d="M17.5 10.5h.01" />
-        <path d="M6.5 12.5h.01" />
-        <path d="M8.5 7.5h.01" />
-      </symbol>
-      <symbol id="i-sparkles" viewBox="0 0 24 24">
-        <path
-          d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"
-        />
-      </symbol>
       <symbol id="i-folder" viewBox="0 0 24 24">
         <path
           d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"
@@ -952,52 +992,6 @@
       <symbol id="i-arrow" viewBox="0 0 24 24">
         <path d="M5 12h14" />
         <path d="m12 5 7 7-7 7" />
-      </symbol>
-      <symbol id="i-history" viewBox="0 0 24 24">
-        <path d="M2 10v3" />
-        <path d="M6 6v11" />
-        <path d="M10 3v18" />
-        <path d="M14 8v7" />
-        <path d="M18 5v13" />
-        <path d="M22 10v3" />
-      </symbol>
-      <symbol id="i-tune" viewBox="0 0 24 24">
-        <path d="M21 4h-7" />
-        <path d="M10 4H3" />
-        <path d="M21 12h-9" />
-        <path d="M8 12H3" />
-        <path d="M21 20h-5" />
-        <path d="M12 20H3" />
-        <path d="M14 2v4" />
-        <path d="M8 10v4" />
-        <path d="M16 18v4" />
-      </symbol>
-      <symbol id="i-trending" viewBox="0 0 24 24">
-        <path d="M22 7 13.5 15.5 8.5 10.5 2 17" />
-        <path d="M16 7h6v6" />
-      </symbol>
-      <symbol id="i-pin" viewBox="0 0 24 24">
-        <path
-          d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"
-        />
-        <circle cx="12" cy="10" r="3" />
-      </symbol>
-      <symbol id="i-refresh" viewBox="0 0 24 24">
-        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-        <path d="M21 3v5h-5" />
-        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-        <path d="M8 16H3v5" />
-      </symbol>
-      <symbol id="i-calendar" viewBox="0 0 24 24">
-        <path d="M8 2v4" />
-        <path d="M16 2v4" />
-        <rect width="18" height="18" x="3" y="4" rx="2" />
-        <path d="M3 10h18" />
-      </symbol>
-      <symbol id="i-import" viewBox="0 0 24 24">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-        <path d="m7 10 5 5 5-5" />
-        <path d="M12 15V3" />
       </symbol>
       <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 3v18l14-9z" /></symbol>
       <symbol id="i-heart" viewBox="0 0 24 24">
@@ -1062,7 +1056,7 @@
             <li><a href="https://docs.aurral.org/faq/">FAQ</a></li>
             <li>
               <a href="https://github.com/lklynet/aurral"
-                >GitHub <span data-stat="stars">2K</span><span class="sr"> stars</span></a
+                >GitHub <span data-stat="stars">2.5K</span><span class="sr"> stars</span></a
               >
             </li>
             <li class="hide-narrow"><a href="https://discord.gg/cpPYfgVURJ">Discord</a></li>
@@ -1084,23 +1078,23 @@
           >
           <a class="button" href="https://github.com/lklynet/aurral">View on GitHub</a>
         </div>
-        <p class="meta">Free and MIT licensed · <span data-stat="version">v3.0.1</span></p>
+        <p class="meta">Free and MIT licensed · <span data-stat="version">v3.1.0</span></p>
       </section>
 
       <div class="wrap">
         <figure class="shot layered">
           <img
             src="screenshots/discover.webp"
-            width="3840"
-            height="2160"
+            width="2400"
+            height="1350"
             fetchpriority="high"
             alt="The Aurral Discover page in immersive mode, tinted by artwork"
             data-shot-mode="immersive"
           />
           <img
             src="screenshots/discover-2.webp"
-            width="3840"
-            height="2160"
+            width="2400"
+            height="1350"
             loading="lazy"
             decoding="async"
             fetchpriority="low"
@@ -1121,15 +1115,15 @@
           <dl>
             <div>
               <dt>GitHub stars</dt>
-              <dd data-stat="stars">2K</dd>
+              <dd data-stat="stars">2.5K</dd>
             </div>
             <div>
               <dt>Docker pulls</dt>
-              <dd data-stat="pulls">1.7M</dd>
+              <dd data-stat="pulls">2.6M</dd>
             </div>
             <div>
-              <dt>Latest release, <span data-stat="released">recently</span></dt>
-              <dd data-stat="version">v3.0.1</dd>
+              <dt>Latest release<span data-stat="released"></span></dt>
+              <dd data-stat="version">v3.1.0</dd>
             </div>
             <div>
               <dt>Integrations</dt>
@@ -1141,30 +1135,24 @@
 
       <section class="chapter" aria-labelledby="discover-title">
         <div class="wrap">
-          <h2 id="discover-title">
-            Discovery that shows its work.
-            <span class="quiet"
-              >Built from what you listen to, with a real reason for every pick.</span
-            >
-          </h2>
+          <div class="lead">
+            <h2 id="discover-title">Discovery that shows its work.</h2>
+            <p class="body">Built from what you listen to, with a real reason for every pick.</p>
+          </div>
           <ul class="features">
             <li>
-              <svg class="icon" aria-hidden="true"><use href="#i-history" /></svg>
               <h3>Start from your history</h3>
               <p>Bring your Spotify history, your existing library, ListenBrainz, or Koito.</p>
             </li>
             <li>
-              <svg class="icon" aria-hidden="true"><use href="#i-tune" /></svg>
               <h3>Adjustable depth</h3>
               <p>Safer, balanced, or deeper cuts. Block artists or genres you never want to see.</p>
             </li>
             <li>
-              <svg class="icon" aria-hidden="true"><use href="#i-trending" /></svg>
               <h3>Trends</h3>
               <p>Global and local charts, tags, and fresh releases in one place.</p>
             </li>
             <li>
-              <svg class="icon" aria-hidden="true"><use href="#i-play" /></svg>
               <h3>Preview before you grab</h3>
               <p>Hear track previews, top songs, and music videos right on the artist page.</p>
             </li>
@@ -1172,10 +1160,10 @@
           <figure class="shot">
             <img
               src="screenshots/playback.webp"
-              width="3840"
-              height="2160"
+              width="2400"
+              height="1350"
               loading="lazy"
-              alt="An Aurral artist page for Daft Punk with popular tracks, videos, and the player"
+              alt="An Aurral artist page for Bad Bunny with popular tracks, videos, and the player"
             />
           </figure>
           <a class="link" href="https://docs.aurral.org/using/discover/"
@@ -1186,33 +1174,29 @@
 
       <section class="chapter" aria-labelledby="playlists-title">
         <div class="wrap">
-          <h2 id="playlists-title">
-            Playlists that refill themselves.
-            <span class="quiet"
-              >Pick the vibe and the schedule. Aurral builds the tracklist, grabs the files, and
-              cleans up after itself.</span
-            >
-          </h2>
+          <div class="lead">
+            <h2 id="playlists-title">Playlists that refill themselves.</h2>
+            <p class="body">
+              Pick the vibe and the schedule. Aurral builds the tracklist, grabs the files, and
+              cleans up after itself.
+            </p>
+          </div>
           <ul class="features">
             <li>
-              <svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg>
               <h3>Rotating flows</h3>
               <p>Pick the mix, the size, and the days. Aurral does the rest.</p>
             </li>
             <li>
-              <svg class="icon" aria-hidden="true"><use href="#i-calendar" /></svg>
               <h3>Made for you</h3>
               <p>
                 Daily mixes and Blends from what you play. Nothing downloads until you save one.
               </p>
             </li>
             <li>
-              <svg class="icon" aria-hidden="true"><use href="#i-import" /></svg>
               <h3>Bring your playlists</h3>
               <p>Import from Spotify, YouTube Music, Last.fm, ListenBrainz, or an M3U file.</p>
             </li>
             <li>
-              <svg class="icon" aria-hidden="true"><use href="#i-play" /></svg>
               <h3>Play them anywhere</h3>
               <p>In the browser, any Subsonic app, or Navidrome, Plex, and Jellyfin.</p>
             </li>
@@ -1220,8 +1204,8 @@
           <figure class="shot cropped">
             <img
               src="screenshots/playlists.webp"
-              width="3840"
-              height="2160"
+              width="2400"
+              height="1350"
               loading="lazy"
               alt="An Aurral playlist called Indie Sleaze and its tracklist"
             />
@@ -1233,37 +1217,33 @@
       </section>
       <section class="chapter" aria-labelledby="inbox-title">
         <div class="wrap">
-          <h2 id="inbox-title">
-            One Inbox for your artists.
-            <span class="quiet">New releases, shows, and news as they come in.</span>
-          </h2>
+          <div class="lead">
+            <h2 id="inbox-title">One Inbox for your artists.</h2>
+            <p class="body">New releases, shows, and news as they come in.</p>
+          </div>
           <ul class="features">
             <li>
-              <svg class="icon" aria-hidden="true"><use href="#i-inbox" /></svg>
               <h3>Your own feed</h3>
               <p>Releases, shows, news, and friend requests. Read, save, or dismiss each one.</p>
             </li>
             <li>
-              <svg class="icon" aria-hidden="true"><use href="#i-calendar" /></svg>
               <h3>Out now, out soon</h3>
-              <p>Albums from your library artists from the last 30 days and the next 90.</p>
+              <p>Albums from your Library artists from the last 30 days and the next 90.</p>
             </li>
             <li>
-              <svg class="icon" aria-hidden="true"><use href="#i-news" /></svg>
               <h3>Artist news</h3>
-              <p>Stories from your RSS feeds that mention your library and recommended artists.</p>
+              <p>Stories from your RSS feeds that mention your Library and recommended artists.</p>
             </li>
             <li>
-              <svg class="icon" aria-hidden="true"><use href="#i-pin" /></svg>
               <h3>Shows nearby</h3>
-              <p>Upcoming concerts for your library artists when you connect Ticketmaster.</p>
+              <p>Upcoming concerts for your Library artists when you connect Ticketmaster.</p>
             </li>
           </ul>
           <figure class="shot align-right">
             <img
               src="screenshots/inbox.webp"
-              width="3840"
-              height="2160"
+              width="2400"
+              height="1350"
               loading="lazy"
               alt="The Aurral Inbox popover showing new artist discoveries and upcoming releases"
             />
@@ -1275,30 +1255,26 @@
       </section>
       <section class="chapter" aria-labelledby="themes-title">
         <div class="wrap">
-          <h2 id="themes-title">
-            Themes.
-            <span class="quiet"
-              >Built-in themes, your own themes, and colors that follow the music.</span
-            >
-          </h2>
+          <div class="lead">
+            <h2 id="themes-title">Themes that follow the music.</h2>
+            <p class="body">
+              Pick a built-in palette, bring your own, or let the cover art set the colors.
+            </p>
+          </div>
           <ul class="features">
             <li>
-              <svg class="icon" aria-hidden="true"><use href="#i-palette" /></svg>
               <h3>Built-in palettes</h3>
               <p>Catppuccin, Rosé Pine, Nord, Gruvbox, and more, light or dark.</p>
             </li>
             <li>
-              <svg class="icon" aria-hidden="true"><use href="#i-import" /></svg>
               <h3>Bring a scheme</h3>
               <p>Create a theme, or import any base16 or base24 scheme.</p>
             </li>
             <li>
-              <svg class="icon" aria-hidden="true"><use href="#i-sparkles" /></svg>
               <h3>Immersive mode</h3>
               <p>Accents and backgrounds take their color from the cover art.</p>
             </li>
             <li>
-              <svg class="icon" aria-hidden="true"><use href="#i-users" /></svg>
               <h3>Synced to your account</h3>
               <p>Your theme is saved to your account, on every device.</p>
             </li>
@@ -1306,10 +1282,10 @@
           <figure class="shot">
             <img
               src="screenshots/themes.webp"
-              width="3840"
-              height="2160"
+              width="2400"
+              height="1350"
               loading="lazy"
-              alt="Aurral in the Catppuccin light theme, with the theme picker"
+              alt="Aurral in its light theme, with the theme picker"
             />
           </figure>
           <a class="link" href="https://docs.aurral.org/using/overview/#settings"
@@ -1372,7 +1348,7 @@
               </a>
             </li>
             <li>
-              <a href="https://docs.aurral.org/using/activity/">
+              <a href="https://docs.aurral.org/using/activity/#wanted">
                 <svg class="icon" aria-hidden="true"><use href="#i-upgrade" /></svg>
                 <h3>Upgrades</h3>
                 <p>Wanted tracks and quality upgrades, searched for you.</p>
@@ -1382,7 +1358,7 @@
               <a href="https://docs.aurral.org/integrations/navidrome/#aurrals-subsonic-server">
                 <svg class="icon" aria-hidden="true"><use href="#i-server" /></svg>
                 <h3>Subsonic server</h3>
-                <p>Play your library in Feishin, Music Assistant, and other Subsonic apps.</p>
+                <p>Play your Library in Feishin, Music Assistant, and other Subsonic apps.</p>
               </a>
             </li>
             <li>
@@ -1412,13 +1388,13 @@
 
       <section class="chapter stack" aria-labelledby="stack-title">
         <div class="wrap">
-          <h2 id="stack-title">
-            Every integration is optional.
-            <span class="quiet"
-              >Already running Navidrome, Plex, or Jellyfin? Aurral plays nice with all of them.
-              Running none of them? Even better. One container is enough.</span
-            >
-          </h2>
+          <div class="lead">
+            <h2 id="stack-title">Every integration is optional.</h2>
+            <p class="body">
+              Already running Navidrome, Plex, or Jellyfin? Aurral plays nice with all of them.
+              Running none? One container is enough.
+            </p>
+          </div>
           <div class="groups">
             <div>
               <h3>Downloads</h3>
@@ -1511,8 +1487,9 @@
             <h2 id="install-title">Up in 60 seconds.</h2>
             <p class="body">
               One container, with a built-in fallback downloader ready out of the box and lossless
-              clients whenever you connect them. Run <code>docker compose up -d</code>, open port
-              3001, and stop babysitting a five-app music stack.
+              clients whenever you connect them. Run <code>docker compose up -d</code>, open
+              <code>http://localhost:3001</code> on the Docker host, and stop babysitting a
+              five&#8209;app music stack.
             </p>
             <div class="links">
               <a class="link" href="https://docs.aurral.org/getting-started/docker/"
@@ -1588,6 +1565,7 @@
           <h2 id="footer-project">Project</h2>
           <ul>
             <li><a href="https://github.com/lklynet/aurral">GitHub</a></li>
+            <li><a href="https://discord.gg/cpPYfgVURJ">Discord</a></li>
             <li><a href="https://github.com/lklynet/aurral/releases">Releases</a></li>
             <li><a href="https://github.com/lklynet/aurral/issues">Issues</a></li>
             <li><a href="https://github.com/sponsors/lklynet/">Sponsor</a></li>
@@ -1595,14 +1573,8 @@
             <li><a href="/terms">Terms</a></li>
           </ul>
         </nav>
-        <nav aria-labelledby="footer-community">
-          <h2 id="footer-community">Community</h2>
-          <ul>
-            <li><a href="https://discord.gg/cpPYfgVURJ">Discord</a></li>
-          </ul>
-        </nav>
         <p class="meta">
-          MIT licensed. Powered by open music data from
+          Powered by open music data from
           <a href="https://metabrainz.org/">MetaBrainz</a>.
         </p>
       </div>
@@ -2349,7 +2321,8 @@
       json("https://api.github.com/repos/lklynet/aurral/releases/latest")
         .then((release) => {
           set("version", release.tag_name);
-          set("released", ago(release.published_at));
+          const released = ago(release.published_at);
+          if (released) set("released", `, ${released}`);
         })
         .catch(() => {});
 

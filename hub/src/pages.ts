@@ -5,12 +5,11 @@ import { formatCode } from "./links.ts";
 
 type Page = HtmlEscapedString | Promise<HtmlEscapedString>;
 
-export const STYLE = `@font-face{font-family:Manrope;src:url("/fonts/manrope-latin.woff2") format("woff2");font-weight:400 800;font-display:swap}
-:root{color-scheme:dark;--text:#fff;--muted:#b4b4b4;--field:#151515;--danger:#f87171}
+export const STYLE = `:root{color-scheme:dark;--text:#fff;--muted:#b4b4b4;--field:#151515;--danger:#f87171}
 *{box-sizing:border-box}
-body{margin:0;background:#000;color:var(--text);font:400 14px/1.5 Manrope,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-.top{max-width:420px;margin:auto;padding:16px 20px 0;font-size:16px;font-weight:750;letter-spacing:-.5px}
-.top a{color:inherit;text-decoration:none}
+body{margin:0;background:#000;color:var(--text);font:400 14px/1.5 ui-sans-serif,system-ui,-apple-system,blinkmacsystemfont,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+.top{max-width:420px;margin:auto;padding:16px 20px 0;font-size:17px;font-weight:600;letter-spacing:-.01em}
+.top a{color:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:10px}
 main{max-width:340px;margin:auto;padding:40px 20px;display:grid;gap:14px}
 h1{margin:0;font-size:24px;letter-spacing:-.4px}
 h2{margin:12px 0 0;font-size:15px}
@@ -21,7 +20,7 @@ p{margin:0}
 .primary{background:var(--text);color:#000}
 .danger{color:var(--danger)}
 .link{background:none;padding-left:0;text-align:left;width:auto}
-input{width:100%;border:0;border-radius:8px;padding:11px 12px;background:var(--field);color:var(--text);font:inherit}
+input{width:100%;border:0;border-radius:6px;padding:11px 12px;background:var(--field);color:var(--text);font:inherit;font-size:16px}
 form{display:grid;gap:10px;margin:0}
 a{color:inherit}
 ul{margin:0;padding-left:18px;display:grid;gap:6px}
@@ -35,11 +34,13 @@ const layout = (title: string, body: Page) =>
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>${title} · aurral</title>
+        <title>${title} · Aurral</title>
         <link rel="stylesheet" href="/account/style.css" />
       </head>
       <body>
-        <div class="top"><a href="/">aurral</a></div>
+        <div class="top">
+          <a href="/"><img src="/favicon.svg" width="27" height="20" alt="" />Aurral</a>
+        </div>
         <main>${body}</main>
       </body>
     </html>`;
