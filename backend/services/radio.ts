@@ -4,7 +4,7 @@ import * as musicData from "./musicDataSource/index.ts";
 import { isSameArtist, matchesArtistKeys } from "../../lib/artistMatch.ts";
 import { getBlockedArtistKeys } from "./discovery/feedback.ts";
 import { getBlockedTagKeys, hasBlockedTag } from "./discovery/blockedTags.ts";
-import { discoverLinks } from "./discovery/discoverLinks.ts";
+import { discoverSimilarArtists } from "./discovery/discoverLinks.ts";
 
 export type RadioArtistRef = { id?: string | null; mbid?: string | null; name?: string | null };
 
@@ -61,6 +61,17 @@ const positiveIds = (values: readonly unknown[]) =>
 
 const defaultSimilarArtists = (artist: RadioArtistRef) =>
   musicData.getSimilarArtists(artist, { limit: SIMILAR_LIMIT });
+
+export function withDiscoverLinks(
+  userId: number | null,
+  source: NonNullable<RadioOptions["similarArtists"]> = defaultSimilarArtists,
+) {
+  const linked = userId ? discoverSimilarArtists(userId) : null;
+  return async (artist: RadioArtistRef) => [
+    ...(linked && artist.name ? linked(artist.name) : []),
+    ...(await withinBudget(source(artist), [] as SimilarArtist[])),
+  ];
+}
 
 async function withinBudget<T>(work: Promise<T>, fallback: T) {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -174,18 +185,13 @@ function resolveSeed(seed: RadioSeed) {
 }
 
 async function similarArtistScores(
-  userId: number | null,
   seeds: RadioArtistRef[],
   similarArtists: NonNullable<RadioOptions["similarArtists"]>,
 ) {
-  const linked = userId ? discoverLinks(userId) : null;
   const lists = await Promise.all(
     seeds
       .slice(0, MAX_SIMILAR_SEEDS)
-      .map(async (seed) => [
-        ...(linked && seed.name ? linked.similarTo(seed.name) : []),
-        ...(await withinBudget(similarArtists(seed), [] as SimilarArtist[])),
-      ]),
+      .map((seed) => withinBudget(similarArtists(seed), [] as SimilarArtist[])),
   );
   const similar = lists.flat();
   const mbids = uniqueText(similar.map((artist) => artist.mbid));
@@ -298,13 +304,17 @@ function genreArtistScores(genres: string[]) {
              WHERE album.artist_id = genres.entity_id
                AND ${untagged("albums", "album.id")} AND ${untagged("tracks", "link.track_id")})
        )
-       GROUP BY artistId ORDER BY overlap DESC LIMIT ?`,
+       GROUP BY artistId ORDER BY overlap DESC, artistId`,
     )
-    .all(...genres, ...genres, ...genres, MAX_GENRE_ARTISTS);
-  const main = mainGenres(rows.map((row) => row.artistId));
-  for (const row of rows) {
-    if (![...(main.get(row.artistId) ?? [])].some((genre) => genres.includes(genre))) continue;
-    scores.set(row.artistId, 0.15 + 0.45 * Math.min(1, row.overlap / genres.length));
+    .all(...genres, ...genres, ...genres);
+  for (let at = 0; at < rows.length && scores.size < MAX_GENRE_ARTISTS; at += MAX_GENRE_ARTISTS) {
+    const batch = rows.slice(at, at + MAX_GENRE_ARTISTS);
+    const main = mainGenres(batch.map((row) => row.artistId));
+    for (const row of batch) {
+      if (scores.size >= MAX_GENRE_ARTISTS) break;
+      if (![...(main.get(row.artistId) ?? [])].some((genre) => genres.includes(genre))) continue;
+      scores.set(row.artistId, 0.15 + 0.45 * Math.min(1, row.overlap / genres.length));
+    }
   }
   return scores;
 }
@@ -433,8 +443,12 @@ function spreadArtists(picks: Candidate[]) {
   const remaining = [...picks];
   const ordered: Candidate[] = [];
   const left = new Map<number, number>();
+  const albumLeft = new Map<number, number>();
   const lastAlbumOf = new Map<number, number>();
-  for (const pick of picks) left.set(pick.artistId, (left.get(pick.artistId) ?? 0) + 1);
+  for (const pick of picks) {
+    left.set(pick.artistId, (left.get(pick.artistId) ?? 0) + 1);
+    albumLeft.set(pick.albumId, (albumLeft.get(pick.albumId) ?? 0) + 1);
+  }
   while (remaining.length) {
     const previous = ordered.at(-1)?.artistId;
     let index = 0;
@@ -448,12 +462,19 @@ function spreadArtists(picks: Candidate[]) {
     }
     const artistId = remaining[index]!.artistId;
     const lastAlbum = lastAlbumOf.get(artistId);
-    const otherAlbum = remaining.findIndex(
-      (pick) => pick.artistId === artistId && pick.albumId !== lastAlbum,
-    );
-    if (otherAlbum >= 0) index = otherAlbum;
+    let fullest = -1;
+    for (let at = 0; at < remaining.length; at += 1) {
+      const pick = remaining[at]!;
+      if (pick.artistId !== artistId || pick.albumId === lastAlbum) continue;
+      const best = remaining[fullest];
+      if (!best || (albumLeft.get(pick.albumId) ?? 0) > (albumLeft.get(best.albumId) ?? 0)) {
+        fullest = at;
+      }
+    }
+    if (fullest >= 0) index = fullest;
     const [next] = remaining.splice(index, 1);
     left.set(next!.artistId, (left.get(next!.artistId) ?? 0) - 1);
+    albumLeft.set(next!.albumId, (albumLeft.get(next!.albumId) ?? 0) - 1);
     lastAlbumOf.set(next!.artistId, next!.albumId);
     ordered.push(next!);
   }
@@ -507,7 +528,7 @@ export async function buildRadio({
   limit = DEFAULT_LIMIT,
   random = Math.random,
   now = Date.now(),
-  similarArtists = defaultSimilarArtists,
+  similarArtists = withDiscoverLinks(userId),
 }: RadioOptions) {
   const size = Math.max(1, Math.min(MAX_LIMIT, Math.floor(limit) || DEFAULT_LIMIT));
   const resolved = resolveSeed(seed);
@@ -519,7 +540,7 @@ export async function buildRadio({
   ];
 
   const scores = genreArtistScores(resolved.genres);
-  const similar = await similarArtistScores(userId, similarSeeds, similarArtists);
+  const similar = await similarArtistScores(similarSeeds, similarArtists);
   for (const [artistId, score] of similar) {
     scores.set(artistId, Math.max(scores.get(artistId) ?? 0, score));
   }
@@ -540,7 +561,7 @@ export async function buildRadio({
       .map((candidate) => candidate.artistId)
       .filter((artistId) => !seedArtistIds.has(artistId)),
   );
-  const connected = playableSimilar.size >= MIN_SIMILAR_ARTISTS;
+  const connected = playableSimilar.size >= MIN_SIMILAR_ARTISTS && fromSimilar.length >= size;
   if (connected) {
     pool = fromSimilar;
     for (const artistId of genreOnly) scores.delete(artistId);
