@@ -11,6 +11,7 @@ import {
 import { downloadWorker } from "../downloadJobs/downloadWorker.ts";
 import { jobDownloadedItsFile, reuseTrackForPlaylist } from "../downloadJobs/fileReuse.ts";
 import { removeLibraryMediaFiles } from "../libraryMediaStore.ts";
+import { removeSidecars } from "../libraryFiles/fileTransfer.ts";
 import { logger } from "../logger.ts";
 import { flowPlaylistConfig } from "./flowPlaylistConfig.ts";
 import {
@@ -193,6 +194,7 @@ async function dropTrackFile(job: DownloadJob) {
     if (cancelled.cleanupFailed) throw new Error("Could not stop its quality upgrade");
   }
   await fs.rm(finalPath, { force: true });
+  await removeSidecars(finalPath).catch(() => {});
   for (const entry of upgrades) downloadTracker.removeJob(entry.id);
   downloadTracker.removeJob(job.id);
   removeLibraryMediaFiles("aurral", [finalPath]);
