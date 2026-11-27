@@ -463,7 +463,7 @@ export async function applyPolarSubscriptionEvent(
              OR excluded.polar_subscription_created_at >= connect_entitlements.polar_subscription_created_at
            )
            AND NOT (
-             (excluded.status = 'canceled' OR excluded.cancel_at_period_end = 1)
+             excluded.status = 'canceled'
              AND connect_entitlements.status IN ('trial', 'active', 'past_due')
              AND (connect_entitlements.current_period_end IS NULL OR connect_entitlements.current_period_end > ?12)
            )

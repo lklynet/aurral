@@ -538,19 +538,25 @@ test("Polar subscription webhooks transition trial -> active -> canceling -> unc
   assert.match(await pagePastDue.text(), /Payment past due/);
 
   const sub2 = await sendSignedWebhook({
-    type: "subscription.active",
+    type: "subscription.canceled",
     data: {
       id: "sub_2",
       status: "active",
       product_id: YEARLY_PRODUCT,
       recurring_interval: "year",
       current_period_end: new Date(baseNow + 365 * 86_400_000).toISOString(),
+      cancel_at_period_end: true,
       created_at: new Date(baseNow + 4900).toISOString(),
       modified_at: new Date(baseNow + 5000).toISOString(),
       customer: { id: "cust_1", external_id: accountId },
     },
   });
   assert.equal(sub2.status, 200);
+  assert.deepEqual(await sub2.json(), { ok: true, applied: true });
+  const afterSub2 = await getConnectBillingSummary(db, accountId);
+  assert.equal(afterSub2.polarSubscriptionId, "sub_2");
+  assert.equal(afterSub2.status, "active");
+  assert.equal(afterSub2.cancelAtPeriodEnd, true);
   const oldPastDue = await sendSignedWebhook({
     type: "subscription.past_due",
     data: {
