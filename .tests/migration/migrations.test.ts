@@ -844,3 +844,84 @@ test("upgrading names the Various Artists artist Various Artists again", () => {
     undefined,
   );
 });
+
+test("upgrading finishes album deletes that left an album behind for sharing songs", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, 40));
+  db.prepare("INSERT INTO settings (key, value) VALUES ('librarySearchIndexVersion', '3')").run();
+  const requested = JSON.stringify({ librarySource: "aurral", monitored: true });
+  const scanned = JSON.stringify({ tags: { album: "Scanned" } });
+  db.exec(`
+    INSERT INTO library_artists (id, identity_key, name, created_at, updated_at)
+      VALUES (1, 'artist:kept', 'Kept', 0, 0), (2, 'artist:deleted', 'Deleted', 0, 0);
+  `);
+  const album = db.prepare(
+    `INSERT INTO library_albums (id, identity_key, release_group_mbid, artist_id, title, metadata_json, created_at, updated_at)
+     VALUES (?, 'release-group:' || ?, ?, ?, ?, ?, 0, 0)`,
+  );
+  const exclude = db.prepare(
+    `INSERT INTO library_monitoring_exclusions (kind, exclusion_key, mbid, title, normalized_title, created_at)
+     VALUES ('album', ?, ?, ?, ?, 0)`,
+  );
+  for (const [id, mbid, artistId, metadata, excluded] of [
+    [1, "kept", 1, requested, false],
+    [2, "deleted", 2, requested, true],
+    [3, "interrupted-add", 1, requested, false],
+    [4, "waiting", 1, requested, true],
+    [5, "unmonitored", 1, requested, true],
+    [6, "scanned", 1, scanned, true],
+    [7, "claimed", 1, requested, true],
+    [8, "own-file", 1, requested, true],
+    [9, "loose-file", 1, requested, true],
+  ] as const) {
+    album.run(id, mbid, mbid, artistId, mbid, metadata);
+    if (excluded) exclude.run(mbid, mbid, mbid, mbid);
+  }
+  db.exec(`
+    INSERT INTO library_management (entity_kind, entity_id, monitor_mode, created_at, updated_at)
+      VALUES ('artist', 1, 'none', 0, 0), ('album', 1, 'monitored', 0, 0),
+        ('album', 4, 'monitored', 0, 0), ('album', 5, 'unmonitored', 0, 0),
+        ('album', 7, NULL, 0, 0);
+    INSERT INTO library_tracks (id, identity_key, title, created_at, updated_at)
+      VALUES (1, 'track:shared', 'Shared', 0, 0), (2, 'track:deleted', 'Deleted', 0, 0),
+        (3, 'track:waiting', 'Waiting', 0, 0), (4, 'track:own', 'Own', 0, 0),
+        (5, 'track:loose', 'Loose', 0, 0);
+    INSERT INTO library_album_tracks (album_id, track_id, created_at)
+      VALUES (1, 1, 0), (2, 1, 0), (2, 2, 0), (3, 1, 0), (4, 3, 0), (5, 3, 0), (6, 3, 0),
+        (7, 3, 0), (8, 4, 0), (9, 5, 0);
+    INSERT INTO library_media_files (track_id, album_id, source, path, available, created_at, updated_at)
+      VALUES (1, 1, 'aurral', '/kept/shared.flac', 1, 0, 0),
+        (2, 2, 'aurral', '/deleted/deleted.flac', 0, 0, 0),
+        (4, 8, 'readonly', '/readonly/own.flac', 1, 0, 0),
+        (5, NULL, 'aurral', '/loose.flac', 1, 0, 0);
+  `);
+  const kept = () => ({
+    links: db.prepare("SELECT * FROM library_album_tracks WHERE album_id = 1").all(),
+    track: db.prepare("SELECT * FROM library_tracks WHERE id = 1").get(),
+    file: db.prepare("SELECT * FROM library_media_files WHERE track_id = 1").all(),
+  });
+  const before = kept();
+
+  migrate(db);
+
+  assert.deepEqual(
+    db.prepare("SELECT id FROM library_albums ORDER BY id").pluck().all(),
+    [1, 3, 4, 5, 6, 7, 8, 9],
+  );
+  assert.deepEqual(kept(), before);
+  assert.deepEqual(
+    db.prepare("SELECT id FROM library_tracks ORDER BY id").pluck().all(),
+    [1, 3, 4, 5],
+  );
+  assert.deepEqual(db.prepare("SELECT path FROM library_media_files ORDER BY path").pluck().all(), [
+    "/kept/shared.flac",
+    "/loose.flac",
+    "/readonly/own.flac",
+  ]);
+  assert.deepEqual(db.prepare("SELECT id FROM library_artists").pluck().all(), [1]);
+  assert.equal(
+    db.prepare("SELECT value FROM settings WHERE key = 'librarySearchIndexVersion'").get(),
+    undefined,
+  );
+});
