@@ -9,6 +9,7 @@ import { lrclibCache } from "../backend/services/apiClients/lrclib.ts";
 import { findTrackLyrics, saveSidecarLyrics } from "../backend/services/lyricsService.ts";
 
 const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-lyrics-"));
+process.env.DOWNLOAD_FOLDER = dir;
 const filePath = path.join(dir, "01 Low Tide.flac");
 const track = {
   artist: "Harbor Lights",
@@ -98,7 +99,13 @@ test("an existing sidecar is never replaced and LRCLIB isn't asked", async () =>
   assert.equal(requests.length, 0);
 });
 
-test("no sidecar is written when LRCLIB has nothing, calls it instrumental, or the track has no title", async () => {
+test("no sidecar is written outside the Library folder, when LRCLIB has nothing or calls it instrumental, or the track has no title", async () => {
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-lyrics-outside-"));
+  const asked = lrclib({ plainLyrics: "Words" });
+  assert.equal(await saveSidecarLyrics(path.join(outside, "01 Low Tide.flac"), track), false);
+  assert.deepEqual([asked.length, await fs.readdir(outside)], [0, []]);
+  await fs.rm(outside, { recursive: true });
+  vi.restoreAllMocks();
   lrclib(null);
   assert.equal(await saveSidecarLyrics(filePath, track), false);
   lrclibCache.flushAll();
