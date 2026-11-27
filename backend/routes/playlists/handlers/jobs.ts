@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { staticPlaylistJobs } from "../../../services/playlists/playlistJobs.ts";
+import { playlistOperationQueue } from "../../../services/playlists/playlistOperationQueue.ts";
 import * as v from "valibot";
 import path from "path";
 import {
@@ -8,7 +9,6 @@ import {
   jobStatusSchema,
 } from "../../../services/downloadJobs/downloadTracker.ts";
 import { activityCauseKey } from "../../../../lib/activity.ts";
-import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.ts";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
 import { orderJobsByPlaylistTracks } from "../../../services/playlists/playlistTracks.ts";
 import { trackAdders } from "../../../services/playlists/playlistMembers.ts";
@@ -422,11 +422,14 @@ export default new Hono<AppEnv>()
   )
   .post("/research-missing", requirePlaylistAccess, async (c) => {
     try {
-      let requeued = 0;
-      for (const playlistId of [LIBRARY_JOB_TYPE, ...getAccessiblePlaylistIds(c.var.user)]) {
-        requeued += await downloadWorker.researchMissingTracks(playlistId);
-      }
-      return c.json({ success: true, requeued }, 200);
+      const result = await playlistOperationQueue.enqueuePayload(
+        {
+          kind: "research-missing",
+          playlistIds: [LIBRARY_JOB_TYPE, ...getAccessiblePlaylistIds(c.var.user)],
+        },
+        { dedupeKey: `research-missing:${getActorId(c.var.user)}` },
+      );
+      return c.json({ success: true, queued: true, operationId: result.operationId }, 202);
     } catch (error) {
       return c.json(
         { error: "Failed to re-search missing tracks", message: asAppError(error)?.message },

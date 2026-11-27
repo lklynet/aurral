@@ -382,21 +382,21 @@ export default function ActivityMissingPage() {
             ? `${queued} upgrade search${queued === 1 ? "" : "es"} queued`
             : "No new upgrade searches were queued",
         );
+        await loadJobs();
+        await queryClient.invalidateQueries({ queryKey: ["activity", "requests"] });
       } else {
-        const { requeued } = await parseResponse(playlistJobsClient["research-missing"].$post());
+        await parseResponse(playlistJobsClient["research-missing"].$post());
+        const ids = new Set(actionableJobs.map(getMissingJobKey));
+        queryClient.setQueryData<MissingPageJob[]>(queryKeys.playlistJobs(), (current) =>
+          (current ?? []).filter((entry) => !ids.has(getMissingJobKey(entry))),
+        );
         setActionStates((current) => {
           const next = { ...current };
-          for (const job of actionableJobs) delete next[getMissingJobKey(job)];
+          for (const id of ids) delete next[id];
           return next;
         });
-        showSuccess(
-          requeued > 0
-            ? `Re-searching ${requeued} missing track${requeued === 1 ? "" : "s"}`
-            : "No missing tracks to re-search",
-        );
+        showSuccess(`Re-searching ${ids.size} missing track${ids.size === 1 ? "" : "s"}`);
       }
-      await loadJobs();
-      await queryClient.invalidateQueries({ queryKey: ["activity", "requests"] });
     } catch (requestError) {
       setActionStates((current) => {
         const next = { ...current };

@@ -5,6 +5,7 @@ import { playlistManager } from "../playlists/playlistManager.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import type { FlowRunSpec } from "../flows/flowTrackSource.ts";
 import { buildFlowRunPlanIsolated } from "../flows/flowPlanRunner.ts";
+import { db } from "../../config/db-sqlite.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { resolveTrackSearchContext } from "./trackSearchContext.ts";
 import {
@@ -41,7 +42,7 @@ import { isPipelinePayloadActive } from "./downloadCancellation.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { getShareDownload } from "../shareLinks/downloadStore.ts";
 import { getDownloadClient } from "../download/downloadClientSettings.ts";
-import { recordTrackJobFailed } from "../aurralHistoryService.ts";
+import { recordTrackJobFailed, recordTrackJobRequeued } from "../aurralHistoryService.ts";
 import { recordRequestGroupDownloaded } from "../aurralHistoryRequests.ts";
 import { finalizeQualityUpgradeFailure } from "../qualityUpgradeOutcome.ts";
 import { trackWork } from "../eventLoopWatch.ts";
@@ -402,26 +403,25 @@ export class DownloadWorker {
     this._requestStop();
   }
 
-  async researchMissingTracks(playlistType: string) {
-    const jobs = downloadTracker.getByPlaylistType(playlistType);
+  async researchMissingTracks(playlistTypes: string[]) {
+    const wanted = new Set(playlistTypes);
     const isUnmonitored = indexUnmonitoredJobs();
-    let requeued = 0;
-    for (const job of jobs) {
-      if (job.status !== "failed" || isUnmonitored(job)) continue;
-      const priorError = String(job?.error || "").trim();
-      const reason = ["Manual re-search", priorError].filter(Boolean).join(" • ");
-      if (downloadTracker.setPending(job.id, reason || null, { asRetryCycle: true })) {
-        requeued += 1;
-      }
-    }
-    if (requeued > 0) return requeued;
-    const stats = downloadTracker.getPlaylistTypeStats(playlistType);
-    if (stats.pending > 0) {
-      if (this.running) {
-        this.wake();
-      } else {
-        await this.start();
-      }
+    const missing = downloadTracker
+      .getByStatus("failed")
+      .filter((job) => wanted.has(job.playlistType) && !isUnmonitored(job));
+    const requeued = db.transaction(
+      () =>
+        missing.filter((job) => {
+          const priorError = String(job.error || "").trim();
+          const reason = ["Manual re-search", priorError].filter(Boolean).join(" • ");
+          if (!downloadTracker.setPending(job.id, reason, { asRetryCycle: true })) return false;
+          recordTrackJobRequeued(downloadTracker.getJob(job.id));
+          return true;
+        }).length,
+    )();
+    if (requeued === 0 && downloadTracker.getNextPending()) {
+      if (this.running) this.wake();
+      else await this.start();
     }
     return requeued;
   }
@@ -901,7 +901,7 @@ function createRemoteDownloadWorker() {
     stop: () => notify("stop", []),
     stopAndDrain: () => call("stopAndDrain", [], 30 * 60 * 1000),
     wake: (delayMs = 0) => notify("wakeOrStart", [delayMs]),
-    researchMissingTracks: (id: string) => call("researchMissingTracks", [id], 10 * 60 * 1000),
+    researchMissingTracks: (ids: string[]) => call("researchMissingTracks", [ids], 10 * 60 * 1000),
     setRetryCyclePaused: async (id: string, paused: boolean) => {
       const result = await call("setRetryCyclePaused", [id, paused]);
       dbOps.invalidateSettingsCache();
