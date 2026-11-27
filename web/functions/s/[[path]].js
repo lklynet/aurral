@@ -293,7 +293,8 @@ function playerSection(tracks, { kind, credit = null, download = null } = {}) {
   const label = previewsOnly ? `Play preview${single ? "" : "s"}` : single ? "Play" : "Play all";
   const subtitles = tracks.map(
     (track) =>
-      (kind === "artist" && track.albumTitle) || (track.artistName !== credit && track.artistName),
+      (kind === "artist" && track.albumTitle) ||
+      (matchScore(credit, track.artistName) < 2 && track.artistName),
   );
   const rows = tracks
     .map(

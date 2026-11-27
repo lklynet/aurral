@@ -57,7 +57,7 @@ test("a Deezer outage on a shared preview is a 502, not a missing track", async 
 
 for (const [kind, credits, hidden] of [
   ["artist", ["Artist", "Other"], []],
-  ["album", ["Guest"], ["Artist"]],
+  ["album", ["Guest"], ["Ártist"]],
 ] as const) {
   test(`a shared ${kind} offers catalog previews credited only where the header does not`, async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
@@ -76,7 +76,7 @@ for (const [kind, credits, hidden] of [
             {
               id: 42,
               title: "Song <test>",
-              artist: { name: "Artist" },
+              artist: { name: "Ártist" },
               album: { title: "Artist" },
               preview: "https://preview.example.com/42.mp3",
             },
