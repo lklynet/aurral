@@ -226,13 +226,15 @@ test.each([
   assert.deepEqual((await readAudioTags(file)).artists, []);
 });
 
-test("an ID3v2.3 download upgrades through common tags without losing artwork, ReplayGain, lyrics, ratings, or audio", async () => {
+test("an ID3v2.3 download upgrades through common tags without losing artwork, ReplayGain, lyrics, ratings, custom TXXX tags, or audio", async () => {
   const filePath = makeAudio("legacy.mp3", ["-c:a", "libmp3lame", "-id3v2_version", "0"]);
   const audio = await readFile(filePath);
   const cover = Buffer.from("cover-art");
   const originalIdentity = { trackMbid: "original-recording" };
   const textFrame = (text: string) =>
     Buffer.concat([Buffer.from([0]), Buffer.from(text, "latin1")]);
+  const utf16Frame = (text: string) =>
+    Buffer.concat([Buffer.from([1]), Buffer.from(`\uFEFF${text}`, "utf16le")]);
   const frame = (id: string, body: Buffer) => {
     const header = Buffer.alloc(10);
     header.write(id);
@@ -243,10 +245,14 @@ test("an ID3v2.3 download upgrades through common tags without losing artwork, R
     frame("TIT2", textFrame("Original")),
     frame("TALB", textFrame("Uploader's album")),
     frame("TPE1", textFrame("Uploader")),
+    frame("TPE2", utf16Frame("Proxy\0\uFEFF\0\uFEFF")),
     frame("TRCK", textFrame("7/12")),
     frame("TPOS", textFrame("1/2")),
     frame("TYER", textFrame("1999")),
     frame("TXXX", textFrame(`AURRAL_IDS\0${JSON.stringify(originalIdentity)}`)),
+    frame("TXXX", textFrame("MusicBrainz Album Id\0dddddddd-dddd-4ddd-8ddd-dddddddddddd")),
+    frame("TXXX", textFrame("ROONTRACKTAG\0Favorite")),
+    frame("TXXX", textFrame("ROONTRACKTAG\0Late Night")),
     frame("TXXX", textFrame("REPLAYGAIN_TRACK_GAIN\0-6.10 dB")),
     frame("TXXX", textFrame("REPLAYGAIN_ALBUM_GAIN\0-4.20 dB")),
     frame("TXXX", textFrame("REPLAYGAIN_TRACK_PEAK\0" + "0.91")),
@@ -287,6 +293,13 @@ test("an ID3v2.3 download upgrades through common tags without losing artwork, R
   assert.equal(after.common.trackNumber, 1);
   assert.equal(after.common.trackTotal, 12);
   assert.equal(after.common.discTotal, 2);
+  assert.equal(after.common.mbReleaseId, undefined);
+  assert.deepEqual(
+    after.native["ID3v2.4"]
+      ?.filter((tag) => tag.id === "TXXX:ROONTRACKTAG")
+      .map((tag) => tag.value),
+    ["Favorite", "Late Night"],
+  );
   for (const key of [
     "picture",
     "lyrics",
@@ -310,9 +323,50 @@ test("an ID3v2.3 download upgrades through common tags without losing artwork, R
   assert.deepEqual(await writeAudioTags(titleOnly, { title: "Corrected" }), ["title"]);
   const corrected = await parseFile(titleOnly);
   assert.equal(corrected.common.title, "Corrected");
+  assert.equal(corrected.common.albumArtist, "Proxy");
+  assert.deepEqual(
+    corrected.native["ID3v2.4"]
+      ?.filter((tag) => tag.id === "TXXX:ROONTRACKTAG")
+      .map((tag) => tag.value),
+    ["Favorite", "Late Night"],
+  );
   assert.deepEqual(readAurralIdentity(corrected), originalIdentity);
   assert.deepEqual(corrected.common.picture, before.common.picture);
   assert.deepEqual((await readFile(titleOnly)).subarray(-audio.length), audio);
+
+  const v22Path = path.join(tempDir, "legacy-v22.mp3");
+  const frame22 = (id: string, data: Buffer) => {
+    const frameHeader = Buffer.alloc(6);
+    frameHeader.write(id);
+    frameHeader[3] = (data.length >>> 16) & 0xff;
+    frameHeader[4] = (data.length >>> 8) & 0xff;
+    frameHeader[5] = data.length & 0xff;
+    return Buffer.concat([frameHeader, data]);
+  };
+  const body22 = Buffer.concat([
+    frame22("TT2", textFrame("Old V22")),
+    frame22("TP1", textFrame("Old Artist")),
+    frame22("TXX", textFrame("CUSTOM_V22\0Keep this")),
+  ]);
+  const header22 = Buffer.from([73, 68, 51, 2, 0, 0, 0, 0, 0, 0]);
+  header22[6] = (body22.length >>> 21) & 127;
+  header22[7] = (body22.length >>> 14) & 127;
+  header22[8] = (body22.length >>> 7) & 127;
+  header22[9] = body22.length & 127;
+  await writeFile(v22Path, Buffer.concat([header22, body22, audio]));
+  assert.equal((await readAudioTags(v22Path)).title, "Old V22");
+  assert.deepEqual(await writeAudioTags(v22Path, { title: "New V22" }), ["title"]);
+  const saved22 = await parseFile(v22Path);
+  assert.ok(saved22.native["ID3v2.4"]);
+  assert.equal(saved22.common.title, "New V22");
+  assert.equal(saved22.common.artist, "Old Artist");
+  assert.deepEqual(
+    saved22.native["ID3v2.4"]
+      ?.filter((tag) => tag.id === "TXXX:CUSTOM_V22")
+      .map((tag) => tag.value),
+    ["Keep this"],
+  );
+  assert.deepEqual((await readFile(v22Path)).subarray(-audio.length), audio);
 });
 
 test("tagging a fragmented M4A leaves the file as it was instead of breaking its audio", async () => {
