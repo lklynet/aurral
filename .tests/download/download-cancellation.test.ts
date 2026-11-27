@@ -4,6 +4,7 @@ import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
+import * as v from "valibot";
 
 import {
   setupIsolatedBackend,
@@ -88,7 +89,7 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("provider cancellation retry retains IDs from pipeline rows removed on the first attempt", async () => {
+test("provider cancellation discards the download a queued step tracks and finishes when the provider refuses", async () => {
   const { getDownloadClient } =
     await import("../../backend/services/download/downloadClientSettings.ts");
   const client = getDownloadClient("deemix");
@@ -96,10 +97,8 @@ test("provider cancellation retry retains IDs from pipeline rows removed on the 
   vi.spyOn(client, "getQueue").mockImplementation(async () => ({
     "provider-id-only-in-payload": { status: "downloading" },
   }));
-  let succeeds = false;
   const remove = vi.spyOn(client, "removeFromQueue").mockImplementation(async () => {
-    if (!succeeds) throw new Error("deemix refused");
-    return true;
+    throw new Error("deemix refused");
   });
   const jobId = createTrackedJob(
     downloadTracker,
@@ -114,13 +113,12 @@ test("provider cancellation retry retains IDs from pipeline rows removed on the 
     phase: "poll",
     pendingId: "provider-id-only-in-payload",
   });
-  await assert.rejects(
-    cancellationServiceModule.cancelDownloadWorkForJobs([trackedJob(downloadTracker, jobId)]),
-  );
-  succeeds = true;
   await cancellationServiceModule.cancelDownloadWorkForJobs([trackedJob(downloadTracker, jobId)]);
-  assert.equal(remove.mock.calls.length, 2);
-  assert.equal(remove.mock.calls[1]?.[0], "provider-id-only-in-payload");
+  assert.deepEqual(
+    remove.mock.calls.map(([queueId]) => queueId),
+    ["provider-id-only-in-payload"],
+  );
+  assert.equal(dbOps.getJSONSetting(`downloadCancellationWork:${jobId}`, v.unknown()), null);
 });
 
 test("provider cancellation keeps saved queue IDs when a saved job can't be read", async () => {
@@ -505,7 +503,7 @@ test("settled slskd searches no longer block playlist cancellation", async () =>
   }
 });
 
-test("failed provider cancellation keeps durable slskd work for a later retry", async () => {
+test("failed slskd cancellation finishes and leaves the search for the orphan sweep", async () => {
   const playlistId = "provider-work-retry-playlist";
   const jobId = "provider-work-retry-job";
   const originalSettings = dbOps.getSettings();
@@ -536,12 +534,9 @@ test("failed provider cancellation keeps durable slskd work for a later retry", 
   });
 
   try {
-    await assert.rejects(
-      cancellationServiceModule.cancelPlaylistDownloadWork(
-        playlistId,
-        downloadTracker.getByPlaylistId(playlistId),
-      ),
-      /Could not cancel download provider work/,
+    await cancellationServiceModule.cancelPlaylistDownloadWork(
+      playlistId,
+      downloadTracker.getByPlaylistId(playlistId),
     );
     assert.equal(listDownloadProviderWork({ playlistId, provider: "slskd-search" }).length, 1);
   } finally {
@@ -550,7 +545,7 @@ test("failed provider cancellation keeps durable slskd work for a later retry", 
   }
 });
 
-test("SABnzbd cancellation retains a job when a refused queue deletion leaves it queued", async () => {
+test("SABnzbd cancellation lets go of a job when a refused queue deletion leaves it queued", async () => {
   const playlistId = "sabnzbd-refused-delete";
   const jobId = createTrackedJob(
     downloadTracker,
@@ -570,14 +565,11 @@ test("SABnzbd cancellation retains a job when a refused queue deletion leaves it
   }));
   vi.spyOn(sabnzbdClient, "getHistoryItem").mockImplementation(async () => null);
 
-  await assert.rejects(
-    cancellationServiceModule.cancelPlaylistDownloadWork(
-      playlistId,
-      downloadTracker.getByPlaylistId(playlistId),
-    ),
-    /Could not cancel download provider work/,
+  await cancellationServiceModule.cancelPlaylistDownloadWork(
+    playlistId,
+    downloadTracker.getByPlaylistId(playlistId),
   );
-  assert.equal(downloadTracker.getJob(jobId)?.downloadClientId, "sabnzbd:SABnzbd_nzo_refused");
+  assert.equal(downloadTracker.getJob(jobId)?.downloadClientId, null);
 });
 
 test("SABnzbd cancellation accepts already absent queue and history items", async () => {
@@ -668,7 +660,7 @@ test("Tidarr cancellation deletes the tracked download", async () => {
   assert.deepEqual(deleted, ["tidarr_nzo_77777"]);
 });
 
-test("playlist cancellation keeps provider work retryable when providers are unconfigured", async () => {
+test("playlist cancellation finishes when its providers are not configured", async () => {
   const playlistId = "unconfigured-provider-playlist";
   const originalSettings = dbOps.getSettings();
 
@@ -724,18 +716,13 @@ test("playlist cancellation keeps provider work retryable when providers are unc
   });
 
   try {
-    await assert.rejects(
-      cancellationServiceModule.cancelPlaylistDownloadWork(
-        playlistId,
-        downloadTracker.getByPlaylistId(playlistId),
-      ),
-      /Could not cancel download provider work/,
+    await cancellationServiceModule.cancelPlaylistDownloadWork(
+      playlistId,
+      downloadTracker.getByPlaylistId(playlistId),
     );
 
     await assert.rejects(fs.access(stagingPath));
-    for (const jobId of [slskdJobId, deemixJobId, sabnzbdJobId]) {
-      assert.ok(trackedJob(downloadTracker, jobId));
-    }
+    assert.equal(dbOps.getJSONSetting(`playlistCancellationWork:${playlistId}`, v.unknown()), null);
     assert.equal(listDownloadProviderWork({ playlistId, provider: "slskd-search" }).length, 1);
     assert.equal(
       isPipelinePayloadActive({ jobId: slskdJobId, playlistId, playlistGeneration: 0 }),

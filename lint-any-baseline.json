@@ -25,7 +25,7 @@
   ".tests/discovery/trending-charts.test.ts": 3,
   ".tests/discovery/user-discovery.test.ts": 1,
   ".tests/download/album-source-grabs.test.ts": 4,
-  ".tests/download/approved-import-path.test.ts": 33,
+  ".tests/download/approved-import-path.test.ts": 30,
   ".tests/download/cancellation-enqueue.test.ts": 3,
   ".tests/download/manual-missing-search.test.ts": 3,
   ".tests/download/provider-enqueue-cancellation.test.ts": 1,

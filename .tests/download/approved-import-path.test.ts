@@ -541,18 +541,12 @@ test("clearing all jobs waits for an in-flight playlist import to finish", async
   downloadTracker.removeJob(concurrentJobId);
 });
 
-test("failed clear-all leaves jobs stopped and visible so provider cleanup can be retried", async () => {
+test("clear-all clears jobs when the download provider fails", async () => {
   const playlistId = "clear-all-provider-failure";
   const originalSettings = dbOps.getSettings();
-  let providerStatus = 503;
   const mock = await createMockHttpServer((request, response) => {
     request.resume();
-    if (providerStatus < 400 && request.method === "GET") {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ endedAt: "2026-11-05T12:00:00Z" }));
-      return;
-    }
-    response.writeHead(providerStatus);
+    response.writeHead(503);
     response.end();
   });
   const jobId = createTrackedJob(
@@ -575,25 +569,12 @@ test("failed clear-all leaves jobs stopped and visible so provider cleanup can b
   });
 
   try {
-    const failedResponse = await fetch(`${baseUrl}/jobs/all`, { method: "DELETE" });
-    const failedPayload = await failedResponse.json();
-    const stoppedJob = downloadTracker.getJob(jobId);
-    assert.ok(stoppedJob != null);
-
-    assert.equal(failedResponse.status, 500);
-    assert.match(failedPayload.error, /stopped in Aurral and marked failed/i);
-    assert.equal(stoppedJob.status, "failed");
-    assert.match(stoppedJob.error!, /provider cancellation pending/i);
-    assert.equal(isPipelinePayloadActive({ jobId, playlistId, playlistGeneration: 0 }), false);
-    assert.equal(listDownloadProviderWork({ jobIds: [jobId] }).length, 1);
-
-    providerStatus = 204;
-    const retryResponse = await fetch(`${baseUrl}/jobs/all`, { method: "DELETE" });
-    const retryPayload = await retryResponse.json();
-    assert.equal(retryResponse.status, 200, JSON.stringify(retryPayload));
-    assert.equal(retryPayload.cleared, 1);
+    const response = await fetch(`${baseUrl}/jobs/all`, { method: "DELETE" });
+    const payload = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(payload));
+    assert.equal(payload.cleared, 1);
     assert.equal(downloadTracker.getJob(jobId), null);
-    assert.equal(listDownloadProviderWork({ jobIds: [jobId] }).length, 0);
+    assert.equal(listDownloadProviderWork({ jobIds: [jobId] }).length, 1);
   } finally {
     dbOps.updateSettings(originalSettings);
     clearDownloadProviderWork({ provider: "slskd-search", workId: "clear-all-retry-search" });

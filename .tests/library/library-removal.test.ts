@@ -158,15 +158,10 @@ const exists = (filePath: string | null) =>
 
 function useFailingSlskd() {
   const originalSettings = dbOps.getSettings();
-  const provider = { status: 503, close: async () => {} };
+  const provider = { close: async () => {} };
   const serverReady = createMockHttpServer((request, response) => {
     request.resume();
-    if (provider.status < 400 && request.method === "GET") {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ endedAt: "2026-11-05T12:00:00Z" }));
-      return;
-    }
-    response.writeHead(provider.status);
+    response.writeHead(503);
     response.end();
   }).then((server) => {
     dbOps.updateSettings({
@@ -278,30 +273,22 @@ test("removing a mixed album keeps the read-only file, its track, and the album"
   assert.equal(managementStore.getLibraryManagementEntry("album", album.id), null);
 });
 
-test("album removal stops before changing anything when downloads cannot be cancelled", async () => {
-  const provider = await useFailingSlskd();
+test("album removal finishes while its download provider is disabled", async () => {
   const { album, tracks, jobFor } = await createAlbum();
   const jobId = jobFor(1);
-  const clearSearch = registerSlskdSearch(jobId);
+  assert.ok(jobId != null);
+  downloadTracker.setDownloading(jobId);
+  downloadTracker.updateDownloadMetadata(jobId, {
+    downloadSource: "tidarr",
+    downloadClientId: "tidarr:tidarr_nzo_disabled",
+  });
 
-  try {
-    const failed = await removeAlbum(album, true);
-    assert.equal(failed.statusCode, 409);
-    assert.equal(failed.body.code, "download_cancellation_failed");
-    assert.notEqual(albumRow(album.id), undefined);
-    assert.equal(await exists(requireFixture(tracks[0]).filePath!), true);
-    assert.notEqual(getJob(jobId), null);
-    assert.ok(managementStore.getLibraryManagementEntry("album", album.id));
+  const removed = await removeAlbum(album, true);
 
-    provider.status = 204;
-    const retried = await removeAlbum(album, true);
-    assert.equal(retried.statusCode, 200);
-    assert.equal(albumRow(album.id), undefined);
-    assert.equal(await exists(requireFixture(tracks[0]).filePath!), false);
-  } finally {
-    clearSearch();
-    await provider.close();
-  }
+  assert.equal(removed.statusCode, 200);
+  assert.equal(albumRow(album.id), undefined);
+  assert.equal(await exists(requireFixture(tracks[0]).filePath!), false);
+  assert.equal(downloadTracker.getJob(jobId), null);
 });
 
 test("removing an album of a monitored artist records an exclusion, and read-only albums are refused", async () => {
@@ -430,7 +417,7 @@ test("removing the last album of an artist Aurral does not follow removes the ar
   assert.ok(artistRow(followed.artist.id));
 });
 
-test("a failed artist removal stops monitoring and finishes on retry", async () => {
+test("artist removal finishes when its download provider fails", async () => {
   const provider = await useFailingSlskd();
   const first = await createAlbum();
   const second = await createAlbum({ artist: first.artist });
@@ -439,19 +426,8 @@ test("a failed artist removal stops monitoring and finishes on retry", async () 
   const clearSearch = registerSlskdSearch(blockedJob);
 
   try {
-    const failed = await removeArtist(first.artist, true);
-    assert.equal(failed.statusCode, 409);
-    assert.equal(failed.body.code, "download_cancellation_failed");
-    assert.notEqual(artistRow(first.artist.id), undefined);
-    assert.notEqual(albumRow(second.album.id), undefined);
-    assert.equal(await exists(requireFixture(second.tracks[0]).filePath!), true);
-    const artistState = managementStore.getLibraryManagementEntry("artist", first.artist.id);
-    assert.equal(artistState?.monitorMode, "none");
-    assert.equal(artistState?.monitorRules, null);
-
-    provider.status = 204;
-    const retried = await removeArtist(first.artist, true);
-    assert.equal(retried.statusCode, 200);
+    const removed = await removeArtist(first.artist, true);
+    assert.equal(removed.statusCode, 200);
     assert.equal(artistRow(first.artist.id), undefined);
     assert.equal(albumRow(first.album.id), undefined);
     assert.equal(albumRow(second.album.id), undefined);

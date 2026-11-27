@@ -182,8 +182,9 @@ and keeps the previous monitoring. `POST /api/library/artists` accepts the same
 
 `DELETE /api/library/albums/:albumId` and
 `DELETE /api/library/artists/:mbid` cancel
-unfinished downloads first. They return `409` with `download_cancellation_failed`
-when a download client does not confirm the cancellation. Removing an album
+unfinished downloads first. A download client that is off, unreachable, or
+failing doesn't block the removal; its own copy of the download stays where it
+is. Removing an album
 records an exclusion, so the artist's monitoring leaves it out, and the
 response has `excluded: true`. Requesting the album, or deleting its exclusion,
 lets monitoring download it again. Deleting a track file records a track
@@ -380,9 +381,9 @@ The routes call a static playlist a shared playlist.
 Cancelling a song needs `accessPlaylists` and access to its playlist, or the user who
 requested the Library download. Other users get `403`. The track stays
 monitored, and other songs in the same album download keep downloading. The
-response holds the job's new `status` and `cleanupFailed`. When a download
-client can't confirm cleanup, the job stays `cancel_requested`; cancel again
-once the client is back. A finished job returns `409`.
+response holds the job's new `status` and `cleanupFailed`. A download client
+that can't confirm cleanup doesn't block the cancel. A finished job returns
+`409`.
 
 Searching again for a cancelled song from an album returns `409`. Request the
 album again to retry it. Other cancelled songs can be searched again.

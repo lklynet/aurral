@@ -530,21 +530,15 @@ test("records successful Aurral deletions when another file fails", async () => 
   }
 });
 
-test("keeps a library job and track when provider cancellation fails, then retries", async () => {
+test("deletes a library track and its job when provider cancellation fails", async () => {
   const root = await mkdtemp(path.join(await downloadsDir(), "aurral-track-delete-cancel-"));
   const filePath = path.join(root, "Artist", "Album", "Track.flac");
   const identity = `track-delete-cancel-${process.pid}-${Date.now()}`;
   const searchId = `search-${identity}`;
   const originalSettings = dbOps.getSettings();
-  let providerStatus = 503;
   const mock = await createMockHttpServer((request, response) => {
     request.resume();
-    if (providerStatus < 400 && request.method === "GET") {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ endedAt: "2026-11-05T12:00:00Z" }));
-      return;
-    }
-    response.writeHead(providerStatus);
+    response.writeHead(503);
     response.end();
   });
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -589,18 +583,9 @@ test("keeps a library job and track when provider cancellation fails, then retri
   });
 
   try {
-    const failedDeletion = await libraryManager.deleteTrack(String(track.id));
-
-    assert.equal(failedDeletion.success, false);
-    assert.equal(failedDeletion.code, "download_cancellation_failed");
-    assert.notEqual(downloadTracker.getJob(jobId), null);
-    assert.equal(listDownloadProviderWork({ jobIds: [jobId] }).length, 1);
-    await access(filePath);
-
-    providerStatus = 204;
     assert.deepEqual(await libraryManager.deleteTrack(String(track.id)), { success: true });
     assert.equal(downloadTracker.getJob(jobId), null);
-    assert.equal(listDownloadProviderWork({ jobIds: [jobId] }).length, 0);
+    assert.equal(listDownloadProviderWork({ jobIds: [jobId] }).length, 1);
     await assert.rejects(() => access(filePath));
   } finally {
     dbOps.updateSettings(originalSettings);

@@ -28,11 +28,11 @@ Treat playlist removal as a durable cancellation boundary.
 - Approving a download held for review takes only the import lock. It waits for other imports and ownership changes, but not for another track's search or transfer. It then queues a playlist sync and checks whether the playlist is complete under the step lock. The sync job publishes to media servers later, outside the download locks.
 - A flow refresh validates its operation token, flow state, and planned settings under both download locks before it cancels old jobs. Flow settings updates take the same locks. A stale plan therefore leaves the current jobs active, and a settings update cannot race provider cleanup.
 - Clearing all jobs snapshots the current rows, cancels those jobs, and removes them under the affected playlist locks. Jobs created after the snapshot stay queued.
-- Library-track removal waits for provider cleanup before deleting matching jobs or files. If cleanup fails, the library track and job stay in place for a later retry.
+- Library-track removal waits for provider cleanup before deleting matching jobs or files.
 - Library-track deletion reads each matching job's current `finalPath` after provider cancellation finishes. It includes that path in file cleanup before removing the track, so a finalizer that already held the lock cannot leave an untracked file behind.
 - Library-track deletion unlinks a file only when Aurral's Library folder holds it. Files in read-only folders stay in place.
 - Library-track and album deletion remove the static playlist tracks that referenced the deleted library jobs, under each playlist's download locks. Quick and full library refreshes remove any remaining static playlist track whose referenced job no longer exists, so a failed or older deletion cannot leave a hidden track that still blocks adding the same song.
-- slskd submissions, album downloads from every download source, and downloads that a source hands to its client, like deemix's, use the import lock. Each handler records the provider ID before releasing the lock, and cancellation reads the current job metadata after it acquires the lock. A failed provider cleanup therefore leaves the ID available for retry.
+- slskd submissions, album downloads from every download source, and downloads that a source hands to its client, like deemix's, use the import lock. Each handler records the provider ID before releasing the lock, and cancellation reads the current job metadata after it acquires the lock, so it always sees the ID to clean up.
 
 When a flow is created again with the same ID, Aurral advances the generation. Payloads from the removed flow remain invalid even if their queued jobs survive a restart.
 
@@ -43,7 +43,6 @@ A static playlist is a list of references to Library downloads. Adding a track c
 - A Library job remembers the playlist that started its download in `started_by_playlist`. Aurral sets it only when the playlist created a job with no file. Adding the track to another playlist, favoriting it, or requesting it in the Library clears it. The mark never comes back.
 - Removing a track or deleting a playlist commits the membership change first, under the playlist's lock. It then cancels each removed job that is still downloading, when this playlist started it and nothing else wants it: no other static playlist references it and no user starred its song. Cancellation takes the `library` locks, so it runs after the playlist lock is released.
 - Neither path deletes a finished file. The one exception is a synced playlist that does not keep removed tracks. When its source drops a track, Aurral deletes the file if the playlist downloaded it, the same rules leave it unwanted, and no other job uses the path.
-- If cancellation fails, the track still leaves the playlist and the download stays in the Library. Aurral logs a warning.
 - A startup migration (`backend/config/static-playlist-library-migration.ts`) moved jobs that older versions stored under a static playlist ID to `library`, merged duplicates of a file the Library already had, and marked the jobs that the playlist downloaded.
 
 ## Provider limits
@@ -55,7 +54,7 @@ Aurral cancels provider work when the adapter exposes a verified operation:
 - SABnzbd and NZBGet queue and history deletion checks the response status. If the client reports that it removed nothing, Aurral confirms that the item is absent before treating cleanup as complete.
 - A source on the download source contract, like yt-dlp, qBittorrent, or a plugin, has its staging folder removed and is told to discard a pending download. A download running in Aurral, like yt-dlp's, stops within a second, and its step removes what it wrote.
 
-If slskd, deemix, SABnzbd, or NZBGet has tracked work but is no longer configured, cancellation fails and retains the playlist and jobs for a later retry. A disabled integration cannot confirm that its remote work stopped.
+A provider that is disabled, unreachable, failing, or no longer knows the download never blocks a cancellation. Aurral logs a warning, leaves that work on the provider, and still removes its own jobs, files, and playlists. A user must always be able to cancel a download and remove what it was for, and a provider Aurral can't reach can't be cleaned up by waiting on it. An slskd search that could not be deleted stays recorded. Aurral tries it again the next time that job is cancelled, and at its next start once the job is gone.
 
 Aurral does not delete a source file merely because a Usenet provider reports its path. A path mapping can point into a shared library. The provider response does not prove that Aurral owns the file. deemix keeps no finished files, so Aurral moves them out of its folder when a download finishes, and copies one that sits in the Library folder or a read-only folder. Cancellation prevents import, while provider-specific cleanup handles work that Aurral can identify.
 
@@ -67,4 +66,4 @@ Removing a native source's staging folder does not require the source to be conf
 
 Playlist and flow deletion are queued operations. The UI reports that removal is queued until the background operation completes. Activity can still show work while a provider finishes a request, but that work cannot create a new Aurral playlist file after the cancellation boundary.
 
-Clearing all jobs waits for in-flight playlist imports. Jobs created after the clear starts stay queued. If provider cleanup fails, Aurral keeps the affected jobs in a failed state with a cancellation-pending reason and reports the error. Durable cancellation prevents those jobs from running or importing results. After restoring the provider connection, retry clearing all jobs to try remote cleanup again. Removing a library track stops if provider cleanup fails, leaving the track and its job available for retry.
+Clearing all jobs waits for in-flight playlist imports. Jobs created after the clear starts stay queued.
