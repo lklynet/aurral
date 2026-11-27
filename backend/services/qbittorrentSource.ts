@@ -70,7 +70,10 @@ async function searchReleases(album: AlbumQuery, upgrade: Upgrade) {
         })),
       context,
       { protocol: "torrent" },
-    ).filter((entry) => entry.releaseAdmissible && entry.resolvedAlbumName);
+    )
+      .filter((entry) => entry.releaseAdmissible && entry.resolvedAlbumName)
+      // The quality sort below preserves this order within each tier.
+      .sort((a, b) => (b.raw.release.seeders ?? 0) - (a.raw.release.seeders ?? 0));
     const ordered = orderAdvertisedQualityCandidates(ranked, {
       profile: getQualityProfile(),
       currentTier: upgrade?.currentTier ?? null,
