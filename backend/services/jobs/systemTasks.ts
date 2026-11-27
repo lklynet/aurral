@@ -319,11 +319,14 @@ const SYSTEM_TASKS = {
   "history-server-sync": {
     queue: "system",
     label: "Listening history import",
-    description: "Imports new plays from connected Navidrome, Plex, and Jellyfin servers.",
+    description:
+      "Imports new plays from connected Navidrome, Plex, and Jellyfin servers, and sends Plex the playlists it couldn't take yet.",
     schedule: { everyMs: HOUR },
     async run(payload) {
       const { HISTORY_SERVER_PROVIDERS, syncAllHistoryServers, syncHistoryServer } =
         await import("../historyServers.ts");
+      const { playlistManager } = await import("../playlists/playlistManager.ts");
+      playlistManager.requestPlexRetry();
       if (
         typeof payload.userId === "number" &&
         v.is(v.picklist(HISTORY_SERVER_PROVIDERS), payload.provider)
@@ -405,6 +408,16 @@ const SYSTEM_TASKS = {
         entityIds: stringList(payload.entityIds),
         rewrite: payload.rewrite === true,
       });
+    },
+  },
+  "plex-playlist-retry": {
+    queue: "playback",
+    label: "Plex playlist retry",
+    description: "Sends Plex the playlists it couldn't take before it scanned their tracks.",
+    async run() {
+      const { playlistManager } = await import("../playlists/playlistManager.ts");
+      const { sendPlaylistsToPlex } = await import("../plex.ts");
+      await sendPlaylistsToPlex(playlistManager.downloadRoot, { upload: [], remove: [] });
     },
   },
   "read-only-folder-release": {

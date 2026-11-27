@@ -27,6 +27,7 @@ This also imports the owner's plays.
 With **Send playlists** on, Aurral adds every enabled flow and static playlist to Plex and updates it when the playlist changes. The playlists belong to the server owner's Plex account.
 
 - Plex reads each playlist file at the path Aurral wrote it, so Plex has to see the Library folder and your read-only folders at the same paths as Aurral. If it can't find any of the tracks, **Settings > Listening > Plex** shows an error.
+- Plex can't find tracks it hasn't scanned yet. Aurral keeps sending that playlist on each playlist update and every hour until Plex takes it.
 - Deleting or renaming a playlist, or turning off its flow, removes it from Plex. So do turning off **Send playlists** and **Disconnect server**.
 - Aurral finds its playlists in Plex by name. A playlist you made in Plex with the same name as an Aurral playlist is replaced.
 

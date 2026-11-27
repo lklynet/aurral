@@ -33,12 +33,13 @@ import {
   saveWrittenPlaylistFiles,
   writePlaylistFile,
 } from "./playlistFiles.ts";
-import { removePlaylistsFromPlex, sendPlaylistsToPlex } from "../plex.ts";
+import { hasPendingPlexUploads, removePlaylistsFromPlex, sendPlaylistsToPlex } from "../plex.ts";
 import { emitPluginEvent } from "../plugins/pluginEvents.ts";
 
 const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg", ".png"];
 const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
 const PLAYLIST_SYNC_KIND = "playback-playlist-sync";
+const PLEX_RETRY_KIND = "plex-playlist-retry";
 const PLAYLIST_SYNC_DELAY_SECONDS = 2;
 // Jellyfin misses tracks that it indexes in the same pass as the playlist
 // file, so each changed file is written once more after servers catch up.
@@ -167,6 +168,11 @@ export class PlaylistManager {
 
   requestPlexUpload() {
     enqueueSystemTask({ kind: PLAYLIST_SYNC_KIND, entityIds: null, rewrite: true });
+  }
+
+  requestPlexRetry() {
+    if (hasPendingPlexUploads())
+      enqueueSystemTask({ kind: PLEX_RETRY_KIND }, { dedupeKey: PLEX_RETRY_KIND });
   }
 
   async removePlaylistsFromPlex() {
