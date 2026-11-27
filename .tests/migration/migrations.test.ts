@@ -821,3 +821,26 @@ test("upgrading stores day-first album release dates year first", () => {
     ["2022-03-25", "2022", "2022-03-25", "Unknown"],
   );
 });
+
+test("upgrading names the Various Artists artist Various Artists again", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  migrate(db, migrations.slice(0, 39));
+  db.prepare("INSERT INTO settings (key, value) VALUES ('librarySearchIndexVersion', '3')").run();
+  db.prepare(
+    `INSERT INTO library_artists (identity_key, mbid, name, created_at, updated_at)
+     VALUES ('mbid:89ad4ac3-39f7-470e-963a-56509c546377', '89ad4ac3-39f7-470e-963a-56509c546377', 'Shygirl', 1, 1),
+       ('name:artist:shygirl', NULL, 'Shygirl', 1, 1)`,
+  ).run();
+
+  migrate(db);
+
+  assert.deepEqual(db.prepare("SELECT name FROM library_artists ORDER BY id").pluck().all(), [
+    "Various Artists",
+    "Shygirl",
+  ]);
+  assert.equal(
+    db.prepare("SELECT value FROM settings WHERE key = 'librarySearchIndexVersion'").get(),
+    undefined,
+  );
+});

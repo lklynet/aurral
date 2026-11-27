@@ -3,7 +3,11 @@ import { createHash } from "node:crypto";
 import { createAurral3Schema } from "./aurral-3-schema.ts";
 import { NOTIFICATION_EVENTS } from "../../lib/notificationEvents.ts";
 import { isRecord } from "../../lib/isRecord.ts";
-import { tagValues, trackArtistCreditFromTags } from "../../lib/artistCredit.ts";
+import {
+  tagValues,
+  trackArtistCreditFromTags,
+  VARIOUS_ARTISTS_MBID,
+} from "../../lib/artistCredit.ts";
 import { yearFirstReleaseDate } from "../../lib/releaseDate.ts";
 import type { LibraryAlbumsRow, LibraryTracksRow, SettingsRow, UsersRow } from "../db/rows.ts";
 
@@ -617,6 +621,15 @@ const storeReleaseDatesYearFirst: Migration = (db) => {
   }
 };
 
+const nameVariousArtists: Migration = (db) => {
+  const renamed = db
+    .prepare<[string]>(
+      "UPDATE library_artists SET name = 'Various Artists' WHERE mbid = ? AND name <> 'Various Artists'",
+    )
+    .run(VARIOUS_ARTISTS_MBID).changes;
+  if (renamed) db.prepare("DELETE FROM settings WHERE key = 'librarySearchIndexVersion'").run();
+};
+
 export const migrations: Migration[] = [
   createAurral3Schema,
   indexFinishedDownloadNames,
@@ -657,6 +670,7 @@ export const migrations: Migration[] = [
   storeHubAccountId,
   dropAlbumArtistTagSeparators,
   storeReleaseDatesYearFirst,
+  nameVariousArtists,
 ];
 
 export function migrate(db: Database.Database, steps: readonly Migration[] = migrations) {

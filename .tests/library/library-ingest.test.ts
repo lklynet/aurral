@@ -1175,6 +1175,46 @@ test("untagged music joins the album and artist the Library already has, however
   assert.equal(trackCount("春 2024"), 1);
 });
 
+test("a compilation files under Various Artists when another compilation's track is tagged with only its own artist", async () => {
+  const variousArtists = "89ad4ac3-39f7-470e-963a-56509c546377";
+  await makeTrack(path.join(root, "Various Artists", "UKF Dubstep 2011", "01 - Rockstar.flac"), {
+    artist: "Nero",
+    album_artist: "Various Artists",
+    album: "UKF Dubstep 2011",
+    title: "Rockstar",
+    track: "1",
+    MUSICBRAINZ_ALBUMARTISTID: variousArtists,
+    MUSICBRAINZ_RELEASEGROUPID: "44444444-4444-4444-8444-444444444444",
+  });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  await makeTrack(path.join(root, "Shygirl", "SXSW 2020 Showcasing Artists", "01 - BB.flac"), {
+    artist: "Shygirl",
+    album: "SXSW 2020 Showcasing Artists",
+    title: "BB",
+    track: "1",
+    MUSICBRAINZ_ALBUMARTISTID: variousArtists,
+    MUSICBRAINZ_RELEASEGROUPID: "55555555-5555-4555-8555-555555555555",
+  });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const source = newSource();
+  await makeTrack(path.join(source, "The Best of Tales", "01.flac"), {
+    artist: "misono",
+    album_artist: "Various Artists",
+    album: "The Best of Tales",
+    title: "Starting Now!",
+    track: "1",
+    MUSICBRAINZ_ALBUMARTISTID: variousArtists,
+    MUSICBRAINZ_ALBUMID: "0bb0a3cf-82e3-4c5c-a49b-11aa7a0cdb90",
+    MUSICBRAINZ_RELEASEGROUPID: "2458040d-c5f3-3a7a-adb4-2b618e5da707",
+  });
+
+  const items = await apply(await ingest(source, "move", "tracks"));
+  assert.deepEqual(
+    items.map((item) => item.target),
+    [path.join("Various Artists", "The Best of Tales", "01 - Starting Now!.flac")],
+  );
+});
+
 test("files Aurral cannot place are skipped with a reason and left alone", async () => {
   const source = newSource();
   const loose = await makeTrack(path.join(source, "loose.flac"), { title: "No Album" });

@@ -179,7 +179,6 @@ function buildMetadataRecord(metadata: ScannedMetadata, filePath: string, rootPa
   const common = normalizeMetadata(metadata);
   const fallback = readPathFallback(filePath, rootPath);
   const [taggedAlbumArtist = ""] = tagValues(common.albumArtist);
-  const artistName = taggedAlbumArtist || tagValues(common.artist)[0] || fallback.artistName;
   const albumName = text(common.album) || fallback.albumName;
   const title = text(common.title) || fallback.title;
   const trackNumber = numberPart(common.trackNumber, fallback.trackNumber);
@@ -197,6 +196,10 @@ function buildMetadataRecord(metadata: ScannedMetadata, filePath: string, rootPa
       ? [VARIOUS_ARTISTS_MBID]
       : [normalizeMbid(common.mbArtistId)].filter((mbid) => mbid !== null);
   const artistMbid = artistMbids.length === 1 ? artistMbids[0] : null;
+  const artistName =
+    artistMbid === VARIOUS_ARTISTS_MBID
+      ? "Various Artists"
+      : taggedAlbumArtist || tagValues(common.artist)[0] || fallback.artistName;
   const albumMbid = normalizeMbid(common.mbReleaseId);
   const releaseGroupMbid = normalizeMbid(common.mbReleaseGroupId);
   const trackMbid = normalizeMbid(common.mbRecordingId);
