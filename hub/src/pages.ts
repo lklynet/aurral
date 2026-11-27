@@ -1,11 +1,16 @@
 import { html } from "hono/html";
 import type { HtmlEscapedString } from "hono/utils/html";
+import {
+  hasManagedPolarSubscription,
+  type ConnectBillingSummary,
+  type OwnedConnectServer,
+} from "./connect.ts";
 import type { HandleClaim } from "./handles.ts";
 import { formatCode } from "./links.ts";
 
 type Page = HtmlEscapedString | Promise<HtmlEscapedString>;
 
-export const STYLE = `:root{color-scheme:dark;--text:#fff;--muted:#b4b4b4;--field:#151515;--danger:#f87171}
+export const STYLE = `:root{color-scheme:dark;--text:#fff;--muted:#b4b4b4;--field:#151515;--danger:#f87171;--warn:#fbbf24}
 *{box-sizing:border-box}
 body{margin:0;background:#000;color:var(--text);font:400 14px/1.5 ui-sans-serif,system-ui,-apple-system,blinkmacsystemfont,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
 .top{max-width:420px;margin:auto;padding:16px 20px 0;font-size:17px;font-weight:600;letter-spacing:-.01em}
@@ -16,6 +21,9 @@ h2{margin:12px 0 0;font-size:15px}
 p{margin:0}
 .muted{color:var(--muted);font-size:13px}
 .error{color:var(--danger);font-size:13px}
+.warn{color:var(--warn);font-size:13px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all}
+.plans{display:grid;gap:8px}
 .button{display:block;width:100%;border:0;border-radius:6px;padding:11px;font:inherit;font-weight:600;line-height:1.2;text-align:center;text-decoration:none;cursor:pointer;background:var(--field);color:var(--text)}
 .primary{background:var(--text);color:#000}
 .danger{color:var(--danger)}
@@ -25,7 +33,7 @@ form{display:grid;gap:10px;margin:0}
 a{color:inherit}
 ul{margin:0;padding-left:18px;display:grid;gap:6px}
 .row{display:flex;justify-content:space-between;align-items:center;gap:12px}
-.row a{text-decoration:none;font-weight:600}
+.row a{text-decoration:none;font-weight:600;flex-shrink:0}
 :focus-visible{outline:2px solid var(--text);outline-offset:3px}`;
 
 const layout = (title: string, body: Page) =>
@@ -143,14 +151,219 @@ export const handlePage = (
 
 type LinkRow = { id: string; user_name: string; linked_at: number; public_count: number };
 
+export type AccountBillingError = "unconfigured" | "checkout" | "portal";
+
+export type AccountConnectView = {
+  entitlement: ConnectBillingSummary;
+  servers: OwnedConnectServer[];
+  connectDomain: string;
+  hasMonthlyPlan: boolean;
+  hasYearlyPlan: boolean;
+  portalConfigured: boolean;
+  emailPortalUrl: string | null;
+  checkoutSuccess: boolean;
+  serverDisabled: boolean;
+  billingError: AccountBillingError | null;
+};
+
+const BILLING_ERRORS: Record<AccountBillingError, string> = {
+  unconfigured: "Billing isn't enabled on this hub yet.",
+  checkout: "Couldn't start checkout right now. Try again in a moment.",
+  portal: "Couldn't open billing right now. Try again in a moment.",
+};
+
 const publicPlaylists = (count: number) =>
   count === 1 ? "1 public playlist" : `${count} public playlists`;
 
-export const accountPage = (handle: string, provider: string, links: LinkRow[]) =>
+const connectStatusBlock = (entitlement: ConnectBillingSummary, serverCount: number) => {
+  const slots = `${serverCount} of ${entitlement.maxServers} servers`;
+  const interval =
+    entitlement.billingInterval === "year"
+      ? "Yearly"
+      : entitlement.billingInterval === "month"
+        ? "Monthly"
+        : null;
+  if (entitlement.status === "active") {
+    if (!entitlement.active && entitlement.polarSubscriptionId) {
+      if (entitlement.cancelAtPeriodEnd) {
+        return html`<p>
+          Subscription ending<br /><span class="warn"
+            >${
+              entitlement.currentPeriodEnd
+                ? `Ended ${shortDate(entitlement.currentPeriodEnd)}`
+                : "Ending soon"
+            }</span
+          ><span class="muted"> · ${slots}</span>
+        </p>`;
+      }
+      return html`<p>
+        Active${interval ? ` · ${interval}` : ""}<br /><span class="muted"
+          >Renewal pending · ${slots}</span
+        >
+      </p>`;
+    }
+    if (entitlement.active && entitlement.cancelAtPeriodEnd) {
+      return html`<p>
+        Active${interval ? ` · ${interval}` : ""}<br /><span class="warn"
+          >${
+            entitlement.currentPeriodEnd
+              ? `Ends ${shortDate(entitlement.currentPeriodEnd)}`
+              : "Cancels at period end"
+          }</span
+        ><span class="muted"> · ${slots}</span>
+      </p>`;
+    }
+    if (entitlement.active) {
+      return html`<p>
+        Active${interval ? ` · ${interval}` : ""}<br /><span class="muted"
+          >${
+            entitlement.currentPeriodEnd
+              ? `Renews ${shortDate(entitlement.currentPeriodEnd)} · `
+              : ""
+          }${slots}</span
+        >
+      </p>`;
+    }
+  }
+  if (entitlement.status === "past_due") {
+    return html`<p class="warn">Payment past due</p>
+      <p class="muted">
+        Update your payment method to keep Connect
+        online.${
+          entitlement.currentPeriodEnd
+            ? ` Access ends ${shortDate(entitlement.currentPeriodEnd)}.`
+            : ""
+        }
+      </p>`;
+  }
+  if (entitlement.status === "trial" && entitlement.active) {
+    return html`<p>
+      14-day trial<br /><span class="muted"
+        >${
+          entitlement.currentPeriodEnd ? `Ends ${shortDate(entitlement.currentPeriodEnd)} · ` : ""
+        }${slots}</span
+      >
+    </p>`;
+  }
+  if (!entitlement.active && !entitlement.trialAvailable) {
+    return html`<p class="error">
+        ${entitlement.status === "trial" ? "Trial ended" : "Subscription ended"}
+      </p>
+      <p class="muted">Subscribe to bring your Connect servers back online.</p>`;
+  }
+  return html`<p class="muted">
+    $5/mo or $50/yr after a 14-day free trial. Covers up to ${entitlement.maxServers} servers. Start
+    a trial from Settings, Connect in Aurral, or subscribe here.
+  </p>`;
+};
+
+const connectBillingActions = (connect: AccountConnectView) => {
+  const { entitlement, hasMonthlyPlan, hasYearlyPlan, portalConfigured, emailPortalUrl } = connect;
+  if (hasManagedPolarSubscription(entitlement)) {
+    const highlight = entitlement.status === "past_due" || entitlement.cancelAtPeriodEnd;
+    if (portalConfigured && entitlement.polarCustomerId) {
+      return html`<form method="post" action="/account/connect/portal">
+        <button class="button${highlight ? " primary" : ""}">Manage billing</button>
+      </form>`;
+    }
+    if (emailPortalUrl) {
+      return html`<a class="button${highlight ? " primary" : ""}" href="${emailPortalUrl}"
+        >Manage billing</a
+      >`;
+    }
+    return "";
+  }
+
+  const checkoutButtons =
+    hasMonthlyPlan || hasYearlyPlan
+      ? html`<div class="plans">
+          ${
+            hasMonthlyPlan
+              ? html`<form method="post" action="/account/connect/checkout">
+                  <input type="hidden" name="plan" value="monthly" />
+                  <button class="button primary">Subscribe · $5/mo</button>
+                </form>`
+              : ""
+          }
+          ${
+            hasYearlyPlan
+              ? html`<form method="post" action="/account/connect/checkout">
+                  <input type="hidden" name="plan" value="yearly" />
+                  <button class="button${hasMonthlyPlan ? "" : " primary"}">
+                    Subscribe · $50/yr (save $10)
+                  </button>
+                </form>`
+              : ""
+          }
+        </div>`
+      : "";
+
+  const historyButton =
+    portalConfigured && entitlement.polarCustomerId
+      ? html`<form method="post" action="/account/connect/portal">
+          <button class="button">Billing history</button>
+        </form>`
+      : "";
+
+  return html`${checkoutButtons}${historyButton}`;
+};
+
+export const accountPage = (
+  handle: string,
+  provider: string,
+  links: LinkRow[],
+  connect: AccountConnectView,
+) =>
   layout(
     `@${handle}`,
     html`<h1>@${handle}</h1>
       <p class="muted">Signed in with ${provider}</p>
+      <h2>Aurral Connect</h2>
+      ${
+        connect.checkoutSuccess
+          ? html`<p class="muted" role="status">
+              ${
+                connect.entitlement.status === "active" && connect.entitlement.active
+                  ? "Aurral Connect is active."
+                  : "Payment received. Refresh in a moment if your status hasn't updated yet."
+              }
+            </p>`
+          : ""
+      }
+      ${
+        connect.serverDisabled
+          ? html`<p class="muted" role="status">
+              Connect server disabled. An active tunnel can stay online for up to 15 minutes until
+              its ticket expires.
+            </p>`
+          : ""
+      }
+      ${
+        connect.billingError
+          ? html`<p class="error" role="alert">${BILLING_ERRORS[connect.billingError]}</p>`
+          : ""
+      }
+      ${connectStatusBlock(connect.entitlement, connect.servers.length)}
+      ${connectBillingActions(connect)}
+      ${
+        connect.servers.length
+          ? connect.servers.map(
+              (server) =>
+                html`<div class="row">
+                  <p>
+                    ${server.name}<br /><span class="muted mono"
+                      >${server.slug}.${connect.connectDomain}</span
+                    ><span class="muted"> · ${server.online ? "Online" : "Offline"}</span>
+                  </p>
+                  <a
+                    class="danger"
+                    href="/account/connect/servers/${encodeURIComponent(server.instanceId)}/disable"
+                    >Disable</a
+                  >
+                </div>`,
+            )
+          : ""
+      }
       <h2>Linked servers</h2>
       ${
         links.length
@@ -171,6 +384,25 @@ export const accountPage = (handle: string, provider: string, links: LinkRow[]) 
           : html`<p class="muted">None yet. Link one from Settings in Aurral.</p>`
       }
       ${leave(null)}`,
+  );
+
+export const disableConnectServerPage = (server: OwnedConnectServer, connectDomain: string) =>
+  layout(
+    "Disable Connect server",
+    html`<h1>Disable ${server.name}?</h1>
+      <p class="muted">
+        <span class="mono">${server.slug}.${connectDomain}</span> stops issuing new tunnel tickets
+        immediately. An active tunnel can keep serving traffic for up to 15 minutes until its
+        current ticket expires. The address stays reserved for 90 days, and local access to your
+        server isn't affected.
+      </p>
+      <form
+        method="post"
+        action="/account/connect/servers/${encodeURIComponent(server.instanceId)}/disable"
+      >
+        <button class="button danger">Disable server</button>
+      </form>
+      <a class="button" href="/account">Cancel</a>`,
   );
 
 export const unlinkPage = (link: LinkRow) =>
@@ -238,7 +470,7 @@ export const linkConfirmPage = (handle: string, userName: string, code: string) 
       ${signOut(code, `Not @${handle}? Sign out`)}`,
   );
 
-export const deletePage = (handle: string | null) =>
+export const deletePage = (handle: string | null, hasActiveSubscription = false) =>
   layout(
     "Delete account",
     html`<h1>Delete ${handle ? `@${handle}` : "your account"}?</h1>
@@ -246,6 +478,13 @@ export const deletePage = (handle: string | null) =>
         This deletes your aurral.org account and unlinks every server.
         ${handle ? `@${handle} can't be claimed by anyone for 90 days.` : ""}
       </p>
+      ${
+        hasActiveSubscription
+          ? html`<p class="warn">
+              Cancel your Aurral Connect subscription in billing first so Polar stops charging you.
+            </p>`
+          : ""
+      }
       <form method="post" action="/account/delete">
         <button class="button danger">Delete account</button>
       </form>
