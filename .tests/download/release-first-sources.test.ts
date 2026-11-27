@@ -48,6 +48,8 @@ const [
   { processPlaylistOperation },
   { stopDownloadPipelineWorker },
   { denyBlockedJob },
+  { retryTrackDownload },
+  { playlistManager },
 ] = await setupIsolatedBackend(
   "release-first-sources",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -67,6 +69,8 @@ const [
   () => import("../../backend/services/playlists/playlistOperations.ts"),
   () => import("../../backend/services/downloadPipelineWorker.ts"),
   () => import("../../backend/services/downloadJobs/blockedJobReview.ts"),
+  () => import("../../backend/services/albumJobs.ts"),
+  () => import("../../backend/services/playlists/playlistManager.ts"),
 );
 const downloadWorker = localDownloadWorker(workerInstance);
 
@@ -516,6 +520,75 @@ test("a track request asked for again after its search ended searches yt-dlp fir
     [requireQueued(imported).quickSearch, requireQueued(imported).allowedSources],
     [true, ["ytdlp"]],
   );
+});
+
+test("an album request whose tracks the Library or a read-only folder already has completes them without searching", async (t) => {
+  useSources({ slskd: { enabled: true, url: "http://127.0.0.1:9" } });
+  const group = album("owned", "Owned Band", [
+    { id: "owned-release", tracks: ["First", "Second", "Third"] },
+  ]);
+  await serveGroups(t, [group]);
+  const artist = libraryStore.upsertLibraryArtist({
+    identityKey: `mbid:${group.artistId}`,
+    mbid: group.artistId,
+    name: "Owned Band",
+  });
+  const libraryAlbum = libraryStore.upsertLibraryAlbum({
+    identityKey: `release-group:${group.id}`,
+    releaseGroupMbid: group.id,
+    artistId: artist.id,
+    title: group.title,
+  });
+  const files = [
+    [
+      "First",
+      "aurral",
+      path.join(state.baseDir, "music", "Owned Band", "Owned", "1-01 first.flac"),
+    ],
+    ["Second", "readonly", path.join(state.baseDir, "readonly", "Owned Band", "02 Second.flac")],
+  ] as const;
+  dbOps.setJSONSetting("readOnlyFolders", [path.join(state.baseDir, "readonly")]);
+  for (const [index, [title, source, filePath]] of files.entries()) {
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, "audio");
+    const track = libraryStore.upsertLibraryTrack({
+      identityKey: `recording:owned-release-recording-${index + 1}`,
+      mbid: `owned-release-recording-${index + 1}`,
+      title,
+      artistName: "Owned Band",
+    });
+    libraryStore.linkLibraryAlbumTrack({
+      albumId: libraryAlbum.id,
+      trackId: track.id,
+      trackNumber: index + 1,
+    });
+    libraryStore.upsertLibraryMediaFile({
+      trackId: track.id,
+      albumId: libraryAlbum.id,
+      source,
+      path: filePath,
+    });
+  }
+  const scheduleScanLibrary = vi.spyOn(playlistManager, "scheduleScanLibrary");
+  const [pending, failed] = libraryJobs(group, ["First", "Second"]);
+  assert.ok(pending !== undefined && failed !== undefined);
+  downloadTracker.setFailed(failed, "No results");
+  await retryTrackDownload(failed);
+  for (const id of [pending, failed])
+    await downloadWorker.processJob(trackedJob(downloadTracker, id));
+
+  assert.deepEqual(
+    [pending, failed].map((id) => {
+      const job = trackedJob(downloadTracker, id);
+      return [job.status, job.finalPath, job.externalPath ?? null];
+    }),
+    [
+      ["done", files[0][2], null],
+      ["done", files[1][2], files[1][2]],
+    ],
+  );
+  assert.deepEqual(queuedFor([pending, failed]), []);
+  assert.equal(scheduleScanLibrary.mock.calls.length, 0);
 });
 
 test("a quick search cut off by a restart searches yt-dlp again", async (t) => {

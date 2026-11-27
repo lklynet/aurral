@@ -652,7 +652,6 @@ export class DownloadWorker {
         downloadRoot: this.downloadRoot,
         existingJobId: job.id,
         excludeJobIds: [job.id],
-        allowFolderSources: !job.requestGroupId,
       });
       if (reuse.reused) {
         if (job.requestGroupId && reuse.finalPath) {

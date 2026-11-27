@@ -29,18 +29,17 @@ import {
 } from "../downloadPaths.ts";
 import { recordTrackReused } from "../aurralHistoryService.ts";
 import { playlistManager } from "../playlists/playlistManager.ts";
+import { isPathWithin, readOnlyFolderPaths } from "../libraryFolders.ts";
 
 type FolderSource = keyof typeof FOLDER_SOURCES;
 type SourceOptions = {
   targetPlaylistType?: string | null;
   downloadRoot?: string | null;
   excludeJobIds?: string[] | null;
-  allowFolderSources?: boolean;
 };
 type ReuseTrackOptions = SourceOptions & {
   existingJobId?: string | null;
   skipHistory?: boolean;
-  libraryScanChangedPaths?: string[] | null;
 };
 type RestoreOptions = SourceOptions & {
   requeueOnMissing?: boolean;
@@ -475,8 +474,16 @@ function findMatchingTrack(tracks: ReadTrack[], track: DownloadTrackInput, stric
   }
   const trackKey = normalizeText(track?.trackName);
   if (!trackKey) return null;
+  const trackNumber = track?.requestGroupId ? normalizePositiveInteger(track.trackNumber) : null;
+  const atPlace = (entry: ReadTrack) =>
+    !trackNumber ||
+    !entry.trackNumber ||
+    (entry.trackNumber === trackNumber &&
+      (entry.discNumber || 1) === (normalizePositiveInteger(track.discNumber) || 1));
   return (
-    tracks.find((entry) => normalizeText(entry?.trackName || entry?.title) === trackKey) || null
+    tracks.find(
+      (entry) => normalizeText(entry?.trackName || entry?.title) === trackKey && atPlace(entry),
+    ) || null
   );
 }
 
@@ -492,6 +499,7 @@ async function findLibraryFolderSource(
   source: FolderSource,
 ): Promise<ReuseSource | null> {
   const { label, external } = FOLDER_SOURCES[source];
+  const readOnlyFolders = external ? readOnlyFolderPaths() : [];
   const strictAlbum = options.targetPlaylistType === "library";
   const library = getLibraryForArtistReferences({
     source,
@@ -549,6 +557,7 @@ async function findLibraryFolderSource(
       continue;
     }
     const sourcePath = path.resolve(matchedTrack.path);
+    if (external && !readOnlyFolders.some((folder) => isPathWithin(folder, sourcePath))) continue;
     if (!(await fileExists(sourcePath))) {
       console.warn(
         `[FileReuse] ${label} track exists but file is not accessible from Aurral: ${matchedTrack.path} (resolved to ${sourcePath})`,
@@ -574,7 +583,6 @@ async function findFolderSource(
   track: DownloadTrackInput,
   options: SourceOptions,
 ): Promise<ReuseSource | null> {
-  if (options.allowFolderSources === false) return null;
   return (
     (await findLibraryFolderSource(track, options, "aurral")) ||
     findLibraryFolderSource(track, options, "readonly")
@@ -624,7 +632,6 @@ export async function restoreCompletedTrack(job: DownloadJob, options: RestoreOp
     ...options,
     targetPlaylistType: job.playlistType,
     excludeJobIds: [job.id],
-    allowFolderSources: options.allowFolderSources ?? !job.requestGroupId,
   });
   if (source) {
     const sourcePath = path.resolve(source.sourcePath);
@@ -652,6 +659,10 @@ export async function restoreCompletedTrack(job: DownloadJob, options: RestoreOp
         finalPath: sourcePath,
       };
     }
+  }
+
+  if (getLibraryMediaFile({ source: "readonly", path: finalPath })?.available === 0) {
+    return { action: "skipped", reason: "Its read-only folder is not connected" };
   }
 
   if (options.requeueOnMissing === false) {
@@ -714,8 +725,7 @@ function jobsMissingIndexedTrack(changed: Set<string>) {
 }
 
 // Jobs follow the files a scan changed: a job whose file the scan removed
-// moves to the Library's copy of its track, even for an album request, which
-// otherwise never reuses Library files. So does a job whose file left the
+// moves to the Library's copy of its track. So does a job whose file left the
 // Library before the scan that indexed its track's new file. Every job takes
 // the quality the scan read. A file that is only unavailable, like one on a
 // drive that is not connected, keeps its jobs as they are.
@@ -1056,7 +1066,7 @@ export async function reuseTrackForPlaylist(
       ...flowPlaylistConfig.getStaticPlaylistIdsUsingJobs([jobId]),
     ],
     targetPlaylistType === "library",
-    options.libraryScanChangedPaths || (options.allowFolderSources === false ? [finalPath] : null),
+    track.requestGroupId ? [finalPath] : null,
   ).catch((error) => {
     console.warn(
       `[FileReuse] Failed to refresh playlist ${playlistType}: ${asAppError(error)?.message || error}`,
