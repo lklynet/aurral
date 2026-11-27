@@ -1,13 +1,6 @@
-@font-face {
-  font-family: Manrope;
-  src: url("/fonts/manrope-latin.woff2") format("woff2");
-  font-weight: 400 800;
-  font-display: swap;
-}
-
 :root {
   color-scheme: dark;
-  --font-sans: Manrope, ui-sans-serif, system-ui, sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
   --chrome: #000;
   --surface: #121212;
   --text: #fff;
@@ -63,10 +56,10 @@ button {
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 16px;
-  font-weight: 750;
-  letter-spacing: -0.5px;
+  gap: 10px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 .brand img {
   width: 27px;
@@ -83,6 +76,9 @@ main {
 .share-head {
   text-align: center;
 }
+.share > .button {
+  margin-top: 24px;
+}
 .art {
   width: min(100%, 264px);
   aspect-ratio: 1;
@@ -95,7 +91,7 @@ main {
   border-radius: 3px;
   color: var(--text-subtle);
   font-size: 80px;
-  font-weight: 750;
+  font-weight: 700;
 }
 .art--round {
   border-radius: 50%;
@@ -119,10 +115,11 @@ main {
 }
 h1 {
   font-size: 34px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.12;
   letter-spacing: -1.3px;
   overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 .byline {
   color: var(--text-muted);
@@ -154,7 +151,7 @@ h1 {
   color: var(--text);
   background: transparent;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 .button.primary {
   background: var(--text);
@@ -163,7 +160,7 @@ h1 {
   min-width: 112px;
   min-height: 48px;
   font-size: 14px;
-  font-weight: 750;
+  font-weight: 700;
 }
 .button svg,
 .action svg {
@@ -187,11 +184,11 @@ h1 {
   border: 0;
   background: none;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .action:first-child {
   color: var(--text);
-  font-weight: 650;
+  font-weight: 600;
 }
 audio {
   width: 100%;
@@ -201,7 +198,10 @@ audio {
   display: none;
 }
 .has-now {
-  padding-bottom: 96px;
+  padding-bottom: calc(112px + env(safe-area-inset-bottom));
+}
+html:has(.has-now) {
+  scroll-padding-bottom: calc(120px + env(safe-area-inset-bottom));
 }
 .now {
   position: fixed;
@@ -227,7 +227,7 @@ audio {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 .now-button {
   width: 40px;
@@ -254,14 +254,14 @@ audio {
 .seek::-webkit-slider-runnable-track {
   background:
     linear-gradient(var(--text) 0 0) 0 / var(--progress, 0%) 100% no-repeat,
-    var(--border);
+    #646464;
   height: 3px;
   border-radius: 2px;
 }
 .seek::-moz-range-track {
   background:
     linear-gradient(var(--text) 0 0) 0 / var(--progress, 0%) 100% no-repeat,
-    var(--border);
+    #646464;
   height: 3px;
   border-radius: 2px;
 }
@@ -294,7 +294,7 @@ audio {
   justify-content: space-between;
   margin-top: -6px;
   color: var(--text-subtle);
-  font-size: 10px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 .tracks {
@@ -358,22 +358,25 @@ audio {
 }
 .track-title {
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 .track-album {
   color: var(--text-subtle);
-  font-size: 11px;
+  font-size: 12px;
 }
 .track-duration {
   color: var(--text-subtle);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
 .track-download {
-  padding: 12px 0 12px 5px;
+  display: grid;
+  place-items: center;
+  width: 40px;
   min-height: 44px;
+  margin-right: -12px;
   color: var(--text-subtle);
 }
 .track-download svg {
@@ -397,8 +400,7 @@ audio {
   margin: 16px 0;
 }
 .unavailable {
-  border-left: 2px solid var(--text-subtle);
-  padding-left: 12px;
+  text-align: center;
 }
 .listen-section {
   margin-top: 28px;
@@ -415,21 +417,25 @@ audio {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
   gap: 4px 15px;
 }
 .listen a {
-  min-height: 36px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .listen svg {
   width: 15px;
   height: 15px;
   flex-shrink: 0;
+}
+footer a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 footer {
   padding: 30px 20px;
@@ -437,7 +443,7 @@ footer {
   margin: auto;
   text-align: center;
   color: var(--text-subtle);
-  font-size: 10px;
+  font-size: 12px;
 }
 .aurral {
   position: relative;
@@ -487,11 +493,11 @@ footer {
   gap: 12px;
   padding: 11px 10px;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text);
   text-align: left;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 .aurral-action svg {
@@ -504,8 +510,11 @@ footer {
   color: var(--text-subtle);
   cursor: default;
 }
+.aurral-action:disabled svg {
+  color: inherit;
+}
 .aurral-hint {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-subtle);
   line-height: 1.5;
   margin: 0 9px 9px 39px;
@@ -519,7 +528,7 @@ footer {
   margin-top: 7px;
   border-top: 1px solid var(--border);
   color: var(--text-subtle);
-  font-size: 10px;
+  font-size: 12px;
 }
 .aurral-server span {
   overflow: hidden;
@@ -527,7 +536,7 @@ footer {
   white-space: nowrap;
 }
 .aurral-server .text-button {
-  font-size: 10px;
+  font-size: 12px;
   min-height: 32px;
   flex-shrink: 0;
 }
@@ -537,24 +546,22 @@ footer {
 .aurral form label {
   display: block;
   margin-bottom: 10px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
 }
 .aurral input {
   width: 100%;
   min-height: 44px;
   border: 1px solid var(--border-strong);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--chrome);
   color: var(--text);
   padding: 10px;
-  font-size: 12px;
+  font-size: 16px;
 }
 .aurral form .button {
   width: 100%;
   margin-top: 12px;
-  font-size: 12px;
-  min-height: 42px;
 }
 .aurral-back {
   min-height: 36px;
@@ -576,7 +583,12 @@ footer {
     text-underline-offset: 4px;
   }
   .track-download:hover,
-  .text-button:hover {
+  .text-button:hover,
+  .aurral summary:hover,
+  footer a:hover {
     color: var(--text);
+  }
+  .button:not(.primary):hover {
+    background: var(--hover);
   }
 }

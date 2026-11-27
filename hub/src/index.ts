@@ -583,7 +583,7 @@ function formActionForRedirect(redirectUri: string) {
 }
 
 const pageCsp = (formAction = "'self'") =>
-  `default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; form-action ${formAction}; frame-ancestors 'none'; base-uri 'none'`;
+  `default-src 'none'; style-src 'self'; img-src 'self'; form-action ${formAction}; frame-ancestors 'none'; base-uri 'none'`;
 
 const pages = new Hono<Env>()
   .use(async (c, next) => {

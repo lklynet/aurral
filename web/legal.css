@@ -1,9 +1,3 @@
-@font-face {
-  font-family: Manrope;
-  src: url("/fonts/manrope-latin.woff2") format("woff2");
-  font-weight: 400 800;
-  font-display: swap;
-}
 :root {
   color-scheme: dark;
 }
@@ -12,9 +6,11 @@ body {
   background: #000;
   color: #fff;
   font:
-    400 15px/1.6 Manrope,
-    ui-sans-serif,
+    400 15px/1.6 ui-sans-serif,
     system-ui,
+    -apple-system,
+    blinkmacsystemfont,
+    "Segoe UI",
     sans-serif;
   -webkit-font-smoothing: antialiased;
 }
@@ -24,9 +20,12 @@ main {
   padding: 24px 20px 64px;
 }
 .top {
-  font-size: 16px;
-  font-weight: 750;
-  letter-spacing: -0.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: inherit;
   text-decoration: none;
 }
@@ -50,7 +49,22 @@ ul {
 .muted {
   color: #b4b4b4;
   font-size: 13px;
+  margin-bottom: 24px;
 }
 a {
   color: inherit;
+  text-underline-offset: 3px;
+}
+@media (hover: hover) and (pointer: fine) {
+  a:hover {
+    color: #fff;
+  }
+}
+li + li {
+  margin-top: 6px;
+}
+:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+  border-radius: 2px;
 }

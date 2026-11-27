@@ -55,8 +55,11 @@ test("a Deezer outage on a shared preview is a 502, not a missing track", async 
   assert.equal((await previewLink({ params: { id: "9" } })).status, 404);
 });
 
-for (const kind of ["artist", "album"] as const) {
-  test(`a shared ${kind} offers catalog previews without a tunnel or local files`, async () => {
+for (const [kind, credits, hidden] of [
+  ["artist", ["Artist", "Other"], []],
+  ["album", ["Guest"], ["Ártist"]],
+] as const) {
+  test(`a shared ${kind} offers catalog previews credited only where the header does not`, async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = new URL(String(input));
       if (url.pathname === `/search/${kind}`)
@@ -73,8 +76,16 @@ for (const kind of ["artist", "album"] as const) {
             {
               id: 42,
               title: "Song <test>",
-              artist: { name: "Artist" },
+              artist: { name: "Ártist" },
+              album: { title: "Artist" },
               preview: "https://preview.example.com/42.mp3",
+            },
+            {
+              id: 43,
+              title: "Feature",
+              artist: { name: "Guest" },
+              album: { title: "Other" },
+              preview: "https://preview.example.com/43.mp3",
             },
           ],
         });
@@ -92,5 +103,7 @@ for (const kind of ["artist", "album"] as const) {
     assert.ok(html.includes('data-src="/api/deezer/preview/42"'));
     assert.ok(html.includes("Song &lt;test&gt;"));
     assert.ok(!html.includes("/stream"));
+    for (const credit of credits) assert.ok(html.includes(`class="track-album">${credit}<`));
+    for (const credit of hidden) assert.ok(!html.includes(`class="track-album">${credit}<`));
   });
 }
