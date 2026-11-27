@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import { http, type HttpOptions } from "../../../lib/http.ts";
 import { readMany, readOne } from "../integrationData.ts";
+import { foldDiacritics } from "../providers/metadataRanking.ts";
 import createCache from "./simpleCache.ts";
 import createRateLimiter from "./rateLimiter.ts";
 import { createOutagePause } from "./outagePause.ts";
@@ -444,18 +445,22 @@ export function selectDeezerTrackPreview(
   const targetTrack = normalizeTitle(trackName);
   if (!targetArtist || !targetTrack) return null;
   const mainArtist = normalizeTitle(artistName.split(/,|&|\s(?:feat\.?|ft\.?|with|x)\s/i)[0]);
-  const byArtist = (artist: string) =>
-    candidates.find((candidate) => {
-      const candidateTrack = normalizeTitle(candidate.title_short || candidate.title);
-      return (
-        candidate.preview &&
-        candidateTrack &&
-        normalizeTitle(candidate.artist?.name) === artist &&
-        (candidateTrack === targetTrack ||
-          candidateTrack.includes(targetTrack) ||
-          targetTrack.includes(candidateTrack))
-      );
-    });
+  const byArtist = (artist: string) => {
+    const playable = candidates.filter(
+      (candidate) => candidate.preview && normalizeTitle(candidate.artist?.name) === artist,
+    );
+    return (
+      playable.find((candidate) => candidate.title.toLowerCase() === trackName.toLowerCase()) ??
+      playable.find((candidate) => normalizeTitle(candidate.title) === targetTrack) ??
+      playable.find((candidate) => {
+        const candidateTrack = normalizeTitle(candidate.title_short || candidate.title);
+        return (
+          candidateTrack &&
+          (candidateTrack.includes(targetTrack) || targetTrack.includes(candidateTrack))
+        );
+      })
+    );
+  };
 
   return byArtist(targetArtist) || (mainArtist ? byArtist(mainArtist) : null) || null;
 }
@@ -500,7 +505,7 @@ function withoutEditionGroups(title: string) {
 }
 
 export function normalizeTitle(title: unknown) {
-  return withoutEditionGroups(String(title || "").toLowerCase())
+  return withoutEditionGroups(foldDiacritics(title).toLowerCase())
     .replace(EDITION_SUFFIX, "")
     .replace(/[’']/g, "")
     .replace(/&/g, "and")
