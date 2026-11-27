@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { unknownList } from "../../lib/unknownList.ts";
 import * as v from "valibot";
 import { http } from "../../lib/http.ts";
@@ -6,11 +8,13 @@ import { asAppError } from "../../lib/errors.ts";
 import { decryptWithKey, encryptWithKey } from "../config/encryption.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { getSettingsEncryptionKey } from "../db/helpers/settings.ts";
+import { logger } from "./logger.ts";
 
 const PLEX_TV = "https://plex.tv";
 const SERVER_KEY = "plexServer";
 const PLAYLIST_STATUS_KEY = "plexPlaylistStatus";
 const PENDING_REMOVALS_KEY = "plexPendingRemovals";
+const PENDING_UPLOADS_KEY = "plexPendingUploads";
 const TIMEOUT_MS = 30_000;
 const SIGN_IN_TTL_MS = 10 * 60 * 1000;
 const OWNER_ACCOUNT_ID = "1";
@@ -24,7 +28,7 @@ const serverSchema = v.nullable(plexServerSchema);
 const playlistStatusSchema = v.nullable(
   v.object({ error: v.nullable(v.string()), note: v.optional(v.nullable(v.string()), null) }),
 );
-const pendingRemovalsSchema = v.nullable(v.array(v.string()));
+const pendingListSchema = v.nullable(v.array(v.string()));
 const record = v.record(v.string(), v.unknown());
 const object = (value: unknown) => (v.is(record, value) ? value : {});
 const text = (value: unknown) =>
@@ -51,13 +55,15 @@ export function savePlexServer(server: PlexServer) {
     ...server,
     token: encryptWithKey(server.token, getSettingsEncryptionKey()),
   });
-  if (!server.sendPlaylists) setPlaylistStatus(NO_STATUS);
+  if (server.sendPlaylists) return;
+  setPlaylistStatus(NO_STATUS);
+  setPendingUploads([]);
 }
 
 export function removePlexServer() {
   dbOps.setJSONSetting(SERVER_KEY, null);
   setPlaylistStatus(NO_STATUS);
-  setPendingRemovals([]);
+  forgetPending();
 }
 
 type PlaylistStatus = NonNullable<v.InferOutput<typeof playlistStatusSchema>>;
@@ -71,9 +77,18 @@ function setPlaylistStatus(status: PlaylistStatus) {
   dbOps.setJSONSetting(PLAYLIST_STATUS_KEY, status);
 }
 
-const pendingRemovals = () =>
-  dbOps.getJSONSetting(PENDING_REMOVALS_KEY, pendingRemovalsSchema) ?? [];
+const pendingRemovals = () => dbOps.getJSONSetting(PENDING_REMOVALS_KEY, pendingListSchema) ?? [];
 const setPendingRemovals = (titles: string[]) => dbOps.setJSONSetting(PENDING_REMOVALS_KEY, titles);
+const pendingUploads = () => dbOps.getJSONSetting(PENDING_UPLOADS_KEY, pendingListSchema) ?? [];
+const setPendingUploads = (paths: string[]) => dbOps.setJSONSetting(PENDING_UPLOADS_KEY, paths);
+
+function forgetPending() {
+  setPendingRemovals([]);
+  setPendingUploads([]);
+}
+
+export const hasPendingPlexUploads = () =>
+  getPlexServer()?.sendPlaylists === true && pendingUploads().length > 0;
 
 const pendingSignIns = new Map<
   string,
@@ -149,7 +164,7 @@ export async function connectPlexServer(url: string, token: string) {
   await serverAccounts(url, token);
   const owner = await plexTvUser(token);
   savePlexServer({ url, token, sendPlaylists: true });
-  setPendingRemovals([]);
+  forgetPending();
   return { username: owner.username, accountId: OWNER_ACCOUNT_ID };
 }
 
@@ -222,8 +237,26 @@ async function deletePlexPlaylist(server: PlexServer, title: string) {
 
 type PlaylistFile = { title: string; path: string; empty: boolean };
 
+const fileExists = (file: string) =>
+  fs.access(file).then(
+    () => true,
+    (error) => asAppError(error)?.code !== "ENOENT",
+  );
+
+async function retriedUploads(incoming: PlaylistFile[], removals: string[]) {
+  const sending = new Set(incoming.map((file) => file.path));
+  const retries: PlaylistFile[] = [];
+  for (const file of pendingUploads()) {
+    const title = path.basename(file, path.extname(file));
+    if (sending.has(file) || removals.includes(title) || !(await fileExists(file))) continue;
+    retries.push({ title, path: file, empty: false });
+  }
+  return retries;
+}
+
 // Plex reads each file from its own disk, so it has to see the Library folder
-// at the same path as Aurral. A file with no track Plex knows fails with a 500.
+// at the same path as Aurral. A file with no track Plex knows fails with a 500,
+// which also happens until Plex scans new tracks, so those files stay pending.
 export async function sendPlaylistsToPlex(
   libraryFolder: string,
   { upload, remove }: { upload: PlaylistFile[]; remove: string[] },
@@ -231,8 +264,17 @@ export async function sendPlaylistsToPlex(
   const server = getPlexServer();
   if (!server?.sendPlaylists) return;
   const removals = [...new Set([...pendingRemovals(), ...remove])];
-  if (!upload.length && !removals.length) return;
+  const batch = [...(await retriedUploads(upload, remove)), ...upload];
+  if (!batch.length && !removals.length) {
+    if (!pendingUploads().length) return;
+    setPendingUploads([]);
+    setPlaylistStatus({ ...plexPlaylistStatus(), error: null });
+    return;
+  }
+  const files = batch.filter((file) => !file.empty);
+  const pending = new Set(files.map((file) => file.path));
   let note = plexPlaylistStatus().note;
+  let unmatched: string | null = null;
   const stillSending = () => {
     const current = getPlexServer();
     return current?.sendPlaylists === true && current.url === server.url;
@@ -242,26 +284,32 @@ export async function sendPlaylistsToPlex(
       await deletePlexPlaylist(server, removals[0]);
       removals.shift();
     }
-    const files = upload.filter((file) => !file.empty);
-    for (const file of upload) if (file.empty) await deletePlexPlaylist(server, file.title);
+    for (const file of batch) if (file.empty) await deletePlexPlaylist(server, file.title);
     const section = files.length ? await musicSectionFor(server, libraryFolder) : { key: "", note };
     note = section.note;
     for (const file of files) {
       if (!stillSending()) return;
-      try {
-        await http.post(`${server.url}/playlists/upload`, null, {
-          query: { sectionID: section.key, path: file.path },
-          headers: plexHeaders(server.token),
-          timeoutMs: TIMEOUT_MS,
-        });
-      } catch (error) {
-        if (Number(asAppError(error)?.response?.status) !== 500) throw error;
-        throw new PlexError(
-          `Plex found none of the tracks in ${file.title}. Plex has to see the Library folder at ${libraryFolder}.`,
-        );
+      const { status } = await http.post(`${server.url}/playlists/upload`, null, {
+        query: { sectionID: section.key, path: file.path },
+        headers: plexHeaders(server.token),
+        timeoutMs: TIMEOUT_MS,
+        okStatus: (code) => code === 500 || (code >= 200 && code < 300),
+      });
+      if (status !== 500) {
+        pending.delete(file.path);
+        continue;
       }
+      unmatched = file.title;
+      logger.info("playlists", "Plex found none of a playlist's tracks yet", {
+        playlist: file.title,
+      });
     }
-    setPlaylistStatus({ error: null, note });
+    setPlaylistStatus({
+      error:
+        unmatched &&
+        `Plex found none of the tracks in ${unmatched}. Plex has to see the Library folder at ${libraryFolder}.`,
+      note,
+    });
   } catch (error) {
     setPlaylistStatus({
       error: error instanceof PlexError ? error.message : "Couldn't send playlists to Plex",
@@ -269,6 +317,7 @@ export async function sendPlaylistsToPlex(
     });
   } finally {
     setPendingRemovals(removals);
+    if (stillSending()) setPendingUploads([...pending]);
   }
 }
 
@@ -277,5 +326,5 @@ export async function removePlaylistsFromPlex(titles: string[]) {
   if (!server) return;
   for (const title of new Set([...pendingRemovals(), ...titles]))
     await deletePlexPlaylist(server, title).catch(() => {});
-  setPendingRemovals([]);
+  forgetPending();
 }

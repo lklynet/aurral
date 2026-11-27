@@ -19,6 +19,7 @@ const [
   { downloadTracker },
   { playlistDisplayNames },
   plex,
+  { systemTask },
 ] = await setupIsolatedBackend(
   "playlist-files",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -29,6 +30,7 @@ const [
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/playlists/playlistFiles.ts"),
   () => import("../../backend/services/plex.ts"),
+  () => import("../../backend/services/jobs/systemTasks.ts"),
 );
 process.env.AURRAL_BACKGROUND_WORKER_GROUP = "library";
 
@@ -198,7 +200,7 @@ const defaultSections = () => [
 function fakePlex({ uploadStatus = 200, sections = defaultSections() } = {}) {
   const requests: string[] = [];
   const playlists = new Map<string, string>();
-  const fail = { deletes: false };
+  const fail = { deletes: false, unscanned: new Set<string>() };
   globalThis.fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const method = init?.method ?? "GET";
@@ -208,10 +210,11 @@ function fakePlex({ uploadStatus = 200, sections = defaultSections() } = {}) {
       return Response.json({ MediaContainer: { Directory: sections } });
     if (url.pathname === "/playlists/upload") {
       const file = url.searchParams.get("path") ?? "";
+      const title = path.basename(file, ".m3u");
+      const status = fail.unscanned.has(title) ? 500 : uploadStatus;
       requests.push(`upload ${url.searchParams.get("sectionID")} ${path.basename(file)}`);
-      if (uploadStatus === 200)
-        playlists.set(path.basename(file, ".m3u"), String(playlists.size + 1));
-      return new Response(null, { status: uploadStatus });
+      if (status === 200) playlists.set(title, String(playlists.size + 1));
+      return new Response(null, { status });
     }
     if (url.pathname === "/playlists" && method === "GET")
       return Response.json({
@@ -331,4 +334,78 @@ test("removals left from one Plex server never reach the next one", async () => 
   await playlistManager.syncPlaylists({ entityIds: [playlist.id], rewrite: true });
 
   assert.deepEqual(fake.requests, ["upload 3 New.m3u"]);
+});
+
+async function runHourlyPlexRetry() {
+  db.prepare("DELETE FROM jobs").run();
+  await systemTask("history-server-sync").run({}, { job: null });
+  const retries = playbackTaskQueue.list().filter(({ kind }) => kind === "plex-playlist-retry");
+  for (const { payload } of retries)
+    await systemTask("plex-playlist-retry").run(payload ?? {}, { job: null });
+  return retries.length;
+}
+
+test("a playlist Plex hasn't scanned yet is sent again until Plex takes it", async () => {
+  plex.savePlexServer({ url: "http://plex.test", token: "token", sendPlaylists: true });
+  const fake = fakePlex();
+  const fresh = flowPlaylistConfig.createStaticPlaylist({ name: "Fresh" });
+  const healthy = flowPlaylistConfig.createStaticPlaylist({ name: "Healthy" });
+  await addDownloadedTrack(fresh.id, "Song A");
+  await addDownloadedTrack(healthy.id, "Song B");
+  fake.fail.unscanned.add("Fresh");
+
+  await playlistManager.syncPlaylists();
+  assert.deepEqual(fake.requests, ["upload 3 Fresh.m3u", "upload 3 Healthy.m3u"]);
+  assert.match(plex.plexPlaylistStatus().error ?? "", /Plex found none of the tracks in Fresh/);
+
+  fake.requests.length = 0;
+  const later = flowPlaylistConfig.createStaticPlaylist({ name: "Later" });
+  await addDownloadedTrack(later.id, "Song C");
+  await playlistManager.syncPlaylists({ entityIds: [later.id] });
+  assert.deepEqual(fake.requests, ["upload 3 Fresh.m3u", "upload 3 Later.m3u"]);
+
+  fake.requests.length = 0;
+  const written = await fs.readFile(path.join(libraryRoot, "Fresh.m3u"), "utf8");
+  assert.equal(await runHourlyPlexRetry(), 1);
+  assert.deepEqual(fake.requests, ["upload 3 Fresh.m3u"]);
+  assert.equal(await fs.readFile(path.join(libraryRoot, "Fresh.m3u"), "utf8"), written);
+
+  fake.fail.unscanned.clear();
+  fake.requests.length = 0;
+  assert.equal(await runHourlyPlexRetry(), 1);
+  assert.deepEqual(fake.requests, ["upload 3 Fresh.m3u"]);
+  assert.equal(plex.plexPlaylistStatus().error, null);
+  assert.equal(await runHourlyPlexRetry(), 0);
+});
+
+test("a pending Plex upload stops once its playlist is removed or Send playlists is off", async () => {
+  plex.savePlexServer({ url: "http://plex.test", token: "token", sendPlaylists: true });
+  const fake = fakePlex();
+  const renamed = flowPlaylistConfig.createStaticPlaylist({ name: "Old" });
+  const deleted = flowPlaylistConfig.createStaticPlaylist({ name: "Gone" });
+  const kept = flowPlaylistConfig.createStaticPlaylist({ name: "Kept" });
+  await addDownloadedTrack(renamed.id, "Song A");
+  await addDownloadedTrack(deleted.id, "Song B");
+  await addDownloadedTrack(kept.id, "Song C");
+  fake.fail.unscanned = new Set(["Old", "Gone", "Kept"]);
+  await playlistManager.syncPlaylists();
+
+  fake.requests.length = 0;
+  flowPlaylistConfig.updateStaticPlaylist(renamed.id, { name: "New" });
+  flowPlaylistConfig.deleteStaticPlaylist(deleted.id);
+  await playlistManager.syncPlaylists({ entityIds: [renamed.id, deleted.id] });
+  assert.deepEqual(fake.requests, ["upload 3 Kept.m3u", "upload 3 New.m3u"]);
+
+  fake.requests.length = 0;
+  await fs.rm(path.join(libraryRoot, "Kept.m3u"));
+  assert.equal(await runHourlyPlexRetry(), 1);
+  assert.equal(await runHourlyPlexRetry(), 0);
+  assert.deepEqual(fake.requests, []);
+  assert.equal(plex.plexPlaylistStatus().error, null);
+
+  await playlistManager.syncPlaylists({ entityIds: [kept.id], rewrite: true });
+  assert.deepEqual(fake.requests, ["upload 3 Kept.m3u"]);
+  plex.savePlexServer({ url: "http://plex.test", token: "token", sendPlaylists: false });
+  plex.savePlexServer({ url: "http://plex.test", token: "token", sendPlaylists: true });
+  assert.equal(await runHourlyPlexRetry(), 0);
 });
