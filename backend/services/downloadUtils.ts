@@ -1,6 +1,8 @@
 import path from "path";
 import * as v from "valibot";
 import fs from "fs/promises";
+import { createReadStream, createWriteStream } from "fs";
+import { pipeline } from "stream/promises";
 import type { ICommonTagsResult, IAudioMetadata } from "music-metadata";
 import { asAppError } from "../../lib/errors.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
@@ -261,6 +263,15 @@ async function resolveAvailableTargetPath(targetPath: string) {
   return path.join(dir, `${base} (${Date.now()})${ext}`);
 }
 
+// Node's copyFile also copies the mode, so it fails on a share that refuses
+// chmod, like some NFS mounts, although the data was written.
+async function copyDownloadedFile(from: string, to: string) {
+  await fs.copyFile(from, to).catch(async (error: unknown) => {
+    if (asAppError(error)?.code !== "EPERM") throw error;
+    await pipeline(createReadStream(from), createWriteStream(to));
+  });
+}
+
 export async function commitDownloadedFile(
   sourcePath: string,
   targetPath: string,
@@ -277,7 +288,7 @@ export async function commitDownloadedFile(
       `.aurral-import-${process.pid}-${Date.now()}-${path.basename(resolvedTarget)}.tmp`,
     );
     try {
-      await fs.copyFile(sourcePath, tempTarget);
+      await copyDownloadedFile(sourcePath, tempTarget);
       const [sourceStat, tempStat] = await Promise.all([fs.stat(sourcePath), fs.stat(tempTarget)]);
       if (sourceStat.size !== tempStat.size) {
         throw new Error("Imported file copy did not match source size");
@@ -297,7 +308,7 @@ export async function commitDownloadedFile(
       path.dirname(resolvedTarget),
       `.aurral-import-${process.pid}-${Date.now()}-${path.basename(resolvedTarget)}.tmp`,
     );
-    await fs.copyFile(sourcePath, tempTarget);
+    await copyDownloadedFile(sourcePath, tempTarget);
     const [sourceStat, tempStat] = await Promise.all([fs.stat(sourcePath), fs.stat(tempTarget)]);
     if (sourceStat.size !== tempStat.size) {
       await fs.rm(tempTarget, { force: true }).catch(() => {});

@@ -1,6 +1,7 @@
 import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "fs/promises";
+import { existsSync } from "fs";
 import os from "os";
 import path from "path";
 
@@ -161,6 +162,38 @@ test("commitDownloadedFile keeps a copy made across filesystems when the downloa
   assert.equal(await commitDownloadedFile(source, target), target);
   assert.equal(await fs.readFile(target, "utf8"), "downloaded-audio");
   assert.deepEqual(await fs.readdir(path.dirname(target)), ["Track.flac"]);
+});
+
+test("commitDownloadedFile copies to a share that refuses chmod", async (t: import("vite-plus/test").TestContext) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-import-no-chmod-"));
+  t.onTestFinished(async () => {
+    vi.restoreAllMocks();
+    await fs.rm(root, { recursive: true, force: true });
+  });
+  const rename = fs.rename.bind(fs);
+  vi.spyOn(fs, "rename").mockImplementation(async (from, to) => {
+    if (String(from).includes("staging"))
+      throw Object.assign(new Error("cross-device link"), { code: "EXDEV" });
+    return rename(from, to);
+  });
+  vi.spyOn(fs, "copyFile").mockRejectedValue(
+    Object.assign(new Error("operation not permitted, copyfile"), { code: "EPERM" }),
+  );
+
+  for (const preserveSource of [false, true]) {
+    const source = path.join(root, "staging", `${preserveSource}.m4a`);
+    const target = path.join(root, "downloads", `${preserveSource}.m4a`);
+    await fs.mkdir(path.dirname(source), { recursive: true });
+    await fs.writeFile(source, "downloaded-audio", "utf8");
+
+    assert.equal(await commitDownloadedFile(source, target, { preserveSource }), target);
+    assert.equal(await fs.readFile(target, "utf8"), "downloaded-audio");
+    assert.equal(existsSync(source), preserveSource);
+  }
+  assert.deepEqual((await fs.readdir(path.join(root, "downloads"))).sort(), [
+    "false.m4a",
+    "true.m4a",
+  ]);
 });
 
 test("commitDownloadedFile can preserve a shared source for another consumer", async () => {

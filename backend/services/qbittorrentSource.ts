@@ -5,6 +5,7 @@ import * as v from "valibot";
 import { http } from "../../lib/http.ts";
 import { asAppError } from "../../lib/errors.ts";
 import {
+  DownloadFailedError,
   DownloadSourceError,
   type AlbumQuery,
   type DownloadSource,
@@ -128,9 +129,11 @@ async function linkAudioFiles(torrent: { hash: string; save_path: string }, dire
     await fs
       .link(from, target)
       .catch(() => fs.copyFile(from, target))
-      .catch(() => {
-        throw new DownloadSourceError(
-          `Aurral can't find ${from}. Add a remote path mapping for qBittorrent.`,
+      .catch((error: unknown) => {
+        throw new DownloadFailedError(
+          asAppError(error)?.code === "ENOENT"
+            ? `Aurral can't find ${from}. Add a remote path mapping for qBittorrent.`
+            : `Aurral couldn't copy ${from}: ${failure(error)}`,
         );
       });
   }

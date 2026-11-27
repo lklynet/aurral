@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import type { ServerResponse } from "node:http";
 import { buffer } from "node:stream/consumers";
-import { access, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import fs, { access, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, afterEach, beforeEach, test, type TestContext } from "vite-plus/test";
+import { afterAll, afterEach, beforeEach, test, vi, type TestContext } from "vite-plus/test";
 import { brainzmashGroup, serveGroups } from "../helpers/releaseFixture.ts";
 import {
   cleanupIsolatedState,
@@ -497,6 +497,46 @@ test("a track request downloads only the track's file from an album torrent and 
   assert.equal(job.status, "done");
   assert.equal(job.releaseGuid, "album:lowlands");
   assert.deepEqual(fake.deleted, []);
+});
+
+test("a finished torrent Aurral can't take files from fails with the cause and isn't downloaded again", async (t) => {
+  t.onTestFinished(() => {
+    vi.restoreAllMocks();
+  });
+  const cases = [
+    {
+      prepare: () => rm(path.join(folder, "Glass Coast - Lowlands"), { recursive: true }),
+      error: /can't find .*Glass Coast - Lowlands.* Add a remote path mapping for qBittorrent/,
+    },
+    {
+      prepare: async () => {
+        const full = Object.assign(new Error("no space left on device"), { code: "ENOSPC" });
+        vi.spyOn(fs, "link").mockRejectedValue(full);
+        vi.spyOn(fs, "copyFile").mockRejectedValue(full);
+      },
+      error: /Aurral couldn't copy .*Night Drive\.flac: no space left on device$/,
+    },
+  ];
+  for (const { prepare, error } of cases) {
+    await rm(folder, { recursive: true, force: true });
+    await mkdir(folder);
+    fake.torrents = [];
+    fake.added = [];
+    fake.deleted = [];
+    await lowlandsTorrent();
+    await prepare();
+    const jobId = createTrackedJob(
+      downloadTracker,
+      { artistName: "Glass Coast", trackName: "Night Drive", albumName: "Lowlands" },
+      "qbittorrent-source",
+    );
+    const search = { jobId, phase: "search", source: "qbittorrent" } as const;
+
+    await assert.rejects(runPipeline(search), error);
+    await assert.rejects(runPipeline(search), /No matching album/);
+    assert.equal(fake.added.length, 1);
+    assert.deepEqual(fake.deleted, ["h1"]);
+  }
 });
 
 test("a track request downloads the whole album when the file names don't show the track, and picks it by its tags", async () => {
