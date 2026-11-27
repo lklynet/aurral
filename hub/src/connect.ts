@@ -17,6 +17,7 @@ import {
 } from "../../lib/connectTokens.ts";
 import { allowedText, handleOf } from "./handles.ts";
 import { sha256Hex } from "./instances.ts";
+import type { PolarBillingInterval, PolarSubscriptionEvent } from "./polar.ts";
 
 export const CONNECT_AUTH_CODE_MS = 2 * 60 * 1000;
 export const CONNECT_CLIENT_TOKEN_MS = 30 * 24 * 60 * 60 * 1000;
@@ -80,6 +81,11 @@ type EntitlementRow = {
   current_period_end: number | null;
   trial_used_at: number | null;
   updated_at: number;
+  polar_customer_id?: string | null;
+  polar_subscription_id?: string | null;
+  cancel_at_period_end?: number;
+  billing_interval?: string | null;
+  polar_event_at?: number | null;
 };
 
 export type ConnectEntitlementSummary = {
@@ -88,6 +94,22 @@ export type ConnectEntitlementSummary = {
   maxServers: number;
   currentPeriodEnd: number | null;
   trialAvailable: boolean;
+};
+
+export type ConnectBillingSummary = ConnectEntitlementSummary & {
+  polarCustomerId: string | null;
+  polarSubscriptionId: string | null;
+  cancelAtPeriodEnd: boolean;
+  billingInterval: PolarBillingInterval | null;
+};
+
+export type OwnedConnectServer = {
+  instanceId: string;
+  name: string;
+  slug: string;
+  connectUrl: string;
+  online: boolean;
+  lastSeenAt: number | null;
 };
 
 export const normalizeSlug = (input: string) => input.trim().toLowerCase();
@@ -171,6 +193,303 @@ export async function getConnectAccountSummary(
       .first<number>("count"),
   ]);
   return { entitlement, serverCount: count ?? 0 };
+}
+
+function normalizeBillingInterval(value: string | null | undefined): PolarBillingInterval | null {
+  return value === "month" || value === "year" ? value : null;
+}
+
+export async function getConnectBillingSummary(
+  db: D1Database,
+  accountId: string,
+  now = Date.now(),
+): Promise<ConnectBillingSummary> {
+  const row = await db
+    .prepare(
+      `SELECT account_id, status, max_servers, current_period_end, trial_used_at, updated_at,
+              polar_customer_id, polar_subscription_id, cancel_at_period_end, billing_interval, polar_event_at
+       FROM connect_entitlements
+       WHERE account_id = ?`,
+    )
+    .bind(accountId)
+    .first<EntitlementRow>();
+  if (!row) {
+    return {
+      status: "none",
+      active: false,
+      maxServers: CONNECT_MAX_SERVERS_DEFAULT,
+      currentPeriodEnd: null,
+      trialAvailable: true,
+      polarCustomerId: null,
+      polarSubscriptionId: null,
+      cancelAtPeriodEnd: false,
+      billingInterval: null,
+    };
+  }
+  return {
+    status: normalizeStatus(row.status),
+    active: isEntitlementActive(row, now),
+    maxServers: row.max_servers,
+    currentPeriodEnd: row.current_period_end,
+    trialAvailable: row.trial_used_at === null,
+    polarCustomerId: row.polar_customer_id ?? null,
+    polarSubscriptionId: row.polar_subscription_id ?? null,
+    cancelAtPeriodEnd: row.cancel_at_period_end === 1,
+    billingInterval: normalizeBillingInterval(row.billing_interval),
+  };
+}
+
+export function hasManagedPolarSubscription(entitlement: ConnectBillingSummary): boolean {
+  return Boolean(
+    entitlement.polarSubscriptionId &&
+    (entitlement.status === "active" ||
+      entitlement.status === "trial" ||
+      entitlement.status === "past_due"),
+  );
+}
+
+export async function getOwnedConnectServers(
+  db: D1Database,
+  accountId: string,
+  connectDomain: string,
+): Promise<OwnedConnectServer[]> {
+  const rows = await db
+    .prepare(
+      `SELECT s.instance_id, s.name, s.online, s.last_seen_at, sl.slug
+       FROM connect_servers s
+       JOIN connect_slugs sl ON sl.instance_id = s.instance_id
+       WHERE s.owner_account_id = ?
+       ORDER BY s.created_at ASC`,
+    )
+    .bind(accountId)
+    .all<{
+      instance_id: string;
+      name: string;
+      online: number;
+      last_seen_at: number | null;
+      slug: string;
+    }>();
+  return rows.results.map((row) => ({
+    instanceId: row.instance_id,
+    name: row.name,
+    slug: row.slug,
+    connectUrl: connectOriginFor(row.slug, connectDomain),
+    online: row.online === 1,
+    lastSeenAt: row.last_seen_at,
+  }));
+}
+
+export async function getOwnedConnectServer(
+  db: D1Database,
+  accountId: string,
+  instanceId: string,
+  connectDomain: string,
+): Promise<OwnedConnectServer | null> {
+  const row = await db
+    .prepare(
+      `SELECT s.instance_id, s.name, s.online, s.last_seen_at, sl.slug
+       FROM connect_servers s
+       JOIN connect_slugs sl ON sl.instance_id = s.instance_id
+       WHERE s.owner_account_id = ? AND s.instance_id = ?`,
+    )
+    .bind(accountId, instanceId)
+    .first<{
+      instance_id: string;
+      name: string;
+      online: number;
+      last_seen_at: number | null;
+      slug: string;
+    }>();
+  if (!row) return null;
+  return {
+    instanceId: row.instance_id,
+    name: row.name,
+    slug: row.slug,
+    connectUrl: connectOriginFor(row.slug, connectDomain),
+    online: row.online === 1,
+    lastSeenAt: row.last_seen_at,
+  };
+}
+
+function mapPolarSubscriptionState(
+  event: PolarSubscriptionEvent,
+  now: number,
+): {
+  status: Exclude<EntitlementStatus, "none">;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: number | null;
+} | null {
+  if (event.type === "subscription.revoked") {
+    const periodEnd = event.currentPeriodEnd !== null ? Math.min(event.currentPeriodEnd, now) : now;
+    return { status: "canceled", cancelAtPeriodEnd: false, currentPeriodEnd: periodEnd };
+  }
+  if (event.type === "subscription.past_due" || event.status === "past_due") {
+    return {
+      status: "past_due",
+      cancelAtPeriodEnd: event.cancelAtPeriodEnd,
+      currentPeriodEnd: event.currentPeriodEnd,
+    };
+  }
+  if (event.status === "active") {
+    return {
+      status: "active",
+      cancelAtPeriodEnd: event.cancelAtPeriodEnd,
+      currentPeriodEnd: event.currentPeriodEnd,
+    };
+  }
+  if (event.status === "trialing") {
+    return {
+      status: "trial",
+      cancelAtPeriodEnd: event.cancelAtPeriodEnd,
+      currentPeriodEnd: event.currentPeriodEnd,
+    };
+  }
+  if (
+    event.status === "canceled" ||
+    event.status === "unpaid" ||
+    event.status === "incomplete_expired"
+  ) {
+    return {
+      status: "canceled",
+      cancelAtPeriodEnd: false,
+      currentPeriodEnd: event.currentPeriodEnd,
+    };
+  }
+  return null;
+}
+
+async function accountExists(db: D1Database, id: string): Promise<boolean> {
+  return (
+    (await db.prepare("SELECT id FROM accounts WHERE id = ?").bind(id).first<string>("id")) !== null
+  );
+}
+
+export async function applyPolarSubscriptionEvent(
+  db: D1Database,
+  event: PolarSubscriptionEvent,
+  options: {
+    allowedProductIds: readonly string[];
+    webhookTimestampMs?: number;
+    now?: number;
+  },
+) {
+  const now = options.now ?? Date.now();
+  const allowedProducts = options.allowedProductIds;
+  if (
+    allowedProducts.length === 0 ||
+    !event.productId ||
+    !allowedProducts.includes(event.productId)
+  ) {
+    return { applied: false as const, reason: "product_mismatch" as const };
+  }
+
+  const mapped = mapPolarSubscriptionState(event, now);
+  if (!mapped) {
+    return { applied: false as const, reason: "ignored_status" as const };
+  }
+
+  let accountId: string | null = null;
+  if (event.metadataAccountId) {
+    accountId = (await accountExists(db, event.metadataAccountId)) ? event.metadataAccountId : null;
+  } else if (event.customerExternalId && (await accountExists(db, event.customerExternalId))) {
+    accountId = event.customerExternalId;
+  } else {
+    accountId =
+      (await db
+        .prepare("SELECT account_id FROM connect_entitlements WHERE polar_subscription_id = ?")
+        .bind(event.subscriptionId)
+        .first<string>("account_id")) ?? null;
+    if (!accountId && event.polarCustomerId) {
+      accountId =
+        (await db
+          .prepare("SELECT account_id FROM connect_entitlements WHERE polar_customer_id = ?")
+          .bind(event.polarCustomerId)
+          .first<string>("account_id")) ?? null;
+    }
+  }
+  if (!accountId) {
+    return { applied: false as const, reason: "unknown_account" as const };
+  }
+
+  const polarCustomerIdForAccount =
+    event.customerExternalId === accountId ? event.polarCustomerId : null;
+  const eventTimestamp = event.eventTimestamp ?? options.webhookTimestampMs ?? now;
+  const subscriptionCreatedAt = event.subscriptionCreatedAt;
+  const result = await db
+    .prepare(
+      `INSERT INTO connect_entitlements (
+         account_id, status, max_servers, current_period_end, trial_used_at, updated_at,
+         polar_customer_id, polar_subscription_id, polar_subscription_created_at,
+         cancel_at_period_end, billing_interval, polar_event_at
+       )
+       VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+       ON CONFLICT (account_id) DO UPDATE SET
+         status = excluded.status,
+         current_period_end = excluded.current_period_end,
+         trial_used_at = COALESCE(connect_entitlements.trial_used_at, excluded.trial_used_at),
+         updated_at = excluded.updated_at,
+         polar_customer_id = CASE
+           WHEN connect_entitlements.polar_subscription_id = excluded.polar_subscription_id
+             THEN COALESCE(excluded.polar_customer_id, connect_entitlements.polar_customer_id)
+           ELSE excluded.polar_customer_id
+         END,
+         polar_subscription_id = excluded.polar_subscription_id,
+         polar_subscription_created_at = CASE
+           WHEN connect_entitlements.polar_subscription_id = excluded.polar_subscription_id
+             THEN COALESCE(connect_entitlements.polar_subscription_created_at, excluded.polar_subscription_created_at)
+           ELSE excluded.polar_subscription_created_at
+         END,
+         cancel_at_period_end = excluded.cancel_at_period_end,
+         billing_interval = COALESCE(excluded.billing_interval, connect_entitlements.billing_interval),
+         polar_event_at = excluded.polar_event_at
+       WHERE (
+         connect_entitlements.polar_subscription_id IS NULL
+         OR (
+           connect_entitlements.polar_subscription_id = excluded.polar_subscription_id
+           AND (
+             connect_entitlements.polar_event_at IS NULL
+             OR excluded.polar_event_at > connect_entitlements.polar_event_at
+             OR (
+               excluded.polar_event_at = connect_entitlements.polar_event_at
+               AND (connect_entitlements.status != 'canceled' OR excluded.status = 'canceled')
+             )
+           )
+         )
+         OR (
+           connect_entitlements.polar_subscription_id != excluded.polar_subscription_id
+           AND excluded.polar_subscription_created_at IS NOT NULL
+           AND (
+             connect_entitlements.polar_subscription_created_at IS NULL
+             OR excluded.polar_subscription_created_at >= connect_entitlements.polar_subscription_created_at
+           )
+           AND NOT (
+             excluded.status = 'canceled'
+             AND connect_entitlements.status IN ('trial', 'active', 'past_due')
+             AND (connect_entitlements.current_period_end IS NULL OR connect_entitlements.current_period_end > ?12)
+           )
+         )
+       )`,
+    )
+    .bind(
+      accountId,
+      mapped.status,
+      CONNECT_MAX_SERVERS_DEFAULT,
+      mapped.currentPeriodEnd,
+      now,
+      polarCustomerIdForAccount,
+      event.subscriptionId,
+      subscriptionCreatedAt,
+      mapped.cancelAtPeriodEnd ? 1 : 0,
+      event.billingInterval,
+      eventTimestamp,
+      now,
+    )
+    .run();
+
+  if (!result.meta.changes) {
+    return { applied: false as const, reason: "stale_event" as const };
+  }
+  return { applied: true as const, accountId, status: mapped.status };
 }
 
 export async function startConnectTrial(

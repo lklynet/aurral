@@ -15,6 +15,10 @@
     "APP_ORIGIN": "https://music.aurral.org",
     "CONNECT_DOMAIN": "aurral.dev",
     "CONNECT_RELAY_URL": "wss://relay.aurral.dev/tunnel",
+    "POLAR_API_ORIGIN": "https://api.polar.sh",
+    "POLAR_PRODUCT_MONTHLY_ID": "019d05db-a24e-4f44-a4d8-30e368ca6056",
+    "POLAR_PRODUCT_YEARLY_ID": "53648334-59bc-4414-9b3a-e402c9b65af6",
+    "POLAR_PORTAL_URL": "https://polar.sh/aurral/portal",
   },
   "ratelimits": [
     { "name": "LINK_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
@@ -35,6 +39,10 @@
         "APP_ORIGIN": "https://music.aurral.org",
         "CONNECT_DOMAIN": "aurral.dev",
         "CONNECT_RELAY_URL": "wss://relay.aurral.dev/tunnel",
+        "POLAR_API_ORIGIN": "https://sandbox-api.polar.sh",
+        "POLAR_PRODUCT_MONTHLY_ID": "090271e1-5c76-4ced-a622-91922cfb1591",
+        "POLAR_PRODUCT_YEARLY_ID": "23c302c6-b133-43f3-b58d-fcd95b703952",
+        "POLAR_PORTAL_URL": "https://sandbox.polar.sh/factory-starter/portal",
       },
       "ratelimits": [
         { "name": "LINK_LIMITER", "namespace_id": "1002", "simple": { "limit": 20, "period": 60 } },
