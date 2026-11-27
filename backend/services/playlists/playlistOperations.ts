@@ -891,6 +891,8 @@ export async function processPlaylistOperation(
         return researchPlaylistTrack(payload);
       case "library-track-research":
         return researchLibraryTrack(payload);
+      case "research-missing":
+        return downloadWorker.researchMissingTracks(unknownList(payload.playlistIds).map(String));
       case "static-playlist-delete":
         return deleteStaticPlaylist(payload);
       default:

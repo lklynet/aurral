@@ -1,4 +1,4 @@
-import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
+import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -20,6 +20,10 @@ const [
   { downloadTracker },
   { downloadWorker },
   { api },
+  { recordTrackJobFailed },
+  { getAurralHistoryRequests },
+  { playlistOperationQueue },
+  { processPlaylistOperation },
 ] = await setupIsolatedBackend(
   "aurral-wanted-monitoring",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -29,6 +33,10 @@ const [
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/routes/api.ts"),
+  () => import("../../backend/services/aurralHistoryService.ts"),
+  () => import("../../backend/services/aurralHistoryRequests.ts"),
+  () => import("../../backend/services/playlists/playlistOperationQueue.ts"),
+  () => import("../../backend/services/playlists/playlistOperations.ts"),
 );
 
 const server = await listen(
@@ -103,6 +111,7 @@ async function createLibraryJob({
   assert.ok(jobId != null);
   if (state === "failed") {
     downloadTracker.setFailed(jobId, "No matching source result");
+    recordTrackJobFailed(downloadTracker.getJob(jobId), "No matching source result");
     return jobId;
   }
   const filePath = path.join(managedRoot, artist.name, album.title, `${track.title}.mp3`);
@@ -127,6 +136,21 @@ async function request<Body = never>(route: string, options: RequestInit = {}) {
   const body: Body = await response.json();
   assert.equal(response.status, 200, JSON.stringify(body));
   return body;
+}
+
+async function searchAllMissing() {
+  const enqueue = vi
+    .spyOn(playlistOperationQueue, "enqueuePayload")
+    .mockResolvedValue({ queued: true, operationId: 1 });
+  try {
+    const response = await fetch(`${baseUrl}/api/playlists/research-missing`, { method: "POST" });
+    assert.equal(response.status, 202, await response.text());
+    const payload = enqueue.mock.calls[0]?.[0];
+    assert.ok(payload);
+    return await processPlaylistOperation(payload);
+  } finally {
+    enqueue.mockRestore();
+  }
 }
 
 const stopMonitoring = (jobId: string | null) => {
@@ -253,20 +277,22 @@ test("Search all in Wanted skips unmonitored tracks and keeps monitored tracks o
     trackMonitored: true,
   });
 
-  const missing = await request<{ requeued: number }>("/api/playlists/research-missing", {
-    method: "POST",
-  });
+  const requeued = await searchAllMissing();
   const upgrades = await request<{ queued: number }>("/api/playlists/quality-upgrades", {
     method: "POST",
   });
 
-  assert.equal(missing.requeued, 1);
+  assert.equal(requeued, 1);
   assert.deepEqual(
     [monitoredMissing, missingInUnmonitoredAlbum, missingUnmonitoredTrack].map(
       (jobId) => getJob(jobId).status,
     ),
     ["pending", "failed", "failed"],
   );
+  const queueStatus = new Map(
+    (await getAurralHistoryRequests()).map((item) => [item.jobId, item.status]),
+  );
+  assert.equal(queueStatus.get(monitoredMissing), "pending");
   const upgraded = upgradedJobIds();
   assert.equal(upgrades.queued, 3);
   assert.deepEqual(

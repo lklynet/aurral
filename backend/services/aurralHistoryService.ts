@@ -703,6 +703,14 @@ export const recordTrackJobQueued = recorder(
   },
 );
 
+export const recordTrackJobRequeued = recorder((job: HistoryJob | null | undefined) =>
+  recordTrackJob(job, {
+    status: "pending",
+    statusLabel: "Queued",
+    title: `Queued ${job?.trackName || "track"}`,
+  }),
+);
+
 export const recordTrackJobDownloading = recorder((job: HistoryJob | null | undefined) =>
   recordTrackJob(job, {
     status: "processing",

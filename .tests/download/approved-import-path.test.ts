@@ -1,7 +1,7 @@
 import { audioMetadata } from "./fixtures.ts";
 import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import { createTrackedJob, trackedJob } from "./fixtures.ts";
-import { test, beforeEach, afterAll, afterEach } from "vite-plus/test";
+import { test, beforeEach, afterAll, afterEach, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import * as v from "valibot";
 import fs from "fs/promises";
@@ -41,6 +41,7 @@ const [
   { refreshCompletedPipelinePlaylist },
   { systemTaskSchema },
   { scanConfiguredLibrary },
+  { playlistOperationQueue },
 ] = await setupIsolatedBackend(
   "approved-import-path",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -64,7 +65,23 @@ const [
   () => import("../../backend/services/pipelineHelpers.ts"),
   () => import("../../backend/services/jobs/systemTasks.ts"),
   () => import("../../backend/services/libraryIndexService.ts"),
+  () => import("../../backend/services/playlists/playlistOperationQueue.ts"),
 );
+
+async function searchAllMissing() {
+  const enqueue = vi
+    .spyOn(playlistOperationQueue, "enqueuePayload")
+    .mockResolvedValue({ queued: true, operationId: 1 });
+  try {
+    const response = await fetch(`${baseUrl}/research-missing`, { method: "POST" });
+    assert.equal(response.status, 202, await response.text());
+    const payload = enqueue.mock.calls[0]?.[0];
+    assert.ok(payload);
+    return await processPlaylistOperation(payload);
+  } finally {
+    enqueue.mockRestore();
+  }
+}
 
 function takePlaylistSyncs() {
   const jobs = playbackTaskQueue.list().filter((job) => job.kind === "playback-playlist-sync");
@@ -817,10 +834,7 @@ test("search all stays within the requesting user's playlist access", async () =
     permissions: { accessPlaylists: true },
   };
   try {
-    const missingResponse = await fetch(`${baseUrl}/research-missing`, { method: "POST" });
-    const missingPayload = await missingResponse.json();
-    assert.equal(missingResponse.status, 200, JSON.stringify(missingPayload));
-    assert.equal(missingPayload.requeued, 1);
+    assert.equal(await searchAllMissing(), 1);
     assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
     assert.equal(downloadTracker.getJob(otherJobId)?.status, "failed");
 
@@ -902,10 +916,7 @@ test("wanted covers every library job regardless of playlist access", async () =
     assert.equal(listed.get(lowQualityJobId)?.qualityOwned, true);
     assert.notEqual(listed.get(lowQualityJobId)?.qualityState, "preferred");
 
-    const missingResponse = await fetch(`${baseUrl}/research-missing`, { method: "POST" });
-    const missingPayload = await missingResponse.json();
-    assert.equal(missingResponse.status, 200, JSON.stringify(missingPayload));
-    assert.equal(missingPayload.requeued, 1);
+    assert.equal(await searchAllMissing(), 1);
     assert.equal(downloadTracker.getJob(missingJobId)?.status, "pending");
 
     downloadTracker.setFailed(missingJobId, "Still no source");
