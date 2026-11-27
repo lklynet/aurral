@@ -1,16 +1,18 @@
 import {
   parseFile,
   updateFile,
+  type IAudioMetadata,
+  type ICommonTagsResult,
   type TagPatch,
   UnsupportedFileTypeError,
   UnsupportedFeatureError,
   UnsupportedFormatError,
   CouldNotDetermineFileTypeError,
-  type IAudioMetadata,
 } from "music-metadata/node";
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import { tagValues } from "../../lib/artistCredit.ts";
 export const AURRAL_IDENTITY_TAG = "AURRAL_IDS";
 const AURRAL_IDENTITY_PREFIX = `${AURRAL_IDENTITY_TAG}=`;
 type TagFieldValue = string | number | string[] | null | undefined;
@@ -189,6 +191,184 @@ function planChanges(
   return changes;
 }
 
+// TXXX descriptions mapped into music-metadata's common model, so upgrades
+// don't re-write mapped or cleared values through native.
+const MAPPED_ID3_TXXX = new Set([
+  "acoustid fingerprint",
+  "acoustid id",
+  "acoustid_id",
+  "albumartists",
+  "artists",
+  "asin",
+  "barcode",
+  "catalogid",
+  "catalognumber",
+  "director",
+  "discogs_album_artists",
+  "discogs_artist_id",
+  "discogs_artist_name",
+  "discogs_artists",
+  "discogs_catalog",
+  "discogs_country",
+  "discogs_date",
+  "discogs_label",
+  "discogs_label_id",
+  "discogs_master_release_id",
+  "discogs_rating",
+  "discogs_release_id",
+  "discogs_released",
+  "discogs_votes",
+  "disctotal",
+  "gapless",
+  "hdvideo",
+  "isrc",
+  "itunes_cddb_1",
+  "license",
+  "longdescription",
+  "mp3gain_album_minmax",
+  "mp3gain_minmax",
+  "mp3gain_undo",
+  "musicbrainz album artist id",
+  "musicbrainz album id",
+  "musicbrainz album release country",
+  "musicbrainz album status",
+  "musicbrainz album type",
+  "musicbrainz artist id",
+  "musicbrainz composer id",
+  "musicbrainz disc id",
+  "musicbrainz original album id",
+  "musicbrainz original artist id",
+  "musicbrainz release group id",
+  "musicbrainz release track id",
+  "musicbrainz trm id",
+  "musicbrainz work id",
+  "musicip puid",
+  "musicmagic fingerprint",
+  "notes",
+  "originalyear",
+  "performer",
+  "performer:instrument",
+  "releasecountry",
+  "replaygain_album_gain",
+  "replaygain_album_peak",
+  "replaygain_album_range",
+  "replaygain_reference_loudness",
+  "replaygain_track_gain",
+  "replaygain_track_gain_ratio",
+  "replaygain_track_peak",
+  "replaygain_track_peak_ratio",
+  "replaygain_track_range",
+  "script",
+  "showmovement",
+  "stik",
+  "style",
+  "technician",
+  "tracktotal",
+  "tvepisode",
+  "tvepisodeid",
+  "tvnetwork",
+  "tvseason",
+  "tvshow",
+  "tvshowsort",
+  "work",
+  "writer",
+]);
+
+const stripNulls = (value: string) => value.replace(/\0\uFEFF?/g, "");
+
+function cleanNested(value: unknown): unknown {
+  if (typeof value === "string") return value.includes("\0") ? stripNulls(value) : value;
+  if (Array.isArray(value)) return value.map(cleanNested);
+  if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, cleanNested(entry)]),
+    );
+  }
+  return value;
+}
+
+// ID3v2.3 multi-value frames from editors like Mp3tag carry raw NUL/BOM bytes in
+// common text fields, which ID3v2.4 serialization rejects as invalid text.
+function cleanLegacyCommon(common: ICommonTagsResult): TagPatch {
+  const cleaned: Record<string, unknown> = {};
+  for (const key of Object.keys(common) as (keyof ICommonTagsResult)[]) {
+    const value: unknown = common[key];
+    if (value === undefined || typeof value === "function") continue;
+    if (typeof value === "string") {
+      const clean = value.includes("\0") ? tagValues(value)[0] : value;
+      if (clean !== undefined) cleaned[key] = clean;
+    } else if (Array.isArray(value)) {
+      const items = value.flatMap((entry) =>
+        typeof entry === "string"
+          ? entry.includes("\0")
+            ? tagValues(entry)
+            : [entry]
+          : [cleanNested(entry)],
+      );
+      if (items.length) cleaned[key] = items;
+    } else {
+      cleaned[key] = cleanNested(value);
+    }
+  }
+  return cleaned as TagPatch;
+}
+
+// TXXX descriptions written by Aurral's common patch fields, used to avoid
+// resurrecting a replaced or cleared ID3v2.2 TXX tag through native.
+const PATCH_TXXX_FIELDS: readonly [keyof TagPatch, readonly string[]][] = [
+  ["artists", ["artists", "discogs_artists", "discogs_artist_name"]],
+  ["genres", ["style"]],
+  ["mbArtistId", ["musicbrainz artist id"]],
+  ["mbAlbumArtistId", ["musicbrainz album artist id"]],
+  ["mbReleaseGroupId", ["musicbrainz release group id", "musicbrainz album id"]],
+  ["mbReleaseId", ["musicbrainz album id", "musicbrainz release group id"]],
+];
+
+function unmappedLegacyTxxx(tags: IAudioMetadata["native"][string], patch: TagPatch) {
+  const overriddenV22 = new Set<string>();
+  for (const [field, descriptions] of PATCH_TXXX_FIELDS) {
+    if (patch[field] !== undefined) {
+      for (const description of descriptions) overriddenV22.add(description);
+    }
+  }
+  const preserved = new Map<string, { key: string; values: string[] }>();
+  for (const tag of tags) {
+    if (typeof tag.value !== "string") continue;
+    let desc = "";
+    let raw = "";
+    let isV22 = false;
+    if (tag.id.startsWith("TXXX:")) {
+      desc = stripNulls(tag.id.slice(5));
+      raw = tag.value;
+    } else if (tag.id === "TXX") {
+      const separator = tag.value.indexOf("\0");
+      if (separator <= 0) continue;
+      desc = tag.value.slice(0, separator).replace(/^\uFEFF/, "");
+      raw = tag.value.slice(separator + 1);
+      isV22 = true;
+    } else {
+      continue;
+    }
+    const lower = desc.toLowerCase();
+    if (
+      !lower ||
+      (!isV22 && lower === AURRAL_IDENTITY_TAG.toLowerCase()) ||
+      (isV22 ? overriddenV22.has(lower) : MAPPED_ID3_TXXX.has(lower))
+    )
+      continue;
+    const values = raw.includes("\0") ? tagValues(raw) : [raw];
+    if (!values.length) continue;
+    const existing = preserved.get(lower);
+    if (existing) existing.values.push(...values);
+    else preserved.set(lower, { key: `TXXX:${desc}`, values });
+  }
+  const native: Record<string, string | string[]> = {};
+  for (const { key, values } of preserved.values()) {
+    native[key] = values.length === 1 ? values[0]! : values;
+  }
+  return native;
+}
+
 async function updateTags(
   filePath: string,
   metadata: IAudioMetadata,
@@ -196,18 +376,28 @@ async function updateTags(
   dryRun = false,
 ) {
   try {
-    if (metadata.native["ID3v2.3"]) {
-      // Replacement needs the full common model, including artwork skipped during planning.
-      // Unmapped/private frames are not represented by this conversion.
-      const full = await parseFile(filePath);
-      const identity = readIdentity(full);
-      const native = { ...patch.native };
+    const legacyId3 = !metadata.native["ID3v2.4"]
+      ? (metadata.native["ID3v2.3"] ?? metadata.native["ID3v2.2"])
+      : undefined;
+    if (legacyId3) {
+      // Actual replacement needs embedded artwork skipped during planning.
+      const source = dryRun ? metadata : await parseFile(filePath);
+      const legacyTags = source.native["ID3v2.3"] ?? source.native["ID3v2.2"] ?? [];
+      const native: Record<string, NonNullable<TagPatch["native"]>[string]> = unmappedLegacyTxxx(
+        legacyTags,
+        patch,
+      );
+      const identity = readIdentity(source);
       const identityKey = `TXXX:${AURRAL_IDENTITY_TAG}`;
-      if (identity && !Object.hasOwn(native, identityKey))
-        native[identityKey] = JSON.stringify(identity);
+      if (identity) native[identityKey] = JSON.stringify(identity);
+      for (const [key, value] of Object.entries(patch.native ?? {})) {
+        const existing = Object.keys(native).find((k) => k.toLowerCase() === key.toLowerCase());
+        if (existing && existing !== key) delete native[existing];
+        native[key] = value;
+      }
       await updateFile(
         filePath,
-        { ...full.common, ...patch, native },
+        { ...cleanLegacyCommon(source.common), ...patch, native },
         { replaceId3: true, dryRun },
       );
     } else {
