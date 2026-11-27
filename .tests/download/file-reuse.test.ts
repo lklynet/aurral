@@ -739,8 +739,17 @@ test("jobs follow the Library files a scan changed", async () => {
   const deletedPath = path.join(album, "04 - Rx Queen.mp3");
   const importedPath = path.join(album, "04 - Rx Queen.flac");
   const flacPath = path.join(album, "Feiticeira [manual].flac");
+  const promotedPath = path.join(album, "05 - Knife Prty.mp3");
+  const readOnlyPath = path.join(
+    isolatedState.baseDir,
+    "readonly",
+    "White Pony",
+    "05 Knife Prty.flac",
+  );
   await fs.mkdir(album, { recursive: true });
+  await fs.mkdir(path.dirname(readOnlyPath), { recursive: true });
   await fs.writeFile(flacPath, "audio");
+  await fs.writeFile(readOnlyPath, "audio");
   await fs.writeFile(overwrittenPath, "audio");
   const artist = libraryStore.upsertLibraryArtist({
     identityKey: "mbid:deftones",
@@ -753,7 +762,13 @@ test("jobs follow the Library files a scan changed", async () => {
     artistId: artist.id,
     title: "White Pony",
   });
-  const addTrack = (mbid: string, title: string, filePath: string, quality: object) => {
+  const addTrack = (
+    mbid: string,
+    title: string,
+    filePath: string,
+    quality: object,
+    source = "aurral",
+  ) => {
     const track = libraryStore.upsertLibraryTrack({
       identityKey: `recording:${mbid}`,
       mbid,
@@ -764,7 +779,7 @@ test("jobs follow the Library files a scan changed", async () => {
     libraryStore.upsertLibraryMediaFile({
       trackId: track.id,
       albumId: libraryAlbum.id,
-      source: "aurral",
+      source,
       path: filePath,
       quality,
     });
@@ -774,6 +789,7 @@ test("jobs follow the Library files a scan changed", async () => {
   addTrack("feiticeira", "Feiticeira", flacPath, lossless);
   addTrack("digital-bath", "Digital Bath", overwrittenPath, lossy);
   addTrack("elite", "Elite", offlinePath, lossy);
+  addTrack("knife-prty", "Knife Prty", readOnlyPath, lossless, "readonly");
   libraryStore.markLibraryMediaFilesUnavailable("aurral", [offlinePath]);
   const doneJob = (trackName: string, trackMbid: string, finalPath: string) => {
     const jobId = createTrackedJob(
@@ -797,11 +813,18 @@ test("jobs follow the Library files a scan changed", async () => {
   const overwritten = doneJob("Digital Bath", "digital-bath", overwrittenPath);
   const offline = doneJob("Elite", "elite", offlinePath);
   const deleted = doneJob("Rx Queen", "rx-queen", deletedPath);
+  const promoted = doneJob("Knife Prty", "knife-prty", promotedPath);
   const playlistSync = vi
     .spyOn(playlistManager, "requestPlaylistSync")
     .mockImplementation(() => null);
 
-  await followChangedLibraryFiles([replacedPath, overwrittenPath, offlinePath, deletedPath]);
+  await followChangedLibraryFiles([
+    replacedPath,
+    overwrittenPath,
+    offlinePath,
+    deletedPath,
+    promotedPath,
+  ]);
 
   const replacedJob = trackedJob(downloadTracker, replaced);
   assert.equal(replacedJob.finalPath, flacPath);
@@ -811,6 +834,11 @@ test("jobs follow the Library files a scan changed", async () => {
   assert.equal(offlineJob.finalPath, offlinePath);
   assert.equal(offlineJob.qualityTier, "mp3-128");
   assert.equal(trackedJob(downloadTracker, deleted).finalPath, deletedPath);
+  const promotedJob = trackedJob(downloadTracker, promoted);
+  assert.deepEqual(
+    [promotedJob.finalPath, promotedJob.externalPath, promotedJob.qualityTier],
+    [readOnlyPath, readOnlyPath, "flac-standard"],
+  );
   assert.deepEqual(playlistSync.mock.calls, [[["library"]]]);
 
   await fs.writeFile(importedPath, "audio");

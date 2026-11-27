@@ -35,12 +35,10 @@ type SourceOptions = {
   targetPlaylistType?: string | null;
   downloadRoot?: string | null;
   excludeJobIds?: string[] | null;
-  allowFolderSources?: boolean;
 };
 type ReuseTrackOptions = SourceOptions & {
   existingJobId?: string | null;
   skipHistory?: boolean;
-  libraryScanChangedPaths?: string[] | null;
 };
 type RestoreOptions = SourceOptions & {
   requeueOnMissing?: boolean;
@@ -574,7 +572,6 @@ async function findFolderSource(
   track: DownloadTrackInput,
   options: SourceOptions,
 ): Promise<ReuseSource | null> {
-  if (options.allowFolderSources === false) return null;
   return (
     (await findLibraryFolderSource(track, options, "aurral")) ||
     findLibraryFolderSource(track, options, "readonly")
@@ -624,7 +621,6 @@ export async function restoreCompletedTrack(job: DownloadJob, options: RestoreOp
     ...options,
     targetPlaylistType: job.playlistType,
     excludeJobIds: [job.id],
-    allowFolderSources: options.allowFolderSources ?? !job.requestGroupId,
   });
   if (source) {
     const sourcePath = path.resolve(source.sourcePath);
@@ -714,8 +710,7 @@ function jobsMissingIndexedTrack(changed: Set<string>) {
 }
 
 // Jobs follow the files a scan changed: a job whose file the scan removed
-// moves to the Library's copy of its track, even for an album request, which
-// otherwise never reuses Library files. So does a job whose file left the
+// moves to the Library's copy of its track. So does a job whose file left the
 // Library before the scan that indexed its track's new file. Every job takes
 // the quality the scan read. A file that is only unavailable, like one on a
 // drive that is not connected, keeps its jobs as they are.
@@ -1056,7 +1051,7 @@ export async function reuseTrackForPlaylist(
       ...flowPlaylistConfig.getStaticPlaylistIdsUsingJobs([jobId]),
     ],
     targetPlaylistType === "library",
-    options.libraryScanChangedPaths || (options.allowFolderSources === false ? [finalPath] : null),
+    track.requestGroupId ? [finalPath] : null,
   ).catch((error) => {
     console.warn(
       `[FileReuse] Failed to refresh playlist ${playlistType}: ${asAppError(error)?.message || error}`,
