@@ -16,6 +16,7 @@ const AUDIO_CONTENT_TYPES = {
   mp3: "audio/mpeg",
   wav: "audio/wav",
   webm: "audio/webm",
+  wma: "audio/x-ms-wma",
 };
 
 const knownContentType = (format: string) =>

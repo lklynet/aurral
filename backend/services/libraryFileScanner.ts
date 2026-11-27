@@ -84,6 +84,7 @@ const AUDIO_EXTENSIONS = new Set([
   ".ogg",
   ".opus",
   ".wav",
+  ".wma",
   ".wv",
 ]);
 
