@@ -54,6 +54,8 @@ test("Deezer previews match accented metadata against unaccented artist names", 
       artist: { name: "Emilie Simon" },
       preview: "french.mp3",
     },
+    { id: 4, title: "Désert", artist: { name: "Emilie Simon" }, preview: "desert-fr.mp3" },
+    { id: 5, title: "Desert", artist: { name: "Emilie Simon" }, preview: "desert.mp3" },
   ];
   const artistName = "Émilie Simon";
 
@@ -66,6 +68,8 @@ test("Deezer previews match accented metadata against unaccented artist names", 
       ?.id,
     3,
   );
+  assert.equal(selectDeezerTrackPreview(candidates, { artistName, trackName: "Desert" })?.id, 5);
+  assert.equal(selectDeezerTrackPreview(candidates, { artistName, trackName: "Désert" })?.id, 4);
   assert.equal(
     selectDeezerTrackPreview(candidates, {
       artistName,

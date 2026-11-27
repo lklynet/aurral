@@ -450,6 +450,7 @@ export function selectDeezerTrackPreview(
       (candidate) => candidate.preview && normalizeTitle(candidate.artist?.name) === artist,
     );
     return (
+      playable.find((candidate) => candidate.title.toLowerCase() === trackName.toLowerCase()) ??
       playable.find((candidate) => normalizeTitle(candidate.title) === targetTrack) ??
       playable.find((candidate) => {
         const candidateTrack = normalizeTitle(candidate.title_short || candidate.title);
