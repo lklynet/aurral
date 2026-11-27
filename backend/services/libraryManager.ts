@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "../config/db-sqlite.ts";
 import type { LibraryArtistsRow, LibraryTracksRow } from "../db/rows.ts";
 import { asAppError } from "../../lib/errors.ts";
-import { isUnreleased } from "../../lib/releaseDate.ts";
+import { isNewRelease, isUnreleased, releasedSince } from "../../lib/releaseDate.ts";
 import { hasPermission } from "./auth.ts";
 import {
   getLibraryArtistProjection,
@@ -105,6 +105,7 @@ import { scheduleReleaseMetadataRefresh } from "./releaseMetadataSync.ts";
 import { loadFreshReleasesByArtist } from "./discovery/freshReleases.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
 import { logger } from "./logger.ts";
+import type { NormalizedAlbum, NormalizedRelease } from "./providers/metadataMappers.ts";
 import {
   getAlbumByMbid as getMetadataAlbumByMbid,
   getArtistByMbid as getMetadataArtistByMbid,
@@ -425,6 +426,9 @@ function mapLibraryTrack(track: LibraryTrackRecord, album: LibraryAlbumRecord | 
     addedAt: track.metadata?.added || null,
   };
 }
+
+const listsPlaceholders = (album: LibraryAlbumRecord, tracks: LibraryTrackRecord[]) =>
+  tracks.some((track) => album.trackIds.includes(track.id) && isUnknownTitle(track.title));
 
 function libraryArtistFallback(reference: unknown) {
   return getLibraryArtistProjection({ reference })[0] || null;
@@ -1640,6 +1644,7 @@ export class LibraryManager {
       if (monitored) {
         const albumMbid = album.releaseGroupMbid || album.mbid;
         clearAlbumMonitoringExclusion(albumMbid);
+        await this._relistPlaceholderTracks(album.id);
         const result =
           albumMbid && album.metadata?.trackListComplete !== true
             ? await this._addAlbum(album.artistId, albumMbid, album.title)
@@ -1819,12 +1824,13 @@ export class LibraryManager {
 
   async searchAlbumMissingTracks(albumId: string | number) {
     const id = Number(albumId);
-    return serializeMonitoringUpdate(_albumMonitoringUpdates, id, () =>
-      this._finishAlbum(id, {
+    return serializeMonitoringUpdate(_albumMonitoringUpdates, id, async () => {
+      await this._relistPlaceholderTracks(id, { automatic: true });
+      return this._finishAlbum(id, {
         skipCancelledTracks: true,
         cause: { kind: "missing", playlistId: null },
-      }),
-    );
+      });
+    });
   }
 
   async cancelAlbum(albumId: unknown) {
@@ -1848,7 +1854,10 @@ export class LibraryManager {
     let group;
     try {
       group = await metadataLookups.add(() =>
-        getMetadataAlbumByMbid(album.releaseGroupMbid!, { withFallbackReleases: true }),
+        getMetadataAlbumByMbid(album.releaseGroupMbid!, {
+          withFallbackReleases: true,
+          forceRefresh: listsPlaceholders(album, library?.tracks ?? []),
+        }),
       );
     } catch {
       return {
@@ -1862,17 +1871,75 @@ export class LibraryManager {
     if (!release || !listsEveryTrack(release)) {
       return { error: "The album has no such edition", statusCode: 422 };
     }
+    this._listAlbumRelease(
+      album,
+      group,
+      release,
+      this._albumEdition(library?.artists.find((entry) => entry.id === album.artistId) || null),
+    );
+    return { success: true, releaseMbid: release.id };
+  }
+
+  _listAlbumRelease(
+    album: LibraryAlbumRecord,
+    group: NormalizedAlbum,
+    release: NormalizedRelease,
+    edition: string,
+  ) {
     const artists = new Map<string | null | undefined, string>(
       group.artists.map((artist) => [artist.id, artist.name]),
     );
     const compilation = isVariousArtistsCredit(artists.get(group.artistId), group.artistId);
-    chooseLibraryAlbumEdition(
+    return chooseLibraryAlbumEdition(
       album.id,
       { ...release, title: release.title || group.title },
-      this._albumEdition(library?.artists.find((entry) => entry.id === album.artistId) || null),
+      edition,
       (track) => (compilation && artists.get(track.artistId)) || null,
     );
-    return { success: true, releaseMbid: release.id };
+  }
+
+  async _relistPlaceholderTracks(albumId: number, { automatic = false } = {}) {
+    const library = libraryForAlbum(albumId);
+    const album = library.albums[0];
+    const metadata = album?.metadata;
+    const added = Date.parse(metadata?.added || "");
+    if (
+      !album?.releaseGroupMbid ||
+      metadata?.trackListComplete !== true ||
+      !Number.isFinite(added) ||
+      !releasedSince(album.releaseDate, added) ||
+      (automatic && !isNewRelease(album.releaseDate)) ||
+      !listsPlaceholders(album, library.tracks)
+    )
+      return;
+    const releaseGroupMbid = album.releaseGroupMbid;
+    let group;
+    try {
+      group = await metadataLookups.add(() =>
+        getMetadataAlbumByMbid(releaseGroupMbid, {
+          withFallbackReleases: true,
+          forceRefresh: true,
+        }),
+      );
+    } catch (error) {
+      logger.info("library", "Could not read an album's track list again", {
+        albumId,
+        message: asAppError(error)?.message || String(error),
+      });
+      return;
+    }
+    const edition = metadata.edition || "standard";
+    const release = chooseRequestedRelease(group, {
+      requestedRelease: metadata.requestedRelease,
+      listedRelease: metadata.trackList?.release,
+      edition,
+    });
+    if (
+      release &&
+      listsEveryTrack(release) &&
+      release.tracks.every((track) => track.title && (track.recordingId || track.id))
+    )
+      this._listAlbumRelease(album, group, release, edition);
   }
 
   async deleteAlbum(albumId: unknown, deleteFiles = false) {
@@ -2011,8 +2078,9 @@ export class LibraryManager {
       existing && existingAlbum && (existingAlbum.trackIds?.length ?? 0) > 0
         ? { existing, existingAlbum }
         : null;
-    const finishExisting = (found: NonNullable<typeof tracked>) => {
+    const finishExisting = async (found: NonNullable<typeof tracked>) => {
       if (userRequest && !wasMonitored) this._setAlbumMonitored(found.existingAlbum, true);
+      if (userRequest) await this._relistPlaceholderTracks(found.existingAlbum.id);
       return this._finishAlbum(found.existing.id, options);
     };
     const finishExistingOr = <Result>(error: Result) => (tracked ? finishExisting(tracked) : error);
