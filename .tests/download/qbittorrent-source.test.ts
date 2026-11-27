@@ -395,7 +395,7 @@ test("status waits for the torrent, signs in again when its session ends, then l
   assert.equal((await qbittorrentClient.testConnection()).connected, false);
 });
 
-test("discard removes the torrent, finished or not", async () => {
+test("discard removes an unfinished torrent and leaves a finished one seeding, marked as rejected", async () => {
   const torrent = { name: "", state: "downloading", save_path: "", files: [] };
   fake.torrents = [
     { ...torrent, hash: "other", progress: 0.1, tags: "" },
@@ -406,22 +406,28 @@ test("discard removes the torrent, finished or not", async () => {
   await qbittorrentSource.discard!("a");
   await qbittorrentSource.discard!("b");
 
-  assert.deepEqual(fake.deleted, ["partial", "done"]);
+  assert.deepEqual(fake.deleted, ["partial"]);
+  assert.equal(
+    fake.torrents.find((torrent) => torrent.hash === "done")?.tags,
+    "b, aurral-rejected",
+  );
 });
 
-test("cleanup removes imported torrents once qBittorrent stops seeding them", async () => {
+test("cleanup removes imported and rejected torrents once qBittorrent stops seeding them", async () => {
   const torrent = { name: "", save_path: "", files: [], progress: 1 };
   fake.torrents = [
     { ...torrent, hash: "stopped", state: "stoppedUP", tags: "aurral-1, aurral-imported" },
     { ...torrent, hash: "paused", state: "pausedUP", tags: "aurral-2, aurral-imported" },
     { ...torrent, hash: "seeding", state: "uploading", tags: "aurral-3, aurral-imported" },
+    { ...torrent, hash: "rejected", state: "stoppedUP", tags: "aurral-5, aurral-rejected" },
+    { ...torrent, hash: "rejected-seeding", state: "uploading", tags: "aurral-6, aurral-rejected" },
     { ...torrent, hash: "unimported", state: "stoppedUP", tags: "aurral-4" },
     { ...torrent, hash: "other", state: "stoppedUP", tags: "" },
   ];
 
   await removeSeededTorrents();
 
-  assert.deepEqual(fake.deleted, ["stopped|paused"]);
+  assert.deepEqual(fake.deleted, ["stopped|paused|rejected"]);
 });
 
 // An album torrent of Lowlands whose files are on disk, as qBittorrent
@@ -535,7 +541,11 @@ test("a finished torrent Aurral can't take files from fails with the cause and i
     await assert.rejects(runPipeline(search), error);
     await assert.rejects(runPipeline(search), /No matching album/);
     assert.equal(fake.added.length, 1);
-    assert.deepEqual(fake.deleted, ["h1"]);
+    assert.deepEqual(fake.deleted, []);
+    assert.match(
+      fake.torrents.find((torrent) => torrent.hash === "h1")?.tags ?? "",
+      /aurral-rejected/,
+    );
   }
 });
 
@@ -635,7 +645,7 @@ test("an album upgrade keeps seeding the torrent it imported from", async (t) =>
   assert.deepEqual(fake.deleted, []);
 });
 
-test("an album attempt removes a finished torrent it imported nothing from", async (t) => {
+test("an album attempt leaves a finished torrent it imported nothing from seeding, marked as rejected", async (t) => {
   await lowlandsTorrent();
   const jobId = await lowlandsAlbumJob(t, ["Harbor", "Pier"]);
 
@@ -651,5 +661,9 @@ test("an album attempt removes a finished torrent it imported nothing from", asy
     "finalize",
   );
   assert.notEqual(trackedJob(downloadTracker, jobId).status, "done");
-  assert.deepEqual(fake.deleted, ["h1"]);
+  assert.deepEqual(fake.deleted, []);
+  assert.match(
+    fake.torrents.find((torrent) => torrent.hash === "h1")?.tags ?? "",
+    /aurral-rejected/,
+  );
 });

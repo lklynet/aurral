@@ -32,6 +32,7 @@ const BUSY_STATES = new Set(["checkingUP", "checkingDL", "checkingResumeData", "
 const FAILED_STATES = new Set(["error", "missingFiles"]);
 const STOPPED_STATES = new Set(["stoppedUP", "pausedUP"]);
 const IMPORTED_TAG = "aurral-imported";
+const REJECTED_TAG = "aurral-rejected";
 
 const failure = (error: unknown) => asAppError(error)?.message || String(error);
 
@@ -192,21 +193,29 @@ export const qbittorrentSource = {
     await qbittorrentClient.addTag(torrent.hash, IMPORTED_TAG);
     return { done: true };
   },
+  // A finished download Aurral didn't import keeps seeding until qBittorrent's
+  // seeding limit stops it, like an imported one: private trackers count a
+  // download removed minutes after it finished as a hit-and-run. An unfinished
+  // download is removed right away.
   async discard(id) {
     const torrents = await qbittorrentClient.torrentsTagged(id);
-    await qbittorrentClient.deleteTorrents(torrents.map((torrent) => torrent.hash));
+    for (const torrent of torrents.filter((torrent) => torrent.progress >= 1))
+      await qbittorrentClient.addTag(torrent.hash, REJECTED_TAG);
+    await qbittorrentClient.deleteTorrents(
+      torrents.filter((torrent) => torrent.progress < 1).map((torrent) => torrent.hash),
+    );
   },
 } satisfies DownloadSource;
 
 // As in Lidarr, qBittorrent stops a torrent at its seeding limit, and Aurral
-// then removes it. Only a torrent Aurral took its files from is marked, so a
-// download still in progress is never removed.
+// then removes it. Only a finished torrent Aurral took its files from, or
+// finished and didn't use, is marked, so a download still in progress is
+// never removed.
 export async function removeSeededTorrents() {
   if (!qbittorrentClient.isConfigured()) return;
-  const torrents = await qbittorrentClient.torrentsTagged(IMPORTED_TAG);
-  await qbittorrentClient.deleteTorrents(
-    torrents
-      .filter((torrent) => torrent.progress >= 1 && STOPPED_STATES.has(torrent.state))
-      .map((torrent) => torrent.hash),
-  );
+  const hashes = new Set<string>();
+  for (const tag of [IMPORTED_TAG, REJECTED_TAG])
+    for (const torrent of await qbittorrentClient.torrentsTagged(tag))
+      if (torrent.progress >= 1 && STOPPED_STATES.has(torrent.state)) hashes.add(torrent.hash);
+  await qbittorrentClient.deleteTorrents([...hashes]);
 }
