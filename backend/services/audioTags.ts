@@ -320,8 +320,8 @@ const PATCH_TXXX_FIELDS: readonly [keyof TagPatch, readonly string[]][] = [
   ["genres", ["style"]],
   ["mbArtistId", ["musicbrainz artist id"]],
   ["mbAlbumArtistId", ["musicbrainz album artist id"]],
-  ["mbReleaseGroupId", ["musicbrainz release group id"]],
-  ["mbReleaseId", ["musicbrainz album id"]],
+  ["mbReleaseGroupId", ["musicbrainz release group id", "musicbrainz album id"]],
+  ["mbReleaseId", ["musicbrainz album id", "musicbrainz release group id"]],
 ];
 
 function unmappedLegacyTxxx(tags: IAudioMetadata["native"][string], patch: TagPatch) {
@@ -352,7 +352,7 @@ function unmappedLegacyTxxx(tags: IAudioMetadata["native"][string], patch: TagPa
     const lower = desc.toLowerCase();
     if (
       !lower ||
-      lower === AURRAL_IDENTITY_TAG.toLowerCase() ||
+      (!isV22 && lower === AURRAL_IDENTITY_TAG.toLowerCase()) ||
       (isV22 ? overriddenV22.has(lower) : MAPPED_ID3_TXXX.has(lower))
     )
       continue;
