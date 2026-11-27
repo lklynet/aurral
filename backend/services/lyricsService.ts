@@ -5,6 +5,7 @@ import type { RequestUser } from "../middleware/requestUser.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { getSong, resolveStreamPath } from "./subsonicLibraryService.ts";
 import { lrclibGetLyrics } from "./apiClients/lrclib.ts";
+import { libraryFolderOwner } from "./libraryFolders.ts";
 
 type LyricLine = { start?: number; value: string };
 type Lyrics = { lang: string; synced: boolean; offset?: number; line: LyricLine[] };
@@ -125,11 +126,13 @@ export async function getLyricsBySongId(id: string, user: RequestUser) {
 }
 
 // Other players reading the Library (Plex, Jellyfin, Navidrome) only see lyrics in files.
+// A plugin can file a download in a read-only folder, which Aurral never writes to.
 export async function saveSidecarLyrics(
   filePath: string,
   track: { artist?: string | null; title?: string | null; album?: string | null },
 ) {
   if (!track.artist?.trim() || !track.title?.trim()) return false;
+  if (libraryFolderOwner(filePath) !== "aurral") return false;
   if ((await localLyrics(filePath)).length) return false;
   const durationSec = await parseFile(filePath, { duration: true, skipCovers: true })
     .then((metadata) => metadata.format.duration ?? null)
