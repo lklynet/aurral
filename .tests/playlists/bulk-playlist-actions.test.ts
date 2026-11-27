@@ -360,7 +360,7 @@ test("a restarted process resumes a destination already saved before source deta
   assert.ok(f.jobs.every((job) => downloadTracker.getJob(job.id)));
 });
 
-test("a download the provider will not cancel stays in the Library while every track leaves the playlist", async (t) => {
+test("removing every track drops a download the provider will not cancel", async (t) => {
   const f = fixture(t, 2);
   const { getDownloadClient } =
     await import("../../backend/services/download/downloadClientSettings.ts");
@@ -396,7 +396,7 @@ test("a download the provider will not cancel stays in the Library while every t
     requireFixture(config.flowPlaylistConfig.getStaticPlaylist(f.source.id)).tracks.length,
     0,
   );
-  assert.ok(downloadTracker.getJob(requireFixture(f.jobs[0]).id));
+  assert.ok(!downloadTracker.getJob(requireFixture(f.jobs[0]).id));
   assert.ok(!downloadTracker.getJob(requireFixture(f.jobs[1]).id));
 });
 

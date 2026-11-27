@@ -92,16 +92,12 @@ const failTheSource = {
 async function assertCancellationWaitsForAdmission({
   gate,
   job,
-  payload,
   runPipeline,
-  retryCancellation,
   cancelWork = () => cancellationService.cancelDownloadWorkForJobs([job]),
 }: {
   gate: ReturnType<typeof createGate>;
   job: ReturnType<typeof createJob>["job"];
-  payload: { jobId: string };
   runPipeline: () => Promise<unknown>;
-  retryCancellation: () => Promise<unknown>;
   cancelWork?: () => Promise<unknown>;
 }) {
   const pipeline = runPipeline();
@@ -123,20 +119,14 @@ async function assertCancellationWaitsForAdmission({
     await cancellation;
     assert.equal(await pipeline, null);
     assert.equal(waitedForAdmission, true);
-    const { outcome } = result;
-    assert.ok(outcome != null);
-    assert.equal(outcome.status, "rejected");
-    assert.ok(outcome.status === "rejected");
-    assert.match(outcome.error.message, /Could not cancel download provider work/);
-    assert.ok(downloadTracker.getJob(payload.jobId)?.downloadClientId);
-    await retryCancellation();
+    assert.equal(result.outcome?.status, "fulfilled");
   } finally {
     gate.release();
     await Promise.allSettled([pipeline, cancellation].filter(Boolean));
   }
 }
 
-test("SABnzbd cancellation waits for an in-flight append and can retry cleanup", async () => {
+test("SABnzbd cancellation waits for an in-flight append and lets go when the provider refuses", async () => {
   const playlistId = "sabnzbd-enqueue-race";
   const { job, payload } = createJob(playlistId, "SABnzbd Song");
   const gate = createGate();
@@ -154,10 +144,13 @@ test("SABnzbd cancellation waits for an in-flight append and can retry cleanup",
     await gate.wait();
     return { nzbId: "sabnzbd-race-item", nzbName: "Race Artist - SABnzbd Song" };
   });
-  vi.spyOn(sabnzbdClient, "deleteQueueItem").mockImplementation(async () => ++deleteAttempts > 1);
-  vi.spyOn(sabnzbdClient, "getQueueItem").mockImplementation(async () =>
-    deleteAttempts === 1 ? { nzo_id: "sabnzbd-race-item" } : null,
-  );
+  vi.spyOn(sabnzbdClient, "deleteQueueItem").mockImplementation(async () => {
+    deleteAttempts += 1;
+    return false;
+  });
+  vi.spyOn(sabnzbdClient, "getQueueItem").mockImplementation(async () => ({
+    nzo_id: "sabnzbd-race-item",
+  }));
   vi.spyOn(sabnzbdClient, "deleteHistoryItem").mockImplementation(async () => false);
   vi.spyOn(sabnzbdClient, "getHistoryItem").mockImplementation(async () => null);
 
@@ -179,22 +172,20 @@ test("SABnzbd cancellation waits for an in-flight append and can retry cleanup",
     await assertCancellationWaitsForAdmission({
       gate,
       job,
-      payload: pipelinePayload,
       runPipeline: () => processSourcePipelinePayload(pipelinePayload, usenetSource, failTheSource),
       cancelWork: () =>
         cancellationService.cancelPlaylistDownloadWork(playlistId, [
           trackedJob(downloadTracker, job.id),
         ]),
-      retryCancellation: () =>
-        cancellationService.cancelDownloadWorkForJobs([trackedJob(downloadTracker, job.id)]),
     });
+    assert.equal(deleteAttempts, 1);
   } finally {
     dbOps.updateSettings(originalSettings);
     downloadTracker.removeJob(job.id);
   }
 });
 
-test("deemix cancellation waits for an in-flight enqueue and can retry cleanup", async () => {
+test("deemix cancellation waits for an in-flight enqueue and lets go when the provider refuses", async () => {
   const playlistId = "deemix-enqueue-race";
   const { job, payload } = createJob(playlistId, "Deemix Song");
   const gate = createGate();
@@ -215,9 +206,7 @@ test("deemix cancellation waits for an in-flight enqueue and can retry cleanup",
   vi.spyOn(deemixClient, "getQueue").mockImplementation(async () => queue);
   vi.spyOn(deemixClient, "removeFromQueue").mockImplementation(async (uuid) => {
     removalAttempts += 1;
-    if (removalAttempts === 1) throw new Error("deemix cleanup temporarily unavailable");
-    delete queue[String(uuid)];
-    return true;
+    throw new Error(`deemix cleanup unavailable for ${uuid}`);
   });
   const pipelinePayload = {
     ...payload,
@@ -239,18 +228,16 @@ test("deemix cancellation waits for an in-flight enqueue and can retry cleanup",
     await assertCancellationWaitsForAdmission({
       gate,
       job,
-      payload: pipelinePayload,
       runPipeline: () => processSourcePipelinePayload(pipelinePayload, deemixSource, failTheSource),
-      retryCancellation: () =>
-        cancellationService.cancelDownloadWorkForJobs([trackedJob(downloadTracker, job.id)]),
     });
+    assert.equal(removalAttempts, 1);
   } finally {
     dbOps.updateSettings(originalSettings);
     downloadTracker.removeJob(job.id);
   }
 });
 
-test("slskd cancellation waits for an in-flight enqueue and can retry cleanup", async () => {
+test("slskd cancellation waits for an in-flight enqueue and lets go when the provider refuses", async () => {
   const playlistId = "slskd-enqueue-race";
   const { job, payload } = createJob(playlistId, "slskd Song");
   const gate = createGate();
@@ -272,8 +259,7 @@ test("slskd cancellation waits for an in-flight enqueue and can retry cleanup", 
   });
   vi.spyOn(slskdClient, "deleteTransfer").mockImplementation(async () => {
     deletionAttempts += 1;
-    if (deletionAttempts === 1) throw new Error("slskd cleanup temporarily unavailable");
-    return true;
+    throw new Error("slskd cleanup unavailable");
   });
   const pipelinePayload = {
     ...payload,
@@ -295,11 +281,9 @@ test("slskd cancellation waits for an in-flight enqueue and can retry cleanup", 
     await assertCancellationWaitsForAdmission({
       gate,
       job,
-      payload: pipelinePayload,
       runPipeline: () => processPipelinePayload(pipelinePayload),
-      retryCancellation: () =>
-        cancellationService.cancelDownloadWorkForJobs([trackedJob(downloadTracker, job.id)]),
     });
+    assert.equal(deletionAttempts, 1);
   } finally {
     dbOps.updateSettings(originalSettings);
     downloadTracker.removeJob(job.id);

@@ -363,7 +363,7 @@ test("album-grab request rows include canonical ids and request groups", async (
   assert.equal(albumRequest.requestGroupId, getJob(requireFixture(ids[0])).requestGroupId);
 });
 
-test("track cancellation keeps failed provider cleanup pending and succeeds after recovery", async () => {
+test("track cancellation finishes while its download provider is not configured", async () => {
   const fixture = createLibraryAlbum();
   const id = fixture.jobFor(0);
   downloadTracker.setDownloading(id);
@@ -371,19 +371,10 @@ test("track cancellation keeps failed provider cleanup pending and succeeds afte
     downloadSource: "usenet",
     downloadClientId: "sabnzbd:disposable-queue",
   });
-  const first = await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST");
-  assert.equal(first.status, 200);
-  assert.equal(first.body.status, "cancel_requested");
-  assert.equal(first.body.cleanupFailed, true);
-  const { getDownloadClient } =
-    await import("../../backend/services/download/downloadClientSettings.ts");
-  const client = getDownloadClient("sabnzbd");
-  vi.spyOn(client, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
-  vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
-  const recovered = await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST");
-  assert.equal(recovered.body.status, "cancelled");
-  assert.equal(recovered.body.cleanupFailed, false);
+  const cancelled = await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST");
+  assert.equal(cancelled.status, 200);
+  assert.equal(cancelled.body.status, "cancelled");
+  assert.equal(cancelled.body.cleanupFailed, false);
   assert.equal(
     db
       .prepare<unknown[], Pick<LibraryTracksRow, "monitored">>(
@@ -394,7 +385,7 @@ test("track cancellation keeps failed provider cleanup pending and succeeds afte
   );
 });
 
-test("retry keeps a cancelled queued job blocked until provider cleanup succeeds", async () => {
+test("retry of a cancelled job works while its download provider is not configured", async () => {
   await downloadWorker.stopAndDrain();
   vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
   const fixture = createLibraryAlbum();
@@ -406,28 +397,15 @@ test("retry keeps a cancelled queued job blocked until provider cleanup succeeds
 
   const cancelled = await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST");
   assert.equal(cancelled.body.status, "cancelled");
-  assert.equal(cancelled.body.cleanupFailed, true);
+  assert.equal(cancelled.body.cleanupFailed, false);
 
-  const blockedRetry = await apiRequest(`/api/playlists/jobs/${id}/retry`, "POST");
-  assert.equal(blockedRetry.status, 409);
-  assert.equal(blockedRetry.body.cleanupFailed, true);
-  assert.equal(getJob(id).status, "cancelled");
-  assert.equal(cancellation.isDownloadJobCancelled(id), true);
-
-  const { getDownloadClient } =
-    await import("../../backend/services/download/downloadClientSettings.ts");
-  const client = getDownloadClient("sabnzbd");
-  vi.spyOn(client, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
-  vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
-
-  const recoveredRetry = await apiRequest(`/api/playlists/jobs/${id}/retry`, "POST");
-  assert.deepEqual(recoveredRetry.body, { jobId: id, status: "pending", retried: true });
+  const retried = await apiRequest(`/api/playlists/jobs/${id}/retry`, "POST");
+  assert.deepEqual(retried.body, { jobId: id, status: "pending", retried: true });
   assert.equal(getJob(id).status, "pending");
   assert.equal(cancellation.isDownloadJobCancelled(id), false);
 });
 
-test("retry keeps a failed job blocked until its provider request is cleaned up", async () => {
+test("retry of a failed job works while its download provider is not configured", async () => {
   await downloadWorker.stopAndDrain();
   vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
   const fixture = createLibraryAlbum();
@@ -439,21 +417,8 @@ test("retry keeps a failed job blocked until its provider request is cleaned up"
   });
   downloadTracker.setFailed(id, "Usenet client remained unreadable");
 
-  const blockedRetry = await apiRequest(`/api/playlists/jobs/${id}/retry`, "POST");
-  assert.equal(blockedRetry.status, 409);
-  assert.equal(blockedRetry.body.cleanupFailed, true);
-  assert.equal(getJob(id).status, "failed");
-  assert.equal(cancellation.isDownloadJobCancelled(id), true);
-
-  const { getDownloadClient } =
-    await import("../../backend/services/download/downloadClientSettings.ts");
-  const client = getDownloadClient("sabnzbd");
-  vi.spyOn(client, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
-  vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
-
-  const recoveredRetry = await apiRequest(`/api/playlists/jobs/${id}/retry`, "POST");
-  assert.deepEqual(recoveredRetry.body, { jobId: id, status: "pending", retried: true });
+  const retried = await apiRequest(`/api/playlists/jobs/${id}/retry`, "POST");
+  assert.deepEqual(retried.body, { jobId: id, status: "pending", retried: true });
   assert.equal(getJob(id).status, "pending");
   assert.equal(cancellation.isDownloadJobCancelled(id), false);
 });
@@ -733,7 +698,7 @@ test("album cancellation rejects unknown, malformed, and read-only albums", asyn
   assert.equal(getJob(otherJob).status, "pending");
 });
 
-test("album cancellation waits on provider cleanup without reviving the job", async () => {
+test("album cancellation finishes while its download provider is not configured", async () => {
   const { album, jobFor } = createLibraryAlbum();
   const jobId = jobFor(0);
   downloadTracker.setDownloading(jobId);
@@ -744,11 +709,10 @@ test("album cancellation waits on provider cleanup without reviving the job", as
 
   const cancelled = await callRoute(`/library/albums/${album.id}/cancel`, "POST");
   assert.equal(cancelled.status, 200);
-  assert.equal(cancelled.body.cleanupFailed, true);
-  assert.equal(getJob(jobId).status, "cancel_requested");
+  assert.equal(cancelled.body.cleanupFailed, false);
+  assert.equal(getJob(jobId).status, "cancelled");
 
   downloadTracker.setFailed(jobId, "late provider error");
-  assert.equal(getJob(jobId).status, "cancel_requested");
   assert.equal(new DownloadTracker().getJob(jobId)!.status, "cancelled");
 });
 

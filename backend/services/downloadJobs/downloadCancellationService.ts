@@ -228,8 +228,6 @@ async function cancelSlskdWork(
 
 // A job's staging folder goes even when no step of it is queued, and the
 // download its source started goes once no job left takes a track from it.
-// A download the source didn't confirm removing keeps the jobs, so the
-// cancellation can run again.
 async function cancelSourceWork(payloads: CancellationPayload[], jobs: CancellationJob[]) {
   const work = new Map<string, { source: DownloadSource; pendingId: string | null }>();
   for (const job of jobs) {
@@ -246,31 +244,20 @@ async function cancelSourceWork(payloads: CancellationPayload[], jobs: Cancellat
       work.set(jobId, { source, pendingId: pendingId ?? work.get(jobId)?.pendingId ?? null });
   }
   const except = new Set(work.keys());
-  const failures: unknown[] = [];
   for (const [jobId, { source, pendingId }] of work)
     await discardSourceWork({ jobId, pendingId }, source, {
       except,
-      onDiscardError: (error) => {
+      onDiscardError: (error) =>
         logger.warn(source.id, "Could not cancel a download", {
           jobId,
           pendingId: pendingId ?? "",
           reason: asAppError(error)?.message || String(error),
-        });
-        failures.push(error);
-        for (const [id, entry] of work)
-          if (entry.pendingId === pendingId)
-            downloadTracker.updateDownloadMetadata(id, { downloadClientId: pendingId });
-      },
+        }),
     });
-  throwProviderCleanupFailures("download source", failures);
-  return { discarded: work.size };
 }
 
-function fulfilledValue<T>(result: PromiseSettledResult<T>) {
-  if (result.status === "rejected") throw result.reason;
-  return result.value;
-}
-
+// A provider that is off, unreachable, or failing keeps its download, and
+// Aurral still lets go of the jobs, so it never blocks a cancel or a delete.
 async function cancelProviderWork(
   payloads: CancellationPayload[],
   jobs: CancellationJob[],
@@ -280,17 +267,11 @@ async function cancelProviderWork(
     cancelSlskdWork(payloads, jobs, providerWork),
     cancelSourceWork(payloads, jobs),
   ]);
-  const failures = results
-    .filter((result) => result.status === "rejected")
-    .map((result): unknown => result.reason);
-  if (failures.length > 0) {
-    throw new AggregateError(failures, "Could not cancel download provider work");
-  }
-  const [slskd, sources] = results;
-  return {
-    slskd: fulfilledValue(slskd),
-    sources: fulfilledValue(sources),
-  };
+  for (const result of results)
+    if (result.status === "rejected")
+      logger.warn("downloads", "Cancelled in Aurral, but a download provider kept its work", {
+        reason: asAppError(result.reason)?.message || String(result.reason),
+      });
 }
 
 function cancelPipelineRows(playlistId: string, jobs: DownloadJob[]) {
@@ -443,17 +424,13 @@ export async function cancelDownloadWorkForJobs(
   const settle = async () => {
     for (const payload of pipeline.payloads) await settleDroppedAlbumGrab(payload);
   };
-  let providers;
   try {
-    providers = lock ? await withPlaylistCancellationLocks(playlistIds, cancel) : await cancel();
+    await (lock ? withPlaylistCancellationLocks(playlistIds, cancel) : cancel());
   } finally {
     await settle();
   }
   clearCancellationWork(normalizedJobs);
-  return {
-    cancelled: pipeline.cancelled,
-    provider: providers,
-  };
+  return { cancelled: pipeline.cancelled };
 }
 
 export async function clearAllDownloadJobs(downloadTracker: DownloadTracker) {
@@ -505,13 +482,7 @@ export async function cancelPlaylistDownloadWork(
       providerWork,
     );
   };
-  const providers = lock
-    ? await withPlaylistCancellationLocks([safePlaylistId], cancel)
-    : await cancel();
+  await (lock ? withPlaylistCancellationLocks([safePlaylistId], cancel) : cancel());
   clearCancellationWork(normalizedJobs, safePlaylistId);
-  return {
-    generation,
-    cancelled: activePipeline.cancelled,
-    provider: providers,
-  };
+  return { generation, cancelled: activePipeline.cancelled };
 }

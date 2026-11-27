@@ -222,7 +222,7 @@ test("renaming a Subsonic playlist keeps its library song and file", async () =>
   await fs.access(finalPath);
 });
 
-test("Subsonic deletion keeps a download the provider will not cancel", async () => {
+test("Subsonic deletion drops a download the provider will not cancel", async () => {
   const playlistId = "subsonic-delete-provider-failure";
   const jobId = playlistWithTrack(playlistId, "Subsonic Provider Failure", {
     artistName: "Retry Artist",
@@ -259,7 +259,7 @@ test("Subsonic deletion keeps a download the provider will not cancel", async ()
     await requestReceived;
     assert.ok(await deletion);
 
-    assert.ok(downloadTracker.getJob(jobId));
+    assert.equal(downloadTracker.getJob(jobId), null);
     assert.equal(flowPlaylistConfig.getStaticPlaylist(playlistId), null);
     assert.equal(
       listDownloadProviderWork({ playlistId: "library", provider: "slskd-search" }).length,
