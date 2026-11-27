@@ -1197,9 +1197,9 @@ test("top tracks queue the artist's popular songs that monitored releases do not
     rootPath: root,
     metadataReader: async () => ({
       common: {
-        albumartist: "Monitor Artist",
+        albumArtist: "Monitor Artist",
         artist: "Monitor Artist feat. Guest",
-        musicbrainz_albumartistid: [artistMbid],
+        mbAlbumArtistId: [artistMbid],
         album: "Featured Album",
         title: "Owned Featured Song",
       },

@@ -122,7 +122,7 @@ test("a Library play credits the song's own artists and the release it was playe
     metadata: {
       tags: {
         artists: credits.map(([name]) => name),
-        musicbrainz_artistid: credits.map(([, mbid]) => mbid),
+        mbArtistId: credits.map(([, mbid]) => mbid),
       },
     },
   });

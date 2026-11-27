@@ -48,13 +48,14 @@ export function audioMetadata({
 } = {}): import("music-metadata").IAudioMetadata {
   return {
     common: {
-      track: { no: null, of: null },
-      disk: { no: null, of: null },
-      movementIndex: { no: null, of: null },
       ...common,
+      getArtist: () => common.artist,
+      getArtists: () =>
+        common.artists ?? (common.artist === undefined ? undefined : [common.artist]),
     },
     format: { tagTypes: [], trackInfo: [], ...format },
     native: {},
+    nativeTyped: {},
     quality: { warnings: [] },
   };
 }

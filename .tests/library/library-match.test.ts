@@ -635,7 +635,7 @@ test("matching a track retags its file with the recording's title and keeps its 
   assert.equal(response.status, 200);
   const { common } = await parseFile(filePath);
   assert.deepEqual(
-    [common.title, common.album, common.musicbrainz_recordingid, common.musicbrainz_albumid],
+    [common.title, common.album, common.mbRecordingId, common.mbReleaseId],
     ["The Whole Title", "Track Album", FULL_RECORDING, TRACK_RELEASE],
   );
   const matched = db

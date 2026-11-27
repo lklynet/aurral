@@ -122,9 +122,9 @@ export function downloadedFileEvidence(
       ...new Set([parsed?.common?.artist, ...(parsed?.common?.artists ?? [])].filter(Boolean)),
     ],
     durationMs: readDurationMsFromParsed(parsed),
-    trackNumber: parsed?.common?.track?.no || listing.trackNumber || null,
-    discNumber: parsed?.common?.disk?.no || listing.discNumber || null,
-    recordingMbid: readRecordingMbid(parsed?.common?.musicbrainz_recordingid),
+    trackNumber: parsed?.common?.trackNumber || listing.trackNumber || null,
+    discNumber: parsed?.common?.discNumber || listing.discNumber || null,
+    recordingMbid: readRecordingMbid(parsed?.common?.mbRecordingId),
     album: String(parsed?.common?.album || "").trim() || null,
     filename: path.basename(filePath),
     path: filePath,
@@ -148,7 +148,7 @@ export function buildActualFileCandidate(
   const common = parsed?.common || {};
   const artists = [
     ...new Set(
-      [common.artist, ...(Array.isArray(common.artists) ? common.artists : []), common.albumartist]
+      [common.artist, ...(Array.isArray(common.artists) ? common.artists : []), common.albumArtist]
         .map((entry) => readTagText(entry))
         .filter((entry) => entry !== null),
     ),
@@ -156,12 +156,12 @@ export function buildActualFileCandidate(
   const fileName = getFileName(filePath);
   const baseName = getFileBaseName(fileName);
   const trackNumber =
-    common.track?.no != null && Number.isFinite(Number(common.track.no))
-      ? Math.round(Number(common.track.no))
+    common.trackNumber != null && Number.isFinite(Number(common.trackNumber))
+      ? Math.round(Number(common.trackNumber))
       : null;
   const discNumber =
-    common.disk?.no != null && Number.isFinite(Number(common.disk.no))
-      ? Math.round(Number(common.disk.no))
+    common.discNumber != null && Number.isFinite(Number(common.discNumber))
+      ? Math.round(Number(common.discNumber))
       : null;
   const taggedTitle = readTagText(common.title);
   const filenameTitle = taggedTitle ? null : stripLeadingTrackNumber(baseName);
@@ -181,10 +181,8 @@ export function buildActualFileCandidate(
     trackNumber,
     discNumber,
     recordingMbid:
-      readRecordingMbid(common.musicbrainz_recordingid) ||
-      readRecordingMbid(common.musicbrainz_trackid) ||
-      null,
-    releaseMbid: readTagText(common.musicbrainz_albumid) || null,
+      readRecordingMbid(common.mbRecordingId) || readRecordingMbid(common.mbReleaseTrackId) || null,
+    releaseMbid: readTagText(common.mbReleaseId) || null,
     filename: fileName,
     path: filePath,
     quality: {
@@ -603,7 +601,7 @@ export async function selectVerifiedDownloadedFile({
       .map((entry, index) => {
         const taggedTitle = readTagText(entry.parsed?.common?.title);
         const filename = getFileBaseName(entry.filePath);
-        const actualTrackNumber = Number(entry.parsed?.common?.track?.no || 0);
+        const actualTrackNumber = Number(entry.parsed?.common?.trackNumber || 0);
         const titleScore = Math.max(
           scoreTextMatch(taggedTitle, trackRequest.trackName),
           scoreTextMatch(filename, trackRequest.trackName),

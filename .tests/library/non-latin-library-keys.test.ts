@@ -91,27 +91,27 @@ test("untagged artists named in other scripts stay apart, each with their own al
       artist: "宇多田ヒカル",
       album: "初恋",
       title: "初恋",
-      track: { no: 1, of: null },
-      musicbrainz_artistid: ["7f7f7f7f-0000-4000-8000-000000000001"],
+      trackNumber: 1,
+      mbArtistId: ["7f7f7f7f-0000-4000-8000-000000000001"],
     },
     "宇多田ヒカル/ファントーム/01 道.flac": {
       artist: "宇多田ヒカル",
       album: "ファントーム",
       title: "道",
-      track: { no: 1, of: null },
-      musicbrainz_artistid: ["7f7f7f7f-0000-4000-8000-000000000001"],
+      trackNumber: 1,
+      mbArtistId: ["7f7f7f7f-0000-4000-8000-000000000001"],
     },
     "椎名林檎/無罪モラトリアム/01 正しい街.flac": {
       artist: "椎名林檎",
       album: "無罪モラトリアム",
       title: "正しい街",
-      track: { no: 1, of: null },
+      trackNumber: 1,
     },
     "Кино/Группа крови/01 Группа крови.flac": {
       artist: "Кино",
       album: "Группа крови",
       title: "Группа крови",
-      track: { no: 1, of: null },
+      trackNumber: 1,
     },
   });
 
@@ -132,13 +132,13 @@ test("Latin names keep the keys earlier scans stored and are not read again", as
       artist: "Beyoncé",
       album: "Lemonade",
       title: "Formation",
-      track: { no: 1, of: null },
+      trackNumber: 1,
     },
     "Sigur Rós/Ágætis byrjun/01 Svefn-g-englar.flac": {
       artist: "Sigur Rós",
       album: "Ágætis byrjun",
       title: "Svefn-g-englar",
-      track: { no: 1, of: null },
+      trackNumber: 1,
     },
   });
 
@@ -184,13 +184,13 @@ const MERGED_FILES: Record<string, Tags> = {
     artist: "宇多田ヒカル",
     album: "初恋",
     title: "初恋",
-    track: { no: 1, of: null },
+    trackNumber: 1,
   },
   "椎名林檎/無罪モラトリアム/01 正しい街.flac": {
     artist: "椎名林檎",
     album: "無罪モラトリアム",
     title: "正しい街",
-    track: { no: 1, of: null },
+    trackNumber: 1,
   },
 };
 
@@ -326,7 +326,7 @@ test("a rescan leaves no merged album behind when a track there has a recording 
   const recording = "7f7f7f7f-0000-4000-8000-000000000003";
   const files = structuredClone(MERGED_FILES);
   Object.assign(files["椎名林檎/無罪モラトリアム/01 正しい街.flac"]!, {
-    musicbrainz_recordingid: recording,
+    mbRecordingId: recording,
   });
   const { scan, paths } = await writeLibrary(files);
   const artist = store.upsertLibraryArtist({

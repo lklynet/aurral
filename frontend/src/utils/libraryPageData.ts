@@ -178,7 +178,13 @@ export const releaseTypeOf = (album: LibraryAlbum | null | undefined) => {
   const metadata = album?.metadata || {};
   const { tags } = metadata;
   const tagType =
-    tags && typeof tags === "object" && "releasetype" in tags ? tags.releasetype : null;
+    tags && typeof tags === "object"
+      ? "releaseType" in tags
+        ? tags.releaseType
+        : "releasetype" in tags
+          ? tags.releasetype
+          : null
+      : null;
   const type = metadata.albumType || metadata.releaseType || [tagType].flat()[0];
   const key = String(type || "")
     .trim()

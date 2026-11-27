@@ -5,7 +5,7 @@ import { buildActualFileCandidate } from "../../backend/services/trackMatching/p
 
 test("the disc number comes from the file's disk tag", () => {
   const parsed = {
-    common: { title: "Song", disk: { no: 2, of: 3 }, track: { no: 4, of: 10 } },
+    common: { title: "Song", discNumber: 2, discTotal: 3, trackNumber: 4, trackTotal: 10 },
     format: {},
   } as IAudioMetadata;
   const candidate = buildActualFileCandidate(parsed, "/music/Song.flac", "soulseek");

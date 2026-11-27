@@ -45,7 +45,7 @@ test("a generated track is a FLAC of the exact length that passes the download c
   assert.equal(Math.round((format.duration ?? 0) * 1000), durationMs);
   assert.equal(format.sampleRate, 44_100);
   assert.equal(common.title, "Everything in Its Right Place");
-  assert.deepEqual(common.genre, ["Rock", "Art Rock"]);
+  assert.deepEqual(common.genres, ["Rock", "Art Rock"]);
   assert.equal(
     implausibleBitrateKbps({ path: file, sizeBytes: statSync(file).size, durationMs }),
     null,

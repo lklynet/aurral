@@ -78,7 +78,9 @@ const metadataGenres = (entity: LibraryInfoEntity | null | undefined) => {
   return formatList([
     ...toList(metadata.genres),
     ...toList(metadata.genre),
+    ...toList(metadata.common?.genres),
     ...toList(metadata.common?.genre),
+    ...toList(metadata.tags?.genres),
     ...toList(metadata.tags?.genre),
   ]);
 };

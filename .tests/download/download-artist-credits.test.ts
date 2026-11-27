@@ -4,8 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { parseFile } from "music-metadata";
-import taglib from "node-taglib-sharp";
+import { parseFile, updateFile } from "music-metadata/node";
 
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 import { json, stubFetch } from "../helpers/stubFetch.ts";
@@ -14,7 +13,7 @@ import { useFakeClock } from "../helpers/fakeClock.ts";
 useFakeClock();
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), "aurral-artist-credits-"));
-const [isolatedState, { writeAudioMetadata }] = await setupIsolatedBackend(
+const [isolatedState, { readAurralIdentity, writeAudioMetadata }] = await setupIsolatedBackend(
   "download-artist-credits",
   () => import("../../backend/services/downloadUtils.ts"),
 );
@@ -98,6 +97,7 @@ test("a download reads guest credits from v1 album metadata without calling Musi
     makeAudio("stars.mp3", ["-c:a", "libmp3lame"]),
     makeAudio("stars.flac", ["-c:a", "flac"]),
     makeAudio("stars.m4a", ["-c:a", "aac"]),
+    makeAudio("stars.aac", ["-c:a", "aac", "-f", "adts"]),
   ];
 
   for (const filePath of files) {
@@ -106,12 +106,14 @@ test("a download reads guest credits from v1 album metadata without calling Musi
 
   assert.equal(mbLookups, 0);
   for (const filePath of files) {
-    const { common } = await parseFile(filePath);
+    const metadata = await parseFile(filePath);
+    const { common } = metadata;
+    assert.equal(readAurralIdentity(metadata)?.trackMbid, job.trackMbid, filePath);
     assert.equal(common.artist, "Kendrick Lamar & SZA", filePath);
     assert.deepEqual(common.artists, ["Kendrick Lamar", "SZA"], filePath);
-    assert.deepEqual(common.musicbrainz_artistid, [KENDRICK, SZA], filePath);
-    assert.equal(common.albumartist, "Kendrick Lamar", filePath);
-    assert.equal(common.musicbrainz_albumartistid?.[0], KENDRICK, filePath);
+    assert.deepEqual(common.mbArtistId, [KENDRICK, SZA], filePath);
+    assert.equal(common.albumArtist, "Kendrick Lamar", filePath);
+    assert.equal(common.mbAlbumArtistId?.[0], KENDRICK, filePath);
   }
 });
 
@@ -175,7 +177,7 @@ test("a download fills guest credits from the MusicBrainz album fallback once pe
     const { common } = await parseFile(filePath);
     assert.equal(common.artist, "Kendrick Lamar & SZA", filePath);
     assert.deepEqual(common.artists, ["Kendrick Lamar", "SZA"], filePath);
-    assert.deepEqual(common.musicbrainz_artistid, [KENDRICK, SZA], filePath);
+    assert.deepEqual(common.mbArtistId, [KENDRICK, SZA], filePath);
   }
 });
 
@@ -189,7 +191,7 @@ test("a download keeps its album artist when album metadata is unavailable", asy
 
   const { common } = await parseFile(filePath);
   assert.equal(common.artist, "Kendrick Lamar");
-  assert.deepEqual(common.musicbrainz_artistid, [KENDRICK]);
+  assert.deepEqual(common.mbArtistId, [KENDRICK]);
 });
 
 test("re-tagging a file with a credit for one artist replaces an uploader's list of others", async (t) => {
@@ -220,14 +222,7 @@ test("re-tagging a file with a credit for one artist replaces an uploader's list
       : json({}, 404),
   );
   const filePath = makeAudio("solo.flac", ["-c:a", "flac"]);
-  const file = taglib.File.createFromPath(filePath);
-  (file.getTag(taglib.TagTypes.Xiph, true) as taglib.XiphComment).setFieldAsStrings(
-    "ARTISTS",
-    "Kendrick Lamar",
-    "Someone Else",
-  );
-  file.save();
-  file.dispose();
+  await updateFile(filePath, { native: { ARTISTS: ["Kendrick Lamar", "Someone Else"] } });
 
   await writeAudioMetadata(filePath, { ...job, albumMbid, releaseMbid });
 
@@ -282,6 +277,6 @@ test("a track request takes its album artist from the album's main artist", asyn
 
   const { common } = await parseFile(filePath);
   assert.equal(common.artist, "One Self");
-  assert.equal(common.albumartist, "Stéphane Pompougnac");
-  assert.equal(common.musicbrainz_albumartistid?.[0], albumArtist);
+  assert.equal(common.albumArtist, "Stéphane Pompougnac");
+  assert.equal(common.mbAlbumArtistId?.[0], albumArtist);
 });

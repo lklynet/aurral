@@ -105,8 +105,8 @@ const text = (value: unknown) => String(value || "").trim();
 
 const first = (value: unknown): unknown => (Array.isArray(value) ? value[0] : value);
 
-const numberPart = (value: { no?: number | null } | null | undefined, fallback = 0) => {
-  const number = Number(value?.no ?? value);
+const numberPart = (value: number | null | undefined, fallback = 0) => {
+  const number = Number(value ?? undefined);
   return Number.isFinite(number) ? Math.max(0, Math.trunc(number)) : fallback;
 };
 
@@ -138,21 +138,21 @@ const applyMetadataEnrichment = (
     return metadata;
   }
   const trusted = withJobRelease({ ...embedded, ...(enrichment || {}) });
-  const taggedGroup = normalizeMbid(common.musicbrainz_releasegroupid);
+  const taggedGroup = normalizeMbid(common.mbReleaseGroupId);
   const otherGroup = taggedGroup !== null && taggedGroup !== normalizeMbid(trusted.albumMbid);
   const fallbackFields = {
-    albumartist: trusted.artistName,
+    albumArtist: trusted.artistName,
     artist: trusted.artistName,
     album: trusted.albumName,
     title: trusted.trackName,
     date: trusted.releaseYear,
-    track: trusted.trackNumber,
-    disk: trusted.discNumber,
-    musicbrainz_artistid: trusted.artistMbid,
-    musicbrainz_albumartistid: trusted.artistMbid,
-    musicbrainz_albumid: otherGroup ? null : trusted.releaseMbid,
-    musicbrainz_releasegroupid: trusted.albumMbid,
-    musicbrainz_recordingid: trusted.trackMbid,
+    trackNumber: trusted.trackNumber,
+    discNumber: trusted.discNumber,
+    mbArtistId: trusted.artistMbid,
+    mbAlbumArtistId: trusted.artistMbid,
+    mbReleaseId: otherGroup ? null : trusted.releaseMbid,
+    mbReleaseGroupId: trusted.albumMbid,
+    mbRecordingId: trusted.trackMbid,
   };
   for (const [key, value] of Object.entries(fallbackFields)) {
     if (value == null || String(value).trim() === "") continue;
@@ -178,16 +178,16 @@ function readPathFallback(filePath: string, rootPath: string) {
 function buildMetadataRecord(metadata: ScannedMetadata, filePath: string, rootPath: string) {
   const common = normalizeMetadata(metadata);
   const fallback = readPathFallback(filePath, rootPath);
-  const [taggedAlbumArtist = ""] = tagValues(common.albumartist);
+  const [taggedAlbumArtist = ""] = tagValues(common.albumArtist);
   const artistName = taggedAlbumArtist || tagValues(common.artist)[0] || fallback.artistName;
   const albumName = text(common.album) || fallback.albumName;
   const title = text(common.title) || fallback.title;
-  const trackNumber = numberPart(common.track, fallback.trackNumber);
-  const discNumber = numberPart(common.disk, fallback.discNumber) || 1;
-  const artistMbids = common.musicbrainz_albumartistid
+  const trackNumber = numberPart(common.trackNumber, fallback.trackNumber);
+  const discNumber = numberPart(common.discNumber, fallback.discNumber) || 1;
+  const artistMbids = common.mbAlbumArtistId
     ? [
         ...new Set(
-          [common.musicbrainz_albumartistid]
+          [common.mbAlbumArtistId]
             .flat()
             .map(normalizeMbid)
             .filter((mbid) => mbid !== null),
@@ -195,11 +195,11 @@ function buildMetadataRecord(metadata: ScannedMetadata, filePath: string, rootPa
       ]
     : isVariousArtistsCredit(taggedAlbumArtist)
       ? [VARIOUS_ARTISTS_MBID]
-      : [normalizeMbid(common.musicbrainz_artistid)].filter((mbid) => mbid !== null);
+      : [normalizeMbid(common.mbArtistId)].filter((mbid) => mbid !== null);
   const artistMbid = artistMbids.length === 1 ? artistMbids[0] : null;
-  const albumMbid = normalizeMbid(common.musicbrainz_albumid);
-  const releaseGroupMbid = normalizeMbid(common.musicbrainz_releasegroupid);
-  const trackMbid = normalizeMbid(common.musicbrainz_recordingid);
+  const albumMbid = normalizeMbid(common.mbReleaseId);
+  const releaseGroupMbid = normalizeMbid(common.mbReleaseGroupId);
+  const trackMbid = normalizeMbid(common.mbRecordingId);
   const artistKey =
     (artistMbid && buildIdentityKey("mbid", artistMbid)) ||
     buildFallbackIdentityKey("artist", artistName);
@@ -229,9 +229,9 @@ function buildMetadataRecord(metadata: ScannedMetadata, filePath: string, rootPa
     albumArtist: taggedAlbumArtist || artistName,
     releaseDate: yearFirstReleaseDate(
       text(
-        common.originaldate ||
-          common.originalyear ||
-          common.releasedate ||
+        common.originalDate ||
+          common.originalYear ||
+          common.releaseDate ||
           common.date ||
           common.year,
       ),

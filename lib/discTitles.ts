@@ -1,7 +1,13 @@
 export const discSubtitle = (metadata: Record<string, unknown> | null | undefined) => {
   const tags = metadata?.tags;
   const [subtitle] = [
-    tags && typeof tags === "object" && "discsubtitle" in tags ? tags.discsubtitle : null,
+    tags && typeof tags === "object"
+      ? "discSubtitle" in tags
+        ? tags.discSubtitle
+        : "discsubtitle" in tags
+          ? tags.discsubtitle
+          : null
+      : null,
   ].flat();
   return typeof subtitle === "string" ? subtitle.trim() : "";
 };

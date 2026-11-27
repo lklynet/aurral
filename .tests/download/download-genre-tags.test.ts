@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { parseFile } from "music-metadata";
-import taglib from "node-taglib-sharp";
 
 import {
   setupIsolatedBackend,
@@ -76,9 +75,7 @@ test("a download is tagged with its album's genres", async () => {
 
   await withAlbumGenres(genres, () => writeAudioMetadata(filePath, job));
 
-  const tagged = taglib.File.createFromPath(filePath);
-  assert.deepEqual(tagged.tag.genres, genres.slice(0, 5));
-  tagged.dispose();
+  assert.deepEqual((await parseFile(filePath)).common.genres, genres.slice(0, 5));
 });
 
 test("a download keeps its own genre when the album's genres can't be read", async () => {
@@ -87,6 +84,6 @@ test("a download keeps its own genre when the album's genres can't be read", asy
   await withAlbumGenres(null, () => writeAudioMetadata(filePath, job));
 
   const { common } = await parseFile(filePath);
-  assert.deepEqual(common.genre, ["Electronic"]);
+  assert.deepEqual(common.genres, ["Electronic"]);
   assert.equal(common.title, "One More Time");
 });

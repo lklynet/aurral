@@ -39,15 +39,15 @@ import { syncLibrarySearchTrack } from "../../backend/services/librarySearchInde
 
 const metadata = {
   common: {
-    albumartist: "Query Fixture",
+    albumArtist: "Query Fixture",
     artist: "Query Fixture",
     album: "Canonical Reads",
     title: "One Source, Two Files",
-    track: { no: 1, of: null },
-    disk: { no: 1, of: null },
-    musicbrainz_albumartistid: ["11111111-1111-4111-8111-111111111111"],
-    musicbrainz_releasegroupid: "22222222-2222-4222-8222-222222222222",
-    musicbrainz_recordingid: "33333333-3333-4333-8333-333333333333",
+    trackNumber: 1,
+    discNumber: 1,
+    mbAlbumArtistId: ["11111111-1111-4111-8111-111111111111"],
+    mbReleaseGroupId: "22222222-2222-4222-8222-222222222222",
+    mbRecordingId: "33333333-3333-4333-8333-333333333333",
   },
   format: { duration: 123.4, codec: "FLAC" },
 };

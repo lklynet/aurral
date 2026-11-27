@@ -22,34 +22,34 @@ async function createLibrary(t: TestContext, seed: number) {
   const solo = {
     path: path.join(root, "Carpenter Brut", "Trilogy", "01.flac"),
     common: {
-      albumartist: "Carpenter Brut",
+      albumArtist: "Carpenter Brut",
       album: "Trilogy",
       title: "Roller Mobster",
-      musicbrainz_albumartistid: [lead],
-      musicbrainz_releasegroupid: id("2"),
-      musicbrainz_recordingid: id("3"),
+      mbAlbumArtistId: [lead],
+      mbReleaseGroupId: id("2"),
+      mbRecordingId: id("3"),
     },
   };
   const danger = {
     path: path.join(root, "Danger", "09-09-09", "01.flac"),
     common: {
-      albumartist: "Danger",
+      albumArtist: "Danger",
       album: "09/14 - 18/14",
       title: "11h30",
-      musicbrainz_albumartistid: [id("6")],
-      musicbrainz_releasegroupid: id("c"),
-      musicbrainz_recordingid: id("d"),
+      mbAlbumArtistId: [id("6")],
+      mbReleaseGroupId: id("c"),
+      mbRecordingId: id("d"),
     },
   };
   const soundtrack = {
     path: path.join(root, credit, "Furi", "01.flac"),
     common: {
-      albumartist: credit,
+      albumArtist: credit,
       album: "Furi",
       title: "Time to Wake Up",
-      musicbrainz_albumartistid: [lead, ...["6", "7", "8", "9", "a", "b"].map(id)],
-      musicbrainz_releasegroupid: id("4"),
-      musicbrainz_recordingid: id("5"),
+      mbAlbumArtistId: [lead, ...["6", "7", "8", "9", "a", "b"].map(id)],
+      mbReleaseGroupId: id("4"),
+      mbRecordingId: id("5"),
     },
   };
   const untagged = {
@@ -57,18 +57,18 @@ async function createLibrary(t: TestContext, seed: number) {
     common: {
       ...soundtrack.common,
       title: "Danger",
-      musicbrainz_albumartistid: [],
-      musicbrainz_recordingid: id("e"),
+      mbAlbumArtistId: [],
+      mbRecordingId: id("e"),
     },
   };
   const guest = ["Leather Teeth", "Hairspray Hurricane"].map((title, index) => ({
     path: path.join(root, "Carpenter Brut", "Leather Teeth", `0${index + 1}.flac`),
     common: {
-      albumartist: "Carpenter Brut",
+      albumArtist: "Carpenter Brut",
       album: "Leather Teeth",
       title,
-      musicbrainz_artistid: index ? [lead, id("6")] : [lead],
-      musicbrainz_releasegroupid: id("f"),
+      mbArtistId: index ? [lead, id("6")] : [lead],
+      mbReleaseGroupId: id("f"),
     },
   }));
   for (const { path: filePath } of [solo, danger, soundtrack, untagged, ...guest]) {
@@ -93,11 +93,7 @@ async function createLibrary(t: TestContext, seed: number) {
          WHERE album.release_group_mbid IN (?, ?, ?)
          ORDER BY album.title`,
       )
-      .all(
-        solo.common.musicbrainz_releasegroupid,
-        soundtrack.common.musicbrainz_releasegroupid,
-        id("f"),
-      );
+      .all(solo.common.mbReleaseGroupId, soundtrack.common.mbReleaseGroupId, id("f"));
   return { lead, solo, danger, soundtrack, untagged, guest, scan, albumOwners };
 }
 
@@ -118,9 +114,7 @@ test("a release credited to several artists gets its own artist instead of joini
 test("a full scan moves a release credited to several artists off the first artist it renamed", async (t) => {
   const { lead, solo, soundtrack, scan, albumOwners } = await createLibrary(t, 2);
   await scan([solo]);
-  await scan([
-    { ...soundtrack, common: { ...soundtrack.common, musicbrainz_albumartistid: [lead] } },
-  ]);
+  await scan([{ ...soundtrack, common: { ...soundtrack.common, mbAlbumArtistId: [lead] } }]);
   assert.deepEqual(albumOwners(), [
     { title: "Furi", name: credit, mbid: lead },
     { title: "Trilogy", name: credit, mbid: lead },
@@ -156,18 +150,14 @@ test("a release credited to several artists shows under each credited artist in 
     "Trilogy",
   ]);
   assert.equal(
-    (await getArtistLibraryLookup(requireFixture(danger.common.musicbrainz_albumartistid[0])))
-      .exists,
+    (await getArtistLibraryLookup(requireFixture(danger.common.mbAlbumArtistId[0]))).exists,
     false,
   );
 
   await scan([danger]);
 
   assert.deepEqual(
-    titles(
-      (await getArtistLibraryLookup(requireFixture(danger.common.musicbrainz_albumartistid[0])))
-        .albums,
-    ),
+    titles((await getArtistLibraryLookup(requireFixture(danger.common.mbAlbumArtistId[0]))).albums),
     ["09/14 - 18/14", "Furi"],
   );
 });

@@ -3,6 +3,7 @@ import { stubMissingMusicbrainz } from "../helpers/stubFetch.ts";
 import type * as Rows from "../../backend/db/rows.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { copyFile, link, mkdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { parseFile } from "music-metadata";
@@ -280,10 +281,10 @@ test("ingest fills in only the tags a file is missing and keeps it with the albu
   assert.equal(items[0]?.status, "done");
   const target = path.join(root, "Fill Artist", "Fill Album", "02 - Song Two.flac");
   const { common } = await parseFile(target);
-  assert.equal(common.musicbrainz_releasegroupid, releaseGroup);
-  assert.equal(common.musicbrainz_recordingid, recording(2));
+  assert.equal(common.mbReleaseGroupId, releaseGroup);
+  assert.equal(common.mbRecordingId, recording(2));
   assert.equal(common.year, 2011);
-  assert.deepEqual(common.genre, ["My Genre"]);
+  assert.deepEqual(common.genres, ["My Genre"]);
   assert.equal(common.title, "Song Two");
   assert.deepEqual(await readFile(sourceFile), sourceBytes);
 
@@ -334,11 +335,8 @@ test("ingest tells apart albums that share a title by their year", async () => {
   );
   const tagsOf = async (name: string) =>
     (await parseFile(path.join(root, "Fill Artist", "Fill Album", name))).common;
-  assert.equal((await tagsOf("02 - Song Two.flac")).musicbrainz_releasegroupid, releaseGroup);
-  assert.equal(
-    (await tagsOf("01 - Song Three.flac")).musicbrainz_releasegroupid,
-    laterReleaseGroup,
-  );
+  assert.equal((await tagsOf("02 - Song Two.flac")).mbReleaseGroupId, releaseGroup);
+  assert.equal((await tagsOf("01 - Song Three.flac")).mbReleaseGroupId, laterReleaseGroup);
 });
 
 test("a source whose disc number differs from the Library's is matched by the MusicBrainz IDs it would get, with or without filling them in", async () => {
@@ -465,8 +463,8 @@ test("clean up fills in missing tags, keeps favorites, and leaves unmatched file
   assert.equal(planned.hardlinked, true);
   assert.deepEqual(items.map((item) => item.status).sort(), ["done", "unmatched"]);
   const { common } = await parseFile(matched);
-  assert.equal(common.musicbrainz_recordingid, recording(1));
-  assert.deepEqual(common.genre, ["dream pop", "shoegaze"]);
+  assert.equal(common.mbRecordingId, recording(1));
+  assert.deepEqual(common.genres, ["dream pop", "shoegaze"]);
   assert.deepEqual(await readFile(seed), seedBytes);
   assert.notEqual((await stat(seed)).ino, (await stat(matched)).ino);
   assert.deepEqual(await readFile(unmatched), unmatchedBytes);
@@ -503,7 +501,7 @@ test("clean up fills in a file's tags and gives it Aurral's name in one pass, an
     ),
     false,
   );
-  assert.equal((await parseFile(named)).common.musicbrainz_recordingid, recording(1));
+  assert.equal((await parseFile(named)).common.mbRecordingId, recording(1));
   assert.deepEqual(
     db
       .prepare<
@@ -516,6 +514,62 @@ test("clean up fills in a file's tags and gives it Aurral's name in one pass, an
       .all()
       .map((row) => [row.path, row.mbid]),
     [[named, recording(1)]],
+  );
+});
+
+test("clean up renames an unwritable AIFF file without changing its tags", async () => {
+  const loose = path.join(root, "loose", "track.aiff");
+  await mkdir(path.dirname(loose), { recursive: true });
+  const generated = spawnSync(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-nostdin",
+      "-f",
+      "lavfi",
+      "-i",
+      "anullsrc",
+      "-t",
+      "0.2",
+      "-c:a",
+      "pcm_s16be",
+      "-write_id3v2",
+      "1",
+      "-metadata",
+      "artist=Fill Artist",
+      "-metadata",
+      "album=Fill Album",
+      "-metadata",
+      "title=Song One",
+      "-metadata",
+      "track=1",
+      loose,
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(generated.status, 0, generated.stderr);
+  const original = await readFile(loose);
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+
+  const { preview, items } = await checkAndRun(await operations.startCleanup());
+
+  const named = path.join(root, "Fill Artist", "Fill Album", "01 - Song One.aiff");
+  assert.deepEqual(
+    preview.map((item) => [item.actions, item.target]),
+    [[["rename"], path.relative(root, named)]],
+  );
+  assert.match(preview[0]?.reason || "", /cannot write tags/);
+  assert.equal(items[0]?.status, "done");
+  assert.deepEqual(await readFile(named), original);
+  await assert.rejects(stat(loose), { code: "ENOENT" });
+  assert.deepEqual(
+    db
+      .prepare<unknown[], string>("SELECT path FROM library_media_files WHERE available = 1")
+      .pluck()
+      .all(),
+    [named],
   );
 });
 
@@ -541,7 +595,7 @@ test("clean up fills in tags for a file whose Aurral name already links to it", 
     ),
     false,
   );
-  assert.equal((await parseFile(named)).common.musicbrainz_recordingid, recording(1));
+  assert.equal((await parseFile(named)).common.mbRecordingId, recording(1));
   assert.deepEqual(
     db
       .prepare<unknown[], Rows.LibraryMediaFilesRow["path"]>(
@@ -567,9 +621,9 @@ test("a file tagged with one edition gets that edition's track number", async ()
 
   assert.equal(items[0]?.status, "done");
   const { common } = await parseFile(filePath);
-  assert.equal(common.track.no, 3);
-  assert.equal(common.musicbrainz_albumid, deluxe);
-  assert.equal(common.musicbrainz_recordingid, recording(2));
+  assert.equal(common.trackNumber, 3);
+  assert.equal(common.mbReleaseId, deluxe);
+  assert.equal(common.mbRecordingId, recording(2));
 });
 
 test("a file's track number picks the edition that fills its tags, and a position no edition has gets none", async () => {
@@ -612,8 +666,8 @@ test("a file's track number picks the edition that fills its tags, and a positio
     requireValue(items.find((item) => path.resolve(root, item.source) === filePath)).status;
   assert.equal(statusOf(deluxeTrack), "done");
   const { common } = await parseFile(deluxeTrack);
-  assert.equal(common.musicbrainz_albumid, deluxe);
-  assert.equal(common.musicbrainz_recordingid, recording(2));
+  assert.equal(common.mbReleaseId, deluxe);
+  assert.equal(common.mbRecordingId, recording(2));
   assert.equal(statusOf(misplaced), "unmatched");
   assert.deepEqual(await readFile(misplaced), misplacedBytes);
   assert.equal(statusOf(otherEdition), "unmatched");
@@ -649,9 +703,9 @@ test("a track that fits another edition's length takes that edition, and a guest
     items.map((item) => item.status),
     ["done", "done"],
   );
-  assert.equal((await parseFile(radioTrack)).common.musicbrainz_albumid, radioEdit);
+  assert.equal((await parseFile(radioTrack)).common.mbReleaseId, radioEdit);
   const guest = (await parseFile(guestTrack)).common;
-  assert.equal(guest.musicbrainz_artistid?.[0], guestMbid);
+  assert.equal(guest.mbArtistId?.[0], guestMbid);
   assert.equal(guest.artist, undefined);
 });
 
@@ -708,7 +762,7 @@ test("clean up says the metadata provider was unreachable instead of calling an 
     requireValue(retried)!.items.find((item) => path.resolve(root, item.source) === tagged)!.status,
     "done",
   );
-  assert.equal((await parseFile(tagged)).common.musicbrainz_releasegroupid, outageReleaseGroup);
+  assert.equal((await parseFile(tagged)).common.mbReleaseGroupId, outageReleaseGroup);
 });
 
 function requireValue<T>(value: T | null | undefined): T {

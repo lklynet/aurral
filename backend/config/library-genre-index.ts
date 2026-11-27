@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 
-const GENRE_INDEX_VERSION = "4";
+const GENRE_INDEX_VERSION = "5";
 const entities = ["artists", "albums", "tracks"];
 
 export const genreKeySql = (value: string) =>
@@ -16,7 +16,14 @@ export const genreNameSql = (key: string) =>
 function genreValues(kind: string, id: string, metadata: string, entityFrom = "") {
   const valid = `CASE WHEN json_valid(${metadata}) THEN ${metadata} ELSE '{}' END`;
   const parts = "'[' || replace(json_quote(CAST(genre_value.value AS TEXT)), ';', '\",\"') || ']'";
-  const names = ["$.genres", "$.genre", "$.common.genre", "$.tags.genre"]
+  const names = [
+    "$.genres",
+    "$.genre",
+    "$.common.genres",
+    "$.common.genre",
+    "$.tags.genres",
+    "$.tags.genre",
+  ]
     .map(
       (path) =>
         `SELECT '${kind}' AS kind, ${id} AS id, TRIM(genre_part.value) AS name

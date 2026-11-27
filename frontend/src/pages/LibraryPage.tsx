@@ -108,7 +108,9 @@ const metadataGenres = (entity: GenreSource | null | undefined) => {
   return [
     nestedField(metadata, "genres"),
     nestedField(metadata, "genre"),
+    nestedField(nestedField(metadata, "common"), "genres"),
     nestedField(nestedField(metadata, "common"), "genre"),
+    nestedField(nestedField(metadata, "tags"), "genres"),
     nestedField(nestedField(metadata, "tags"), "genre"),
   ]
     .flatMap((value): unknown[] => (Array.isArray(value) ? value : [value]))

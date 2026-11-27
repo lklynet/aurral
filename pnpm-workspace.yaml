@@ -9,7 +9,6 @@ packages:
 engineStrict: true
 
 overrides:
-  node-taglib-sharp>uuid: ^11.1.1
   workbox-build>glob: ^14.0.2
 
 allowBuilds:

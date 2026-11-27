@@ -189,8 +189,8 @@ async function downloadedAlbum(
         common: {
           title: file.title,
           artist: "The Band",
-          track: { no: file.trackNumber, of: null },
-          disk: { no: file.discNumber || 1, of: null },
+          trackNumber: file.trackNumber ?? undefined,
+          discNumber: file.discNumber || 1,
         },
         format: {
           duration: file.durationMs / 1000,

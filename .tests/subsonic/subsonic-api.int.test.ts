@@ -151,16 +151,16 @@ async function waitFor<T>(check: () => Promise<T> | T, timeoutMs = 5000) {
 function canonicalTags(title: string, trackNumber: number, recordingMbid: string) {
   return {
     common: {
-      albumartist: "Canonical Artist",
+      albumArtist: "Canonical Artist",
       artist: "Canonical Artist",
       album: "Canonical Album",
       title,
-      track: { no: trackNumber, of: null },
+      trackNumber: trackNumber,
       genre: ["Rock"],
-      musicbrainz_albumartistid: ["11111111-1111-4111-8111-111111111111"],
-      musicbrainz_albumid: "22222222-2222-4222-8222-222222222222",
-      musicbrainz_releasegroupid: "22222222-2222-4222-8222-222222222222",
-      musicbrainz_recordingid: recordingMbid,
+      mbAlbumArtistId: ["11111111-1111-4111-8111-111111111111"],
+      mbReleaseId: "22222222-2222-4222-8222-222222222222",
+      mbReleaseGroupId: "22222222-2222-4222-8222-222222222222",
+      mbRecordingId: recordingMbid,
     },
     format: { duration: 10, codec: "FLAC" },
   };

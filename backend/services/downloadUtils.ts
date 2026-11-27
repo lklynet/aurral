@@ -160,7 +160,7 @@ function readLegacyAurralIdentity(metadata: IdentitySource) {
     .map((tag) => tag.value);
   const found = [
     parseAurralIdentityComment(nativeComments),
-    parseAurralIdentityComment(metadata?.common?.comment),
+    parseAurralIdentityComment(metadata?.common?.comments),
     parseAurralIdentityComment(metadata?.common?.grouping),
   ].filter((identity) => identity !== null);
   return found.length ? found.reduce((merged, identity) => ({ ...merged, ...identity })) : null;

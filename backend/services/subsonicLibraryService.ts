@@ -256,7 +256,10 @@ const albumReleaseTypes = ({ metadata }: LibraryAlbum) => {
   const primary = metadata?.albumType || metadata?.releaseType;
   const types = primary
     ? [primary, readField(metadata, "secondaryTypes")]
-    : [readField(readField(metadata, "tags"), "releasetype")];
+    : [
+        readField(readField(metadata, "tags"), "releaseType") ??
+          readField(readField(metadata, "tags"), "releasetype"),
+      ];
   return [...new Set(types.flatMap(tagValues).map((type) => type.toLowerCase()))];
 };
 
@@ -266,8 +269,10 @@ const entityGenres = (entity: GenreEntity) => {
   const metadata = entity?.metadata;
   return [
     readField(metadata, "genres"),
+    readField(readField(metadata, "common"), "genres"),
     readField(readField(metadata, "common"), "genre"),
     readField(metadata, "genre"),
+    readField(readField(metadata, "tags"), "genres"),
     readField(readField(metadata, "tags"), "genre"),
   ]
     .flatMap(tagValues)
