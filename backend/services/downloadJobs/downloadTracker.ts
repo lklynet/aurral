@@ -1582,7 +1582,9 @@ export class DownloadTracker {
     });
     const job = this.jobs.get(id!)!;
     job.upgradeForJobId = sourceJob.id;
+    job.deniedRemoteSources = [...(sourceJob.deniedRemoteSources ?? [])];
     this._update(job);
+    updateDeniedSourcesStmt.run(JSON.stringify(job.deniedRemoteSources), id);
     return id;
   }
 

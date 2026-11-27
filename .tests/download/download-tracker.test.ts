@@ -708,6 +708,29 @@ test("a job keeps why it was queued across restart, and upgrades and flows say s
   assert.equal(causeOf(legacyId), null);
 });
 
+test("an upgrade skips the files and releases its track already rejected", () => {
+  const tracker = new DownloadTracker();
+  const doneId = requireFixture(
+    tracker.addJob({ artistName: "The Band", trackName: "Song" }, "library"),
+  );
+  tracker.recordDeniedSource(doneId, "slskd", "peer\0Album\\08 - Other Song.flac");
+  tracker.recordDeniedSource(doneId, "usenet", "album:release-guid");
+  tracker.setDone(doneId, "/music/song.m4a");
+  const upgradeId = requireFixture(tracker.addUpgradeJob(tracker.getJob(doneId)));
+
+  const denied = [
+    ["slskd", "peer\0Album\\08 - Other Song.flac"],
+    ["usenet", "album:release-guid"],
+  ];
+  assert.deepEqual(trackedJob(tracker, upgradeId).deniedRemoteSources, denied);
+  const stored = db
+    .prepare<[string], { denied_remote_sources: string | null }>(
+      "SELECT denied_remote_sources FROM download_jobs WHERE id = ?",
+    )
+    .get(upgradeId);
+  assert.deepEqual(JSON.parse(stored?.denied_remote_sources ?? "null"), denied);
+});
+
 test("partial album fallback persists per-track mode across restart", async () => {
   const settings = dbOps.getSettings();
   dbOps.updateSettings({
