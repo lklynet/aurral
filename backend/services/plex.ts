@@ -266,7 +266,9 @@ export async function sendPlaylistsToPlex(
   const removals = [...new Set([...pendingRemovals(), ...remove])];
   const batch = [...(await retriedUploads(upload, remove)), ...upload];
   if (!batch.length && !removals.length) {
-    if (pendingUploads().length) setPendingUploads([]);
+    if (!pendingUploads().length) return;
+    setPendingUploads([]);
+    setPlaylistStatus({ ...plexPlaylistStatus(), error: null });
     return;
   }
   const files = batch.filter((file) => !file.empty);
