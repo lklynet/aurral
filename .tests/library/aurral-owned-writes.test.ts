@@ -380,6 +380,150 @@ test("Aurral writes library album state, queues missing tracks, and refuses an a
   }
 });
 
+test("an album asked for before its release lists MusicBrainz's final tracks once it is out", async () => {
+  const placeholderArtist = "125ec42a-7229-4250-afc5-e057484327fe";
+  const earlyArtist = "66666666-6666-4666-8666-666666666666";
+  const earlyAlbum = "77777777-7777-4777-8777-777777777777";
+  const [first, second, third, replaced] = [1, 2, 3, 4].map(
+    (index) => `77777777-0000-4000-8000-00000000000${index}`,
+  );
+  const listing = (tracks: [string, string, string][]) => ({
+    id: earlyAlbum,
+    title: "Early Album",
+    artistId: earlyArtist,
+    artists: [
+      { id: earlyArtist, name: "Early Artist" },
+      { id: placeholderArtist, name: "[unknown]" },
+    ],
+    releaseDate: "2026-01-02",
+    releases: [
+      {
+        id: `${earlyAlbum}-release`,
+        status: "Official",
+        tracks: tracks.map(([recordingId, title, artistId], index) => ({
+          id: `${recordingId}-track`,
+          recordingId,
+          title,
+          artistId,
+          trackPosition: index + 1,
+          mediumNumber: 1,
+        })),
+      },
+    ],
+  });
+  let album = listing([
+    [requireFixture(first), "Track 1", earlyArtist],
+    [requireFixture(second), "[unknown]", placeholderArtist],
+    [requireFixture(third), "[unknown]", placeholderArtist],
+  ]);
+  let albumReads = 0;
+  const server = await createMockHttpServer((request, response) => {
+    const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
+    response.setHeader("content-type", "application/json");
+    if (pathname === `/v1/artist/${earlyArtist}`) {
+      response.end(JSON.stringify({ id: earlyArtist, name: "Early Artist" }));
+      return;
+    }
+    if (pathname === `/v1/album/${earlyAlbum}`) {
+      albumReads += 1;
+      response.end(JSON.stringify(album));
+      return;
+    }
+    response.writeHead(404);
+    response.end(JSON.stringify({ error: "not found" }));
+  });
+  const originalSettings = dbOps.getSettings();
+  const originalWorkerStart = downloadWorker.start;
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
+      metadata: { ...originalSettings.integrations?.metadata, baseUrl: server.url },
+    },
+  });
+  const { clearMetadataProviderCaches } =
+    await import("../../backend/services/providers/metadataProvider.ts");
+  clearMetadataProviderCaches();
+  downloadWorker.start = async () => {};
+  const albumTracks = (albumId: number) =>
+    db
+      .prepare<[number], [number, string, string]>(
+        `SELECT link.track_number, track.mbid, track.title FROM library_album_tracks AS link
+         JOIN library_tracks AS track ON track.id = link.track_id
+         WHERE link.album_id = ? ORDER BY link.track_number, track.id`,
+      )
+      .raw()
+      .all(albumId);
+
+  try {
+    const artist = await libraryManager.addArtist(earlyArtist, "Early Artist");
+    const artistId = requireFixture(artist.id);
+    const added = await libraryManager.addAlbum(artistId, earlyAlbum, "Early Album");
+    const albumId = Number(requireFixture(added.id));
+    const row = requireFixture(
+      db
+        .prepare<[number], { metadata_json: string }>(
+          "SELECT metadata_json FROM library_albums WHERE id = ?",
+        )
+        .get(albumId),
+    );
+    db.prepare("UPDATE library_albums SET metadata_json = ? WHERE id = ?").run(
+      JSON.stringify({ ...JSON.parse(row.metadata_json), added: "2025-12-01T00:00:00.000Z" }),
+      albumId,
+    );
+
+    album = listing([
+      [requireFixture(first), "Track 1", earlyArtist],
+      [requireFixture(second), "Track 2", earlyArtist],
+      [requireFixture(replaced), "Track 3", earlyArtist],
+    ]);
+    const imported = libraryStore.upsertLibraryTrack({
+      identityKey: `recording:${replaced}`,
+      mbid: replaced,
+      title: "Track 3",
+      artistName: "Early Artist",
+    });
+    libraryStore.linkLibraryAlbumTrack({ albumId, trackId: imported.id, trackNumber: 3 });
+    libraryStore.upsertLibraryMediaFile({
+      scanId: undefined,
+      trackId: imported.id,
+      albumId,
+      source: "aurral",
+      path: path.join(isolatedState.dataDir, "Early Artist/Early Album/03 Track 3.flac"),
+    });
+    await libraryManager.setAlbumMonitoring(albumId, { monitored: false });
+    const readsBefore = albumReads;
+
+    const readded = await libraryManager.addAlbum(artistId, earlyAlbum, "Early Album");
+    assert.equal(albumReads, readsBefore + 1);
+    assert.deepEqual(albumTracks(albumId), [
+      [1, first, "Track 1"],
+      [2, second, "Track 2"],
+      [3, replaced, "Track 3"],
+    ]);
+    assert.deepEqual(
+      db
+        .prepare<[number], string>(
+          `SELECT recording.value FROM library_albums AS album, json_each(album.metadata_json, '$.trackList.recordings') AS recording
+           WHERE album.id = ?`,
+        )
+        .pluck()
+        .all(albumId),
+      [first, second, replaced],
+    );
+    assert.ok(requireFixture(readded.jobIds).some((id) => getJob(id).trackName === "Track 2"));
+
+    await libraryManager.addAlbum(artistId, earlyAlbum, "Early Album");
+    assert.equal(albumReads, readsBefore + 1);
+  } finally {
+    downloadWorker.start = originalWorkerStart;
+    dbOps.updateSettings(originalSettings);
+    clearMetadataProviderCaches();
+    await server.close();
+  }
+});
+
 function getJob(id: Parameters<typeof downloadTracker.getJob>[0]) {
   const job = downloadTracker.getJob(id);
   assert.ok(job, `Expected download job ${id}`);

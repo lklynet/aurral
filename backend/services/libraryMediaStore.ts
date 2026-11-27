@@ -9,7 +9,7 @@ import {
   getLibraryIndexLastModified,
   invalidateLibraryQueryCache,
 } from "./libraryQueryService.ts";
-import { isSilenceTrack, withoutRemasterLabel } from "./trackMatching/titleText.ts";
+import { isSilenceTrack, isUnknownTitle, withoutRemasterLabel } from "./trackMatching/titleText.ts";
 import { isVariousArtistsCredit } from "../../lib/artistCredit.ts";
 import { isSameSongAtPlace } from "./trackMatching/nativeMatcher.ts";
 import { clearLibraryManagement } from "./libraryManagementStore.ts";
@@ -1757,7 +1757,8 @@ export function chooseLibraryAlbumRelease(
 // tagged file by title and position, then the only tagged file left with the
 // title of a song the release lists once. The rest are added as missing, and
 // an untagged copy then folds into its track. Missing tracks download only
-// once someone asks for them. A "[silence]" place is never missing.
+// once someone asks for them. A "[silence]" place is never missing, and an
+// "[unknown]" track without a file takes the title the release lists now.
 export function storeLibraryAlbumTrackList(
   albumId: number,
   {
@@ -1818,6 +1819,12 @@ export function storeLibraryAlbumTrackList(
     for (const [index, track] of tracks.entries()) {
       const have = places[index];
       if (have || isSilenceTrack(track.title)) {
+        if (have?.identity_key && !have.has_files && isUnknownTitle(have.title))
+          upsertLibraryTrack({
+            identityKey: have.identity_key,
+            title: track.title,
+            artistName: track.artistName || album.album_artist,
+          });
         recordings.push(have?.mbid || track.mbid);
         continue;
       }
