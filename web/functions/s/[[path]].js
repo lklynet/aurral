@@ -294,7 +294,7 @@ function playerSection(tracks, { kind, credit = null, download = null } = {}) {
   const subtitles = tracks.map(
     (track) =>
       (kind === "artist" && track.albumTitle) ||
-      (matchScore(credit, track.artistName) < 2 && track.artistName),
+      (track.artistName !== credit && matchScore(credit, track.artistName) < 2 && track.artistName),
   );
   const rows = tracks
     .map(
