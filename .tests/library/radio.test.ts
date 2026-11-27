@@ -210,6 +210,23 @@ test("a radio follows the main genres of tracks, not the broad or stray tags of 
     similarArtists: async () => [],
   });
   assert.ok(crowded.some((id) => artistOf(id) === "Justice"));
+
+  const featured = store.upsertLibraryArtist({
+    identityKey: "artist:Romanthony",
+    name: "Romanthony",
+    metadata: { genres: ["house"] },
+  });
+  const featuredRadio = await buildRadio({
+    userId,
+    seed: { artists: [{ id: String(featured.id) }] },
+    limit: 8,
+    random: seeded(9),
+    similarArtists: async () => [],
+  });
+  const fromHouse = featuredRadio.filter((id) =>
+    ["Daft Punk", "Kendrick Lamar", "Justice"].includes(artistOf(id)),
+  );
+  assert.ok(fromHouse.length >= 2, `${fromHouse.length} of ${featuredRadio.length}`);
 });
 
 test("a radio stays among similar artists, from the music source or Discover, while enough of them can play", async () => {

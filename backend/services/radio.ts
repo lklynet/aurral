@@ -42,6 +42,7 @@ const MAX_SIMILAR_SEEDS = 3;
 const SIMILAR_LIMIT = 50;
 const SIMILAR_TIMEOUT_MS = 2500;
 const MAX_GENRE_ARTISTS = 300;
+const MAX_GENRE_BATCHES = 3;
 const MIN_SIMILAR_ARTISTS = 4;
 const MAIN_GENRE_SHARE = 0.2;
 const RECENT_PLAY_MS = 24 * 60 * 60 * 1000;
@@ -156,7 +157,9 @@ function resolveSeed(seed: RadioSeed) {
     )
     .all(...artistIds, ...albumIds, ...trackIds);
   const tagged = new Set(genreRows.map((row) => `${row.kind}:${row.id}`));
+  const requestedMain = mainGenres(requestedArtistIds);
   const artistTagsFor = new Set([
+    ...requestedArtistIds.filter((artistId) => !requestedMain.has(artistId)),
     ...seedTracks
       .filter((track) => !tagged.has(`tracks:${track.trackId}`))
       .filter((track) => !tagged.has(`albums:${track.albumId}`))
@@ -170,7 +173,7 @@ function resolveSeed(seed: RadioSeed) {
       ...genreRows
         .filter((row) => row.kind !== "artists" || artistTagsFor.has(row.id))
         .map((row) => row.genre),
-      ...[...mainGenres(requestedArtistIds).values()].flatMap((main) => [...main]),
+      ...[...requestedMain.values()].flatMap((main) => [...main]),
     ]),
   ];
   const artists = artistIds.length
@@ -307,8 +310,13 @@ function genreArtistScores(genres: string[]) {
        GROUP BY artistId ORDER BY overlap DESC, artistId`,
     )
     .all(...genres, ...genres, ...genres);
-  for (let at = 0; at < rows.length && scores.size < MAX_GENRE_ARTISTS; at += MAX_GENRE_ARTISTS) {
-    const batch = rows.slice(at, at + MAX_GENRE_ARTISTS);
+  const checked = rows.slice(0, MAX_GENRE_ARTISTS * MAX_GENRE_BATCHES);
+  for (
+    let at = 0;
+    at < checked.length && scores.size < MAX_GENRE_ARTISTS;
+    at += MAX_GENRE_ARTISTS
+  ) {
+    const batch = checked.slice(at, at + MAX_GENRE_ARTISTS);
     const main = mainGenres(batch.map((row) => row.artistId));
     for (const row of batch) {
       if (scores.size >= MAX_GENRE_ARTISTS) break;
