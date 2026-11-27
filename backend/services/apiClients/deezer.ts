@@ -441,38 +441,25 @@ export function selectDeezerTrackPreview(
   candidates: v.InferOutput<typeof deezerTrackSchema>[],
   { artistName, trackName }: { artistName: string; trackName: string },
 ) {
-  const previewKey = (value: string | undefined) =>
-    value?.normalize("NFC").trim().toLowerCase() ?? "";
-  const exactMatch = (key: typeof previewKey) => {
-    const artist = key(artistName);
-    const title = key(trackName);
-    if (!artist || !title) return undefined;
-    return candidates.find(
-      (candidate) =>
-        candidate.preview &&
-        key(candidate.artist?.name) === artist &&
-        key(candidate.title) === title,
-    );
-  };
-  const exact = exactMatch(previewKey) ?? exactMatch((value) => previewKey(foldDiacritics(value)));
-  if (exact) return exact;
-
   const targetArtist = normalizeTitle(artistName);
   const targetTrack = normalizeTitle(trackName);
   if (!targetArtist || !targetTrack) return null;
   const mainArtist = normalizeTitle(artistName.split(/,|&|\s(?:feat\.?|ft\.?|with|x)\s/i)[0]);
-  const byArtist = (artist: string) =>
-    candidates.find((candidate) => {
-      const candidateTrack = normalizeTitle(candidate.title_short || candidate.title);
-      return (
-        candidate.preview &&
-        candidateTrack &&
-        normalizeTitle(candidate.artist?.name) === artist &&
-        (candidateTrack === targetTrack ||
-          candidateTrack.includes(targetTrack) ||
-          targetTrack.includes(candidateTrack))
-      );
-    });
+  const byArtist = (artist: string) => {
+    const playable = candidates.filter(
+      (candidate) => candidate.preview && normalizeTitle(candidate.artist?.name) === artist,
+    );
+    return (
+      playable.find((candidate) => normalizeTitle(candidate.title) === targetTrack) ??
+      playable.find((candidate) => {
+        const candidateTrack = normalizeTitle(candidate.title_short || candidate.title);
+        return (
+          candidateTrack &&
+          (candidateTrack.includes(targetTrack) || targetTrack.includes(candidateTrack))
+        );
+      })
+    );
+  };
 
   return byArtist(targetArtist) || (mainArtist ? byArtist(mainArtist) : null) || null;
 }
@@ -517,7 +504,7 @@ function withoutEditionGroups(title: string) {
 }
 
 export function normalizeTitle(title: unknown) {
-  return withoutEditionGroups(String(title || "").toLowerCase())
+  return withoutEditionGroups(foldDiacritics(title).toLowerCase())
     .replace(EDITION_SUFFIX, "")
     .replace(/[’']/g, "")
     .replace(/&/g, "and")

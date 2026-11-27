@@ -74,21 +74,9 @@ test("Deezer previews match accented metadata against unaccented artist names", 
     1,
   );
   assert.equal(
-    selectDeezerTrackPreview(candidates.slice(0, 1), { artistName, trackName: "Fleur de saison" }),
-    null,
-  );
-});
-
-test("Deezer previews prefer an exact spelling among otherwise equal titles", () => {
-  const entry = { title: "Flowers", preview: "preview.mp3" };
-  const candidates = [
-    { ...entry, id: 1, artist: { name: "Emilie Simon" } },
-    { ...entry, id: 2, artist: { name: "Émilie Simon" } },
-  ];
-
-  assert.equal(
-    selectDeezerTrackPreview(candidates, { artistName: "Émilie Simon", trackName: "Flowers" })?.id,
-    2,
+    selectDeezerTrackPreview(candidates.slice(0, 1), { artistName, trackName: "Fleur de saison" })
+      ?.id,
+    1,
   );
 });
 
