@@ -45,7 +45,11 @@ async function takeReplacedFileName(oldPath: string, newPath: string) {
 async function keepReplacedSidecars(oldPath: string, newPath: string) {
   const base = (filePath: string) => filePath.slice(0, -path.extname(filePath).length);
   if (base(oldPath) === base(newPath)) return;
-  await transferSidecars(oldPath, newPath, "move").catch(() => {});
+  try {
+    await transferSidecars(oldPath, newPath, "move");
+  } catch {
+    return;
+  }
   await removeSidecars(oldPath).catch(() => {});
 }
 
