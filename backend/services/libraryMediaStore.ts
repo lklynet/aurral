@@ -4,7 +4,11 @@ import path from "node:path";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import * as v from "valibot";
 import { invalidateLibraryManagementCache } from "./libraryManagementStore.ts";
-import { getLibraryIndexLastModified, invalidateLibraryQueryCache } from "./libraryQueryService.ts";
+import {
+  albumMediaCondition,
+  getLibraryIndexLastModified,
+  invalidateLibraryQueryCache,
+} from "./libraryQueryService.ts";
 import { isSilenceTrack, withoutRemasterLabel } from "./trackMatching/titleText.ts";
 import { isVariousArtistsCredit } from "../../lib/artistCredit.ts";
 import { isSameSongAtPlace } from "./trackMatching/nativeMatcher.ts";
@@ -2611,6 +2615,7 @@ export function removeLibraryAlbumTracksWithoutAvailableMedia(albumId: number) {
          AND NOT EXISTS (
            SELECT 1 FROM library_media_files file
            WHERE file.track_id = link.track_id AND file.available = 1
+             AND ${albumMediaCondition("file", "link")}
          )`,
         )
         .all(normalizedAlbumId)

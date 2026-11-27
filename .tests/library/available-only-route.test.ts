@@ -290,3 +290,40 @@ test("an artist Aurral starts monitoring ranks as just added, and deleting it ta
     libraryManager.planArtistMonitoring = originalPlan;
   }
 });
+
+test("deleting an album that shares a recording with a kept album takes it out of the Library", async () => {
+  const artist = upsertLibraryArtist({ identityKey: "shared-artist", name: "Shared Recordings" });
+  const kept = upsertLibraryAlbum({
+    identityKey: "shared-kept",
+    artistId: artist.id,
+    title: "Kept Studio Album",
+  });
+  const deleted = upsertLibraryAlbum({
+    identityKey: "shared-deleted",
+    artistId: artist.id,
+    title: "Deleted Compilation",
+    metadata: { librarySource: "aurral", trackListComplete: true, monitored: true },
+  });
+  setLibraryManagement({ entityKind: "album", entityId: deleted.id, monitorMode: "monitored" });
+  const shared = upsertLibraryTrack({ identityKey: "recording:shared", title: "Shared Song" });
+  for (const album of [kept, deleted]) {
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: shared.id, trackNumber: 1 });
+    upsertLibraryMediaFile({
+      trackId: shared.id,
+      albumId: album.id,
+      source: "aurral",
+      path: `/library/Shared Recordings/${album.title}/01 Shared Song.flac`,
+      available: true,
+    });
+  }
+
+  assert.ok(!("error" in (await libraryManager.deleteAlbum(deleted.id, false))));
+
+  const albums = await callLibraryPage({
+    kind: "albums",
+    page: "1",
+    pageSize: "50",
+    artistId: String(artist.id),
+  });
+  assert.deepEqual(titles(albums), ["Kept Studio Album"]);
+});
