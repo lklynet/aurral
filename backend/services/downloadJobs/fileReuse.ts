@@ -29,6 +29,7 @@ import {
 } from "../downloadPaths.ts";
 import { recordTrackReused } from "../aurralHistoryService.ts";
 import { playlistManager } from "../playlists/playlistManager.ts";
+import { isPathWithin, readOnlyFolderPaths } from "../libraryFolders.ts";
 
 type FolderSource = keyof typeof FOLDER_SOURCES;
 type SourceOptions = {
@@ -473,8 +474,16 @@ function findMatchingTrack(tracks: ReadTrack[], track: DownloadTrackInput, stric
   }
   const trackKey = normalizeText(track?.trackName);
   if (!trackKey) return null;
+  const trackNumber = track?.requestGroupId ? normalizePositiveInteger(track.trackNumber) : null;
+  const atPlace = (entry: ReadTrack) =>
+    !trackNumber ||
+    !entry.trackNumber ||
+    (entry.trackNumber === trackNumber &&
+      (entry.discNumber || 1) === (normalizePositiveInteger(track.discNumber) || 1));
   return (
-    tracks.find((entry) => normalizeText(entry?.trackName || entry?.title) === trackKey) || null
+    tracks.find(
+      (entry) => normalizeText(entry?.trackName || entry?.title) === trackKey && atPlace(entry),
+    ) || null
   );
 }
 
@@ -490,6 +499,7 @@ async function findLibraryFolderSource(
   source: FolderSource,
 ): Promise<ReuseSource | null> {
   const { label, external } = FOLDER_SOURCES[source];
+  const readOnlyFolders = external ? readOnlyFolderPaths() : [];
   const strictAlbum = options.targetPlaylistType === "library";
   const library = getLibraryForArtistReferences({
     source,
@@ -547,6 +557,7 @@ async function findLibraryFolderSource(
       continue;
     }
     const sourcePath = path.resolve(matchedTrack.path);
+    if (external && !readOnlyFolders.some((folder) => isPathWithin(folder, sourcePath))) continue;
     if (!(await fileExists(sourcePath))) {
       console.warn(
         `[FileReuse] ${label} track exists but file is not accessible from Aurral: ${matchedTrack.path} (resolved to ${sourcePath})`,
@@ -648,6 +659,10 @@ export async function restoreCompletedTrack(job: DownloadJob, options: RestoreOp
         finalPath: sourcePath,
       };
     }
+  }
+
+  if (getLibraryMediaFile({ source: "readonly", path: finalPath })?.available === 0) {
+    return { action: "skipped", reason: "Its read-only folder is not connected" };
   }
 
   if (options.requeueOnMissing === false) {

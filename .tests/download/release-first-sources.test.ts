@@ -547,6 +547,7 @@ test("an album request whose tracks the Library or a read-only folder already ha
     ],
     ["Second", "readonly", path.join(state.baseDir, "readonly", "Owned Band", "02 Second.flac")],
   ] as const;
+  dbOps.setJSONSetting("readOnlyFolders", [path.join(state.baseDir, "readonly")]);
   for (const [index, [title, source, filePath]] of files.entries()) {
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, "audio");

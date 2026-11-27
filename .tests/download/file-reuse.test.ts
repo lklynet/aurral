@@ -330,6 +330,25 @@ test("restoreCompletedTrack requeues done jobs when the file and reuse source ar
   assert.equal(result.action, "requeued");
   assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
   assert.equal(downloadTracker.getJob(jobId)?.finalPath, null);
+
+  const offlinePath = path.join(isolatedState.baseDir, "readonly", "Deftones", "Change.flac");
+  libraryStore.upsertLibraryMediaFile({
+    trackId: libraryStore.upsertLibraryTrack({ identityKey: "recording:change", title: "Change" })
+      .id,
+    source: "readonly",
+    path: offlinePath,
+  });
+  libraryStore.markLibraryMediaFilesUnavailable("readonly", [offlinePath]);
+  const offlineJobId = createTrackedJob(downloadTracker, track, "library");
+  downloadTracker.setDone(offlineJobId, offlinePath, track.albumName, offlinePath);
+
+  const offline = await restoreCompletedTrack(trackedJob(downloadTracker, offlineJobId), {
+    downloadRoot,
+    resolveSource: async () => ({ source: null, reason: "No source" }),
+  });
+
+  assert.equal(offline.action, "skipped");
+  assert.equal(downloadTracker.getJob(offlineJobId)?.finalPath, offlinePath);
 });
 
 test("repairJobsUnderRemovedPlaylistDir requeues other playlists that reused a deleted flow folder", async () => {
@@ -665,6 +684,108 @@ test("playlists use an indexed Library file whose folder and name Aurral did not
   assert.deepEqual([job.artistMbid, job.albumMbid], ["hellyeah", "undeniable"]);
 });
 
+test("an album request whose recording is not known takes only the Library track at its place", async () => {
+  const acousticPath = path.join(downloadRoot, "Bon Iver", "Deluxe", "2-01 Skinny Love.flac");
+  await fs.mkdir(path.dirname(acousticPath), { recursive: true });
+  await fs.writeFile(acousticPath, "audio");
+  const artist = libraryStore.upsertLibraryArtist({
+    identityKey: "mbid:bon-iver",
+    mbid: "bon-iver",
+    name: "Bon Iver",
+  });
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: "release-group:for-emma",
+    releaseGroupMbid: "for-emma",
+    artistId: artist.id,
+    title: "For Emma, Forever Ago",
+  });
+  const acoustic = libraryStore.upsertLibraryTrack({
+    identityKey: "recording:skinny-love-acoustic",
+    mbid: "skinny-love-acoustic",
+    title: "Skinny Love (Acoustic)",
+    artistName: "Bon Iver",
+  });
+  libraryStore.linkLibraryAlbumTrack({
+    albumId: album.id,
+    trackId: acoustic.id,
+    discNumber: 2,
+    trackNumber: 1,
+  });
+  libraryStore.upsertLibraryMediaFile({
+    trackId: acoustic.id,
+    albumId: album.id,
+    source: "aurral",
+    path: acousticPath,
+  });
+  const request = (trackName: string, discNumber: number, trackNumber: number) =>
+    reuseTrackForPlaylist(
+      {
+        artistName: "Bon Iver",
+        artistMbid: "bon-iver",
+        trackName,
+        albumName: "For Emma, Forever Ago",
+        albumMbid: "for-emma",
+        discNumber,
+        trackNumber,
+        requestGroupId: "for-emma-request",
+      },
+      "library",
+      { downloadRoot, skipHistory: true },
+    );
+
+  assert.equal((await request("Skinny Love", 1, 1)).reused, false);
+  assert.equal((await request("Skinny Love (Acoustic)", 2, 1)).finalPath, acousticPath);
+});
+
+test("a request takes a read-only file only while its folder is a read-only folder", async () => {
+  const folder = path.join(isolatedState.baseDir, "shelf");
+  const filePath = path.join(folder, "Low", "Monkey.flac");
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, "audio");
+  const artist = libraryStore.upsertLibraryArtist({
+    identityKey: "mbid:low",
+    mbid: "low",
+    name: "Low",
+  });
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: "release-group:great-destroyer",
+    releaseGroupMbid: "great-destroyer",
+    artistId: artist.id,
+    title: "The Great Destroyer",
+  });
+  const libraryTrack = libraryStore.upsertLibraryTrack({
+    identityKey: "recording:monkey",
+    mbid: "monkey",
+    title: "Monkey",
+    artistName: "Low",
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: libraryTrack.id });
+  libraryStore.upsertLibraryMediaFile({
+    trackId: libraryTrack.id,
+    albumId: album.id,
+    source: "readonly",
+    path: filePath,
+  });
+  const request = () =>
+    reuseTrackForPlaylist(
+      {
+        artistName: "Low",
+        artistMbid: "low",
+        trackName: "Monkey",
+        albumName: "The Great Destroyer",
+        albumMbid: "great-destroyer",
+        trackMbid: "monkey",
+        requestGroupId: "great-destroyer-request",
+      },
+      "library",
+      { downloadRoot, skipHistory: true },
+    );
+
+  assert.equal((await request()).reused, false);
+  dbOps.setJSONSetting("readOnlyFolders", [folder]);
+  assert.equal((await request()).finalPath, filePath);
+});
+
 test("playlists use a Library file credited to several artists when the request names them all", async () => {
   const filePath = path.join(downloadRoot, "Artist A", "Album", "01 - Song.mp3");
   await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -751,6 +872,7 @@ test("jobs follow the Library files a scan changed", async () => {
   await fs.writeFile(flacPath, "audio");
   await fs.writeFile(readOnlyPath, "audio");
   await fs.writeFile(overwrittenPath, "audio");
+  dbOps.setJSONSetting("readOnlyFolders", [path.join(isolatedState.baseDir, "readonly")]);
   const artist = libraryStore.upsertLibraryArtist({
     identityKey: "mbid:deftones",
     mbid: "deftones",

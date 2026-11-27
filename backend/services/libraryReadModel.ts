@@ -175,6 +175,7 @@ const buildTrack = (track: LibraryTrackRecord, album: ReadAlbum) => {
     trackName: track.title,
     title: track.title,
     trackNumber: relation?.trackNumber || 0,
+    discNumber: relation?.discNumber || 0,
     path: file?.path || null,
     hasFile: Boolean(file?.available),
     size: Number(file?.size || 0),
