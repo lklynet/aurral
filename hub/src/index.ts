@@ -6,12 +6,17 @@ import * as v from "valibot";
 import { authFor, socialProviders } from "./auth.ts";
 import {
   CONNECT_CLIENTS,
+  applyPolarSubscriptionEvent,
   connectJwks,
   createConnectAuthCode,
   disableConnectServer,
   discoverConnectServers,
   exchangeConnectAuthCode,
   getConnectAccountSummary,
+  getConnectBillingSummary,
+  getOwnedConnectServer,
+  getOwnedConnectServers,
+  hasManagedPolarSubscription,
   isAllowedRedirectUri,
   issueConnectAssertion,
   issueTunnelTicket,
@@ -61,13 +66,27 @@ import {
   connectAuthorizePage,
   connectErrorPage,
   deletePage,
+  disableConnectServerPage,
   handlePage,
   linkCodePage,
   linkConfirmPage,
   signInPage,
   STYLE,
   unlinkPage,
+  type AccountBillingError,
 } from "./pages.ts";
+import {
+  allowedPolarProductIds,
+  createPolarCheckout,
+  createPolarCustomerPortal,
+  decodePolarWebhookSecret,
+  isPolarBillingConfigured,
+  isPolarPortalConfigured,
+  parsePolarWebhookEvent,
+  polarConfig,
+  verifyPolarWebhookSignature,
+  type PolarBillingPlan,
+} from "./polar.ts";
 
 export type Bindings = {
   DB: D1Database;
@@ -78,6 +97,12 @@ export type Bindings = {
   CONNECT_RELAY_URL?: string;
   CONNECT_SIGNING_KEY?: string;
   CONNECT_RELAY_SECRET?: string;
+  POLAR_API_ORIGIN?: string;
+  POLAR_ACCESS_TOKEN?: string;
+  POLAR_WEBHOOK_SECRET?: string;
+  POLAR_PRODUCT_MONTHLY_ID?: string;
+  POLAR_PRODUCT_YEARLY_ID?: string;
+  POLAR_PORTAL_URL?: string;
   AUTH_SECRET: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
@@ -487,6 +512,37 @@ const v1 = new Hono<Env>()
     }
     await updateRelayStatus(c.env.DB, c.req.valid("json").updates);
     return c.body(null, 204);
+  })
+  .post("/billing/polar/webhook", async (c) => {
+    const polar = polarConfig(c.env);
+    const webhookKey = decodePolarWebhookSecret(polar.webhookSecret);
+    const allowedProductIds = allowedPolarProductIds(polar);
+    if (!webhookKey || allowedProductIds.length === 0) {
+      return c.json({ error: "billing_unconfigured" }, 503);
+    }
+    const rawBody = await c.req.text();
+    if (rawBody.length > 128 * 1024) return c.json({ error: "payload_too_large" }, 413);
+
+    const verified = await verifyPolarWebhookSignature(
+      rawBody,
+      {
+        webhookId: c.req.header("webhook-id") ?? null,
+        webhookTimestamp: c.req.header("webhook-timestamp") ?? null,
+        webhookSignature: c.req.header("webhook-signature") ?? null,
+      },
+      webhookKey,
+    );
+    if (!verified.valid) return c.json({ error: "invalid_signature" }, 401);
+
+    const parsed = parsePolarWebhookEvent(rawBody);
+    if (parsed.kind === "invalid") return c.json({ error: "invalid_payload" }, 400);
+    if (parsed.kind === "ignored") return c.json({ ok: true, ignored: true });
+
+    const applied = await applyPolarSubscriptionEvent(c.env.DB, parsed.event, {
+      allowedProductIds,
+      webhookTimestampMs: verified.timestampMs,
+    });
+    return c.json({ ok: true, applied: applied.applied });
   });
 
 const forwardCookies = (c: Context<Env>, headers: Headers) => {
@@ -582,6 +638,15 @@ function formActionForRedirect(redirectUri: string) {
   }
 }
 
+const POLAR_FORM_ACTION = "'self' https://polar.sh https://buy.polar.sh https://sandbox.polar.sh";
+
+const BILLING_ERROR_VALUES = new Set<AccountBillingError>(["unconfigured", "checkout", "portal"]);
+
+const parseBillingError = (value: string | undefined): AccountBillingError | null =>
+  value && BILLING_ERROR_VALUES.has(value as AccountBillingError)
+    ? (value as AccountBillingError)
+    : null;
+
 const pageCsp = (formAction = "'self'") =>
   `default-src 'none'; style-src 'self'; img-src 'self'; form-action ${formAction}; frame-ancestors 'none'; base-uri 'none'`;
 
@@ -602,16 +667,112 @@ const pages = new Hono<Env>()
   .get("/account", async (c) => {
     const user = await signedIn(c, null);
     if ("page" in user) return user.page;
-    const provider = await c.env.DB.prepare("SELECT provider FROM identities WHERE account_id = ?")
-      .bind(user.accountId)
-      .first<string>("provider");
+    const polar = polarConfig(c.env);
+    const { connectDomain } = connectConfig(c.env);
+    const [provider, links, entitlement, servers] = await Promise.all([
+      c.env.DB.prepare("SELECT provider FROM identities WHERE account_id = ?")
+        .bind(user.accountId)
+        .first<string>("provider"),
+      accountLinks(c.env.DB, user.accountId),
+      getConnectBillingSummary(c.env.DB, user.accountId),
+      getOwnedConnectServers(c.env.DB, user.accountId, connectDomain),
+    ]);
+    const billingReady = isPolarBillingConfigured(polar);
+    c.header("content-security-policy", pageCsp(POLAR_FORM_ACTION));
     return c.html(
-      accountPage(
-        user.handle,
-        PROVIDER_LABELS[provider ?? ""] ?? "an unknown provider",
-        await accountLinks(c.env.DB, user.accountId),
-      ),
+      accountPage(user.handle, PROVIDER_LABELS[provider ?? ""] ?? "an unknown provider", links, {
+        entitlement,
+        servers,
+        connectDomain,
+        hasMonthlyPlan: Boolean(billingReady && polar.monthlyProductId),
+        hasYearlyPlan: Boolean(billingReady && polar.yearlyProductId),
+        portalConfigured: isPolarPortalConfigured(polar),
+        emailPortalUrl: polar.portalUrl,
+        checkoutSuccess: c.req.query("checkout") === "success",
+        serverDisabled: c.req.query("server_disabled") === "1",
+        billingError: parseBillingError(c.req.query("billing_error")),
+      }),
     );
+  })
+  .post("/account/connect/checkout", async (c) => {
+    const user = await signedIn(c, null);
+    if ("page" in user) return c.redirect("/account");
+    const form = await c.req.formData();
+    const rawPlan = String(form.get("plan") ?? "monthly");
+    const plan: PolarBillingPlan = rawPlan === "yearly" ? "yearly" : "monthly";
+    const entitlement = await getConnectBillingSummary(c.env.DB, user.accountId);
+    if (hasManagedPolarSubscription(entitlement)) {
+      return c.redirect("/account", 303);
+    }
+    const polar = polarConfig(c.env);
+    const hubOrigin = c.env.HUB_ORIGIN.replace(/\/+$/, "");
+    const checkout = await createPolarCheckout(polar, {
+      accountId: user.accountId,
+      plan,
+      successUrl: `${hubOrigin}/account?checkout=success`,
+      returnUrl: `${hubOrigin}/account`,
+    });
+    if (!checkout.ok) {
+      const code = checkout.error === "unconfigured" ? "unconfigured" : "checkout";
+      return c.redirect(`/account?billing_error=${code}`, 303);
+    }
+    c.header("content-security-policy", pageCsp(POLAR_FORM_ACTION));
+    return c.redirect(checkout.url, 303);
+  })
+  .post("/account/connect/portal", async (c) => {
+    const user = await signedIn(c, null);
+    if ("page" in user) return c.redirect("/account");
+    const entitlement = await getConnectBillingSummary(c.env.DB, user.accountId);
+    const polar = polarConfig(c.env);
+    if (!entitlement.polarCustomerId) {
+      if (polar.portalUrl) {
+        c.header("content-security-policy", pageCsp(POLAR_FORM_ACTION));
+        return c.redirect(polar.portalUrl, 303);
+      }
+      return c.redirect("/account?billing_error=portal", 303);
+    }
+    const hubOrigin = c.env.HUB_ORIGIN.replace(/\/+$/, "");
+    const portal = await createPolarCustomerPortal(polar, {
+      polarCustomerId: entitlement.polarCustomerId,
+      returnUrl: `${hubOrigin}/account`,
+    });
+    if (!portal.ok) {
+      const code = portal.error === "unconfigured" ? "unconfigured" : "portal";
+      return c.redirect(`/account?billing_error=${code}`, 303);
+    }
+    c.header("content-security-policy", pageCsp(POLAR_FORM_ACTION));
+    return c.redirect(portal.url, 303);
+  })
+  .get("/account/connect/servers/:instanceId/disable", async (c) => {
+    const session = await sessionOf(c);
+    if (!session) return c.redirect("/account");
+    const { connectDomain } = connectConfig(c.env);
+    const server = await getOwnedConnectServer(
+      c.env.DB,
+      session.user.id,
+      c.req.param("instanceId"),
+      connectDomain,
+    );
+    return server
+      ? c.html(disableConnectServerPage(server, connectDomain))
+      : c.redirect("/account");
+  })
+  .post("/account/connect/servers/:instanceId/disable", async (c) => {
+    const session = await sessionOf(c);
+    if (!session) return c.redirect("/account");
+    const { connectDomain } = connectConfig(c.env);
+    const owned = await getOwnedConnectServer(
+      c.env.DB,
+      session.user.id,
+      c.req.param("instanceId"),
+      connectDomain,
+    );
+    if (!owned) return c.redirect("/account");
+    await disableConnectServer(c.env.DB, {
+      instanceId: owned.instanceId,
+      ownerAccountId: session.user.id,
+    });
+    return c.redirect("/account?server_disabled=1");
   })
   .get("/account/sign-in/:provider", async (c) => {
     const provider = c.req.param("provider");
@@ -654,7 +815,13 @@ const pages = new Hono<Env>()
   .get("/account/delete", async (c) => {
     const session = await sessionOf(c);
     if (!session) return c.redirect("/account");
-    return c.html(deletePage(await handleOf(c.env.DB, session.user.id)));
+    const [handle, billing] = await Promise.all([
+      handleOf(c.env.DB, session.user.id),
+      getConnectBillingSummary(c.env.DB, session.user.id),
+    ]);
+    const hasActiveSubscription =
+      hasManagedPolarSubscription(billing) && !billing.cancelAtPeriodEnd;
+    return c.html(deletePage(handle, hasActiveSubscription));
   })
   .post("/account/delete", async (c) => {
     const session = await sessionOf(c);
