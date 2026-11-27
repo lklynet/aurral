@@ -341,11 +341,14 @@ test("a synced playlist that drops a track deletes the file it downloaded only w
   const dropping = await createPlaylist([track], { importSource: synced });
   const droppedFile = await finishDownload(dropping.jobFor(track));
   const droppedJobId = dropping.jobFor(track).id;
+  const droppedLyrics = droppedFile.replace(/\.[^.]+$/, ".lrc");
+  await fs.writeFile(droppedLyrics, "[00:00.00]la");
 
   await dropAllUpstream(dropping.playlist.id);
 
   assert.equal(downloadTracker.getJob(droppedJobId), null);
   await assert.rejects(fs.access(droppedFile), { code: "ENOENT" });
+  await assert.rejects(fs.access(droppedLyrics), { code: "ENOENT" });
 
   const keeping = { artistName: "Sync Band", albumName: "Rotation", trackName: "Kept" };
   const kept = await createPlaylist([keeping], {

@@ -6,7 +6,7 @@ import { afterAll, beforeEach, test, vi } from "vite-plus/test";
 
 import { http } from "../lib/http.ts";
 import { lrclibCache } from "../backend/services/apiClients/lrclib.ts";
-import { findTrackLyrics } from "../backend/services/lyricsService.ts";
+import { findTrackLyrics, saveSidecarLyrics } from "../backend/services/lyricsService.ts";
 
 const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-lyrics-"));
 const filePath = path.join(dir, "01 Low Tide.flac");
@@ -72,4 +72,41 @@ test("a track with no local lyrics is looked up on LRCLIB by what the player kno
 test("no lyrics anywhere is null", async () => {
   lrclib(null);
   assert.equal(await findTrackLyrics({ ...track, filePath }), null);
+});
+
+const sidecar = path.join(dir, "01 Low Tide.lrc");
+const readSidecar = () => fs.readFile(sidecar, "utf8").catch(() => null);
+
+test("a newly added track gets LRCLIB's lyrics saved as its sidecar .lrc", async () => {
+  const requests = lrclib({ syncedLyrics: "[00:01.00] Salt on the window\n" });
+  assert.equal(await saveSidecarLyrics(filePath, track), true);
+  assert.equal(await readSidecar(), "[00:01.00] Salt on the window\n");
+  assert.deepEqual(requests, [
+    { artist_name: "Harbor Lights", track_name: "Low Tide", album_name: "Small Hours" },
+  ]);
+  assert.deepEqual(await findTrackLyrics({ ...track, filePath }), {
+    synced: true,
+    lines: [{ start: 1000, value: "Salt on the window" }],
+  });
+});
+
+test("an existing sidecar is never replaced and LRCLIB isn't asked", async () => {
+  const requests = lrclib({ syncedLyrics: "[00:01.00] From LRCLIB" });
+  await fs.writeFile(sidecar, "[00:02.00]Mine\n");
+  assert.equal(await saveSidecarLyrics(filePath, track), false);
+  assert.equal(await readSidecar(), "[00:02.00]Mine\n");
+  assert.equal(requests.length, 0);
+});
+
+test("no sidecar is written when LRCLIB has nothing, calls it instrumental, or the track has no title", async () => {
+  lrclib(null);
+  assert.equal(await saveSidecarLyrics(filePath, track), false);
+  lrclibCache.flushAll();
+  vi.restoreAllMocks();
+  lrclib({ instrumental: true, plainLyrics: "" });
+  assert.equal(await saveSidecarLyrics(filePath, track), false);
+  const requests = lrclib({ plainLyrics: "Words" });
+  assert.equal(await saveSidecarLyrics(filePath, { ...track, title: " " }), false);
+  assert.equal(requests.length, 0);
+  assert.equal(await readSidecar(), null);
 });

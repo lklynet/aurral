@@ -14,6 +14,7 @@ import { getLibraryForArtistReferences, getLibraryTrackTitle } from "../libraryQ
 import { getIndexedLibraryFile, getLibraryMediaFile } from "../libraryMediaStore.ts";
 import type { LibraryMediaFilesRow } from "../../db/rows.ts";
 import { classifyLibraryFileQuality } from "../qualityProfile.ts";
+import { removeSidecars } from "../libraryFiles/fileTransfer.ts";
 import { scheduleLibraryScan as scheduleLibraryScanJob } from "../libraryScanWorker.ts";
 import {
   commitDownloadedFile,
@@ -419,6 +420,7 @@ export async function removePlaylistFileIfUnshared(
     return { action: nextPath ? "relocated" : "skipped" };
   }
   await fs.rm(resolved, { force: true });
+  await removeSidecars(resolved).catch(() => {});
   return { action: "deleted" };
 }
 

@@ -9,6 +9,7 @@ import { recordTrackJobActivity } from "./aurralHistoryService.ts";
 import { adoptLibraryFileIdentity } from "./libraryFiles/fileIdentity.ts";
 import { playlistManager } from "./playlists/playlistManager.ts";
 import { scheduleLibraryScan } from "./libraryScanWorker.ts";
+import { removeSidecars, transferSidecars } from "./libraryFiles/fileTransfer.ts";
 
 type AudioQuality = ReturnType<typeof classifyAudioQuality>;
 
@@ -39,6 +40,19 @@ async function takeReplacedFileName(oldPath: string, newPath: string) {
   }
 }
 
+// The replaced file's lyrics are the upgrade's lyrics. Under the same name
+// they already sit beside it; otherwise they move to it.
+async function keepReplacedSidecars(oldPath: string, newPath: string) {
+  const base = (filePath: string) => filePath.slice(0, -path.extname(filePath).length);
+  if (base(oldPath) === base(newPath)) return;
+  try {
+    await transferSidecars(oldPath, newPath, "move");
+  } catch {
+    return;
+  }
+  await removeSidecars(oldPath).catch(() => {});
+}
+
 export async function finalizeQualityUpgradeSuccess(
   upgradeJob: QualityJob,
   finalPath: string,
@@ -61,6 +75,7 @@ export async function finalizeQualityUpgradeSuccess(
   if (oldPath !== finalPath && isAurralOwnedPath(oldPath)) {
     await fs.rm(oldPath, { force: true }).catch(() => {});
     upgradedPath = await takeReplacedFileName(oldPath, finalPath);
+    await keepReplacedSidecars(oldPath, upgradedPath);
     replaced = true;
   }
   const changed = downloadTracker.replaceFinalPath(oldPath, upgradedPath, quality, upgradeJob.id);

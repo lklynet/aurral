@@ -607,6 +607,39 @@ test("removePlaylistFileIfUnshared relocates when another flow still references 
   assert.equal(await fs.readFile(expectedPath, "utf8"), "audio");
 });
 
+test("removePlaylistFileIfUnshared deletes a file no other playlist uses, with its lyrics", async () => {
+  const flow = flowPlaylistConfig.createFlow({ name: "Rotating", size: 10 });
+  const track = {
+    artistName: "Aphex Twin",
+    trackName: "Ageispolis",
+    albumName: "Selected Ambient Works",
+  };
+  const filePath = path.join(
+    downloadRoot,
+    "_flows",
+    flow.id,
+    "Aphex Twin",
+    "Selected Ambient Works",
+    "Ageispolis.flac",
+  );
+  const lyricsPath = filePath.replace(/\.flac$/, ".lrc");
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, "audio");
+  await fs.writeFile(lyricsPath, "[00:00.00]la");
+  const jobId = createTrackedJob(downloadTracker, track, flow.id);
+  assert.ok(jobId != null);
+  downloadTracker.setDone(jobId, filePath, track.albumName);
+
+  const result = await removePlaylistFileIfUnshared(filePath, flow.id, {
+    downloadRoot,
+    excludeJobIds: [jobId],
+  });
+
+  assert.equal(result.action, "deleted");
+  await assert.rejects(fs.access(filePath), { code: "ENOENT" });
+  await assert.rejects(fs.access(lyricsPath), { code: "ENOENT" });
+});
+
 test("removePlaylistFileIfUnshared preserves external files during shared cleanup", async () => {
   const flow = flowPlaylistConfig.createFlow({ name: "External", size: 10 });
   const track = {

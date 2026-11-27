@@ -602,6 +602,7 @@ test("approving a reviewed upgrade replaces the source playlist file", async () 
   await fs.mkdir(path.dirname(originalPath), { recursive: true });
   await fs.mkdir(path.dirname(candidatePath), { recursive: true });
   await fs.writeFile(originalPath, "original audio");
+  await fs.writeFile(originalPath.replace(/\.mp3$/, ".lrc"), "[00:00.00]la");
   await fs.writeFile(candidatePath, "upgrade audio");
 
   const sourceJobId = createTrackedJob(
@@ -633,6 +634,66 @@ test("approving a reviewed upgrade replaces the source playlist file", async () 
   assert.equal(downloadTracker.getJob(sourceJobId)?.finalPath, expectedPath);
   assert.equal(await fs.readFile(expectedPath, "utf8"), "upgrade audio");
   await assert.rejects(fs.access(originalPath));
+  assert.equal(await fs.readFile(expectedPath.replace(/\.flac$/, ".lrc"), "utf8"), "[00:00.00]la");
+});
+
+test("an upgrade filed under another name takes the replaced file's lyrics with it, and keeps them where they are when they can't move", async (t) => {
+  t.onTestFinished(() => {
+    vi.restoreAllMocks();
+  });
+  const { finalizeQualityUpgradeSuccess } =
+    await import("../../backend/services/qualityUpgradeOutcome.ts");
+  for (const blocked of [false, true]) {
+    vi.restoreAllMocks();
+    if (blocked) {
+      const denied = Object.assign(new Error("permission denied"), { code: "EACCES" });
+      vi.spyOn(fs, "link").mockRejectedValue(denied);
+    }
+    const flow = flowPlaylistConfig.createFlow({
+      name: `Renamed upgrade flow ${blocked}`,
+      size: 10,
+      mix: { discover: 100 },
+      scheduleDays: [1],
+    });
+    const artistDir = path.join(process.env.DOWNLOAD_FOLDER!, "_flows", flow.id, "Artist");
+    const originalPath = path.join(artistDir, "Album", "Track.mp3");
+    const upgradedPath = path.join(artistDir, "Album (Deluxe)", "Track.flac");
+    await fs.mkdir(path.dirname(originalPath), { recursive: true });
+    await fs.mkdir(path.dirname(upgradedPath), { recursive: true });
+    await fs.writeFile(originalPath, "original audio");
+    await fs.writeFile(path.join(artistDir, "Album", "Track.lrc"), "[00:00.00]la");
+    await fs.writeFile(upgradedPath, "upgrade audio");
+
+    const sourceJobId = createTrackedJob(
+      downloadTracker,
+      { artistName: "Artist", trackName: "Track", albumName: "Album" },
+      flow.id,
+    );
+    assert.ok(sourceJobId != null);
+    downloadTracker.setDone(sourceJobId, originalPath, "Album");
+    const upgradeJobId = downloadTracker.addUpgradeJob(trackedJob(downloadTracker, sourceJobId));
+    assert.ok(upgradeJobId != null);
+
+    await finalizeQualityUpgradeSuccess(
+      trackedJob(downloadTracker, upgradeJobId),
+      upgradedPath,
+      null,
+    );
+
+    assert.equal(downloadTracker.getJob(sourceJobId)?.finalPath, upgradedPath);
+    await assert.rejects(fs.access(originalPath), { code: "ENOENT" });
+    const [gone, kept] = blocked
+      ? [
+          path.join(artistDir, "Album (Deluxe)", "Track.lrc"),
+          path.join(artistDir, "Album", "Track.lrc"),
+        ]
+      : [
+          path.join(artistDir, "Album", "Track.lrc"),
+          path.join(artistDir, "Album (Deluxe)", "Track.lrc"),
+        ];
+    await assert.rejects(fs.access(gone), { code: "ENOENT" });
+    assert.equal(await fs.readFile(kept, "utf8"), "[00:00.00]la");
+  }
 });
 
 test("reports when an upgrade search is already queued for a track", async () => {

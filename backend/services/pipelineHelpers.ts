@@ -10,6 +10,7 @@ import {
 import { recordRequestGroupDownloaded } from "./aurralHistoryRequests.ts";
 import { emitPluginEvent } from "./plugins/pluginEvents.ts";
 import { scheduleLibraryScan } from "./libraryScanWorker.ts";
+import { logger } from "./logger.ts";
 import { playlistManager } from "./playlists/playlistManager.ts";
 
 // Fields of a search in progress; a new search or a download clears them.
@@ -185,6 +186,20 @@ export async function recordPipelineJobSuccess({
   )
     return false;
   if (quality) downloadTracker.updateQuality(job.id, quality);
+
+  if (committedFinalPath && job.trackName && job.artistName) {
+    const { saveSidecarLyrics } = await import("./lyricsService.ts");
+    void saveSidecarLyrics(committedFinalPath, {
+      artist: job.artistName,
+      title: job.trackName,
+      album: job.albumName || album,
+    }).catch((error: unknown) =>
+      logger.warn("lyrics", "Could not save the track's lyrics", {
+        path: committedFinalPath,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
 
   if (committedFinalPath) {
     scheduleLibraryScan({
