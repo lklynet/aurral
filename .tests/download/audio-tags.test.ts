@@ -347,6 +347,8 @@ test("an ID3v2.3 download upgrades through common tags without losing artwork, R
     frame22("TT2", textFrame("Old V22")),
     frame22("TP1", textFrame("Old Artist")),
     frame22("TXX", textFrame("CUSTOM_V22\0Keep this")),
+    frame22("TXX", textFrame("REPLAYGAIN_TRACK_GAIN\0-5.10 dB")),
+    frame22("TXX", textFrame("MusicBrainz Artist Id\0" + "11111111-1111-4111-8111-111111111111")),
   ]);
   const header22 = Buffer.from([73, 68, 51, 2, 0, 0, 0, 0, 0, 0]);
   header22[6] = (body22.length >>> 21) & 127;
@@ -355,11 +357,16 @@ test("an ID3v2.3 download upgrades through common tags without losing artwork, R
   header22[9] = body22.length & 127;
   await writeFile(v22Path, Buffer.concat([header22, body22, audio]));
   assert.equal((await readAudioTags(v22Path)).title, "Old V22");
-  assert.deepEqual(await writeAudioTags(v22Path, { title: "New V22" }), ["title"]);
+  assert.deepEqual(
+    await writeAudioTags(v22Path, { title: "New V22", artistMbid: [job.artistMbid] }),
+    ["title", "artistMbid"],
+  );
   const saved22 = await parseFile(v22Path);
   assert.ok(saved22.native["ID3v2.4"]);
   assert.equal(saved22.common.title, "New V22");
   assert.equal(saved22.common.artist, "Old Artist");
+  assert.equal(saved22.common.replayGainTrackGain?.dB, -5.1);
+  assert.deepEqual(saved22.common.mbArtistId, [job.artistMbid]);
   assert.deepEqual(
     saved22.native["ID3v2.4"]
       ?.filter((tag) => tag.id === "TXXX:CUSTOM_V22")

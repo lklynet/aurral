@@ -313,12 +313,30 @@ function cleanLegacyCommon(common: ICommonTagsResult): TagPatch {
   return cleaned as TagPatch;
 }
 
-function unmappedLegacyTxxx(tags: IAudioMetadata["native"][string]) {
+// TXXX descriptions written by Aurral's common patch fields, used to avoid
+// resurrecting a replaced or cleared ID3v2.2 TXX tag through native.
+const PATCH_TXXX_FIELDS: readonly [keyof TagPatch, readonly string[]][] = [
+  ["artists", ["artists", "discogs_artists", "discogs_artist_name"]],
+  ["genres", ["style"]],
+  ["mbArtistId", ["musicbrainz artist id"]],
+  ["mbAlbumArtistId", ["musicbrainz album artist id"]],
+  ["mbReleaseGroupId", ["musicbrainz release group id"]],
+  ["mbReleaseId", ["musicbrainz album id"]],
+];
+
+function unmappedLegacyTxxx(tags: IAudioMetadata["native"][string], patch: TagPatch) {
+  const overriddenV22 = new Set<string>();
+  for (const [field, descriptions] of PATCH_TXXX_FIELDS) {
+    if (patch[field] !== undefined) {
+      for (const description of descriptions) overriddenV22.add(description);
+    }
+  }
   const preserved = new Map<string, { key: string; values: string[] }>();
   for (const tag of tags) {
     if (typeof tag.value !== "string") continue;
     let desc = "";
     let raw = "";
+    let isV22 = false;
     if (tag.id.startsWith("TXXX:")) {
       desc = stripNulls(tag.id.slice(5));
       raw = tag.value;
@@ -327,11 +345,16 @@ function unmappedLegacyTxxx(tags: IAudioMetadata["native"][string]) {
       if (separator <= 0) continue;
       desc = tag.value.slice(0, separator).replace(/^\uFEFF/, "");
       raw = tag.value.slice(separator + 1);
+      isV22 = true;
     } else {
       continue;
     }
     const lower = desc.toLowerCase();
-    if (!lower || lower === AURRAL_IDENTITY_TAG.toLowerCase() || MAPPED_ID3_TXXX.has(lower))
+    if (
+      !lower ||
+      lower === AURRAL_IDENTITY_TAG.toLowerCase() ||
+      (isV22 ? overriddenV22.has(lower) : MAPPED_ID3_TXXX.has(lower))
+    )
       continue;
     const values = raw.includes("\0") ? tagValues(raw) : [raw];
     if (!values.length) continue;
@@ -360,8 +383,10 @@ async function updateTags(
       // Actual replacement needs embedded artwork skipped during planning.
       const source = dryRun ? metadata : await parseFile(filePath);
       const legacyTags = source.native["ID3v2.3"] ?? source.native["ID3v2.2"] ?? [];
-      const native: Record<string, NonNullable<TagPatch["native"]>[string]> =
-        unmappedLegacyTxxx(legacyTags);
+      const native: Record<string, NonNullable<TagPatch["native"]>[string]> = unmappedLegacyTxxx(
+        legacyTags,
+        patch,
+      );
       const identity = readIdentity(source);
       const identityKey = `TXXX:${AURRAL_IDENTITY_TAG}`;
       if (identity) native[identityKey] = JSON.stringify(identity);
