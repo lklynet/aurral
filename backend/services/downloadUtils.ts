@@ -308,13 +308,16 @@ export async function commitDownloadedFile(
       path.dirname(resolvedTarget),
       `.aurral-import-${process.pid}-${Date.now()}-${path.basename(resolvedTarget)}.tmp`,
     );
-    await copyDownloadedFile(sourcePath, tempTarget);
-    const [sourceStat, tempStat] = await Promise.all([fs.stat(sourcePath), fs.stat(tempTarget)]);
-    if (sourceStat.size !== tempStat.size) {
+    try {
+      await copyDownloadedFile(sourcePath, tempTarget);
+      const [sourceStat, tempStat] = await Promise.all([fs.stat(sourcePath), fs.stat(tempTarget)]);
+      if (sourceStat.size !== tempStat.size) {
+        throw new Error("Imported file copy did not match source size");
+      }
+      await fs.rename(tempTarget, resolvedTarget);
+    } finally {
       await fs.rm(tempTarget, { force: true }).catch(() => {});
-      throw new Error("Imported file copy did not match source size");
     }
-    await fs.rename(tempTarget, resolvedTarget);
     // The copy is already in place. Failing here would retry the import and
     // add the same file again beside it, so a source Aurral may not delete,
     // as in a download client's folder owned by another user, stays behind.
