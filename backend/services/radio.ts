@@ -4,6 +4,7 @@ import * as musicData from "./musicDataSource/index.ts";
 import { isSameArtist, matchesArtistKeys } from "../../lib/artistMatch.ts";
 import { getBlockedArtistKeys } from "./discovery/feedback.ts";
 import { getBlockedTagKeys, hasBlockedTag } from "./discovery/blockedTags.ts";
+import { discoverLinks } from "./discovery/discoverLinks.ts";
 
 export type RadioArtistRef = { id?: string | null; mbid?: string | null; name?: string | null };
 
@@ -30,6 +31,7 @@ type ArtistRow = Pick<LibraryArtistsRow, "id" | "name" | "mbid">;
 type Candidate = {
   trackId: number;
   artistId: number;
+  albumId: number;
   trackKey: string;
   artistKey: string;
 };
@@ -40,6 +42,8 @@ const MAX_SIMILAR_SEEDS = 3;
 const SIMILAR_LIMIT = 50;
 const SIMILAR_TIMEOUT_MS = 2500;
 const MAX_GENRE_ARTISTS = 300;
+const MIN_SIMILAR_ARTISTS = 4;
+const MAIN_GENRE_SHARE = 0.2;
 const RECENT_PLAY_MS = 24 * 60 * 60 * 1000;
 const RECENT_PENALTY = 0.15;
 const FALLBACK_SCORE = 0.05;
@@ -137,14 +141,11 @@ function resolveSeed(seed: RadioSeed) {
       `SELECT entity_kind AS kind, entity_id AS id, genre_key AS genre FROM library_entity_genres
        WHERE (entity_kind = 'artists' AND entity_id IN (${placeholders(artistIds)}))
           OR (entity_kind = 'albums' AND entity_id IN (${placeholders(albumIds)}))
-          OR (entity_kind = 'albums' AND entity_id IN (
-            SELECT id FROM library_albums WHERE artist_id IN (${placeholders(requestedArtistIds)})))
           OR (entity_kind = 'tracks' AND entity_id IN (${placeholders(trackIds)}))`,
     )
-    .all(...artistIds, ...albumIds, ...requestedArtistIds, ...trackIds);
+    .all(...artistIds, ...albumIds, ...trackIds);
   const tagged = new Set(genreRows.map((row) => `${row.kind}:${row.id}`));
   const artistTagsFor = new Set([
-    ...requestedArtistIds,
     ...seedTracks
       .filter((track) => !tagged.has(`tracks:${track.trackId}`))
       .filter((track) => !tagged.has(`albums:${track.albumId}`))
@@ -154,11 +155,12 @@ function resolveSeed(seed: RadioSeed) {
       .map((album) => album.artistId),
   ]);
   const genres = [
-    ...new Set(
-      genreRows
+    ...new Set([
+      ...genreRows
         .filter((row) => row.kind !== "artists" || artistTagsFor.has(row.id))
         .map((row) => row.genre),
-    ),
+      ...[...mainGenres(requestedArtistIds).values()].flatMap((main) => [...main]),
+    ]),
   ];
   const artists = artistIds.length
     ? db
@@ -172,13 +174,18 @@ function resolveSeed(seed: RadioSeed) {
 }
 
 async function similarArtistScores(
+  userId: number | null,
   seeds: RadioArtistRef[],
   similarArtists: NonNullable<RadioOptions["similarArtists"]>,
 ) {
+  const linked = userId ? discoverLinks(userId) : null;
   const lists = await Promise.all(
     seeds
       .slice(0, MAX_SIMILAR_SEEDS)
-      .map((seed) => withinBudget(similarArtists(seed), [] as SimilarArtist[])),
+      .map(async (seed) => [
+        ...(linked && seed.name ? linked.similarTo(seed.name) : []),
+        ...(await withinBudget(similarArtists(seed), [] as SimilarArtist[])),
+      ]),
   );
   const similar = lists.flat();
   const mbids = uniqueText(similar.map((artist) => artist.mbid));
@@ -219,6 +226,53 @@ const taggedWith = (kind: string, genres: string[]) =>
   `SELECT entity_id FROM library_entity_genres
    WHERE entity_kind = '${kind}' AND genre_key IN (${placeholders(genres)})`;
 
+// An artist's main genres are the ones on at least MAIN_GENRE_SHARE of its tagged tracks.
+// An artist whose tags are all rarer than that keeps every tag.
+function mainGenres(artistIds: number[]) {
+  const main = new Map<number, Set<string>>();
+  if (!artistIds.length) return main;
+  const rows = db
+    .prepare<number[], { artistId: number; genre: string | null; tracks: number }>(
+      `WITH artist_tracks AS (
+         SELECT album.artist_id AS artistId, album.id AS albumId, link.track_id AS trackId
+         FROM library_albums AS album
+         JOIN library_album_tracks AS link ON link.album_id = album.id
+         WHERE album.artist_id IN (${placeholders(artistIds)})
+       ),
+       track_genres AS (
+         SELECT own.artistId, own.trackId, genres.genre_key AS genre FROM artist_tracks AS own
+         JOIN library_entity_genres AS genres
+           ON genres.entity_kind = 'tracks' AND genres.entity_id = own.trackId
+         UNION
+         SELECT own.artistId, own.trackId, genres.genre_key FROM artist_tracks AS own
+         JOIN library_entity_genres AS genres
+           ON genres.entity_kind = 'albums' AND genres.entity_id = own.albumId
+         WHERE ${untagged("tracks", "own.trackId")}
+         UNION
+         SELECT own.artistId, own.trackId, genres.genre_key FROM artist_tracks AS own
+         JOIN library_entity_genres AS genres
+           ON genres.entity_kind = 'artists' AND genres.entity_id = own.artistId
+         WHERE ${untagged("tracks", "own.trackId")} AND ${untagged("albums", "own.albumId")}
+       )
+       SELECT artistId, genre, COUNT(*) AS tracks FROM track_genres GROUP BY artistId, genre
+       UNION ALL
+       SELECT artistId, NULL, COUNT(DISTINCT trackId) FROM track_genres GROUP BY artistId`,
+    )
+    .all(...artistIds);
+  const taggedTracks = new Map(
+    rows.flatMap((row) => (row.genre === null ? [[row.artistId, row.tracks] as const] : [])),
+  );
+  const all = new Map<number, Set<string>>();
+  for (const { artistId, genre, tracks } of rows) {
+    if (genre === null) continue;
+    all.set(artistId, (all.get(artistId) ?? new Set()).add(genre));
+    if (tracks / (taggedTracks.get(artistId) ?? 1) < MAIN_GENRE_SHARE) continue;
+    main.set(artistId, (main.get(artistId) ?? new Set()).add(genre));
+  }
+  for (const [artistId, genres] of all) if (!main.has(artistId)) main.set(artistId, genres);
+  return main;
+}
+
 function genreArtistScores(genres: string[]) {
   const scores = new Map<number, number>();
   if (!genres.length) return scores;
@@ -247,7 +301,9 @@ function genreArtistScores(genres: string[]) {
        GROUP BY artistId ORDER BY overlap DESC LIMIT ?`,
     )
     .all(...genres, ...genres, ...genres, MAX_GENRE_ARTISTS);
+  const main = mainGenres(rows.map((row) => row.artistId));
   for (const row of rows) {
+    if (![...(main.get(row.artistId) ?? [])].some((genre) => genres.includes(genre))) continue;
     scores.set(row.artistId, 0.15 + 0.45 * Math.min(1, row.overlap / genres.length));
   }
   return scores;
@@ -293,6 +349,7 @@ function withoutBlockedArtists(
 }
 
 const CANDIDATE_COLUMNS = `track.id AS trackId, album.artist_id AS artistId,
+  MIN(album.id) AS albumId,
   track.identity_key AS trackKey, artist.identity_key AS artistKey`;
 
 const CANDIDATE_FROM = `
@@ -376,6 +433,7 @@ function spreadArtists(picks: Candidate[]) {
   const remaining = [...picks];
   const ordered: Candidate[] = [];
   const left = new Map<number, number>();
+  const lastAlbumOf = new Map<number, number>();
   for (const pick of picks) left.set(pick.artistId, (left.get(pick.artistId) ?? 0) + 1);
   while (remaining.length) {
     const previous = ordered.at(-1)?.artistId;
@@ -388,8 +446,15 @@ function spreadArtists(picks: Candidate[]) {
         index = at;
       }
     }
+    const artistId = remaining[index]!.artistId;
+    const lastAlbum = lastAlbumOf.get(artistId);
+    const otherAlbum = remaining.findIndex(
+      (pick) => pick.artistId === artistId && pick.albumId !== lastAlbum,
+    );
+    if (otherAlbum >= 0) index = otherAlbum;
     const [next] = remaining.splice(index, 1);
     left.set(next!.artistId, (left.get(next!.artistId) ?? 0) - 1);
+    lastAlbumOf.set(next!.artistId, next!.albumId);
     ordered.push(next!);
   }
   return ordered;
@@ -411,7 +476,9 @@ function choose(
     .map((entry) => entry.candidate);
   const seedCap = Math.max(1, Math.ceil(limit / 4));
   const artistCap = Math.max(2, Math.ceil(limit / 12));
+  const albumCap = Math.max(2, Math.ceil(limit / 8));
   const perArtist = new Map<number, number>();
+  const perAlbum = new Map<number, number>();
   let seedCount = 0;
   const picked: Candidate[] = [];
   const skipped: Candidate[] = [];
@@ -419,12 +486,14 @@ function choose(
     if (picked.length >= limit) break;
     const isSeed = seedArtistIds.has(candidate.artistId);
     const count = perArtist.get(candidate.artistId) ?? 0;
-    if (isSeed ? seedCount >= seedCap : count >= artistCap) {
+    const fromAlbum = perAlbum.get(candidate.albumId) ?? 0;
+    if ((isSeed ? seedCount >= seedCap : count >= artistCap) || fromAlbum >= albumCap) {
       skipped.push(candidate);
       continue;
     }
     picked.push(candidate);
     perArtist.set(candidate.artistId, count + 1);
+    perAlbum.set(candidate.albumId, fromAlbum + 1);
     if (isSeed) seedCount += 1;
   }
   picked.push(...skipped.slice(0, limit - picked.length));
@@ -450,7 +519,7 @@ export async function buildRadio({
   ];
 
   const scores = genreArtistScores(resolved.genres);
-  const similar = await similarArtistScores(similarSeeds, similarArtists);
+  const similar = await similarArtistScores(userId, similarSeeds, similarArtists);
   for (const [artistId, score] of similar) {
     scores.set(artistId, Math.max(scores.get(artistId) ?? 0, score));
   }
@@ -460,12 +529,23 @@ export async function buildRadio({
   const excluded = new Set([...positiveIds(exclude), ...resolved.trackIds]);
   const wholeCatalog = (artistId: number) => seedArtistIds.has(artistId) || similar.has(artistId);
   const genreOnly = [...scores.keys()].filter((artistId) => !wholeCatalog(artistId));
-  const pool = candidateTracks(
+  let pool = candidateTracks(
     [...scores.keys()],
     [...scores.keys()].filter(wholeCatalog),
     resolved.genres,
   ).filter((candidate) => !excluded.has(candidate.trackId));
-  if (pool.length < size * 2) {
+  const fromSimilar = pool.filter((candidate) => wholeCatalog(candidate.artistId));
+  const playableSimilar = new Set(
+    fromSimilar
+      .map((candidate) => candidate.artistId)
+      .filter((artistId) => !seedArtistIds.has(artistId)),
+  );
+  const connected = playableSimilar.size >= MIN_SIMILAR_ARTISTS;
+  if (connected) {
+    pool = fromSimilar;
+    for (const artistId of genreOnly) scores.delete(artistId);
+  }
+  if (!connected && pool.length < size * 2) {
     const known = new Set(pool.map((candidate) => candidate.trackId));
     for (const candidate of fallbackTracks(size * 4, new Set([...blocked, ...genreOnly]))) {
       if (excluded.has(candidate.trackId) || known.has(candidate.trackId)) continue;

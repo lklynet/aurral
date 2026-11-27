@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { beforeEach, test } from "vite-plus/test";
 import { resetDatabase, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 
-const [, { db }, store, { addDiscoveryFeedback }, { buildRadio }, { getSimilarSongs }] =
+const [, { db }, store, { addDiscoveryFeedback }, { buildRadio }, { getSimilarSongs }, { dbOps }] =
   await setupIsolatedBackend(
     "library-radio",
     () => import("../../backend/config/db-sqlite.ts"),
@@ -10,6 +10,7 @@ const [, { db }, store, { addDiscoveryFeedback }, { buildRadio }, { getSimilarSo
     () => import("../../backend/services/discovery/feedback.ts"),
     () => import("../../backend/services/radio.ts"),
     () => import("../../backend/services/subsonicLibraryService.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
   );
 
 const seeded = (seed: number) => () => {
@@ -83,6 +84,7 @@ beforeEach(() => {
       "INSERT INTO users (username, password_hash) VALUES ('listener', 'x') RETURNING id",
     )
     .get()!.id;
+  dbOps.invalidateDiscoveryCache(`user:${userId}`);
 });
 
 test("a track radio mixes the seed artist with similar and same-genre artists, never blocked ones", async () => {
@@ -113,7 +115,7 @@ test("a track radio mixes the seed artist with similar and same-genre artists, n
   assert.ok(artists.every((name, index) => name !== artists[index - 1]));
 });
 
-test("a track radio follows the genres of tracks, not the broad tags of their artists", async () => {
+test("a radio follows the main genres of tracks, not the broad or stray tags of their artists", async () => {
   const house = Array.from({ length: 8 }, () => ["house"]);
   const seed = addArtist("Daft Punk", 8, ["house", "r&b"], ["house"], house);
   addArtist("Chance the Rapper", 4, ["r&b"]);
@@ -123,6 +125,13 @@ test("a track radio follows the genres of tracks, not the broad tags of their ar
     ["house", "hip hop"],
     ["hip hop"],
     [["house"], ["house"], ["rap"], ["rap"], ["rap"], ["rap"]],
+  );
+  addArtist(
+    "Travis Scott",
+    6,
+    ["rap"],
+    ["rap"],
+    [["house"], ...Array.from({ length: 5 }, () => ["rap"])],
   );
 
   const picks = await buildRadio({
@@ -145,6 +154,126 @@ test("a track radio follows the genres of tracks, not the broad tags of their ar
   for (const ids of [picks, shortPool]) {
     const kendricks = ids.filter((id) => artistOf(id) === "Kendrick Lamar");
     assert.ok(kendricks.every((id) => houseTracks.includes(id)));
+  }
+
+  const artistRadio = await buildRadio({
+    userId,
+    seed: { artists: [{ id: String(seed.artist.id) }] },
+    limit: 4,
+    random: seeded(9),
+    similarArtists: async () => [],
+  });
+  assert.deepEqual(Object.keys(countByArtist(artistRadio)).sort(), ["Daft Punk", "Kendrick Lamar"]);
+
+  const spread = addArtist(
+    "Bonobo",
+    6,
+    [],
+    [],
+    [["house"], ["downtempo"], ["jazz"], ["ambient"], ["soul"], ["breaks"]],
+  );
+  const spreadRadio = await buildRadio({
+    userId,
+    seed: { artists: [{ id: String(spread.artist.id) }] },
+    limit: 8,
+    random: seeded(9),
+    similarArtists: async () => [],
+  });
+  assert.ok(
+    Object.keys(countByArtist(spreadRadio)).every((name) =>
+      ["Bonobo", "Daft Punk", "Kendrick Lamar"].includes(name),
+    ),
+  );
+});
+
+test("a radio stays among similar artists, from the music source or Discover, while enough of them can play", async () => {
+  const french = ["Alpha Wann", "Josman", "Laylow", "Ärsenik"];
+  const seed = addArtist("Nekfeu", 6, ["hip hop"]);
+  for (const name of [...french, "Kendrick Lamar", "Common"]) addArtist(name, 3, ["hip hop"]);
+  addArtist("Drake", 20);
+  dbOps.updateDiscoveryCache(
+    {
+      recommendations: ["Damso", "Booba"].map((name) => ({
+        name,
+        sourceArtists: ["Nekfeu", "Laylow", "Ärsenik"],
+      })),
+    },
+    `user:${userId}`,
+  );
+  const artists = async () =>
+    Object.keys(
+      countByArtist(
+        await buildRadio({
+          userId,
+          seed: { artists: [{ id: String(seed.artist.id) }] },
+          limit: 12,
+          random: seeded(4),
+          similarArtists: async () =>
+            french.slice(0, 2).map((name) => ({ mbid: null, name, match: 1 })),
+        }),
+      ),
+    ).sort();
+
+  assert.deepEqual(await artists(), ["Nekfeu", ...french].sort());
+  addDiscoveryFeedback(userId, { action: "block_artist", artistName: "Josman" });
+  assert.ok((await artists()).some((name) => ["Kendrick Lamar", "Common"].includes(name)));
+});
+
+test("a station takes at most a few tracks from one album and plays an artist's albums in turn", async () => {
+  const seed = addArtist("Daft Punk", 8);
+  const homework = store.upsertLibraryAlbum({
+    identityKey: "album:Homework",
+    artistId: seed.artist.id,
+    title: "Homework",
+  });
+  for (const index of [0, 1]) {
+    const track = store.upsertLibraryTrack({
+      identityKey: `track:Homework:${index}`,
+      title: `Homework ${index}`,
+      artistName: "Daft Punk",
+    });
+    store.linkLibraryAlbumTrack({
+      albumId: homework.id,
+      trackId: track.id,
+      trackNumber: index + 1,
+    });
+    store.upsertLibraryMediaFile({
+      trackId: track.id,
+      albumId: homework.id,
+      source: "aurral",
+      path: `/music/Homework/${index}.flac`,
+    });
+  }
+  const similar = ["Justice", "Modjo", "Cassius", "Stardust", "Kavinsky"];
+  for (const name of similar) addArtist(name, 3);
+  const albumOf = (trackId: number) =>
+    db
+      .prepare<[number], { title: string }>(
+        `SELECT album.title FROM library_album_tracks AS link
+         JOIN library_albums AS album ON album.id = link.album_id WHERE link.track_id = ?`,
+      )
+      .get(trackId)!.title;
+
+  for (let run = 1; run <= 10; run += 1) {
+    const trackIds = await buildRadio({
+      userId,
+      seed: { artists: [{ id: String(seed.artist.id) }] },
+      limit: 12,
+      random: seeded(run),
+      similarArtists: async () => similar.map((name) => ({ mbid: null, name, match: 1 })),
+    });
+    const albums = trackIds.map(albumOf);
+    for (const album of new Set(albums)) {
+      assert.ok(albums.filter((each) => each === album).length <= 2, `run ${run}: ${album}`);
+    }
+    const seedAlbums = trackIds.filter((id) => artistOf(id) === "Daft Punk").map(albumOf);
+    seedAlbums.forEach((album, index) => {
+      if (album !== seedAlbums[index + 1]) return;
+      assert.ok(
+        seedAlbums.slice(index + 1).every((later) => later === album),
+        `run ${run}: ${seedAlbums.join(", ")}`,
+      );
+    });
   }
 });
 
