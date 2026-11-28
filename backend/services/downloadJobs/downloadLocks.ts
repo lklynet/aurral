@@ -75,6 +75,10 @@ async function withDownloadLocks<T>(
   return steps ? withOwnerLocks("download-step", owners, lockImports) : lockImports();
 }
 
+export function outsideDownloadLocks<T>(operation: () => T) {
+  return downloadLeases.exit(operation);
+}
+
 export function withPlaylistMutationLock<T>(
   playlistTypes: unknown,
   operation: () => T | Promise<T>,

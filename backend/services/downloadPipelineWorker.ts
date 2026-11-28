@@ -16,6 +16,7 @@ import { recordAlbumGrabQueued, recordAlbumGrabPhase } from "./albumGrabActivity
 import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
 import { hasShareDownloads } from "./shareLinks/downloadStore.ts";
 import { withDownloadPayloadMutation } from "./downloadJobs/downloadOwnership.ts";
+import { outsideDownloadLocks } from "./downloadJobs/downloadLocks.ts";
 
 interface PipelineDependencies {
   processPipelinePayload?: typeof processPipelinePayload;
@@ -60,7 +61,7 @@ export function processPipelineJob(
 }
 
 const {
-  start: startDownloadPipelineWorker,
+  start,
   stop: stopDownloadPipelineWorker,
   isRunning: isDownloadPipelineWorkerRunning,
 } = createJobWorker(downloadPipelineQueue, {
@@ -89,5 +90,7 @@ const {
     );
   },
 });
+
+const startDownloadPipelineWorker = () => outsideDownloadLocks(start);
 
 export { startDownloadPipelineWorker, stopDownloadPipelineWorker, isDownloadPipelineWorkerRunning };
