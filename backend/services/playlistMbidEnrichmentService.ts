@@ -42,12 +42,6 @@ function isMissingMbid(track: TrackMetadata | null | undefined) {
   return !hasValue(track?.artistMbid) || !hasValue(track?.albumMbid) || !hasValue(track?.trackMbid);
 }
 
-function hasMissingJobMbid(track: TrackMetadata, jobs: DownloadJob[]) {
-  return (Array.isArray(jobs) ? jobs : [])
-    .filter((job) => tracksShareMembership(job, track))
-    .some((job) => isMissingMbid(job));
-}
-
 function mergeMissingString(
   target: TrackMetadata,
   source: TrackMetadata,
@@ -151,8 +145,8 @@ function findResolutionForTrack(
   return null;
 }
 
-function matchingJobsForTrack(track: TrackMetadata, jobs: DownloadJob[]) {
-  return (Array.isArray(jobs) ? jobs : []).filter((job) => tracksShareMembership(job, track));
+function ownJobs(track: PlaylistTrack, jobs: DownloadJob[]) {
+  return jobs.filter((job) => job.id === track.canonicalJobId && tracksShareMembership(job, track));
 }
 
 async function buildResolution(
@@ -161,13 +155,11 @@ async function buildResolution(
   resolveTrackContext: typeof resolveTrackSearchContext,
   groupState: { unavailable: boolean } | null = null,
 ) {
-  if (!isMissingMbid(track) && !hasMissingJobMbid(track, jobs)) return null;
+  if (!isMissingMbid(track) && !ownJobs(track, jobs).some(isMissingMbid)) return null;
 
   const originalTrack = normalizePlaylistTrack(track);
   if (!originalTrack) return null;
-  const matchingJobs = matchingJobsForTrack(originalTrack, jobs);
-  const linkedJob =
-    matchingJobs.find((job) => job.id === originalTrack.canonicalJobId) ?? matchingJobs[0];
+  const [linkedJob] = ownJobs(originalTrack, jobs);
   const jobAlbumName =
     originalTrack.albumName || originalTrack.albumMbid ? null : linkedJob?.albumName;
   const lookup = jobAlbumName ? { ...originalTrack, albumName: jobAlbumName } : originalTrack;
@@ -189,7 +181,7 @@ async function buildResolution(
     ...enrichedTrack,
   };
   const trackPatch = mergeMissingMetadata(originalTrack, enrichedTrack);
-  const jobNeedsPatch = matchingJobsForTrack(originalTrack, jobs).some((job) =>
+  const jobNeedsPatch = ownJobs(originalTrack, jobs).some((job) =>
     hasPatch(mergeMissingMetadata(job, jobMetadata, { includeJobFields: true })),
   );
 
@@ -336,10 +328,7 @@ export async function enrichStaticPlaylistMbids(
     for (const [index, track] of nextTracks.entries()) {
       const resolution = trackResolutions[index];
       const source = resolution?.jobMetadata || resolution?.resolvedTrack || track;
-      const ownJobs = matchingJobsForTrack(track, jobs).filter(
-        (job) => !track.canonicalJobId || job.id === track.canonicalJobId,
-      );
-      for (const job of ownJobs) {
+      for (const job of ownJobs(track, jobs)) {
         if (updatedJobIds.has(job.id)) continue;
         const patch = mergeMissingMetadata(job, source, {
           includeJobFields: true,

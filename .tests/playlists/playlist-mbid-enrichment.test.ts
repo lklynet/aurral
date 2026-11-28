@@ -119,6 +119,7 @@ test("enrichStaticPlaylistMbids resolves a track that names no album on its job'
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Imported",
     tracks: [
+      { ...song, albumName: "Greatest Hits" },
       { ...song, albumName: "Live at the Ritz", canonicalJobId: liveJobId },
       { ...song, canonicalJobId: jobId },
     ],
@@ -127,14 +128,17 @@ test("enrichStaticPlaylistMbids resolves a track that names no album on its job'
   await enrichStaticPlaylistMbids(playlist.id, {
     resolveTrackContext: async (track) =>
       resolved(track, {
-        albumMbid: track.albumName === "The Shape of Punk to Come" ? "album-shape" : "album-live",
+        albumMbid: {
+          "The Shape of Punk to Come": "album-shape",
+          "Live at the Ritz": "album-live",
+        }[String(track.albumName)],
         trackMbid: "track-new-noise",
       }),
   });
 
   assert.equal(downloadTracker.getJob(jobId)?.albumMbid, "album-shape");
   assert.equal(downloadTracker.getJob(liveJobId)?.albumMbid, "album-live");
-  const [, stored] = flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks ?? [];
+  const [, , stored] = flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks ?? [];
   assert.equal(stored?.albumName, "The Shape of Punk to Come");
   assert.equal(stored?.albumMbid, "album-shape");
 });
