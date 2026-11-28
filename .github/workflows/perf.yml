@@ -44,11 +44,14 @@ jobs:
         run: |
           git worktree add ../base HEAD^1
           cd ../base
+          vp env use "$(cat .nvmrc)"
           vp install --frozen-lockfile
           vp run build
 
       - if: steps.diff.outputs.changed == 'true'
-        run: vp run build
+        run: |
+          vp env use "$(cat .nvmrc)"
+          vp run build
 
       # Read labels now, not from the event, so adding perf-accepted and re-running the job applies it.
       - name: Compare

@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "better-auth": "1.7.15",
-    "hono": "^4.13.13",
+    "better-auth": "1.7.28",
+    "hono": "^4.13.23",
     "obscenity": "0.4.6",
     "valibot": "^1.5.0"
   },

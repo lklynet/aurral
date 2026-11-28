@@ -16,15 +16,15 @@
     "auth:reset-admin-password": "node --env-file=.env scripts/resetAdminPassword.ts"
   },
   "dependencies": {
-    "@hono/node-server": "^2.1.5",
+    "@hono/node-server": "^2.1.11",
     "@hono/standard-validator": "^0.4.0",
     "@rowanmanning/feed-parser": "^2.1.5",
     "bcrypt": "^6.0.0",
-    "better-sqlite3": "^13.0.3",
+    "better-sqlite3": "^13.2.0",
     "content-disposition": "^2.0.1",
     "fast-xml-parser": "^5.12.0",
     "fastest-levenshtein": "^1.0.16",
-    "hono": "^4.13.13",
+    "hono": "^4.13.23",
     "html-entities": "^2.6.0",
     "ipaddr.js": "^1.9.1",
     "music-metadata": "^13.0.1",
@@ -34,7 +34,7 @@
     "proxy-addr": "^2.0.8",
     "send": "^1.2.1",
     "sharp": "^0.35.5",
-    "undici": "^8.12.2",
+    "undici": "^8.13.0",
     "valibot": "^1.5.0",
     "ws": "^8.22.0",
     "youtubei.js": "~18.1.0"
