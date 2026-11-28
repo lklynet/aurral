@@ -36,7 +36,7 @@ const [
   { processPipelineJob },
   { withPlaylistMutationLock },
   { scanMusicRoot },
-  { playbackTaskQueue },
+  { playbackTaskQueue, systemTaskQueue },
   { processSystemTask },
   { refreshCompletedPipelinePlaylist },
   { systemTaskSchema },
@@ -880,11 +880,12 @@ test("search all stays within the requesting user's playlist access", async () =
     assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
     assert.equal(downloadTracker.getJob(otherJobId)?.status, "failed");
 
+    const enqueue = vi.spyOn(systemTaskQueue, "enqueue").mockReturnValue(1);
     const upgradeResponse = await fetch(`${baseUrl}/quality-upgrades`, { method: "POST" });
-    const upgradePayload = await upgradeResponse.json();
-    assert.equal(upgradeResponse.status, 200, JSON.stringify(upgradePayload));
-    assert.equal(upgradePayload.queued, 1);
-    assert.equal(upgradePayload.playlistCount, 1);
+    assert.equal(upgradeResponse.status, 202, await upgradeResponse.text());
+    const upgradePayload = requireFixture(enqueue.mock.calls[0]?.[0]);
+    enqueue.mockRestore();
+    assert.equal(await processSystemTask(upgradePayload), 1);
     const queuedUpgrade = downloadTracker
       .getAll()
       .find((job) => job.upgradeForJobId === ownedUpgradeId);

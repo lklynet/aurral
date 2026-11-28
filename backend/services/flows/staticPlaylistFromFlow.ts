@@ -54,14 +54,16 @@ export async function saveFlowAsStaticPlaylist(
     [...saved.values()].flatMap(({ job }) => normalizePlaylistTrack(trackFromJob(job)) ?? []),
     { startedByPlaylist: null },
   );
-  const playlist = flowPlaylistConfig.createStaticPlaylist({
-    name,
-    sourceName: flow.name,
-    sourceFlowId: flow.id,
-    recordHistory: flow.recordHistory,
-    tracks: linked.tracks,
-    ownerUserId,
-  });
+  const playlist = linked.commit(() =>
+    flowPlaylistConfig.createStaticPlaylist({
+      name,
+      sourceName: flow.name,
+      sourceFlowId: flow.id,
+      recordHistory: flow.recordHistory,
+      tracks: linked.tracks,
+      ownerUserId,
+    }),
+  );
   try {
     await playlistManager.ensurePlaylistArtwork(playlist.id);
     playlistManager.requestPlaylistSync([playlist.id]);

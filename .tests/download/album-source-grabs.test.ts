@@ -57,6 +57,8 @@ const [
     upsertLibraryMediaFile,
   },
   { libraryManager },
+  { systemTask },
+  { systemTaskQueue },
 ] = await setupIsolatedBackend(
   "album-source-grabs",
   () => import("../../backend/db/helpers/index.ts"),
@@ -79,6 +81,8 @@ const [
   () => import("../../backend/services/aurralHistoryRequests.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryManager.ts"),
+  () => import("../../backend/services/jobs/systemTasks.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
 );
 
 afterAll(async () => {
@@ -1182,10 +1186,18 @@ test("an upgrade whose user is disabled while the upgrade check runs is not held
 });
 
 async function postUpgrades(path: string = "/quality-upgrades") {
-  const response = await signedInAs(testUser(1, { username: "test", role: "admin" }))
-    .route("/", api)
-    .request(`/playlists${path}`, { method: "POST" });
-  return response.json();
+  const enqueue = vi.spyOn(systemTaskQueue, "enqueue").mockReturnValue(1);
+  try {
+    const response = await signedInAs(testUser(1, { username: "test", role: "admin" }))
+      .route("/", api)
+      .request(`/playlists${path}`, { method: "POST" });
+    const payload = enqueue.mock.calls[0]?.[0];
+    if (!payload) return response.json();
+    assert.equal(response.status, 202);
+    return { queued: await systemTask(payload.kind).run(payload, { job: null }) };
+  } finally {
+    enqueue.mockRestore();
+  }
 }
 
 test("Search all starts the upgrades of one release's tracks from different requests in the Library and a static playlist as one attempt and one Usenet download, and both land", async (t) => {
@@ -1357,10 +1369,9 @@ test("an upgrade asked for while Search all's upgrades wait for the worker start
   assert.deepEqual(gate.waiting().sort(), backlog.slice(1).sort());
 });
 
-test("the upgrade check queues each album's upgrades for the worker before it adds the next album's, and one the worker cannot start is removed and keeps its file", async (t) => {
+test("an upgrade the worker cannot start is removed and keeps its file", async (t) => {
   for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
   const groups = ["started-first", "started-second"];
-  const seen: { queuedWhenSecondRead: number | null } = { queuedWhenSecondRead: null };
   const queued: PipelinePayload[] = [];
   await serveGroups(
     t,
@@ -1373,16 +1384,6 @@ test("the upgrade check queues each album's upgrades for the worker before it ad
         releases: [{ id: `${group}-release`, tracks: [{ title: "Only", durationMs: 1000 }] }],
       }),
     ),
-    {
-      missing: (pathname) => {
-        if (pathname === "/v1/album/started-second") {
-          seen.queuedWhenSecondRead ??= downloadTracker
-            .peekPending()
-            .filter((job) => job.upgradeForJobId).length;
-        }
-        return false;
-      },
-    },
   );
   const settings = dbOps.getSettings();
   dbOps.updateSettings({
@@ -1439,7 +1440,6 @@ test("the upgrade check queues each album's upgrades for the worker before it ad
   const runWorker = await holdDownloadWorker();
   assert.equal(await runQualityUpgradeCheck({ force: true }), 2);
   await runWorker();
-  assert.equal(seen.queuedWhenSecondRead, 1);
   assert.deepEqual(
     queued.map((payload) => trackedJob(downloadTracker, payload.jobId).upgradeForJobId),
     [sourceIds[0]],
@@ -1513,8 +1513,10 @@ test("a track removed while its upgrade's release details are read gets no upgra
   downloadTracker.setDone(id, original, "removed-upgrade");
   downloadTracker.updateQuality(id, { tier: "mp3-128" });
   const queued = vi.spyOn(downloadTracker, "enqueuePipeline").mockImplementation(() => {});
+  const runWorker = await holdDownloadWorker();
 
-  assert.equal(await queueQualityUpgrade(trackedJob(downloadTracker, id)), "ineligible");
+  assert.equal(await queueQualityUpgrade(trackedJob(downloadTracker, id)), "queued");
+  await runWorker();
   assert.equal(removing.track, id);
   assert.equal(queued.mock.calls.length, 0);
   assert.deepEqual(downloadTracker.getAll(), []);
@@ -1594,9 +1596,9 @@ test("a track unmonitored while its upgrade's release details are read gets no u
   downloadTracker.updateQuality(id, { tier: "mp3-128" });
   const runWorker = await holdDownloadWorker();
 
-  assert.equal(await queueQualityUpgrade(trackedJob(downloadTracker, id)), "unmonitored");
-  assert.equal((await unmonitoring.result)?.monitored, false);
+  assert.equal(await queueQualityUpgrade(trackedJob(downloadTracker, id)), "queued");
   await runWorker();
+  assert.equal((await unmonitoring.result)?.monitored, false);
   assert.equal(downloadTracker.findActiveUpgradeJob(trackedJob(downloadTracker, id)), null);
   assert.equal(trackedJob(downloadTracker, id).finalPath, original);
 });

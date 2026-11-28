@@ -795,6 +795,7 @@ test("automatic upgrades reach monitored Library tracks that Aurral did not down
   startWorkerForQueuedWork(downloadTracker, startWorkerIfPending);
   try {
     assert.equal(await qualityProfileService.runQualityUpgradeCheck({ force: true }), 1);
+    await downloadWorker.waitForIdle();
     const upgrade = downloadTracker.getJob(queued[0]);
     assert.ok(upgrade != null);
     assert.equal(

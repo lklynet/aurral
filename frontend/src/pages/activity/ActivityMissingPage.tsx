@@ -372,18 +372,12 @@ export default function ActivityMissingPage() {
     );
     try {
       if (showingCutoff) {
-        const { queued } = await parseResponse(playlistJobsClient["quality-upgrades"].$post());
+        await parseResponse(playlistJobsClient["quality-upgrades"].$post());
         setActionStates((current) => ({
           ...current,
           ...Object.fromEntries(actionableJobs.map((job) => [getMissingJobKey(job), "queued"])),
         }));
-        showSuccess(
-          queued > 0
-            ? `${queued} upgrade search${queued === 1 ? "" : "es"} queued`
-            : "No new upgrade searches were queued",
-        );
-        await loadJobs();
-        await queryClient.invalidateQueries({ queryKey: ["activity", "requests"] });
+        showSuccess("Searching for upgrades in the background");
       } else {
         await parseResponse(playlistJobsClient["research-missing"].$post());
         const ids = new Set(actionableJobs.map(getMissingJobKey));
@@ -415,15 +409,7 @@ export default function ActivityMissingPage() {
     } finally {
       setSearchingAll(false);
     }
-  }, [
-    actionableJobs,
-    hasActionableJobs,
-    loadJobs,
-    searchingAll,
-    showingCutoff,
-    showError,
-    showSuccess,
-  ]);
+  }, [actionableJobs, hasActionableJobs, searchingAll, showingCutoff, showError, showSuccess]);
 
   const searchAllButton = (
     <button

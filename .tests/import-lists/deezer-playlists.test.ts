@@ -126,3 +126,33 @@ test("Deezer playlist imports resolve album MBIDs from deezer-album keys without
   assert.equal(imported.tracks[2]?.artistMbid, artistMbid);
   assert.equal(imported.tracks[2]?.albumMbid, null);
 });
+
+test("Deezer import follows all pages past 2,000 tracks", async () => {
+  const total = 2_001;
+  vi.spyOn(http, "get").mockImplementation(async (url, options) => {
+    const index = Number(options?.query?.index ?? 0);
+    const received = Math.min(500, total - index);
+    return {
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      data: url.endsWith("/tracks")
+        ? {
+            data: Array.from({ length: received }, (_, offset) => ({
+              id: index + offset + 1,
+              title: `Track ${index + offset + 1}`,
+              artist: { name: "Band" },
+            })),
+            total,
+            next:
+              index + received < total
+                ? `https://api.deezer.com/playlist/42/tracks?index=${index + received}`
+                : undefined,
+          }
+        : { id: 42, title: "Long Playlist", nb_tracks: total },
+    };
+  });
+  const playlist = await getDeezerPlaylist("42");
+  assert.equal(playlist.tracks.length, total);
+  assert.equal(playlist.tracks.at(-1)?.trackName, "Track 2001");
+});

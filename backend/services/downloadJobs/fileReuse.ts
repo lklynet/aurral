@@ -999,15 +999,9 @@ export async function reuseTrackForPlaylist(
         .map((id) => String(id || "").trim())
         .filter(Boolean),
     );
-    const activeSource = sortReusableJobs([
-      ...downloadTracker.getByStatus("pending"),
-      ...downloadTracker.getByStatus("downloading"),
-    ]).find(
-      (job) =>
-        !excluded.has(String(job.id || "")) &&
-        job.playlistType !== "library" &&
-        tracksShareLibraryMembership(track, job),
-    );
+    const activeSource = sortReusableJobs(
+      downloadTracker.getActiveReuseJobsByTrackName(track.trackName),
+    ).find((job) => !excluded.has(job.id) && tracksShareLibraryMembership(track, job));
     if (activeSource) {
       return {
         reused: false,

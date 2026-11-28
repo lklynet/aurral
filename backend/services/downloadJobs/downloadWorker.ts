@@ -1,5 +1,6 @@
 import path from "path";
 import fs from "node:fs/promises";
+import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import { downloadTracker, type DownloadJob, type DownloadTrackInput } from "./downloadTracker.ts";
 import { playlistManager } from "../playlists/playlistManager.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
@@ -50,6 +51,7 @@ import { isUnknownTitle } from "../trackMatching/titleText.ts";
 
 const DEFAULT_CONCURRENCY = 3;
 const SEARCH_SLOT_RECHECK_MS = 2000;
+const RESEARCH_BATCH_SIZE = 500;
 const MIN_CONCURRENCY = 1;
 const MAX_CONCURRENCY = 3;
 const JOB_COOLDOWN_MS = 750;
@@ -409,16 +411,30 @@ export class DownloadWorker {
     const missing = downloadTracker
       .getByStatus("failed")
       .filter((job) => wanted.has(job.playlistType) && !isUnmonitored(job));
-    const requeued = db.transaction(
-      () =>
-        missing.filter((job) => {
-          const priorError = String(job.error || "").trim();
-          const reason = ["Manual re-search", priorError].filter(Boolean).join(" • ");
-          if (!downloadTracker.setPending(job.id, reason, { asRetryCycle: true })) return false;
-          recordTrackJobRequeued(downloadTracker.getJob(job.id));
-          return true;
-        }).length,
-    )();
+    const requeueBatch = db.transaction((batch: DownloadJob[]) => {
+      let count = 0;
+      for (const { id } of batch) {
+        const job = downloadTracker.getJob(id);
+        if (job?.status !== "failed" || !wanted.has(job.playlistType) || isUnmonitored(job))
+          continue;
+        const priorError = String(job.error || "").trim();
+        const reason = ["Manual re-search", priorError].filter(Boolean).join(" • ");
+        if (!downloadTracker.setPending(job.id, reason, { asRetryCycle: true })) continue;
+        recordTrackJobRequeued(job);
+        count++;
+      }
+      return count;
+    });
+    let requeued = 0;
+    for (let index = 0; index < missing.length; index += RESEARCH_BATCH_SIZE) {
+      if (index > 0) await yieldToEventLoop();
+      try {
+        requeued += requeueBatch(missing.slice(index, index + RESEARCH_BATCH_SIZE));
+      } catch (error) {
+        downloadTracker.reconcileCommittedJobs();
+        throw error;
+      }
+    }
     if (requeued === 0 && downloadTracker.getNextPending()) {
       if (this.running) this.wake();
       else await this.start();
@@ -735,6 +751,23 @@ export class DownloadWorker {
 
   async _enqueueUpgrade(job: DownloadJob, runGeneration: number) {
     if (!isAnyDownloadSourceConfigured()) throw new Error(getDownloadSourceNotConfiguredMessage());
+    const context = await resolveTrackSearchContext(job).catch((error: unknown) => {
+      console.warn(
+        `[DownloadWorker] Could not read release details for upgrade ${job.id}:`,
+        asAppError(error)?.message,
+      );
+      return null;
+    });
+    this._assertJobCanContinue(job, runGeneration);
+    if (downloadTracker.getJob(job.upgradeForJobId)?.status !== "done") {
+      downloadTracker.removeJob(job.id);
+      return;
+    }
+    if (context) {
+      const { metadataUnreachable: _, ...resolved } = context;
+      downloadTracker.updateMetadata(job.id, resolved);
+      Object.assign(job, resolved);
+    }
     const { manifest: release } = await readReleaseManifest(job.albumMbid, job.releaseMbid);
     this._assertJobCanContinue(job, runGeneration);
     if (this.getWorkerSettings().paused) return;

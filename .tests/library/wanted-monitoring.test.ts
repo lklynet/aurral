@@ -24,6 +24,8 @@ const [
   { getAurralHistoryRequests },
   { playlistOperationQueue },
   { processPlaylistOperation },
+  { systemTask },
+  { systemTaskQueue },
 ] = await setupIsolatedBackend(
   "aurral-wanted-monitoring",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -37,6 +39,8 @@ const [
   () => import("../../backend/services/aurralHistoryRequests.ts"),
   () => import("../../backend/services/playlists/playlistOperationQueue.ts"),
   () => import("../../backend/services/playlists/playlistOperations.ts"),
+  () => import("../../backend/services/jobs/systemTasks.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
 );
 
 const server = await listen(
@@ -148,6 +152,19 @@ async function searchAllMissing() {
     const payload = enqueue.mock.calls[0]?.[0];
     assert.ok(payload);
     return await processPlaylistOperation(payload);
+  } finally {
+    enqueue.mockRestore();
+  }
+}
+
+async function searchAllUpgrades() {
+  const enqueue = vi.spyOn(systemTaskQueue, "enqueue").mockReturnValue(1);
+  try {
+    const response = await fetch(`${baseUrl}/api/playlists/quality-upgrades`, { method: "POST" });
+    assert.equal(response.status, 202, await response.text());
+    const payload = enqueue.mock.calls[0]?.[0];
+    assert.ok(payload);
+    return await systemTask(payload.kind).run(payload, { job: null });
   } finally {
     enqueue.mockRestore();
   }
@@ -278,9 +295,7 @@ test("Search all in Wanted skips unmonitored tracks and keeps monitored tracks o
   });
 
   const requeued = await searchAllMissing();
-  const upgrades = await request<{ queued: number }>("/api/playlists/quality-upgrades", {
-    method: "POST",
-  });
+  const upgrades = await searchAllUpgrades();
 
   assert.equal(requeued, 1);
   assert.deepEqual(
@@ -294,7 +309,7 @@ test("Search all in Wanted skips unmonitored tracks and keeps monitored tracks o
   );
   assert.equal(queueStatus.get(monitoredMissing), "pending");
   const upgraded = upgradedJobIds();
-  assert.equal(upgrades.queued, 3);
+  assert.equal(upgrades, 3);
   assert.deepEqual(
     [
       monitoredFile,
@@ -313,10 +328,7 @@ test("Stopping monitoring a track cancels its queued upgrade and refuses a new o
   const unmonitored = await createLibraryJob();
   const other = await createLibraryJob();
 
-  const first = await request<{ queued: number }>("/api/playlists/quality-upgrades", {
-    method: "POST",
-  });
-  assert.equal(first.queued, 2);
+  assert.equal(await searchAllUpgrades(), 2);
 
   const result = await stopMonitoring(unmonitored);
   assert.equal(result.monitored, false);
@@ -330,10 +342,7 @@ test("Stopping monitoring a track cancels its queued upgrade and refuses a new o
   assert.notEqual(requireFixture(upgradeJobsOf(other)[0]).status, "cancelled");
   assert.equal(getJob(unmonitored).status, "done");
 
-  const second = await request<{ queued: number }>("/api/playlists/quality-upgrades", {
-    method: "POST",
-  });
-  assert.equal(second.queued, 0);
+  assert.equal(await searchAllUpgrades(), 0);
 
   const direct = await fetch(`${baseUrl}/api/playlists/quality-upgrades/library/${unmonitored}`, {
     method: "POST",

@@ -230,13 +230,11 @@ const SYSTEM_TASKS = {
     schedule: { everyMs: HOUR, priority: -10 },
     async run(payload) {
       const { runQualityUpgradeCheck } = await import("../qualityProfileService.ts");
-      await runQualityUpgradeCheck({
+      return runQualityUpgradeCheck({
         force: payload.force === true,
-        playlistIds:
-          typeof payload.playlistId === "string" && payload.playlistId
-            ? [payload.playlistId]
-            : null,
-        limit: typeof payload.limit === "number" ? payload.limit : undefined,
+        playlistIds: stringList(payload.playlistIds),
+        limit:
+          typeof payload.limit === "number" || payload.limit === null ? payload.limit : undefined,
       });
     },
   },

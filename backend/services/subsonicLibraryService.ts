@@ -1170,11 +1170,13 @@ const replaceSubsonicPlaylistTracks = async (
     removedJobIds = current.tracks
       .map((track) => track.canonicalJobId)
       .filter((jobId) => !kept.has(jobId));
-    return flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
-      ...updates,
-      tracks: linked.tracks,
-      actorUserId: user?.id ?? null,
-    });
+    return linked.commit(() =>
+      flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
+        ...updates,
+        tracks: linked.tracks,
+        actorUserId: user?.id ?? null,
+      }),
+    );
   }).catch(async (error: unknown) => {
     await discardLibraryJobs(linked.createdJobIds);
     throw error;
@@ -1354,8 +1356,8 @@ export async function starMany(
     await discardLibraryJobs(linked.createdJobIds);
     return false;
   }
-  keepSongsInLibrary(parsed.flatMap((target) => (target.kind === "song" ? [target.key] : [])));
-  const addStars = db.transaction(() => {
+  linked.commit(() => {
+    keepSongsInLibrary(parsed.flatMap((target) => (target.kind === "song" ? [target.key] : [])));
     let changed = false;
     for (const target of parsed) {
       changed =
@@ -1363,7 +1365,6 @@ export async function starMany(
     }
     if (changed) touchStars(user.id);
   });
-  addStars();
   return true;
 }
 

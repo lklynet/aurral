@@ -17,7 +17,6 @@ import { catalogueTrackIds, isrcKey, loadCatalogueIds, NO_CATALOGUE_IDS } from "
 
 const REQUEST_TIMEOUT_MS = 10_000;
 const TRACK_PAGE_SIZE = 500;
-const MAX_TRACKS = 2_000;
 const SHELF_PLAYLISTS_PER_CATEGORY = 12;
 const SHELF_MIN_PLAYLISTS = 3;
 const SHELF_CONCURRENCY = 6;
@@ -170,6 +169,7 @@ export async function deezerList<Schema extends v.GenericSchema>(
   return {
     items: readMany(schema, page.data, { service: "Deezer", endpoint: path }),
     received: page.data.length,
+    total: page.total,
     next: page.next,
   };
 }
@@ -280,18 +280,31 @@ export async function getDeezerPlaylist(value: unknown, { catalogueIds = false }
   if (!summary) {
     throw providerError("The Deezer playlist is unavailable", 404, "DEEZER_PLAYLIST_NOT_FOUND");
   }
-  const rows: DeezerTrack[] = [];
+  const tracks: DeezerTrack[] = [];
+  const continuations = new Set<string>();
   let index = 0;
-  while (index < MAX_TRACKS) {
+  let total: number | undefined;
+  while (true) {
     const page = await deezerList(deezerTrackSchema, `/playlist/${id}/tracks`, {
       index,
       limit: TRACK_PAGE_SIZE,
     });
-    rows.push(...page.items);
+    total ??= page.total;
     index += page.received;
-    if (page.received === 0 || !page.next) break;
+    const incomplete = page.next
+      ? page.received === 0 || continuations.has(page.next) || (total != null && index >= total)
+      : total != null && index !== total;
+    if (incomplete || (page.total != null && page.total !== total)) {
+      throw providerError(
+        "Deezer returned an incomplete playlist",
+        502,
+        "DEEZER_PLAYLIST_INCOMPLETE",
+      );
+    }
+    for (const track of page.items) tracks.push(track);
+    if (!page.next) break;
+    continuations.add(page.next);
   }
-  const tracks = rows.slice(0, MAX_TRACKS);
   const ids = catalogueIds
     ? await loadCatalogueIds(tracks.flatMap(deezerIdKeys))
     : NO_CATALOGUE_IDS;

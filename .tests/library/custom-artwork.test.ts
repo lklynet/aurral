@@ -109,3 +109,11 @@ test("artwork whose content type names an object property is rejected as unsuppo
   assert.equal(getCustomArtwork("track", "43"), null);
   assert.equal(getCustomArtwork("album", "8"), null);
 });
+
+test("artwork lookup works for a queue larger than SQLite's parameter limit", () => {
+  db.prepare(
+    "INSERT INTO custom_artwork (entity_kind, entity_id, content_type, updated_at) VALUES (?, ?, ?, ?)",
+  ).run("playlist-track", "job-32999", "image/png", 123);
+  const ids = Array.from({ length: 33_000 }, (_, index) => `job-${index}`);
+  assert.deepEqual(getCustomArtworkMap("playlist-track", ids), new Map([["job-32999", 123]]));
+});

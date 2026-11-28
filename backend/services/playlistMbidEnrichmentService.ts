@@ -11,6 +11,7 @@ import { resolveTrackSearchContext } from "./downloadJobs/trackSearchContext.ts"
 import { mapWithConcurrency } from "./discovery/helpers.ts";
 import { flowPlaylistConfig, type StaticPlaylist } from "./playlists/flowPlaylistConfig.ts";
 import {
+  buildCoreTrackIdentity,
   normalizePlaylistTrack,
   tracksShareMembership,
   type PlaylistTrack,
@@ -127,13 +128,37 @@ function applyPlaylistTrackPatch(track: PlaylistTrack, source: TrackMetadata) {
   );
 }
 
+function indexResolutions(resolutions: TrackResolution[]) {
+  const index = new Map<string, Set<number>>();
+  const add = (key: string, position: number) => {
+    const positions = index.get(key) ?? new Set<number>();
+    positions.add(position);
+    index.set(key, positions);
+  };
+  for (const [position, { originalTrack, resolvedTrack }] of resolutions.entries()) {
+    if (originalTrack.membershipId) {
+      add(`member:${originalTrack.membershipId}`, position);
+      continue;
+    }
+    add(`core:${buildCoreTrackIdentity(originalTrack)}`, position);
+    add(`core:${buildCoreTrackIdentity(resolvedTrack)}`, position);
+  }
+  return index;
+}
+
 function findResolutionForTrack(
   track: PlaylistTrack,
   resolutions: TrackResolution[],
+  resolutionIndex: Map<string, Set<number>>,
   usedResolutionIndexes: Set<number>,
 ) {
-  for (const [index, resolution] of resolutions.entries()) {
-    if (usedResolutionIndexes.has(index)) continue;
+  const candidates = [
+    ...(track.membershipId ? (resolutionIndex.get(`member:${track.membershipId}`) ?? []) : []),
+    ...(resolutionIndex.get(`core:${buildCoreTrackIdentity(track)}`) ?? []),
+  ].sort((left, right) => left - right);
+  for (const index of candidates) {
+    const resolution = resolutions[index];
+    if (!resolution || usedResolutionIndexes.has(index)) continue;
     const owner = resolution.originalTrack.membershipId;
     if (
       owner
@@ -148,13 +173,14 @@ function findResolutionForTrack(
   return null;
 }
 
-function ownJobs(track: PlaylistTrack, jobs: DownloadJob[]) {
-  return jobs.filter((job) => job.id === track.canonicalJobId && tracksShareMembership(job, track));
+function ownJobs(track: PlaylistTrack, jobs: Map<string, DownloadJob>) {
+  const job = track.canonicalJobId ? jobs.get(track.canonicalJobId) : undefined;
+  return job && tracksShareMembership(job, track) ? [job] : [];
 }
 
 async function buildResolution(
   track: PlaylistTrack,
-  jobs: DownloadJob[],
+  jobs: Map<string, DownloadJob>,
   resolveTrackContext: typeof resolveTrackSearchContext,
   groupState: { unavailable: boolean } | null = null,
 ) {
@@ -253,7 +279,7 @@ export async function enrichStaticPlaylistMbids(
   const snapshotPlaylist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
   if (!snapshotPlaylist) return { missing: true, changed: false };
 
-  const snapshotJobs = staticPlaylistJobs(snapshotPlaylist);
+  const snapshotJobs = new Map(staticPlaylistJobs(snapshotPlaylist).map((job) => [job.id, job]));
   const snapshotTracks = Array.isArray(snapshotPlaylist.tracks) ? snapshotPlaylist.tracks : [];
   const tracksExamined = snapshotTracks.length;
   let tracksResolved = 0;
@@ -305,9 +331,10 @@ export async function enrichStaticPlaylistMbids(
     if (!currentPlaylist) return { missing: true, changed: false };
 
     const currentTracks = Array.isArray(currentPlaylist.tracks) ? currentPlaylist.tracks : [];
+    const resolutionIndex = indexResolutions(resolutions);
     const usedResolutionIndexes = new Set<number>();
     const trackResolutions = currentTracks.map((track) =>
-      findResolutionForTrack(track, resolutions, usedResolutionIndexes),
+      findResolutionForTrack(track, resolutions, resolutionIndex, usedResolutionIndexes),
     );
     let playlistTracksUpdated = 0;
     const nextTracks = currentTracks.map((track, index) => {
@@ -325,7 +352,7 @@ export async function enrichStaticPlaylistMbids(
       });
     }
 
-    const jobs = staticPlaylistJobs(currentPlaylist);
+    const jobs = new Map(staticPlaylistJobs(currentPlaylist).map((job) => [job.id, job]));
     let jobsUpdated = 0;
     const updatedJobIds = new Set<string>();
     for (const [index, track] of nextTracks.entries()) {
