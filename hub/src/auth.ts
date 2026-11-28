@@ -1,6 +1,8 @@
 import { betterAuth, type BetterAuthOptions } from "better-auth";
-import { genericOAuth } from "better-auth/plugins";
+import { genericOAuth, magicLink } from "better-auth/plugins";
+import { emailConfig, sendMagicLinkEmail } from "./email.ts";
 import type { Bindings } from "./index.ts";
+import { normalizeCode } from "./links.ts";
 
 export const identityEmail = (provider: string, id: string) => `${provider}-${id}@users.aurral.org`;
 
@@ -62,6 +64,35 @@ const edenProvider = (issuer: string | undefined) =>
       : [],
   });
 
+const magicLinkPlugin = (env: Bindings) =>
+  magicLink({
+    storeToken: "hashed",
+    expiresIn: 15 * 60,
+    sendMagicLink: async ({ email, token, metadata }) => {
+      const origin = env.HUB_ORIGIN.replace(/\/+$/, "");
+      const verifyUrl = new URL(`${origin}/account/sign-in/email/verify`);
+      verifyUrl.searchParams.set("token", token);
+      const rawCode = typeof metadata?.code === "string" ? normalizeCode(metadata.code) : null;
+      const rawNext =
+        typeof metadata?.next === "string" &&
+        metadata.next.startsWith("/connect/authorize?") &&
+        metadata.next.length <= 1024 &&
+        !/[\r\n\\]/.test(metadata.next)
+          ? metadata.next
+          : null;
+      const isHostedNext =
+        rawNext !== null &&
+        new URL(rawNext, "https://aurral.local").searchParams.get("client_id") === "hosted";
+      if (rawCode) verifyUrl.searchParams.set("code", rawCode);
+      if (isHostedNext) {
+        verifyUrl.searchParams.set("hosted", "1");
+      } else if (rawNext) {
+        verifyUrl.searchParams.set("next", rawNext);
+      }
+      await sendMagicLinkEmail(emailConfig(env), { to: email, url: verifyUrl.toString() });
+    },
+  });
+
 export const authOptions = (env: Bindings) =>
   ({
     database: env.DB,
@@ -69,7 +100,13 @@ export const authOptions = (env: Bindings) =>
     basePath: "/v1/auth",
     secret: env.AUTH_SECRET,
     trustedOrigins: [env.HUB_ORIGIN],
-    disabledPaths: ["/link-social", "/unlink-account", "/update-user"],
+    disabledPaths: [
+      "/link-social",
+      "/unlink-account",
+      "/update-user",
+      "/sign-in/magic-link",
+      "/magic-link/verify",
+    ],
     user: {
       modelName: "accounts",
       fields: { emailVerified: "email_verified", createdAt: "created_at", updatedAt: "updated_at" },
@@ -116,7 +153,7 @@ export const authOptions = (env: Bindings) =>
       },
     },
     socialProviders: socialProviders(env),
-    plugins: [edenProvider(env.EDEN_OIDC_ISSUER)],
+    plugins: [edenProvider(env.EDEN_OIDC_ISSUER), magicLinkPlugin(env)],
   }) satisfies BetterAuthOptions;
 
 const instances = new WeakMap<Bindings, ReturnType<typeof createAuth>>();
