@@ -442,5 +442,9 @@ test("a sync keeps the IDs Aurral already found for tracks still in the playlist
   const albumlessSync = info.mock.calls.find(
     (call) => call[1] === "Playlist import sync completed",
   );
-  assert.partialDeepStrictEqual(albumlessSync?.[2], { tracksAdded: 0, tracksRemoved: 0 });
+  assert.partialDeepStrictEqual(albumlessSync?.[2], {
+    tracksAdded: 0,
+    tracksRemoved: 0,
+    acceptedNotStoredCount: 0,
+  });
 });

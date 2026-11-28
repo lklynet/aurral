@@ -6,6 +6,7 @@ import {
 import { importListFor, requireImportList } from "./importPlaylist.ts";
 import { updateStaticPlaylist } from "../playlists/playlistOperations.ts";
 import {
+  buildCoreTrackIdentity,
   buildImportTrackIdentity,
   buildPlaylistTrackIdentity,
 } from "../playlists/playlistTracks.ts";
@@ -130,9 +131,13 @@ export async function syncStaticPlaylistImportHere({
     const currentIdentities = new Set<string>(
       (result?.playlist?.tracks || []).map(buildPlaylistTrackIdentity),
     );
-    const storedTracks = new Set((result?.playlist?.tracks || []).map(buildImportTrackIdentity));
+    const savedTracks = result?.playlist?.tracks || [];
+    const storedTracks = new Set(savedTracks.map(buildImportTrackIdentity));
+    const storedSongs = new Set(savedTracks.map(buildCoreTrackIdentity));
     const acceptedNotStored = tracks.filter(
-      (track) => !storedTracks.has(buildImportTrackIdentity(track)),
+      (track) =>
+        !storedTracks.has(buildImportTrackIdentity(track)) &&
+        !(!track.albumName && storedSongs.has(buildCoreTrackIdentity(track))),
     );
     const tracksAdded = [...currentIdentities].filter((id) => !previousIdentities.has(id)).length;
     const tracksRemoved = [...previousIdentities].filter((id) => !currentIdentities.has(id)).length;

@@ -653,7 +653,9 @@ async function updateStaticPlaylistLocked({
       if (!current) return linkedTracks.shift()!;
       const sameTrack =
         buildImportTrackIdentity(track) === buildImportTrackIdentity(current) ||
-        (!track.albumName && buildCoreTrackIdentity(track) === buildCoreTrackIdentity(current));
+        (!track.albumName &&
+          !track.albumMbid &&
+          buildCoreTrackIdentity(track) === buildCoreTrackIdentity(current));
       return {
         ...track,
         ...(sameTrack && {
