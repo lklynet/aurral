@@ -590,6 +590,46 @@ test('a download credited with "&" takes the artist MusicBrainz names with "and"
   assert.equal(resolved.artistMbid, "belle-and-sebastian");
 });
 
+test("a track that names no album takes the album its song is on, when that album lists it", async (t) => {
+  const band = artistEntry("station-band", "Station Band");
+  stubMetadata(t, (path, params) => {
+    if (path === "/v1/search/artist") return { artists: [band] };
+    if (path === "/v1/search/track")
+      return {
+        tracks: [
+          {
+            recordingId: `rec-${params.q}`,
+            title: params.q,
+            artistId: band.id,
+            artistName: band.name,
+            albumId: "station-album",
+            albumTitle: "Station Album",
+          },
+        ],
+      };
+    if (path === "/v1/album/station-album")
+      return albumEntry("station-album", "Station Album", band, ["Opener", "Radio Song"]);
+    return null;
+  });
+
+  const listed = await resolveTrackSearchContext({
+    artistName: "Station Band",
+    trackName: "Radio Song",
+  });
+  assert.equal(listed.albumMbid, "station-album");
+  assert.equal(listed.albumName, "Station Album");
+  assert.equal(listed.trackMbid, "station-album-2");
+  assert.equal(listed.trackNumber, 2);
+
+  const unlisted = await resolveTrackSearchContext({
+    artistName: "Station Band",
+    trackName: "Other Song",
+  });
+  assert.equal(unlisted.artistMbid, "station-band");
+  assert.equal(unlisted.albumMbid, null);
+  assert.equal(unlisted.trackMbid, null);
+});
+
 test("a download takes the album of its title that lists the song, over the album the job named or the artist's first album of that title", async (t) => {
   const weezer = artistEntry("weezer", "Weezer");
   const albums = {

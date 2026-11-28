@@ -68,7 +68,7 @@ export async function resolveDeezerAlbumToMbid(
 // album is not one of the artist's own, such as a soundtrack credited to the
 // game. The album the song came with wins. MusicBrainz answers for a song the
 // search index leaves out.
-async function findTrackReleaseGroup(lookup: {
+export async function findTrackReleaseGroup(lookup: {
   artistMbid: string;
   artistName: string;
   trackName: string;
