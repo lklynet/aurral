@@ -544,7 +544,10 @@ async function appendStaticPlaylistTracks({
         Number(actorUserId) || null,
       ),
     ),
-  );
+  ).catch(async (error: unknown) => {
+    await discardLibraryJobs(linked.createdJobIds);
+    throw error;
+  });
   if (!updatedPlaylist) {
     await discardLibraryJobs(linked.createdJobIds);
     return { missing: true };

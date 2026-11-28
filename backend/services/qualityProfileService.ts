@@ -48,9 +48,10 @@ export async function classifyQualityJob(job: QualityJob | null | undefined) {
   if (job?.status !== "done" || job.upgradeForJobId) {
     return null;
   }
+  const filePath = job.finalPath;
   let quality;
   try {
-    quality = await readQuality(job.finalPath);
+    quality = await readQuality(filePath);
   } catch {
     quality = {
       tier: null,
@@ -61,7 +62,7 @@ export async function classifyQualityJob(job: QualityJob | null | undefined) {
     };
   }
   const checkedAt = Date.now();
-  for (const linked of downloadTracker.getDoneByFinalPath(job.finalPath)) {
+  for (const linked of downloadTracker.getDoneByFinalPath(filePath)) {
     downloadTracker.updateQuality(linked.id, { ...quality, checkedAt });
   }
   return quality;

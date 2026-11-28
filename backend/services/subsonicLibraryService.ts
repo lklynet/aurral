@@ -1356,15 +1356,20 @@ export async function starMany(
     await discardLibraryJobs(linked.createdJobIds);
     return false;
   }
-  linked.commit(() => {
-    keepSongsInLibrary(parsed.flatMap((target) => (target.kind === "song" ? [target.key] : [])));
-    let changed = false;
-    for (const target of parsed) {
-      changed =
-        addStarStmt.run(user.id, target.kind, target.key, Date.now()).changes > 0 || changed;
-    }
-    if (changed) touchStars(user.id);
-  });
+  try {
+    linked.commit(() => {
+      keepSongsInLibrary(parsed.flatMap((target) => (target.kind === "song" ? [target.key] : [])));
+      let changed = false;
+      for (const target of parsed) {
+        changed =
+          addStarStmt.run(user.id, target.kind, target.key, Date.now()).changes > 0 || changed;
+      }
+      if (changed) touchStars(user.id);
+    });
+  } catch (error) {
+    await discardLibraryJobs(linked.createdJobIds);
+    throw error;
+  }
   return true;
 }
 
