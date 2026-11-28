@@ -9,14 +9,16 @@ import {
   getAlbumByMbid,
 } from "../../backend/services/providers/metadataProvider.ts";
 import { clearReleaseManifests } from "../../backend/services/releaseResolver.ts";
+import { clearDeezerCaches } from "../../backend/services/apiClients/deezer.ts";
 import { pickResolvedDurationMs } from "../../backend/services/providers/metadataRanking.ts";
 import { toNormalizedTrack } from "../../backend/services/providers/metadataMappers.ts";
 
-const [isolatedState, { dbOps }, { resolveTrackSearchContext }] = await setupIsolatedBackend(
-  "track-search-context",
-  () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/services/downloadJobs/trackSearchContext.ts"),
-);
+const [isolatedState, { dbOps }, { resolveTrackSearchContext, pickDeezerTrackLength }] =
+  await setupIsolatedBackend(
+    "track-search-context",
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/services/downloadJobs/trackSearchContext.ts"),
+  );
 
 // Metadata's rate limit runs on fake time that moves to each next timer. The
 // rate limit remembers that time between tests, so the clock never goes back.
@@ -1145,4 +1147,85 @@ test("an album that lists the track's recording is the track's album whatever th
   const unlisted = await resolveTrackSearchContext({ ...track, trackMbid: "hits-1" });
   assert.equal(unlisted.albumMbid, "hits");
   assert.equal(unlisted.albumName, "Greatest Hits");
+});
+
+const deezerSong = (title: string, duration?: number, artist = "Artist") => ({
+  id: 1,
+  title,
+  duration,
+  artist: { name: artist },
+});
+
+test("a Deezer length counts only when artist, title, numbers, and version all agree", () => {
+  const pick = (trackName: string, candidate: ReturnType<typeof deezerSong>) =>
+    pickDeezerTrackLength([candidate], { artistName: "Artist", trackName });
+  assert.equal(pick("Song", deezerSong("Song", 201)), 201000);
+  assert.equal(pick("Song", deezerSong("Song - 2011 Remaster", 201)), 201000);
+  const longTitle = "The Ballad of the Endless Summer Night Pt. 2";
+  assert.equal(pick(longTitle, deezerSong(longTitle.replace("2", "3"), 201)), null);
+  assert.equal(
+    pick(longTitle.replace("2", "II"), deezerSong(longTitle.replace("2", "III"), 201)),
+    null,
+  );
+  assert.equal(pick("Song", deezerSong("Song (Live)", 201)), null);
+  assert.equal(pick("Song", deezerSong("Song (Remix)", 201)), null);
+  assert.equal(pick("Song", deezerSong("Another Tune", 201)), null);
+  assert.equal(pick("Song", deezerSong("Song", 201, "Other Artist")), null);
+  assert.equal(pick("Song", deezerSong("Song")), null);
+  assert.equal(pick("Song", deezerSong("Song", 0)), null);
+  assert.equal(
+    pickDeezerTrackLength([deezerSong("Song (Live)", 250), deezerSong("Song", 201, "Alias")], {
+      artistName: "Artist",
+      artistAliases: ["Alias"],
+      trackName: "Song",
+    }),
+    201000,
+  );
+});
+
+test("a track with no length takes it from a confident Deezer match", async (t) => {
+  clearDeezerCaches();
+  let found = deezerSong("Song", 201);
+  stubMetadata(t, (path) => (path === "/search/track" ? { data: [found] } : null));
+  const track = { artistName: "Artist", trackName: "Song" };
+
+  assert.equal((await resolveTrackSearchContext(track)).durationMs, 201000);
+
+  clearDeezerCaches();
+  found = deezerSong("Song (Live)", 250);
+  assert.equal((await resolveTrackSearchContext(track)).durationMs, null);
+});
+
+test("a track that has a length never asks Deezer for one", async (t) => {
+  clearDeezerCaches();
+  const asked: string[] = [];
+  stubMetadata(t, (path) => {
+    asked.push(path);
+    return path === "/search/track" ? { data: [deezerSong("Song", 201)] } : null;
+  });
+
+  const resolved = await resolveTrackSearchContext({
+    artistName: "Artist",
+    trackName: "Song",
+    durationMs: 180000,
+  });
+
+  assert.equal(resolved.durationMs, 180000);
+  assert.ok(!asked.includes("/search/track"));
+});
+
+test("a failing Deezer search leaves the track without a length", async (t) => {
+  clearDeezerCaches();
+  let asked = 0;
+  stubMetadata(t, (path) => {
+    if (path !== "/search/track") return null;
+    asked += 1;
+    throw new Error("Deezer is down");
+  });
+
+  const resolved = await resolveTrackSearchContext({ artistName: "Artist", trackName: "Song" });
+
+  assert.equal(asked > 0, true);
+  assert.equal(resolved.durationMs, null);
+  assert.equal(resolved.metadataUnreachable, undefined);
 });
