@@ -651,10 +651,13 @@ async function updateStaticPlaylistLocked({
     const nextTracks = normalizedTracks.map((track, index) => {
       const current = assigned.get(index);
       if (!current) return linkedTracks.shift()!;
-      const sameTrack = buildImportTrackIdentity(track) === buildImportTrackIdentity(current);
+      const sameTrack =
+        buildImportTrackIdentity(track) === buildImportTrackIdentity(current) ||
+        (!track.albumName && buildCoreTrackIdentity(track) === buildCoreTrackIdentity(current));
       return {
         ...track,
         ...(sameTrack && {
+          albumName: track.albumName || current.albumName,
           artistMbid: track.artistMbid || current.artistMbid,
           albumMbid: track.albumMbid || current.albumMbid,
           trackMbid: track.trackMbid || current.trackMbid,

@@ -165,10 +165,14 @@ async function buildResolution(
 
   const originalTrack = normalizePlaylistTrack(track);
   if (!originalTrack) return null;
+  const jobAlbumName = originalTrack.albumName
+    ? null
+    : matchingJobsForTrack(originalTrack, jobs).find((job) => job.albumName)?.albumName;
+  const lookup = jobAlbumName ? { ...originalTrack, albumName: jobAlbumName } : originalTrack;
 
   let resolvedTrack;
   try {
-    resolvedTrack = await Promise.resolve().then(() => resolveTrackContext(originalTrack));
+    resolvedTrack = await Promise.resolve().then(() => resolveTrackContext(lookup));
   } catch {
     if (groupState) groupState.unavailable = true;
     return null;
