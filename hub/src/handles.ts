@@ -87,5 +87,13 @@ export const deleteAccount = (db: D1Database, accountId: string, now = Date.now(
         "UPDATE connect_slugs SET instance_id = NULL, released_at = ? WHERE instance_id IN (SELECT instance_id FROM connect_servers WHERE owner_account_id = ?)",
       )
       .bind(now, accountId),
+    db
+      .prepare(
+        `DELETE FROM verifications
+         WHERE identifier LIKE 'magic-link:%'
+           AND json_valid(value)
+           AND LOWER(json_extract(value, '$.email')) = LOWER((SELECT email FROM accounts WHERE id = ?))`,
+      )
+      .bind(accountId),
     db.prepare("DELETE FROM accounts WHERE id = ?").bind(accountId),
   ]);

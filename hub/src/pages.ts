@@ -24,6 +24,8 @@ p{margin:0}
 .warn{color:var(--warn);font-size:13px}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all}
 .plans{display:grid;gap:8px}
+.sep{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px}
+.sep::before,.sep::after{content:"";flex:1;height:1px;background:#222}
 .button{display:block;width:100%;border:0;border-radius:6px;padding:11px;font:inherit;font-weight:600;line-height:1.2;text-align:center;text-decoration:none;cursor:pointer;background:var(--field);color:var(--text)}
 .primary{background:var(--text);color:#000}
 .danger{color:var(--danger)}
@@ -54,8 +56,8 @@ const layout = (title: string, body: Page) =>
     </html>`;
 
 const LEGAL = html`<p class="muted">
-  From GitHub or Discord we keep only your account ID. <a href="/privacy">Privacy</a> ·
-  <a href="/terms">Terms</a>
+  With email we keep your address for sign-in. From GitHub or Discord we keep only your account ID.
+  <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
 </p>`;
 
 const codeField = (code: string | null) =>
@@ -84,11 +86,27 @@ const leave = (code: string | null, next: string | null = null) =>
 const shortDate = (time: number) =>
   new Date(time).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
+export type SignInError =
+  | "sign_in"
+  | "magic_link"
+  | "email_invalid"
+  | "email_busy"
+  | "email_failed";
+
+const SIGN_IN_ERRORS: Record<SignInError, string> = {
+  sign_in: "Sign-in didn't finish. Try again.",
+  magic_link: "That sign-in link expired or was already used. Request a new one.",
+  email_invalid: "Enter a valid email address.",
+  email_busy: "Too many sign-in emails. Wait a minute and try again.",
+  email_failed: "Couldn't send the sign-in email right now. Try again in a moment.",
+};
+
 export const signInPage = (
   providers: { id: string; label: string }[],
-  failed: boolean,
+  error: SignInError | null,
   code: string | null,
   next: string | null = null,
+  emailEnabled = false,
 ) =>
   layout(
     "Sign in",
@@ -102,7 +120,27 @@ export const signInPage = (
               : "To link your Aurral and publish playlists."
         }
       </p>
-      ${failed ? html`<p class="error" role="alert">Sign-in didn't finish. Try again.</p>` : ""}
+      ${error ? html`<p class="error" role="alert">${SIGN_IN_ERRORS[error]}</p>` : ""}
+      ${
+        emailEnabled
+          ? html`<form method="post" action="/account/sign-in/email">
+              ${codeField(code)} ${nextField(next)}
+              <input
+                type="email"
+                name="email"
+                aria-label="Email address"
+                placeholder="you@example.com"
+                autocomplete="email"
+                autocapitalize="none"
+                spellcheck="false"
+                maxlength="254"
+                required
+              />
+              <button class="button primary">Continue with email</button>
+            </form>`
+          : ""
+      }
+      ${emailEnabled && providers.length ? html`<div class="sep">or</div>` : ""}
       ${providers.map(
         ({ id, label }) =>
           html`<a class="button" href="/account/sign-in/${id}${querySuffix(code, next)}"
@@ -110,6 +148,67 @@ export const signInPage = (
           >`,
       )}
       ${LEGAL}`,
+  );
+
+export const emailSentPage = (
+  email: string,
+  code: string | null,
+  next: string | null = null,
+  hostedConnect = false,
+) =>
+  layout(
+    "Check your email",
+    html`<h1>Check your email</h1>
+      <p class="muted">
+        We sent a sign-in link to ${email}. It expires in 15 minutes and can only be used
+        once.${
+          hostedConnect
+            ? " After you finish signing in from the email, return here and select Continue to Aurral Connect."
+            : ""
+        }
+      </p>
+      ${
+        hostedConnect && next
+          ? html`<a class="button primary" href="${next}">Continue to Aurral Connect</a>`
+          : html`<a
+              class="button"
+              href="${next ?? (code ? `/link?code=${encodeURIComponent(code)}` : "/account")}"
+              >Use a different method</a
+            >`
+      }`,
+  );
+
+export const emailVerifyPage = (
+  token: string,
+  code: string | null,
+  next: string | null = null,
+  hosted = false,
+) =>
+  layout(
+    "Sign in",
+    html`<h1>Sign in to aurral.org</h1>
+      <p class="muted">Select continue to finish signing in.</p>
+      <form method="post" action="/account/sign-in/email/verify">
+        <input type="hidden" name="token" value="${token}" />
+        ${codeField(code)} ${nextField(next)}
+        ${hosted ? html`<input type="hidden" name="hosted" value="1" />` : ""}
+        <button class="button primary">Continue</button>
+      </form>
+      <a
+        class="button"
+        href="${next ?? (code ? `/link?code=${encodeURIComponent(code)}` : "/account")}"
+        >Cancel</a
+      >`,
+  );
+
+export const emailSignedInPage = () =>
+  layout(
+    "Signed in",
+    html`<h1>You're signed in</h1>
+      <p class="muted">
+        Return to your original tab and select Continue to Aurral Connect to finish connecting.
+      </p>
+      <a class="button" href="/account">Manage account</a>`,
   );
 
 const HANDLE_ERRORS: Record<Exclude<HandleClaim, "claimed">, string> = {
@@ -310,14 +409,14 @@ const connectBillingActions = (connect: AccountConnectView) => {
 
 export const accountPage = (
   handle: string,
-  provider: string,
+  signedInLabel: string,
   links: LinkRow[],
   connect: AccountConnectView,
 ) =>
   layout(
     `@${handle}`,
     html`<h1>@${handle}</h1>
-      <p class="muted">Signed in with ${provider}</p>
+      <p class="muted">${signedInLabel}</p>
       <h2>Aurral Connect</h2>
       ${
         connect.checkoutSuccess

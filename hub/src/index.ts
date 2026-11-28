@@ -67,6 +67,9 @@ import {
   connectErrorPage,
   deletePage,
   disableConnectServerPage,
+  emailSentPage,
+  emailSignedInPage,
+  emailVerifyPage,
   handlePage,
   linkCodePage,
   linkConfirmPage,
@@ -74,7 +77,13 @@ import {
   STYLE,
   unlinkPage,
   type AccountBillingError,
+  type SignInError,
 } from "./pages.ts";
+import {
+  isEmailSignInConfigured,
+  isSyntheticIdentityEmail,
+  normalizeSignInEmail,
+} from "./email.ts";
 import {
   allowedPolarProductIds,
   createPolarCheckout,
@@ -91,6 +100,7 @@ import {
 export type Bindings = {
   DB: D1Database;
   LINK_LIMITER: RateLimit;
+  EMAIL_LIMITER?: RateLimit;
   HUB_ORIGIN: string;
   APP_ORIGIN?: string;
   CONNECT_DOMAIN?: string;
@@ -103,6 +113,9 @@ export type Bindings = {
   POLAR_PRODUCT_MONTHLY_ID?: string;
   POLAR_PRODUCT_YEARLY_ID?: string;
   POLAR_PORTAL_URL?: string;
+  RESEND_API_KEY?: string;
+  RESEND_API_ORIGIN?: string;
+  EMAIL_FROM?: string;
   AUTH_SECRET: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
@@ -584,6 +597,21 @@ const formCode = async (c: Context<Env>) => {
   };
 };
 
+const SIGN_IN_ERROR_VALUES = new Set<SignInError>([
+  "sign_in",
+  "magic_link",
+  "email_invalid",
+  "email_busy",
+  "email_failed",
+]);
+
+const MAGIC_TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
+
+const parseSignInError = (value: string | undefined): SignInError | null => {
+  if (value === undefined) return null;
+  return SIGN_IN_ERROR_VALUES.has(value as SignInError) ? (value as SignInError) : "sign_in";
+};
+
 async function signedIn(c: Context<Env>, code: string | null, next: string | null = null) {
   const session = await sessionOf(c);
   if (!session) {
@@ -592,7 +620,15 @@ async function signedIn(c: Context<Env>, code: string | null, next: string | nul
       label: PROVIDER_LABELS[id] ?? id,
     }));
     return {
-      page: c.html(signInPage(providers, c.req.query("error") !== undefined, code, next)),
+      page: c.html(
+        signInPage(
+          providers,
+          parseSignInError(c.req.query("error")),
+          code,
+          next,
+          isEmailSignInConfigured(c.env),
+        ),
+      ),
     };
   }
   const handle = await handleOf(c.env.DB, session.user.id);
@@ -647,6 +683,9 @@ const parseBillingError = (value: string | undefined): AccountBillingError | nul
     ? (value as AccountBillingError)
     : null;
 
+const isHostedAuthorizeNext = (next: string | null) =>
+  next !== null && new URL(next, "https://aurral.local").searchParams.get("client_id") === "hosted";
+
 const pageCsp = (formAction = "'self'") =>
   `default-src 'none'; style-src 'self'; img-src 'self'; form-action ${formAction}; frame-ancestors 'none'; base-uri 'none'`;
 
@@ -657,7 +696,9 @@ const pages = new Hono<Env>()
       c.header("content-security-policy", pageCsp());
     }
     c.header("cache-control", "no-store");
-    c.header("referrer-policy", "same-origin");
+    if (!c.res.headers.has("referrer-policy")) {
+      c.header("referrer-policy", "same-origin");
+    }
     c.header("x-content-type-options", "nosniff");
   })
   .use((c, next) => csrf({ origin: c.env.HUB_ORIGIN })(c, next))
@@ -669,18 +710,26 @@ const pages = new Hono<Env>()
     if ("page" in user) return user.page;
     const polar = polarConfig(c.env);
     const { connectDomain } = connectConfig(c.env);
-    const [provider, links, entitlement, servers] = await Promise.all([
+    const [provider, email, links, entitlement, servers] = await Promise.all([
       c.env.DB.prepare("SELECT provider FROM identities WHERE account_id = ?")
         .bind(user.accountId)
         .first<string>("provider"),
+      c.env.DB.prepare("SELECT email FROM accounts WHERE id = ?")
+        .bind(user.accountId)
+        .first<string>("email"),
       accountLinks(c.env.DB, user.accountId),
       getConnectBillingSummary(c.env.DB, user.accountId),
       getOwnedConnectServers(c.env.DB, user.accountId, connectDomain),
     ]);
+    const signedInLabel = provider
+      ? `Signed in with ${PROVIDER_LABELS[provider] ?? "an unknown provider"}`
+      : email && !isSyntheticIdentityEmail(email)
+        ? `Signed in as ${email}`
+        : "Signed in with an unknown provider";
     const billingReady = isPolarBillingConfigured(polar);
     c.header("content-security-policy", pageCsp(POLAR_FORM_ACTION));
     return c.html(
-      accountPage(user.handle, PROVIDER_LABELS[provider ?? ""] ?? "an unknown provider", links, {
+      accountPage(user.handle, signedInLabel, links, {
         entitlement,
         servers,
         connectDomain,
@@ -773,6 +822,63 @@ const pages = new Hono<Env>()
       ownerAccountId: session.user.id,
     });
     return c.redirect("/account?server_disabled=1");
+  })
+  .post("/account/sign-in/email", async (c) => {
+    if (!isEmailSignInConfigured(c.env)) return c.notFound();
+    const { form, code, next } = await formCode(c);
+    const email = normalizeSignInEmail(String(form.get("email") ?? ""));
+    if (!email) return c.redirect(returnTo(code, "email_invalid", next), 303);
+
+    const limiter = c.env.EMAIL_LIMITER ?? c.env.LINK_LIMITER;
+    const ip = c.req.header("cf-connecting-ip")?.trim();
+    const [emailLimit, ipLimit] = await Promise.all([
+      limiter.limit({ key: `magic-email:${email}` }),
+      ip ? limiter.limit({ key: `magic-ip:${ip}` }) : Promise.resolve({ success: true }),
+    ]);
+    if (!emailLimit.success || !ipLimit.success) {
+      return c.redirect(returnTo(code, "email_busy", next), 303);
+    }
+
+    try {
+      await authFor(c.env).api.signInMagicLink({
+        body: { email, metadata: { code, next } },
+        headers: c.req.raw.headers,
+      });
+    } catch {
+      return c.redirect(returnTo(code, "email_failed", next), 303);
+    }
+    return c.html(emailSentPage(email, code, next, isHostedAuthorizeNext(next)));
+  })
+  .get("/account/sign-in/email/verify", (c) => {
+    const token = (c.req.query("token") ?? "").trim();
+    const code = normalizeCode(c.req.query("code"));
+    const next = normalizeNext(c.req.query("next"));
+    const hosted = c.req.query("hosted") === "1";
+    c.header("referrer-policy", "no-referrer");
+    if (!MAGIC_TOKEN_PATTERN.test(token)) {
+      return c.redirect(returnTo(code, "magic_link", next), 303);
+    }
+    return c.html(emailVerifyPage(token, code, next, hosted));
+  })
+  .post("/account/sign-in/email/verify", async (c) => {
+    const { form, code, next } = await formCode(c);
+    const token = String(form.get("token") ?? "").trim();
+    const hosted = String(form.get("hosted") ?? "") === "1";
+    if (!MAGIC_TOKEN_PATTERN.test(token)) {
+      return c.redirect(returnTo(code, "magic_link", next), 303);
+    }
+    try {
+      const { headers } = await authFor(c.env).api.magicLinkVerify({
+        query: { token },
+        headers: c.req.raw.headers,
+        returnHeaders: true,
+      });
+      forwardCookies(c, headers);
+      if (hosted) return c.html(emailSignedInPage());
+      return c.redirect(returnTo(code, undefined, next), 303);
+    } catch {
+      return c.redirect(returnTo(code, "magic_link", next), 303);
+    }
   })
   .get("/account/sign-in/:provider", async (c) => {
     const provider = c.req.param("provider");
