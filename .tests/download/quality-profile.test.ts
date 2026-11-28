@@ -136,6 +136,26 @@ test("orderAdvertisedQualityCandidates drops formats that can never satisfy a ti
     },
   );
   assert.deepEqual(ordered, ["Song 320kbps.mp3", "Mystery Song.mp3"]);
+  assert.deepEqual(
+    orderAdvertisedQualityCandidates(
+      [
+        "Michael Jackson-Bad 25 (2012) 320Kbit(mp3) DMT",
+        "Ella Langley - Dandelion (2026) [MP3 320]",
+        "Ella Langley - Dandelion (2026) [MP3]",
+        "Ella Langley - Dandelion (2026) [AAC]",
+        "Ella Langley - Dandelion (2026) [FLAC]",
+        "Ella Langley - Dandelion (2026)",
+      ],
+      {
+        profile: normalizeQualityProfile({
+          enabled: ["flac-hires", "flac-standard"],
+          cutoff: "flac-standard",
+        }),
+        readName: (entry) => entry,
+      },
+    ),
+    ["Ella Langley - Dandelion (2026) [FLAC]", "Ella Langley - Dandelion (2026)"],
+  );
 });
 
 test("getAdvertisedQualityRank orders by profile position and sinks unknown tiers", () => {
@@ -225,6 +245,11 @@ test("release titles that glue the source to the codec name the codec", () => {
   assert.equal(classifyAdvertisedQuality("Artist-Album-WEB-MP3-320KBPS-2025-GROUP"), "mp3-320");
   assert.equal(classifyAdvertisedQuality("Artist-Album-WEBM4A-256KBPS-2025-GROUP"), "m4a-256");
   assert.equal(classifyAdvertisedQuality("Artist-Album-WEB-AAC-128KBPS-2025-GROUP"), "m4a-128");
+  // Titles also write the bitrate in kbit or after the codec.
+  assert.equal(classifyAdvertisedQuality("Artist-Album (2012) 320Kbit(mp3) GRP"), "mp3-320");
+  assert.equal(classifyAdvertisedQuality("Artist - Album (2026) [MP3 320]"), "mp3-320");
+  assert.equal(classifyAdvertisedQuality("Artist - Album (2026) [AAC-256]"), "m4a-256");
+  assert.equal(classifyAdvertisedQuality("Artist - Album (2026) MP3 192 kbit/s"), "mp3-192");
   // A plain WEB (or WEBDL) names no codec and stays unclassified.
   assert.equal(classifyAdvertisedQuality("Artist-Album-WEB-2025-GROUP"), null);
   assert.equal(classifyAdvertisedQuality("Daft_Punk-Random_Access_Memories-WEB-2013-GRP"), null);

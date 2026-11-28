@@ -225,9 +225,14 @@ export function classifyAdvertisedQuality(
   if (/\.flac\b|\bflac\b/.test(text)) return advertisedFlacTier(text, advertised);
   const family = advertisedLossyFamily(text);
   if (!family) return null;
-  const textBitrate = /\b(128|192|256|320)\s*k(?:bps)?\b/.exec(text);
+  const textBitrate =
+    /\b(128|192|256|320)\s*k(?:bps|bits?(?:\/s)?|b(?:\/s)?)?\b|\b(?:mp3|aac|m4a)[\s._-]*(128|192|256|320)\b/.exec(
+      text,
+    );
   const measured = Number(bitrate);
-  const value = Number(textBitrate?.[1] || (Number.isFinite(measured) ? measured : 0));
+  const value = Number(
+    textBitrate?.[1] || textBitrate?.[2] || (Number.isFinite(measured) ? measured : 0),
+  );
   if (value >= 320) return `${family}-320`;
   if (value >= 256) return `${family}-256`;
   if (value >= 192) return `${family}-192`;
@@ -259,12 +264,14 @@ export function isAdvertisedQualityEligible(
     const name = String(fileName || "").trim();
     if (NEVER_TIERED_ADVERTISED_EXTENSION.test(name)) return false;
     const family = advertisedLossyFamily(name.toLowerCase());
+    // A codec the title names but no bitrate it gives is still out when the
+    // profile enables none of that codec's tiers.
     return (
-      !upgrade ||
       !family ||
       normalized.enabled.some(
         (id) =>
-          id.startsWith(`${family}-`) && isQualityUpgrade({ tier: id }, currentTier, normalized),
+          id.startsWith(`${family}-`) &&
+          (!upgrade || isQualityUpgrade({ tier: id }, currentTier, normalized)),
       )
     );
   }

@@ -3,7 +3,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import * as v from "valibot";
 import { AurralApi } from "../aurral.ts";
-import { readWorldManifest } from "../library/generate.ts";
+import { LOSSY_LABEL, readWorldManifest } from "../library/generate.ts";
 import type { ServiceName } from "../services/index.ts";
 import { LOGIN, paths, resolvePorts } from "../state.ts";
 
@@ -24,13 +24,19 @@ export const has = (...services: ServiceName[]) => services.every((name) => read
 export const api = new AurralApi(ports);
 await api.login(LOGIN);
 
+const world = readWorldManifest(paths.world);
+
 // Short albums keep a download journey quick. Each journey takes its own.
-const short = readWorldManifest(paths.world).filter(
-  (release) => release.files.length >= 8 && release.files.length <= 12,
-);
+const short = world.filter((release) => release.files.length >= 8 && release.files.length <= 12);
 export function worldRelease(index: number) {
   const release = short[index];
   if (!release) throw new Error(`The world has no short release ${index}`);
+  return release;
+}
+
+export function lossyRelease() {
+  const release = world.find(({ name }) => name.endsWith(LOSSY_LABEL));
+  if (!release) throw new Error("The world has no release labelled MP3");
   return release;
 }
 
