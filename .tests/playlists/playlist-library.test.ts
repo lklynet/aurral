@@ -306,8 +306,16 @@ test("a playlist save that dies while queueing its downloads keeps neither the s
     });
   const track = (trackName: string) => ({ artistName: "Band", albumName: "Record", trackName });
 
-  failNextQueue();
-  await assert.rejects(createPlaylist([track("One")], { playlistId: "half-queued" }), /locked/);
+  const setPending = downloadTracker.setPending.bind(downloadTracker);
+  vi.spyOn(downloadTracker, "setPending")
+    .mockImplementationOnce(setPending)
+    .mockImplementationOnce(() => {
+      throw new Error("database is locked");
+    });
+  await assert.rejects(
+    createPlaylist([track("One"), track("Two")], { playlistId: "half-queued" }),
+    /locked/,
+  );
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist("half-queued"), null);
   assert.deepEqual(downloadTracker.getAll(), []);
 
