@@ -128,15 +128,18 @@ function applyPlaylistTrackPatch(track: PlaylistTrack, source: TrackMetadata) {
 }
 
 function findResolutionForTrack(
-  track: TrackMetadata,
+  track: PlaylistTrack,
   resolutions: TrackResolution[],
   usedResolutionIndexes: Set<number>,
 ) {
   for (const [index, resolution] of resolutions.entries()) {
     if (usedResolutionIndexes.has(index)) continue;
+    const owner = resolution.originalTrack.membershipId;
     if (
-      tracksShareMembership(track, resolution.originalTrack) ||
-      tracksShareMembership(track, resolution.resolvedTrack)
+      owner
+        ? owner === track.membershipId
+        : tracksShareMembership(track, resolution.originalTrack) ||
+          tracksShareMembership(track, resolution.resolvedTrack)
     ) {
       usedResolutionIndexes.add(index);
       return resolution;

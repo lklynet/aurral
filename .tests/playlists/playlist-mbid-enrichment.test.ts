@@ -119,7 +119,13 @@ test("enrichStaticPlaylistMbids resolves a track that names no album on its job'
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Imported",
     tracks: [
-      { ...song, albumName: "Greatest Hits" },
+      {
+        ...song,
+        albumName: "Greatest Hits",
+        artistMbid: "artist-refused",
+        albumMbid: "album-hits",
+        trackMbid: "track-hits",
+      },
       { ...song, albumName: "Live at the Ritz", canonicalJobId: liveJobId },
       { ...song, canonicalJobId: jobId },
     ],
