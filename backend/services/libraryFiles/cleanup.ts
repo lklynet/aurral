@@ -15,7 +15,7 @@ import {
 } from "../downloadPaths.ts";
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import { writeAudioTags } from "../audioTags.ts";
-import { buildMetadataRecord } from "../libraryFileScanner.ts";
+import { AUDIO_EXTENSIONS, buildMetadataRecord } from "../libraryFileScanner.ts";
 import { libraryFolderOwner, readOnlyFolderPaths } from "../libraryFolders.ts";
 import {
   getLibraryMediaFile,
@@ -630,8 +630,7 @@ export async function applyCleanupItem(
 
 const holdsAudio = async (directory: string) =>
   (await fs.readdir(directory, { withFileTypes: true }).catch(() => [])).some(
-    (entry) =>
-      entry.isFile() && /\.(aac|aiff|ape|flac|m4a|mp3|oga|ogg|opus|wav|wv)$/i.test(entry.name),
+    (entry) => entry.isFile() && AUDIO_EXTENSIONS.has(path.extname(entry.name).toLowerCase()),
   );
 
 async function moveAlbumImages(fromDirectory: string, toDirectory: string) {

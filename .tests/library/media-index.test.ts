@@ -38,6 +38,8 @@ import {
   scanMusicRoots,
 } from "../../backend/services/libraryFileScanner.ts";
 import { scanConfiguredLibrary } from "../../backend/services/libraryIndexService.ts";
+import { classifyLibraryFileQuality } from "../../backend/services/qualityProfile.ts";
+import { getQualityState } from "../../backend/services/qualityProfileModel.ts";
 import { libraryManager } from "../../backend/services/libraryManager.ts";
 import { downloadTracker } from "../../backend/services/downloadJobs/downloadTracker.ts";
 import { setLibraryManagement } from "../../backend/services/libraryManagementStore.ts";
@@ -520,6 +522,32 @@ test("scanMusicRoot stores the duration of an Ogg file longer than music-metadat
     assert.equal(
       getLibrarySnapshot().files.find((file) => file.path === filePath)?.duration_ms,
       2000,
+    );
+  } finally {
+    deleteIndexedFile(source, filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("scanMusicRoot indexes a WMA file as playable and below the quality cutoff", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-wma-"));
+  const source = `test-wma-${process.pid}`;
+  const filePath = path.join(root, "Aurral Fixture/Playback Roadmap/01 First Step.wma");
+  try {
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await promisify(execFile)("ffmpeg", [
+      ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
+      ...["-f", "lavfi", "-i", "sine=frequency=440:duration=2"],
+      ...["-c:a", "wmav2", "-b:a", "192k", filePath],
+    ]);
+
+    await scanMusicRoot({ rootPath: root, source });
+
+    const file = getLibrarySnapshot().files.find((entry) => entry.path === filePath);
+    assert.equal(file?.available, 1);
+    assert.equal(
+      getQualityState(classifyLibraryFileQuality(file), { cutoff: "mp3-128" }),
+      "below-floor",
     );
   } finally {
     deleteIndexedFile(source, filePath);
