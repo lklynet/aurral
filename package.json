@@ -39,10 +39,10 @@
     "db:types": "node scripts/db-types.mts"
   },
   "dependencies": {
-    "undici": "^8.12.2"
+    "undici": "^8.13.0"
   },
   "devDependencies": {
-    "@hono/node-server": "^2.1.5",
+    "@hono/node-server": "^2.1.11",
     "@types/bcrypt": "^6.0.0",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.6.5",
@@ -53,20 +53,20 @@
     "@types/ws": "^8.18.2",
     "ajv": "^8.20.0",
     "bcrypt": "^6.0.0",
-    "better-sqlite3": "^13.0.3",
-    "hono": "^4.13.13",
+    "better-sqlite3": "^13.2.0",
+    "hono": "^4.13.23",
     "libxml2-wasm": "^0.7.2",
     "music-metadata": "^13.0.1",
     "react": "^19.3.1",
     "sharp": "^0.35.5",
     "typescript": "^7.0.2",
     "valibot": "^1.5.0",
-    "vite": "npm:@voidzero-dev/vite-plus-core@8.3.8000",
-    "vite-plus": "1.7.0",
+    "vite": "npm:@voidzero-dev/vite-plus-core@8.3.8001",
+    "vite-plus": "1.8.0",
     "ws": "^8.22.0"
   },
   "engines": {
-    "node": "26.12.x"
+    "node": "26.13.x"
   },
-  "packageManager": "pnpm@12.15.0"
+  "packageManager": "pnpm@12.24.0"
 }
