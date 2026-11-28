@@ -5,6 +5,7 @@
 relay.aurral.dev, *.aurral.dev {
 	tls {
 		dns cloudflare {$CLOUDFLARE_API_TOKEN}
+		resolvers 1.1.1.1 8.8.8.8
 	}
 	reverse_proxy relay:8080 {
 		flush_interval -1
