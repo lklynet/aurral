@@ -4,7 +4,7 @@ import { afterAll, test } from "vite-plus/test";
 import type { ServiceName } from "../services/index.ts";
 import { local } from "../services/service.ts";
 import { LOGIN } from "../state.ts";
-import { api, aurralRows, getJson, has, ports, until, worldRelease } from "./eden.ts";
+import { api, aurralRows, getJson, has, lossyRelease, ports, until, worldRelease } from "./eden.ts";
 
 const SETTINGS_SOURCES = ["ytdlp", "slskd", "nzbget", "sabnzbd", "qbittorrent"] as const;
 const PLUGIN_SOURCES = ["lidarr", "eden-fixture"] as const;
@@ -123,6 +123,48 @@ test("a playlist track lands on the album that lists its recording when the sour
     });
   }
 });
+
+test.skipIf(!available("qbittorrent"))(
+  "a release labelled MP3 is never grabbed for a profile without MP3",
+  async () => {
+    const release = lossyRelease();
+    const { qualityProfile } = v.parse(
+      v.object({ qualityProfile: v.unknown() }),
+      await api.get("/settings"),
+    );
+    await api.post("/settings", {
+      qualityProfile: { enabled: ["flac-hires", "flac-standard"], cutoff: "flac-standard" },
+    });
+    try {
+      await leaveOn((source) => source === "qbittorrent");
+      await api.post("/library/albums/request", {
+        albumMbid: release.id,
+        albumName: release.album,
+        artistMbid: release.artistId,
+        artistName: release.artist,
+      });
+      const jobs = await until(
+        `${release.name} to be given up on`,
+        async () => {
+          const found = aurralRows(
+            "SELECT status FROM download_jobs WHERE album_name = ? AND artist_name = ?",
+            release.album,
+            release.artist,
+          );
+          const settled = found.every((job) => FINISHED.includes(String(job.status)));
+          return found.length >= release.files.length && settled && found;
+        },
+        280_000,
+      );
+      assert.deepEqual(
+        jobs.filter((job) => job.status !== "failed"),
+        [],
+      );
+    } finally {
+      await api.post("/settings", { qualityProfile: qualityProfile ?? null });
+    }
+  },
+);
 
 test.skipIf(!has("webhooks", "gotify"))(
   "the webhook and Gotify hear a request made and filled",

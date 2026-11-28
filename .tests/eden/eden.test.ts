@@ -17,7 +17,7 @@ import { youtubeFindTopSongVideo } from "../../backend/services/apiClients/youtu
 import { implausibleBitrateKbps } from "../../backend/services/trackMatching/candidateNormalizer.ts";
 import { loadCatalogue } from "../../eden/catalogue/catalogue.ts";
 import { writeSilentFlac } from "../../eden/library/flac.ts";
-import { planLibrary, planWorld } from "../../eden/library/generate.ts";
+import { LOSSY_LABEL, planLibrary, planWorld } from "../../eden/library/generate.ts";
 import { createAuthority, hostIssuer } from "../../eden/outside/certificates.ts";
 import {
   LARGE_PLAYLIST_ID,
@@ -74,6 +74,10 @@ test("the world offers only albums the Library lacks, the same ones on every run
     planWorld(catalogue).map((release) => release.name),
     world.map((release) => release.name),
   );
+  const lossy = world.filter((release) => release.name.endsWith(LOSSY_LABEL));
+  assert.equal(lossy.length, 1);
+  assert.equal(world.at(-1), lossy[0]);
+  assert.equal(world.filter((release) => release.id === lossy[0]?.id).length, 1);
 });
 
 test("the certificate authority issues a certificate for the host a client asks for", () => {

@@ -154,31 +154,43 @@ export function generateLibrary(catalogue: Catalogue, root: string) {
 
 export type WorldRelease = { id: string; name: string; tracks: PlannedTrack[] };
 
+export const LOSSY_LABEL = "[MP3 320]";
+
 // The world is what Eden's download services can find: for every catalogue artist,
-// the two best-known albums the Library does not already hold. Anything else is
-// nowhere to be found, which is the case a failed search needs.
+// the two best-known albums the Library does not already hold. The first artist's
+// next album comes last, only as a release labelled MP3, for a profile that wants
+// none. Anything else is nowhere to be found, which is the case a failed search needs.
 export function planWorld(catalogue: Catalogue): WorldRelease[] {
   const owned = new Set(planLibrary(catalogue).map((tracks) => tracks[0]?.album.id));
   const albumsOf = albumsByArtist(catalogue);
   const names = new Set<string>();
-  return CATALOGUE_ARTISTS.flatMap(([artistId]) => {
+  const release = (album: CatalogueAlbum, label: string) => {
+    const tracks = planAlbum(album);
+    if (tracks.length === 0) return [];
+    const artist = artistNames(album).get(album.artistid ?? "") ?? "Unknown Artist";
+    const year = (album.releasedate ?? "").slice(0, 4);
+    const base = pathPart(
+      `${artist} - ${album.title}${year && year !== "0001" ? ` (${year})` : ""} ${label}`,
+    );
+    const name = names.has(base) ? `${base} {${album.id.slice(0, 8)}}` : base;
+    names.add(name);
+    return [{ id: album.id, name, tracks }];
+  };
+  const unowned = CATALOGUE_ARTISTS.map(([artistId]) => {
     const albums = albumsOf.get(artistId) ?? [];
-    const wanted = [...studioAlbums(albums), ...albums.toSorted((a, b) => a.id.localeCompare(b.id))]
-      .filter((album, index, all) => all.indexOf(album) === index && !owned.has(album.id))
-      .slice(0, WORLD_ALBUMS_PER_ARTIST);
-    return wanted.flatMap((album) => {
-      const tracks = planAlbum(album);
-      if (tracks.length === 0) return [];
-      const artist = artistNames(album).get(album.artistid ?? "") ?? "Unknown Artist";
-      const year = (album.releasedate ?? "").slice(0, 4);
-      const base = pathPart(
-        `${artist} - ${album.title}${year && year !== "0001" ? ` (${year})` : ""} [FLAC]`,
-      );
-      const name = names.has(base) ? `${base} {${album.id.slice(0, 8)}}` : base;
-      names.add(name);
-      return [{ id: album.id, name, tracks }];
-    });
+    return [...studioAlbums(albums), ...albums.toSorted((a, b) => a.id.localeCompare(b.id))].filter(
+      (album, index, all) => all.indexOf(album) === index && !owned.has(album.id),
+    );
   });
+  const lossy = unowned[0]
+    ?.slice(WORLD_ALBUMS_PER_ARTIST)
+    .find((album) => planAlbum(album).length > 0);
+  return [
+    ...unowned.flatMap((albums) =>
+      albums.slice(0, WORLD_ALBUMS_PER_ARTIST).flatMap((album) => release(album, "[FLAC]")),
+    ),
+    ...(lossy ? release(lossy, LOSSY_LABEL) : []),
+  ];
 }
 
 const worldManifestSchema = v.array(
