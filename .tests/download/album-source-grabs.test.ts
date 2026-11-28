@@ -1522,6 +1522,69 @@ test("a track removed while its upgrade's release details are read gets no upgra
   assert.deepEqual(downloadTracker.getAll(), []);
 });
 
+test("an album grab that takes an upgrade while its release details are read keeps it", async (t) => {
+  for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
+  const claimed: { upgrade: string | null } = { upgrade: null };
+  await serveGroups(t, [], {
+    missing: () => {
+      const upgrade = downloadTracker.getAll().find((job) => job.upgradeForJobId);
+      if (upgrade?.status === "pending" && downloadTracker.setDownloading(upgrade.id)) {
+        claimed.upgrade = upgrade.id;
+      }
+      return true;
+    },
+  });
+  const settings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...settings,
+    integrations: {
+      metadata: settings.integrations?.metadata,
+      prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "disposable" },
+      nzbget: { enabled: true, url: "http://127.0.0.1:9" },
+    },
+  });
+  const original = join(resolveDownloadRoot(), "The Band", "claimed-upgrade", "01 - First.mp3");
+  await mkdir(dirname(original), { recursive: true });
+  await execFileAsync("ffmpeg", [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "anullsrc",
+    "-t",
+    "1",
+    "-c:a",
+    "libmp3lame",
+    "-b:a",
+    "128k",
+    original,
+  ]);
+  const id = createTrackedJob(
+    downloadTracker,
+    {
+      artistName: "The Band",
+      albumName: "claimed-upgrade",
+      albumMbid: "claimed-upgrade",
+      trackName: "First",
+      trackNumber: 1,
+      durationMs: 1000,
+    },
+    "library",
+  );
+  assert.ok(id != null);
+  downloadTracker.setDone(id, original, "claimed-upgrade");
+  downloadTracker.updateQuality(id, { tier: "mp3-128" });
+  vi.spyOn(downloadTracker, "enqueuePipeline").mockImplementation(() => {});
+  const runWorker = await holdDownloadWorker();
+
+  assert.equal(await queueQualityUpgrade(trackedJob(downloadTracker, id)), "queued");
+  await runWorker();
+  assert.ok(claimed.upgrade);
+  assert.equal(trackedJob(downloadTracker, claimed.upgrade).status, "downloading");
+});
+
 test("a track unmonitored while its upgrade's release details are read gets no upgrade", async (t) => {
   for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
   const original = join(resolveDownloadRoot(), "The Band", "unmonitored-upgrade", "01 - First.mp3");

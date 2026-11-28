@@ -766,9 +766,9 @@ export class DownloadWorker {
     if (context) {
       const { metadataUnreachable: _, ...resolved } = context;
       downloadTracker.updateMetadata(job.id, resolved);
-      Object.assign(job, resolved);
     }
-    const { manifest: release } = await readReleaseManifest(job.albumMbid, job.releaseMbid);
+    const current = downloadTracker.getJob(job.id) ?? job;
+    const { manifest: release } = await readReleaseManifest(current.albumMbid, current.releaseMbid);
     this._assertJobCanContinue(job, runGeneration);
     if (this.getWorkerSettings().paused) return;
     if (downloadTracker.enqueueDownloadPipeline(job.id, { release })) return;

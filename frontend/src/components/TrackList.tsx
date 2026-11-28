@@ -348,7 +348,8 @@ export function TrackList({
   const ids = useMemo(() => rows.map((row) => row.key), [rows]);
   const getItemKey = useCallback((index: number) => items[index]?.key ?? index, [items]);
   const [pickedKey, setPickedKey] = useState<string | null>(null);
-  const pickedIndex = pickedKey === null ? -1 : items.findIndex((item) => item.key === pickedKey);
+  const pickedIndex =
+    pickedKey === null || !onReorder ? -1 : items.findIndex((item) => item.key === pickedKey);
 
   const scroller = use(MainScrollContext);
   const windowed = variant !== "compact" && scroller !== null;
