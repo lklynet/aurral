@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router";
 import { SettingsLink } from "../navigation/settingsRoute";
-import { BellRinging, User, Heart, LogOut, ExternalLink, GitHub, Settings } from "./icons";
+import { BellRinging, User, LogOut, Settings } from "./icons";
 import { useAuth } from "../contexts/AuthContext";
 import { useWrappedSeason } from "../hooks/useWrapped.ts";
 import { useStorageHealth } from "../hooks/useStorageHealth";
@@ -121,34 +121,6 @@ function UserProfileMenu() {
                   </>
                 ) : null}
               </SettingsLink>
-            </li>
-            <li role="none">
-              <a
-                href="https://docs.aurral.org/sponsorship/"
-                target="_blank"
-                rel="noopener noreferrer"
-                role="menuitem"
-                className="app-profile-menu__item"
-                onClick={closeMenu}
-              >
-                <Heart className="app-profile-menu__item-icon" />
-                <span>Donate</span>
-                <ExternalLink className="app-profile-menu__item-external" />
-              </a>
-            </li>
-            <li role="none">
-              <a
-                href="https://github.com/lklynet/aurral"
-                target="_blank"
-                rel="noopener noreferrer"
-                role="menuitem"
-                className="app-profile-menu__item"
-                onClick={closeMenu}
-              >
-                <GitHub className="app-profile-menu__item-icon" />
-                <span>GitHub</span>
-                <ExternalLink className="app-profile-menu__item-external" />
-              </a>
             </li>
             {authRequired && canLogOut && (
               <li role="none">
