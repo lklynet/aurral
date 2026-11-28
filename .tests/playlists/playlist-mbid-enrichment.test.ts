@@ -132,6 +132,8 @@ test("enrichStaticPlaylistMbids resolves a track that names no album on its job'
       }),
   });
 
+  assert.equal(downloadTracker.getJob(jobId)?.albumMbid, "album-shape");
+  assert.equal(downloadTracker.getJob(liveJobId)?.albumMbid, "album-live");
   const [, stored] = flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks ?? [];
   assert.equal(stored?.albumName, "The Shape of Punk to Come");
   assert.equal(stored?.albumMbid, "album-shape");

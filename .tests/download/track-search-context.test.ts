@@ -592,21 +592,21 @@ test('a download credited with "&" takes the artist MusicBrainz names with "and"
 
 test("a track that names no album takes the album its song is on, when that album lists it", async (t) => {
   const band = artistEntry("station-band", "Station Band");
+  const hit = (title: string, albumId: string) => ({
+    recordingId: `rec-${albumId}`,
+    title,
+    artistId: band.id,
+    artistName: band.name,
+    albumId,
+  });
   stubMetadata(t, (path, params) => {
     if (path === "/v1/search/artist") return { artists: [band] };
     if (path === "/v1/search/track")
       return {
-        tracks: [
-          {
-            recordingId: `rec-${params.q}`,
-            title: params.q,
-            artistId: band.id,
-            artistName: band.name,
-            albumId: "station-album",
-            albumTitle: "Station Album",
-          },
-        ],
+        tracks: [hit(`${params.q} (Live)`, "live-album"), hit(String(params.q), "station-album")],
       };
+    if (path === "/v1/album/live-album")
+      return albumEntry("live-album", "Live Album", band, ["Radio Song (Live)"]);
     if (path === "/v1/album/station-album")
       return albumEntry("station-album", "Station Album", band, ["Opener", "Radio Song"]);
     return null;
