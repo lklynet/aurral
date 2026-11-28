@@ -92,6 +92,7 @@ export default defineConfig({
           "react/jsx-no-comment-textnodes": "error",
           "react/require-render-return": "error",
           "react/immutability": "off",
+          "react/incompatible-library": "off",
           "react/preserve-manual-memoization": "off",
           "react/purity": "off",
           "react/refs": "off",

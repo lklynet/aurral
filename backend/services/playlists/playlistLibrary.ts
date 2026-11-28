@@ -13,7 +13,7 @@ import { jobDownloadedItsFile, reuseTrackForPlaylist } from "../downloadJobs/fil
 import { removeLibraryMediaFiles } from "../libraryMediaStore.ts";
 import { removeSidecars } from "../libraryFiles/fileTransfer.ts";
 import { logger } from "../logger.ts";
-import { flowPlaylistConfig } from "./flowPlaylistConfig.ts";
+import { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } from "./flowPlaylistConfig.ts";
 import {
   buildCoreTrackIdentity,
   tracksShareMembership,
@@ -72,6 +72,8 @@ function keepFor(job: DownloadJob, startedByPlaylist: string | null) {
     downloadTracker.setStartedByPlaylist(job.id, null);
 }
 
+const canRequeue = (job: DownloadJob) => job.status === "saved" || job.status === "failed";
+
 const requeue = (job: DownloadJob, cause: JobCause) =>
   (job.status === "saved" && downloadTracker.setPending(job.id, null, { cause })) ||
   (job.status === "failed" &&
@@ -79,11 +81,7 @@ const requeue = (job: DownloadJob, cause: JobCause) =>
 
 async function createLibraryJob(
   track: PlaylistTrack,
-  {
-    startedByPlaylist,
-    download,
-    cause,
-  }: { startedByPlaylist: string | null; download: boolean; cause: JobCause },
+  { startedByPlaylist, cause }: { startedByPlaylist: string | null; cause: JobCause },
 ) {
   const jobId = downloadTracker.addJob(track, LIBRARY, { saved: true, cause });
   if (!jobId) return null;
@@ -94,7 +92,7 @@ async function createLibraryJob(
       targetPlaylistType: LIBRARY,
       skipHistory: true,
     });
-    if (reuse.reused) return { jobId, outcome: "reused" as const };
+    if (reuse.reused) return { jobId, reused: true };
   } catch (error) {
     logger.warn("playlists", "Track reuse failed; queueing a download", {
       artist: track.artistName,
@@ -103,10 +101,7 @@ async function createLibraryJob(
     });
   }
   if (startedByPlaylist) downloadTracker.setStartedByPlaylist(jobId, startedByPlaylist);
-  if (!download) return { jobId, outcome: "saved" as const };
-  downloadTracker.setPending(jobId, null);
-  recordTrackJobQueued(downloadTracker.getJob(jobId));
-  return { jobId, outcome: "queued" as const };
+  return { jobId, reused: false };
 }
 
 export function keepInLibrary(track: Parameters<typeof buildCoreTrackIdentity>[0]) {
@@ -125,6 +120,8 @@ export function keepSongsInLibrary(songKeys: string[]) {
   }
 }
 
+// Downloads start in the same transaction that saves what links them, so an
+// attempt that dies first leaves saved jobs a retry reuses.
 export async function linkTracksToLibrary(
   tracks: PlaylistTrack[],
   { startedByPlaylist, download = true }: { startedByPlaylist: string | null; download?: boolean },
@@ -134,41 +131,66 @@ export async function linkTracksToLibrary(
     : { kind: "request", playlistId: null };
   const index = libraryJobIndex();
   const linked: PlaylistTrack[] = [];
-  const queuedJobIds: string[] = [];
+  const queued = new Set<string>();
   const reusedJobIds: string[] = [];
   const createdJobIds: string[] = [];
-  for (const track of tracks) {
-    const referenced = downloadTracker.getJob(track.canonicalJobId);
-    const existing =
-      isLibraryJob(referenced) && tracksShareMembership(referenced, track)
-        ? referenced
-        : bestLibraryJob(index, track);
-    if (existing) {
-      keepFor(existing, startedByPlaylist);
-      if (download && existing !== referenced && requeue(existing, cause)) {
-        queuedJobIds.push(existing.id);
-        recordTrackJobQueued(downloadTracker.getJob(existing.id));
+  try {
+    for (const track of tracks) {
+      const referenced = downloadTracker.getJob(track.canonicalJobId);
+      const existing =
+        isLibraryJob(referenced) && tracksShareMembership(referenced, track)
+          ? referenced
+          : bestLibraryJob(index, track);
+      if (existing) {
+        keepFor(existing, startedByPlaylist);
+        if (download && existing !== referenced && canRequeue(existing)) queued.add(existing.id);
+        reusedJobIds.push(existing.id);
+        linked.push({ ...track, canonicalJobId: existing.id });
+        continue;
       }
-      reusedJobIds.push(existing.id);
-      linked.push({ ...track, canonicalJobId: existing.id });
-      continue;
+      const created = await createLibraryJob(track, { startedByPlaylist, cause });
+      if (!created) {
+        linked.push(track);
+        continue;
+      }
+      createdJobIds.push(created.jobId);
+      if (created.reused) reusedJobIds.push(created.jobId);
+      else if (download) queued.add(created.jobId);
+      const job = downloadTracker.getJob(created.jobId);
+      if (job) {
+        const key = buildCoreTrackIdentity(job);
+        index.set(key, [...(index.get(key) ?? []), job]);
+      }
+      linked.push({ ...track, canonicalJobId: created.jobId });
     }
-    const created = await createLibraryJob(track, { startedByPlaylist, download, cause });
-    if (!created) {
-      linked.push(track);
-      continue;
-    }
-    createdJobIds.push(created.jobId);
-    if (created.outcome === "queued") queuedJobIds.push(created.jobId);
-    if (created.outcome === "reused") reusedJobIds.push(created.jobId);
-    const job = downloadTracker.getJob(created.jobId);
-    if (job) {
-      const key = buildCoreTrackIdentity(job);
-      index.set(key, [...(index.get(key) ?? []), job]);
-    }
-    linked.push({ ...track, canonicalJobId: created.jobId });
+  } catch (error) {
+    await discardLibraryJobs(createdJobIds);
+    throw error;
   }
-  return { tracks: linked, queuedJobIds, reusedJobIds, createdJobIds };
+  const queuedJobIds = [...queued];
+  return {
+    tracks: linked,
+    queuedJobIds,
+    reusedJobIds,
+    createdJobIds,
+    commit<T>(save: () => T) {
+      try {
+        return db.transaction(() => {
+          const saved = save();
+          if (saved === null) return saved;
+          for (const id of queuedJobIds) {
+            const job = downloadTracker.getJob(id);
+            if (job && requeue(job, cause)) recordTrackJobQueued(downloadTracker.getJob(id));
+          }
+          return saved;
+        })();
+      } catch (error) {
+        invalidateFlowPlaylistConfigCache();
+        downloadTracker.reconcileCommittedJobs();
+        throw error;
+      }
+    },
+  };
 }
 
 function wantedElsewhere(job: DownloadJob, playlistId: string) {

@@ -4,7 +4,7 @@ import { downloadTracker, type DownloadJob } from "../downloadJobs/downloadTrack
 import { schedulePlaylistMbidEnrichment } from "../playlistMbidEnrichmentService.ts";
 import { flowPlaylistConfig, type FlowConfig } from "../playlists/flowPlaylistConfig.ts";
 import { buildPlaylistTrackIdentity, normalizePlaylistTrack } from "../playlists/playlistTracks.ts";
-import { linkTracksToLibrary } from "../playlists/playlistLibrary.ts";
+import { discardLibraryJobs, linkTracksToLibrary } from "../playlists/playlistLibrary.ts";
 import { playlistManager } from "../playlists/playlistManager.ts";
 
 const trackFromJob = (job: DownloadJob) => ({
@@ -54,14 +54,22 @@ export async function saveFlowAsStaticPlaylist(
     [...saved.values()].flatMap(({ job }) => normalizePlaylistTrack(trackFromJob(job)) ?? []),
     { startedByPlaylist: null },
   );
-  const playlist = flowPlaylistConfig.createStaticPlaylist({
-    name,
-    sourceName: flow.name,
-    sourceFlowId: flow.id,
-    recordHistory: flow.recordHistory,
-    tracks: linked.tracks,
-    ownerUserId,
-  });
+  let playlist;
+  try {
+    playlist = linked.commit(() =>
+      flowPlaylistConfig.createStaticPlaylist({
+        name,
+        sourceName: flow.name,
+        sourceFlowId: flow.id,
+        recordHistory: flow.recordHistory,
+        tracks: linked.tracks,
+        ownerUserId,
+      }),
+    );
+  } catch (error) {
+    await discardLibraryJobs(linked.createdJobIds);
+    throw error;
+  }
   try {
     await playlistManager.ensurePlaylistArtwork(playlist.id);
     playlistManager.requestPlaylistSync([playlist.id]);

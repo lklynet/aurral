@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   DndContext,
+  DragOverlay,
   KeyboardCode,
   KeyboardSensor,
   PointerSensor,
@@ -45,13 +46,18 @@ export function SortableList<Id extends UniqueIdentifier>({
   ids,
   titleOf,
   onReorder,
+  overlay,
+  onPickUp,
   children,
 }: {
   ids: Id[];
   titleOf: (id: UniqueIdentifier) => string;
   onReorder: (ids: Id[]) => void;
+  overlay?: (id: UniqueIdentifier) => ReactNode;
+  onPickUp?: (id: UniqueIdentifier) => void;
   children: ReactNode;
 }) {
+  const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates, keyboardCodes }),
@@ -69,6 +75,7 @@ export function SortableList<Id extends UniqueIdentifier>({
   };
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    setActiveId(null);
     if (!over || active.id === over.id) return;
     const from = indexOf(active.id);
     const to = indexOf(over.id);
@@ -82,12 +89,18 @@ export function SortableList<Id extends UniqueIdentifier>({
       collisionDetection={closestCenter}
       modifiers={[restrictToVerticalAxis]}
       accessibility={{ announcements }}
-      onDragStart={swallowClickAfterPointerDrag}
+      onDragStart={(event) => {
+        swallowClickAfterPointerDrag(event);
+        setActiveId(event.active.id);
+        onPickUp?.(event.active.id);
+      }}
       onDragEnd={handleDragEnd}
+      onDragCancel={() => setActiveId(null)}
     >
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         {children}
       </SortableContext>
+      {overlay ? <DragOverlay>{activeId === null ? null : overlay(activeId)}</DragOverlay> : null}
     </DndContext>
   );
 }

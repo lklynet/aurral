@@ -41,6 +41,7 @@ import { isLibrarySectionPath, useDiscoverRecent } from "../contexts/DiscoverRec
 import { isRecord } from "../../../lib/isRecord.ts";
 import { serverMenuItems } from "./serverMenuItems";
 import { HOSTED } from "../utils/server.ts";
+import { MainScrollContext } from "../contexts/mainScrollContext.ts";
 
 const SIDEBAR_THRESHOLD = 100;
 const SIDEBAR_MIN = 56;
@@ -438,9 +439,9 @@ function Layout({ children, headerActions }: LayoutProps) {
     const startedAt = performance.now();
     const restore = () => {
       if (!node) return;
-      const reachable = node.scrollHeight - node.clientHeight >= savedTop;
-      node.scrollTo({ top: savedTop, left: 0, behavior: "auto" });
-      if (!reachable && performance.now() - startedAt < 4000) {
+      const restored = Math.abs(node.scrollTop - savedTop) < 1;
+      if (!restored) node.scrollTo({ top: savedTop, left: 0, behavior: "auto" });
+      if (!restored && performance.now() - startedAt < 4000) {
         frameId = window.requestAnimationFrame(restore);
         return;
       }
@@ -595,7 +596,9 @@ function Layout({ children, headerActions }: LayoutProps) {
                 showScrollbarTemporarily();
               }}
             >
-              <div className="app-main__content">{children}</div>
+              <div className="app-main__content">
+                <MainScrollContext value={mainScrollRef}>{children}</MainScrollContext>
+              </div>
             </main>
             <div
               ref={scrollbarTrackRef}

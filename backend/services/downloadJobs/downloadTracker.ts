@@ -651,10 +651,13 @@ export const downloadCause = (
 export class DownloadTracker {
   declare enqueuePipeline: (payload: PipelinePayload) => unknown;
   declare jobs: Map<string, DownloadJob>;
+  declare jobsByTrackName: Map<string, Set<DownloadJob>>;
+  declare jobsByFinalPath: Map<string, Set<DownloadJob>>;
+  declare upgradesBySource: Map<string, Set<DownloadJob>>;
   declare statsByPlaylistType: Map<string, TrackerStats>;
   declare globalStats: TrackerStats;
-  declare pendingFreshQueue: string[];
-  declare pendingRetryQueue: string[];
+  declare pendingFreshQueue: Set<string>;
+  declare pendingRetryQueue: Set<string>;
   declare pendingSet: Set<string>;
   declare pendingRetrySet: Set<string>;
   declare slskdDispatched: Set<string>;
@@ -670,10 +673,13 @@ export class DownloadTracker {
   }: { enqueuePipeline?: (payload: PipelinePayload) => unknown } = {}) {
     this.enqueuePipeline = enqueuePipeline;
     this.jobs = new Map();
+    this.jobsByTrackName = new Map();
+    this.jobsByFinalPath = new Map();
+    this.upgradesBySource = new Map();
     this.statsByPlaylistType = new Map();
     this.globalStats = this._emptyStats();
-    this.pendingFreshQueue = [];
-    this.pendingRetryQueue = [];
+    this.pendingFreshQueue = new Set();
+    this.pendingRetryQueue = new Set();
     this.pendingSet = new Set();
     this.pendingRetrySet = new Set();
     this.slskdDispatched = new Set();
@@ -747,8 +753,8 @@ export class DownloadTracker {
       const job = nextJobs.get(id);
       if (!job || job.status !== "pending") continue;
       this.pendingRetrySet.add(id);
-      this.pendingFreshQueue = this.pendingFreshQueue.filter((entry) => entry !== id);
-      this.pendingRetryQueue.push(id);
+      this.pendingFreshQueue.delete(id);
+      this.pendingRetryQueue.add(id);
     }
     this._touchRevision();
     this.externalDataVersion = dataVersionStmt.get()?.data_version;
@@ -1257,24 +1263,28 @@ export class DownloadTracker {
   }
 
   _rebuildStatsByPlaylistType() {
+    this.jobsByTrackName.clear();
+    this.jobsByFinalPath.clear();
+    this.upgradesBySource.clear();
     this.statsByPlaylistType.clear();
     this.globalStats = this._emptyStats();
-    this.pendingFreshQueue = [];
-    this.pendingRetryQueue = [];
+    this.pendingFreshQueue = new Set();
+    this.pendingRetryQueue = new Set();
     this.pendingSet = new Set();
     this.pendingRetrySet = new Set();
     for (const job of this.jobs.values()) {
+      this._indexJob(job);
       this._applyStatusDelta(job.playlistType, null, job.status);
       if (job.status === "pending" && !job.manualReplacementSearch) {
-        this.pendingFreshQueue.push(job.id);
+        this.pendingFreshQueue.add(job.id);
         this.pendingSet.add(job.id);
       }
     }
   }
 
   _removeFromPendingQueues(id: string) {
-    this.pendingFreshQueue = this.pendingFreshQueue.filter((entryId) => entryId !== id);
-    this.pendingRetryQueue = this.pendingRetryQueue.filter((entryId) => entryId !== id);
+    this.pendingFreshQueue.delete(id);
+    this.pendingRetryQueue.delete(id);
   }
 
   // The jobs a queued step still carries for their current attempt. The
@@ -1518,11 +1528,12 @@ export class DownloadTracker {
       createdAt: Date.now(),
       retryCycle: false,
     };
-    this.jobs.set(id, job);
     this._insert(job);
+    this.jobs.set(id, job);
+    this._indexJob(job);
     this._applyStatusDelta(playlistType, null, job.status);
     if (job.status !== "pending") return id;
-    this.pendingFreshQueue.push(id);
+    this.pendingFreshQueue.add(id);
     this.pendingSet.add(id);
     this.pendingRetrySet.delete(id);
     this._announcePendingWork();
@@ -1533,12 +1544,7 @@ export class DownloadTracker {
     const sourcePath = String(finalPath || "").trim();
     if (!sourcePath) return null;
     const resolvedPath = path.resolve(sourcePath);
-    const existing = [...this.jobs.values()].find(
-      (job) =>
-        job.status === "done" &&
-        !job.upgradeForJobId &&
-        path.resolve(job.finalPath) === resolvedPath,
-    );
+    const existing = this.getDoneByFinalPath(resolvedPath).find((job) => !job.upgradeForJobId);
     if (existing) return existing;
 
     const id = this.addJob(
@@ -1562,14 +1568,12 @@ export class DownloadTracker {
 
   findActiveUpgradeJob(sourceJob: Pick<DownloadJob, "finalPath"> | null | undefined) {
     if (!sourceJob?.finalPath) return null;
-    return (
-      [...this.jobs.values()].find((job) => {
-        if (!job.upgradeForJobId || !["pending", "downloading", "blocked"].includes(job.status)) {
-          return false;
-        }
-        return this.jobs.get(job.upgradeForJobId)?.finalPath === sourceJob.finalPath;
-      }) || null
-    );
+    for (const source of this.jobsByFinalPath.get(path.resolve(sourceJob.finalPath)) ?? []) {
+      for (const upgrade of this.upgradesBySource.get(source.id) ?? []) {
+        if (["pending", "downloading", "blocked"].includes(upgrade.status)) return upgrade;
+      }
+    }
+    return null;
   }
 
   addUpgradeJob(sourceJob: DownloadJob | null | undefined) {
@@ -1582,6 +1586,7 @@ export class DownloadTracker {
     });
     const job = this.jobs.get(id!)!;
     job.upgradeForJobId = sourceJob.id;
+    this._indexJob(job);
     job.deniedRemoteSources = [...(sourceJob.deniedRemoteSources ?? [])];
     this._update(job);
     updateDeniedSourcesStmt.run(JSON.stringify(job.deniedRemoteSources), id);
@@ -1589,8 +1594,8 @@ export class DownloadTracker {
   }
 
   queueFirst(ids: string[]) {
-    const first = new Set(ids);
-    this.pendingFreshQueue = [...ids, ...this.pendingFreshQueue.filter((id) => !first.has(id))];
+    const first = ids.filter((id) => this.pendingSet.has(id));
+    this.pendingFreshQueue = new Set([...first, ...this.pendingFreshQueue]);
   }
 
   addReplacementSearchJob(sourceJob: DownloadJob | null | undefined) {
@@ -1603,6 +1608,7 @@ export class DownloadTracker {
     });
     const job = this.jobs.get(id!)!;
     job.upgradeForJobId = sourceJob.id;
+    this._indexJob(job);
     job.manualReplacementSearch = true;
     this.pendingSet.delete(job.id);
     this.pendingRetrySet.delete(job.id);
@@ -1656,7 +1662,7 @@ export class DownloadTracker {
     const changed = [];
     for (const job of this.jobs.values()) {
       if (job.status !== "done" || job.finalPath !== sourcePath) continue;
-      job.finalPath = finalPath;
+      this._setFinalPath(job, finalPath);
       job.externalPath = null;
       job.qualityTier = quality?.tier || null;
       job.qualityFormat = quality?.format || null;
@@ -1683,7 +1689,7 @@ export class DownloadTracker {
   updateFinalPath(id: string, finalPath: string) {
     const job = this.jobs.get(id);
     if (!job || job.status !== "done") return false;
-    job.finalPath = finalPath;
+    this._setFinalPath(job, finalPath);
     this._update(job);
     return true;
   }
@@ -1771,6 +1777,15 @@ export class DownloadTracker {
     cancelDownloadJob(id);
     this.clearSlskdPipelineState(id);
     this.jobs.delete(id);
+    const key = trackNameKey(job.trackName);
+    const sameName = this.jobsByTrackName.get(key);
+    sameName?.delete(job);
+    if (sameName?.size === 0) this.jobsByTrackName.delete(key);
+    this._unindexFinalPath(job);
+    const sourceId = job.upgradeForJobId;
+    const upgrades = sourceId ? this.upgradesBySource.get(sourceId) : undefined;
+    upgrades?.delete(job);
+    if (sourceId && upgrades?.size === 0) this.upgradesBySource.delete(sourceId);
     this.pendingSet.delete(id);
     this.pendingRetrySet.delete(id);
     this._removeFromPendingQueues(id);
@@ -1780,7 +1795,7 @@ export class DownloadTracker {
     return true;
   }
 
-  _pickPendingFromQueue(queue: string[], lastPlaylistType: string | null = null) {
+  _pickPendingFromQueue(queue: Set<string>, lastPlaylistType: string | null = null) {
     let fallback: DownloadJob | null = null;
     for (const nextId of queue) {
       if (!this.pendingSet.has(nextId)) {
@@ -1797,14 +1812,6 @@ export class DownloadTracker {
       return job;
     }
     return fallback;
-  }
-
-  _compactPendingQueue(queue: string[]) {
-    return queue.filter((id) => {
-      if (!this.pendingSet.has(id)) return false;
-      const job = this.jobs.get(id);
-      return !!job && job.status === "pending";
-    });
   }
 
   getNextPending(lastPlaylistType: string | null = null) {
@@ -1830,11 +1837,14 @@ export class DownloadTracker {
         playlistGeneration: job.playlistGeneration,
       }) &&
       accepts(job);
-    this.pendingFreshQueue = this._compactPendingQueue(this.pendingFreshQueue);
-    const nextFresh = this._pickPendingFromQueue(this.pendingFreshQueue, lastPlaylistType);
+    const alternate =
+      lastPlaylistType &&
+      this.statsByPlaylistType.get(lastPlaylistType)?.pending !== this.globalStats.pending
+        ? lastPlaylistType
+        : null;
+    const nextFresh = this._pickPendingFromQueue(this.pendingFreshQueue, alternate);
     if (canProcess(nextFresh)) return nextFresh;
-    this.pendingRetryQueue = this._compactPendingQueue(this.pendingRetryQueue);
-    const nextRetry = this._pickPendingFromQueue(this.pendingRetryQueue, lastPlaylistType);
+    const nextRetry = this._pickPendingFromQueue(this.pendingRetryQueue, alternate);
     if (canProcess(nextRetry)) return nextRetry;
     if (this.pendingSet.size > 0) {
       for (const id of this.pendingSet) {
@@ -1849,13 +1859,14 @@ export class DownloadTracker {
     const max =
       Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.floor(Number(limit)) : 10;
     const jobs = [];
-    const combined = [...this.pendingFreshQueue, ...this.pendingRetryQueue];
-    for (const id of combined) {
-      if (jobs.length >= max) break;
-      if (!this.pendingSet.has(id)) continue;
-      const job = this.jobs.get(id);
-      if (!job || job.status !== "pending") continue;
-      jobs.push(job);
+    for (const queue of [this.pendingFreshQueue, this.pendingRetryQueue]) {
+      for (const id of queue) {
+        if (jobs.length >= max) return jobs;
+        if (!this.pendingSet.has(id)) continue;
+        const job = this.jobs.get(id);
+        if (!job || job.status !== "pending") continue;
+        jobs.push(job);
+      }
     }
     return jobs;
   }
@@ -1889,7 +1900,7 @@ export class DownloadTracker {
     job.startedAt = null;
     job.completedAt = null;
     job.stagingPath = null;
-    job.finalPath = null;
+    this._setFinalPath(job, null);
     job.reusedLibraryFile = false;
     job.retryCycle = asRetryCycle;
     job.error = typeof error === "string" ? error : (error && error.message) || null;
@@ -1900,10 +1911,10 @@ export class DownloadTracker {
     this._removeFromPendingQueues(id);
     if (asRetryCycle) {
       this.pendingRetrySet.add(id);
-      this.pendingRetryQueue.push(id);
+      this.pendingRetryQueue.add(id);
     } else {
       this.pendingRetrySet.delete(id);
-      this.pendingFreshQueue.push(id);
+      this.pendingFreshQueue.add(id);
     }
     this._announcePendingWork();
     return true;
@@ -1925,10 +1936,10 @@ export class DownloadTracker {
     this.pendingSet.add(id);
     if (moveToRetryTier) {
       this.pendingRetrySet.add(id);
-      this.pendingRetryQueue.push(id);
+      this.pendingRetryQueue.add(id);
     } else {
       this.pendingRetrySet.delete(id);
-      this.pendingFreshQueue.push(id);
+      this.pendingFreshQueue.add(id);
     }
     return true;
   }
@@ -1989,7 +2000,7 @@ export class DownloadTracker {
     job.error = null;
     job.completedAt = Date.now();
     this._setAlbumGrabFailures(job, 0);
-    job.finalPath = finalPath;
+    this._setFinalPath(job, finalPath);
     job.externalPath = externalPath ?? null;
     if (reusedLibraryFile !== undefined) job.reusedLibraryFile = reusedLibraryFile === true;
     if (quality) this._applyQuality(job, quality);
@@ -2135,10 +2146,10 @@ export class DownloadTracker {
         this._removeFromPendingQueues(job.id);
         if (job.retryCycle === true) {
           this.pendingRetrySet.add(job.id);
-          this.pendingRetryQueue.push(job.id);
+          this.pendingRetryQueue.add(job.id);
         } else {
           this.pendingRetrySet.delete(job.id);
-          this.pendingFreshQueue.push(job.id);
+          this.pendingFreshQueue.add(job.id);
         }
         count++;
       }
@@ -2188,17 +2199,53 @@ export class DownloadTracker {
     return Boolean(liveJobStmt.get(id ?? null));
   }
 
+  _indexJob(job: DownloadJob) {
+    const key = trackNameKey(job.trackName);
+    const sameName = this.jobsByTrackName.get(key);
+    if (sameName) sameName.add(job);
+    else this.jobsByTrackName.set(key, new Set([job]));
+    this._indexFinalPath(job);
+    if (!job.upgradeForJobId) return;
+    const upgrades = this.upgradesBySource.get(job.upgradeForJobId);
+    if (upgrades) upgrades.add(job);
+    else this.upgradesBySource.set(job.upgradeForJobId, new Set([job]));
+  }
+
+  _unindexFinalPath(job: DownloadJob) {
+    if (!job.finalPath) return;
+    const pathKey = path.resolve(job.finalPath);
+    const sameFile = this.jobsByFinalPath.get(pathKey);
+    sameFile?.delete(job);
+    if (sameFile?.size === 0) this.jobsByFinalPath.delete(pathKey);
+  }
+
+  _indexFinalPath(job: DownloadJob) {
+    if (!job.finalPath) return;
+    const pathKey = path.resolve(job.finalPath);
+    const sameFile = this.jobsByFinalPath.get(pathKey);
+    if (sameFile) sameFile.add(job);
+    else this.jobsByFinalPath.set(pathKey, new Set([job]));
+  }
+
+  _setFinalPath(job: DownloadJob, finalPath: string | null) {
+    this._unindexFinalPath(job);
+    job.finalPath = finalPath;
+    this._indexFinalPath(job);
+  }
+
+  getActiveReuseJobsByTrackName(trackName: string | null | undefined) {
+    return [...(this.jobsByTrackName.get(trackNameKey(trackName)) ?? [])].filter(isActiveReuseJob);
+  }
+
   getDoneByTrackName(trackName: string | null | undefined) {
-    const key = trackNameKey(trackName);
-    return [...this.jobs.values()].filter(
-      (job) => job.status === "done" && trackNameKey(job.trackName) === key,
+    return [...(this.jobsByTrackName.get(trackNameKey(trackName)) ?? [])].filter(
+      (job) => job.status === "done",
     );
   }
 
   getDoneByFinalPath(finalPath: string) {
-    const resolved = path.resolve(finalPath);
-    return [...this.jobs.values()].filter(
-      (job) => job.status === "done" && path.resolve(job.finalPath) === resolved,
+    return [...(this.jobsByFinalPath.get(path.resolve(finalPath)) ?? [])].filter(
+      (job) => job.status === "done",
     );
   }
 
@@ -2297,10 +2344,13 @@ export class DownloadTracker {
     const count = this.jobs.size;
     discardReviewFiles([...this.jobs.values()]);
     this.jobs.clear();
+    this.jobsByTrackName.clear();
+    this.jobsByFinalPath.clear();
+    this.upgradesBySource.clear();
     this.statsByPlaylistType.clear();
     this.globalStats = this._emptyStats();
-    this.pendingFreshQueue = [];
-    this.pendingRetryQueue = [];
+    this.pendingFreshQueue = new Set();
+    this.pendingRetryQueue = new Set();
     this.pendingSet = new Set();
     this.pendingRetrySet = new Set();
     deleteAllStmt.run();
@@ -2331,6 +2381,9 @@ const isAlbumMatcher = (value: unknown): value is (albumMbid: string) => boolean
 const isLiveStatus = (status: string): status is keyof ReturnType<typeof emptyLiveStats> =>
   status in emptyLiveStats();
 
+const isActiveReuseJob = (job: DownloadJob) =>
+  job.playlistType !== "library" && (job.status === "pending" || job.status === "downloading");
+
 function readTrackerFromDatabase(name: string, args: unknown[]): unknown {
   const [first, second] = args;
   if (name === "getJob") {
@@ -2342,6 +2395,13 @@ function readTrackerFromDatabase(name: string, args: unknown[]): unknown {
     return new Map(liveJobs(rows).map((job) => [job.id, job]));
   }
   if (name === "getAll") return liveJobs(selectAllStmt.all());
+  if (name === "getActiveReuseJobsByTrackName") {
+    const key = trackNameKey(first);
+    return liveJobs([
+      ...liveStatusJobsStmt.all("pending"),
+      ...liveStatusJobsStmt.all("downloading"),
+    ]).filter((job) => isActiveReuseJob(job) && trackNameKey(job.trackName) === key);
+  }
   if (name === "getDoneByTrackName") {
     const key = trackNameKey(first);
     return liveJobsById(
@@ -2422,6 +2482,7 @@ const LIVE_READ_METHODS = new Set([
   "getJob",
   "getJobs",
   "getAll",
+  "getActiveReuseJobsByTrackName",
   "getDoneByTrackName",
   "getDoneByFinalPath",
   "getByPlaylistType",

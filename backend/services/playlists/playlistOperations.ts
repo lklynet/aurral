@@ -491,17 +491,19 @@ async function createStaticPlaylist({
   });
   let playlist;
   try {
-    playlist = flowPlaylistConfig.createStaticPlaylist({
-      id: safePlaylistId,
-      name,
-      sourceName,
-      sourceFlowId,
-      discoverPresetId,
-      tracks: linked.tracks,
-      ownerUserId,
-      importSource: isRecord(importSource) ? importSource : null,
-      description,
-    });
+    playlist = linked.commit(() =>
+      flowPlaylistConfig.createStaticPlaylist({
+        id: safePlaylistId,
+        name,
+        sourceName,
+        sourceFlowId,
+        discoverPresetId,
+        tracks: linked.tracks,
+        ownerUserId,
+        importSource: isRecord(importSource) ? importSource : null,
+        description,
+      }),
+    );
   } catch (error) {
     await discardLibraryJobs(linked.createdJobIds);
     throw error;
@@ -535,12 +537,17 @@ async function appendStaticPlaylistTracks({
   }
   const linked = await linkTracksToLibrary(tracksToAdd, { startedByPlaylist: safePlaylistId });
   const updatedPlaylist = await withPlaylistMutationLock(safePlaylistId, () =>
-    flowPlaylistConfig.appendStaticPlaylistTracks(
-      safePlaylistId,
-      linked.tracks,
-      Number(actorUserId) || null,
+    linked.commit(() =>
+      flowPlaylistConfig.appendStaticPlaylistTracks(
+        safePlaylistId,
+        linked.tracks,
+        Number(actorUserId) || null,
+      ),
     ),
-  );
+  ).catch(async (error: unknown) => {
+    await discardLibraryJobs(linked.createdJobIds);
+    throw error;
+  });
   if (!updatedPlaylist) {
     await discardLibraryJobs(linked.createdJobIds);
     return { missing: true };
@@ -670,10 +677,12 @@ async function updateStaticPlaylistLocked({
     });
     const keptJobIds = new Set(nextTracks.map((track) => track.canonicalJobId));
     return {
-      playlist: flowPlaylistConfig.updateStaticPlaylist(safePlaylistId, {
-        ...metadata,
-        tracks: nextTracks,
-      }),
+      playlist: linked.commit(() =>
+        flowPlaylistConfig.updateStaticPlaylist(safePlaylistId, {
+          ...metadata,
+          tracks: nextTracks,
+        }),
+      ),
       linked,
       tracksReused: assigned.size + linked.reusedJobIds.length,
       removedJobIds: unusedJobIds.filter((jobId) => !keptJobIds.has(jobId)),

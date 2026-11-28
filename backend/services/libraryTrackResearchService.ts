@@ -32,16 +32,9 @@ export function resolveAurralOwnedTrackJob({
     .filter((file) => isAurralOwnedPath(file.resolvedPath));
   if (ownedFiles.length === 0) return null;
 
-  const sourceJob = downloadTracker
-    .getAll()
-    .filter(
-      (job) =>
-        job.status === "done" &&
-        !job.upgradeForJobId &&
-        job.finalPath &&
-        ownedFiles.some((file) => file.resolvedPath === path.resolve(job.finalPath!)) &&
-        isAurralOwnedPath(job.finalPath),
-    )
+  const sourceJob = ownedFiles
+    .flatMap((file) => downloadTracker.getDoneByFinalPath(file.resolvedPath))
+    .filter((job) => !job.upgradeForJobId && isAurralOwnedPath(job.finalPath))
     .sort(
       (left, right) =>
         Number(right.completedAt || right.createdAt || 0) -

@@ -73,6 +73,7 @@ interface SpotifyRequestOptions {
 
 interface FetchAllPagesOptions {
   searchParams?: SpotifySearchParams;
+  playlistId?: string;
   onPage?: (page: SpotifyPageSummary) => void;
 }
 
@@ -307,25 +308,40 @@ async function fetchAllPages<Item extends v.GenericSchema>(
   userId: number | undefined,
   path: string,
   item: Item,
-  { searchParams, onPage }: FetchAllPagesOptions = {},
+  { searchParams, playlistId, onPage }: FetchAllPagesOptions = {},
 ) {
   const pageSchema = spotifyPageSchema(item);
   const items: v.InferOutput<Item>[] = [];
+  const continuations = new Set<string>();
   let nextUrl: string | null = null;
+  let total: number | null = null;
   while (true) {
     const response: unknown = nextUrl
       ? await spotifyRequest(userId, null, { url: nextUrl })
       : await spotifyRequest(userId, path, { searchParams });
     const payload = v.parse(pageSchema, response);
     const pageItems = payload?.items ?? [];
-    onPage?.({
-      offset: payload?.offset ?? null,
-      total: payload?.total ?? null,
-      itemCount: pageItems.length,
-    });
-    items.push(...pageItems);
+    const offset = payload?.offset ?? null;
+    const pageTotal = payload?.total ?? null;
+    if (continuations.size === 0) total = pageTotal;
     nextUrl = payload?.next || null;
+    const incomplete =
+      (nextUrl && (!pageItems.length || continuations.has(nextUrl))) ||
+      (playlistId &&
+        ((offset !== null && offset !== items.length) ||
+          pageTotal !== total ||
+          (nextUrl && total !== null && items.length + pageItems.length >= total)));
+    if (incomplete) {
+      throw createIncompletePlaylistError(
+        playlistId ?? path,
+        total,
+        items.length + pageItems.length,
+      );
+    }
+    onPage?.({ offset, total: pageTotal, itemCount: pageItems.length });
+    for (const entry of pageItems) items.push(entry);
     if (!nextUrl) break;
+    continuations.add(nextUrl);
   }
   return items;
 }
@@ -401,6 +417,7 @@ export const spotifyClient = {
       playlistId === SPOTIFY_LIKED_SONGS_ID
         ? fetchAllPages(userId, "/me/tracks", spotifyPlaylistItemSchema, {
             searchParams: { limit: 50 },
+            playlistId,
             onPage,
           })
         : fetchAllPages(
@@ -414,6 +431,7 @@ export const spotifyClient = {
                 fields:
                   "items(item(type,name,duration_ms,artists(name),album(name),external_ids(isrc))),next,total,offset",
               },
+              playlistId,
               onPage,
             },
           )

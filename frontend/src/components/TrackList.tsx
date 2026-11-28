@@ -1,6 +1,10 @@
 import ArtworkImage from "./ArtworkImage";
 import {
+  use,
+  useCallback,
   useEffect,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEventHandler,
@@ -10,6 +14,7 @@ import {
 } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { defaultRangeExtractor, measureElement, useVirtualizer } from "@tanstack/react-virtual";
 import {
   AlertTriangle,
   ArrowDown,
@@ -29,6 +34,7 @@ import { LibraryItemMenu } from "./LibraryItemMenu";
 import Tooltip from "./Tooltip";
 import TooltipButton from "./TooltipButton";
 import RouteLink from "./RouteLink";
+import { MainScrollContext } from "../contexts/mainScrollContext.ts";
 
 const SORTABLE_HEADINGS = {
   number: "index",
@@ -37,6 +43,10 @@ const SORTABLE_HEADINGS = {
   album: "album",
   year: "year",
 } as const;
+
+const ROW_SIZE_ESTIMATE = 56;
+const SECTION_SIZE_ESTIMATE = 46;
+const learnedRowSizes = new Map<string, number>();
 
 type SortableHeading = keyof typeof SORTABLE_HEADINGS;
 type SortKey = (typeof SORTABLE_HEADINGS)[SortableHeading];
@@ -323,30 +333,85 @@ export function TrackList({
   highlightKey?: string | number | null;
 }) {
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
+  const [listNode, setListNode] = useState<HTMLDivElement | null>(null);
   const isCollection = variant === "collection";
   const hasCover = variant !== "release";
   const showPopular = rows.some((row) => row.popular);
+  const items = useMemo(
+    () =>
+      rows.flatMap((row) => {
+        const entry = { key: String(row.key), row, section: false };
+        return row.section ? [{ key: `section-${row.key}`, row, section: true }, entry] : [entry];
+      }),
+    [rows],
+  );
+  const ids = useMemo(() => rows.map((row) => row.key), [rows]);
+  const getItemKey = useCallback((index: number) => items[index]?.key ?? index, [items]);
+  const [pickedKey, setPickedKey] = useState<string | null>(null);
+  const pickedIndex =
+    pickedKey === null || !onReorder ? -1 : items.findIndex((item) => item.key === pickedKey);
+
+  const scroller = use(MainScrollContext);
+  const windowed = variant !== "compact" && scroller !== null;
+  const [scrollMargin, setScrollMargin] = useState(0);
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    enabled: windowed,
+    getScrollElement: () => scroller?.current ?? null,
+    initialOffset: () => scroller?.current?.scrollTop ?? 0,
+    getItemKey,
+    estimateSize: (index) =>
+      items[index]?.section
+        ? SECTION_SIZE_ESTIMATE
+        : (learnedRowSizes.get(variant) ?? ROW_SIZE_ESTIMATE),
+    measureElement: (element, entry, instance) => {
+      const size = measureElement(element, entry, instance);
+      if (element.getAttribute("role") === "listitem") learnedRowSizes.set(variant, size);
+      return size;
+    },
+    overscan: 12,
+    scrollMargin,
+    rangeExtractor: (range) => {
+      const indexes = defaultRangeExtractor(range);
+      return pickedIndex < 0 || indexes.includes(pickedIndex)
+        ? indexes
+        : [...indexes, pickedIndex].sort((left, right) => left - right);
+    },
+  });
+
+  useLayoutEffect(() => {
+    const main = scroller?.current;
+    if (!windowed || !listNode || !main) return undefined;
+    const update = () =>
+      setScrollMargin(
+        listNode.getBoundingClientRect().top - main.getBoundingClientRect().top + main.scrollTop,
+      );
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(main.firstElementChild ?? listNode);
+    return () => observer.disconnect();
+  }, [listNode, scroller, windowed]);
 
   const [flashKey, setFlashKey] = useState<string | null>(null);
   const scrolledKey = useRef<string | null>(null);
   const target = highlightKey ? String(highlightKey) : null;
-  const targetShown = target !== null && rows.some((row) => String(row.key) === target);
+  const targetIndex = target === null ? -1 : items.findIndex((item) => item.key === target);
 
   useEffect(() => {
     if (!target) {
       scrolledKey.current = null;
       return undefined;
     }
-    if (!targetShown || scrolledKey.current === target) return undefined;
+    if (targetIndex < 0 || scrolledKey.current === target) return undefined;
     // Layout resets the page scroll after child effects run, so scroll on the next frame.
-    // A smooth scroll renders the content-visibility rows it passes, which shrink and push it off target.
     const frame = window.requestAnimationFrame(() => {
       scrolledKey.current = target;
-      rowRefs.current.get(target)?.scrollIntoView({ block: "center" });
+      if (windowed) virtualizer.scrollToIndex(targetIndex, { align: "center" });
+      else rowRefs.current.get(target)?.scrollIntoView({ block: "center" });
       setFlashKey(target);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [target, targetShown]);
+  }, [target, targetIndex, windowed, virtualizer]);
 
   useEffect(() => {
     if (!flashKey) return undefined;
@@ -354,7 +419,7 @@ export function TrackList({
     return () => window.clearTimeout(timeout);
   }, [flashKey]);
 
-  const renderRow = (row: TrackListRow, drag: RowDrag | null) => {
+  const renderRow = (row: TrackListRow, index: number | null, drag: RowDrag | null) => {
     const playLabel = row.playing
       ? `Pause ${row.title}`
       : row.previewOnly
@@ -363,22 +428,25 @@ export function TrackList({
     return (
       <div
         key={row.key}
+        data-index={index ?? undefined}
         ref={(node) => {
+          if (index === null) return;
           drag?.ref(node);
+          if (windowed) virtualizer.measureElement(node);
           if (node) rowRefs.current.set(String(row.key), node);
           else rowRefs.current.delete(String(row.key));
         }}
         style={drag?.style}
         className={
           "native-library-track" +
-          (drag?.dragging ? " is-dragging" : "") +
+          (index === null ? " is-dragging" : drag?.dragging ? " is-drag-source" : "") +
           (row.active ? " is-active" : "") +
           (flashKey === String(row.key) ? " is-search-focused" : "") +
           (row.missing ? " is-missing" : "") +
           (row.missing && row.previewOnly ? " is-preview" : "")
         }
         data-library-menu-target={row.menu || row.menuElement ? true : undefined}
-        role="listitem"
+        role={index === null ? undefined : "listitem"}
         aria-current={row.active ? "true" : undefined}
       >
         {selection ? (
@@ -508,28 +576,90 @@ export function TrackList({
     );
   };
 
+  const renderItem = (index: number) => {
+    const item = items[index];
+    if (!item) return null;
+    if (item.section) {
+      return (
+        <div
+          key={item.key}
+          data-index={index}
+          ref={windowed ? virtualizer.measureElement : undefined}
+          className="native-library-track-section"
+          role="presentation"
+        >
+          {item.row.section}
+        </div>
+      );
+    }
+    if (!onReorder) return renderRow(item.row, index, null);
+    return (
+      <SortableTrackRow key={item.key} id={item.row.key} title={item.row.title}>
+        {(drag) =>
+          renderRow(
+            item.row,
+            index,
+            pinned?.index === index
+              ? {
+                  ...drag,
+                  style: {
+                    ...drag.style,
+                    position: "absolute",
+                    insetInline: 0,
+                    top: pinned.start - scrollMargin,
+                  },
+                }
+              : drag,
+          )
+        }
+      </SortableTrackRow>
+    );
+  };
+
+  const virtualItems = windowed ? virtualizer.getVirtualItems() : [];
+  const pinned = virtualItems.find(
+    (item) =>
+      item.index === pickedIndex &&
+      !virtualItems.some((other) => Math.abs(other.index - pickedIndex) === 1),
+  );
+  const shown = virtualItems.filter((item) => item !== pinned);
+  const first = shown[0];
+  const last = shown.at(-1);
   const list = (
-    <div role="list" aria-label={label}>
-      {rows.flatMap((row) => [
-        row.section ? (
-          <div
-            key={`section-${row.key}`}
-            className="native-library-track-section"
-            role="presentation"
-          >
-            {row.section}
-          </div>
-        ) : null,
-        onReorder ? (
-          <SortableTrackRow key={row.key} id={row.key} title={row.title}>
-            {(drag) => renderRow(row, drag)}
-          </SortableTrackRow>
-        ) : (
-          renderRow(row, null)
-        ),
-      ])}
+    <div
+      ref={setListNode}
+      role="list"
+      aria-label={label}
+      style={
+        windowed
+          ? {
+              position: "relative",
+              paddingTop: first ? first.start - scrollMargin : 0,
+              paddingBottom: virtualizer.getTotalSize() - (last ? last.end - scrollMargin : 0),
+            }
+          : undefined
+      }
+    >
+      {windowed
+        ? virtualItems.map((item) => renderItem(item.index))
+        : items.map((_, index) => renderItem(index))}
     </div>
   );
+
+  const overlayRow = (id: TrackListRow["key"]) => {
+    const row = rows.find((entry) => entry.key === id);
+    if (!row) return null;
+    return renderRow(row, null, {
+      ref: () => undefined,
+      style: {},
+      dragging: true,
+      handle: (
+        <span className="native-library-track__grip" aria-hidden="true">
+          <GripVertical aria-hidden="true" />
+        </span>
+      ),
+    });
+  };
 
   return (
     <div
@@ -576,9 +706,11 @@ export function TrackList({
       )}
       {onReorder ? (
         <SortableList
-          ids={rows.map((row) => row.key)}
+          ids={ids}
           titleOf={(id) => rows.find((row) => row.key === id)?.title || "Track"}
           onReorder={onReorder}
+          overlay={overlayRow}
+          onPickUp={(id) => setPickedKey(String(id))}
         >
           {list}
         </SortableList>
