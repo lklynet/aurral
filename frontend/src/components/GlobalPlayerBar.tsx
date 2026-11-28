@@ -6,6 +6,7 @@ import {
   type ChangeEvent,
   type PointerEvent,
   type ReactNode,
+  type WheelEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router";
@@ -450,6 +451,13 @@ function GlobalPlayerBar({ minimized, onMinimizedChange, rail }: GlobalPlayerBar
 
   const handleVolumeChange = (event: ChangeEvent<HTMLInputElement>) => {
     const nextVolume = Math.min(Math.max(Number(event.target.value) || 0, 0), 100);
+    setVolume(nextVolume / 100);
+  };
+
+  const handleVolumeWheel = (event: WheelEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const nextVolume = Math.min(Math.max(volumePercent - Math.sign(event.deltaY) * 5, 0), 100);
     setVolume(nextVolume / 100);
   };
 
@@ -974,6 +982,7 @@ function GlobalPlayerBar({ minimized, onMinimizedChange, rail }: GlobalPlayerBar
             step="1"
             value={volumePercent}
             onChange={handleVolumeChange}
+            onWheel={handleVolumeWheel}
             className="volume-slider global-player__volume"
             style={{ "--volume-percent": `${volumePercent}%` }}
             aria-label="Volume"
