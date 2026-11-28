@@ -372,7 +372,9 @@ export function TrackList({
     scrollMargin,
     rangeExtractor: (range) => {
       const indexes = defaultRangeExtractor(range);
-      return pickedIndex < 0 || indexes.includes(pickedIndex) ? indexes : [...indexes, pickedIndex];
+      return pickedIndex < 0 || indexes.includes(pickedIndex)
+        ? indexes
+        : [...indexes, pickedIndex].sort((left, right) => left - right);
     },
   });
 

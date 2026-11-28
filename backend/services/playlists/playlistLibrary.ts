@@ -13,11 +13,7 @@ import { jobDownloadedItsFile, reuseTrackForPlaylist } from "../downloadJobs/fil
 import { removeLibraryMediaFiles } from "../libraryMediaStore.ts";
 import { removeSidecars } from "../libraryFiles/fileTransfer.ts";
 import { logger } from "../logger.ts";
-import {
-  flowPlaylistConfig,
-  invalidateFlowPlaylistConfigCache,
-  type StaticPlaylist,
-} from "./flowPlaylistConfig.ts";
+import { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } from "./flowPlaylistConfig.ts";
 import {
   buildCoreTrackIdentity,
   tracksShareMembership,
@@ -124,8 +120,8 @@ export function keepSongsInLibrary(songKeys: string[]) {
   }
 }
 
-// Downloads start only after `commit` saves what links them, so an attempt
-// that dies first leaves saved jobs a retry reuses.
+// Downloads start in the same transaction that saves what links them, so an
+// attempt that dies first leaves saved jobs a retry reuses.
 export async function linkTracksToLibrary(
   tracks: PlaylistTrack[],
   { startedByPlaylist, download = true }: { startedByPlaylist: string | null; download?: boolean },
@@ -178,48 +174,23 @@ export async function linkTracksToLibrary(
     reusedJobIds,
     createdJobIds,
     commit<T>(save: () => T) {
-      let saved: T;
       try {
-        saved = db.transaction(save)();
+        return db.transaction(() => {
+          const saved = save();
+          if (saved === null) return saved;
+          for (const id of queuedJobIds) {
+            const job = downloadTracker.getJob(id);
+            if (job && requeue(job, cause)) recordTrackJobQueued(downloadTracker.getJob(id));
+          }
+          return saved;
+        })();
       } catch (error) {
         invalidateFlowPlaylistConfigCache();
+        downloadTracker.reconcileCommittedJobs();
         throw error;
       }
-      if (saved !== null) queueLinkedJobs(queuedJobIds, cause);
-      return saved;
     },
   };
-}
-
-const QUEUE_BATCH_SIZE = 500;
-
-function queueLinkedJobs(jobIds: string[], cause: JobCause) {
-  const queueBatch = db.transaction((batch: string[]) => {
-    for (const id of batch) {
-      const job = downloadTracker.getJob(id);
-      if (job && requeue(job, cause)) recordTrackJobQueued(downloadTracker.getJob(id));
-    }
-  });
-  for (let index = 0; index < jobIds.length; index += QUEUE_BATCH_SIZE) {
-    try {
-      queueBatch(jobIds.slice(index, index + QUEUE_BATCH_SIZE));
-    } catch (error) {
-      downloadTracker.reconcileCommittedJobs();
-      throw error;
-    }
-  }
-}
-
-export function queueStagedPlaylistJobs(playlist: StaticPlaylist) {
-  queueLinkedJobs(
-    playlist.tracks.flatMap(({ canonicalJobId }) => {
-      const job = downloadTracker.getJob(canonicalJobId);
-      return isLibraryJob(job) && job.status === "saved" && job.startedByPlaylist === playlist.id
-        ? [job.id]
-        : [];
-    }),
-    { kind: "playlist", playlistId: playlist.id },
-  );
 }
 
 function wantedElsewhere(job: DownloadJob, playlistId: string) {

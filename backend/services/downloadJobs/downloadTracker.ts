@@ -652,6 +652,7 @@ export class DownloadTracker {
   declare enqueuePipeline: (payload: PipelinePayload) => unknown;
   declare jobs: Map<string, DownloadJob>;
   declare jobsByTrackName: Map<string, Set<DownloadJob>>;
+  declare jobsByFinalPath: Map<string, Set<DownloadJob>>;
   declare upgradesBySource: Map<string, Set<DownloadJob>>;
   declare statsByPlaylistType: Map<string, TrackerStats>;
   declare globalStats: TrackerStats;
@@ -673,6 +674,7 @@ export class DownloadTracker {
     this.enqueuePipeline = enqueuePipeline;
     this.jobs = new Map();
     this.jobsByTrackName = new Map();
+    this.jobsByFinalPath = new Map();
     this.upgradesBySource = new Map();
     this.statsByPlaylistType = new Map();
     this.globalStats = this._emptyStats();
@@ -1262,6 +1264,7 @@ export class DownloadTracker {
 
   _rebuildStatsByPlaylistType() {
     this.jobsByTrackName.clear();
+    this.jobsByFinalPath.clear();
     this.upgradesBySource.clear();
     this.statsByPlaylistType.clear();
     this.globalStats = this._emptyStats();
@@ -1541,12 +1544,7 @@ export class DownloadTracker {
     const sourcePath = String(finalPath || "").trim();
     if (!sourcePath) return null;
     const resolvedPath = path.resolve(sourcePath);
-    const existing = [...this.jobs.values()].find(
-      (job) =>
-        job.status === "done" &&
-        !job.upgradeForJobId &&
-        path.resolve(job.finalPath) === resolvedPath,
-    );
+    const existing = this.getDoneByFinalPath(resolvedPath).find((job) => !job.upgradeForJobId);
     if (existing) return existing;
 
     const id = this.addJob(
@@ -1568,10 +1566,9 @@ export class DownloadTracker {
     return ids;
   }
 
-  findActiveUpgradeJob(sourceJob: Pick<DownloadJob, "finalPath" | "trackName"> | null | undefined) {
+  findActiveUpgradeJob(sourceJob: Pick<DownloadJob, "finalPath"> | null | undefined) {
     if (!sourceJob?.finalPath) return null;
-    for (const source of this.jobsByTrackName.get(trackNameKey(sourceJob.trackName)) ?? []) {
-      if (source.finalPath !== sourceJob.finalPath) continue;
+    for (const source of this.jobsByFinalPath.get(path.resolve(sourceJob.finalPath)) ?? []) {
       for (const upgrade of this.upgradesBySource.get(source.id) ?? []) {
         if (["pending", "downloading", "blocked"].includes(upgrade.status)) return upgrade;
       }
@@ -1665,7 +1662,7 @@ export class DownloadTracker {
     const changed = [];
     for (const job of this.jobs.values()) {
       if (job.status !== "done" || job.finalPath !== sourcePath) continue;
-      job.finalPath = finalPath;
+      this._setFinalPath(job, finalPath);
       job.externalPath = null;
       job.qualityTier = quality?.tier || null;
       job.qualityFormat = quality?.format || null;
@@ -1692,7 +1689,7 @@ export class DownloadTracker {
   updateFinalPath(id: string, finalPath: string) {
     const job = this.jobs.get(id);
     if (!job || job.status !== "done") return false;
-    job.finalPath = finalPath;
+    this._setFinalPath(job, finalPath);
     this._update(job);
     return true;
   }
@@ -1784,6 +1781,7 @@ export class DownloadTracker {
     const sameName = this.jobsByTrackName.get(key);
     sameName?.delete(job);
     if (sameName?.size === 0) this.jobsByTrackName.delete(key);
+    this._unindexFinalPath(job);
     const sourceId = job.upgradeForJobId;
     const upgrades = sourceId ? this.upgradesBySource.get(sourceId) : undefined;
     upgrades?.delete(job);
@@ -1902,7 +1900,7 @@ export class DownloadTracker {
     job.startedAt = null;
     job.completedAt = null;
     job.stagingPath = null;
-    job.finalPath = null;
+    this._setFinalPath(job, null);
     job.reusedLibraryFile = false;
     job.retryCycle = asRetryCycle;
     job.error = typeof error === "string" ? error : (error && error.message) || null;
@@ -2002,7 +2000,7 @@ export class DownloadTracker {
     job.error = null;
     job.completedAt = Date.now();
     this._setAlbumGrabFailures(job, 0);
-    job.finalPath = finalPath;
+    this._setFinalPath(job, finalPath);
     job.externalPath = externalPath ?? null;
     if (reusedLibraryFile !== undefined) job.reusedLibraryFile = reusedLibraryFile === true;
     if (quality) this._applyQuality(job, quality);
@@ -2206,10 +2204,33 @@ export class DownloadTracker {
     const sameName = this.jobsByTrackName.get(key);
     if (sameName) sameName.add(job);
     else this.jobsByTrackName.set(key, new Set([job]));
+    this._indexFinalPath(job);
     if (!job.upgradeForJobId) return;
     const upgrades = this.upgradesBySource.get(job.upgradeForJobId);
     if (upgrades) upgrades.add(job);
     else this.upgradesBySource.set(job.upgradeForJobId, new Set([job]));
+  }
+
+  _unindexFinalPath(job: DownloadJob) {
+    if (!job.finalPath) return;
+    const pathKey = path.resolve(job.finalPath);
+    const sameFile = this.jobsByFinalPath.get(pathKey);
+    sameFile?.delete(job);
+    if (sameFile?.size === 0) this.jobsByFinalPath.delete(pathKey);
+  }
+
+  _indexFinalPath(job: DownloadJob) {
+    if (!job.finalPath) return;
+    const pathKey = path.resolve(job.finalPath);
+    const sameFile = this.jobsByFinalPath.get(pathKey);
+    if (sameFile) sameFile.add(job);
+    else this.jobsByFinalPath.set(pathKey, new Set([job]));
+  }
+
+  _setFinalPath(job: DownloadJob, finalPath: string | null) {
+    this._unindexFinalPath(job);
+    job.finalPath = finalPath;
+    this._indexFinalPath(job);
   }
 
   getActiveReuseJobsByTrackName(trackName: string | null | undefined) {
@@ -2223,9 +2244,8 @@ export class DownloadTracker {
   }
 
   getDoneByFinalPath(finalPath: string) {
-    const resolved = path.resolve(finalPath);
-    return [...this.jobs.values()].filter(
-      (job) => job.status === "done" && path.resolve(job.finalPath) === resolved,
+    return [...(this.jobsByFinalPath.get(path.resolve(finalPath)) ?? [])].filter(
+      (job) => job.status === "done",
     );
   }
 
@@ -2325,6 +2345,7 @@ export class DownloadTracker {
     discardReviewFiles([...this.jobs.values()]);
     this.jobs.clear();
     this.jobsByTrackName.clear();
+    this.jobsByFinalPath.clear();
     this.upgradesBySource.clear();
     this.statsByPlaylistType.clear();
     this.globalStats = this._emptyStats();

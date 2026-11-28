@@ -61,10 +61,8 @@ export async function classifyQualityJob(job: QualityJob | null | undefined) {
     };
   }
   const checkedAt = Date.now();
-  for (const linked of downloadTracker.getDoneByTrackName(job.trackName)) {
-    if (linked.finalPath === job.finalPath) {
-      downloadTracker.updateQuality(linked.id, { ...quality, checkedAt });
-    }
+  for (const linked of downloadTracker.getDoneByFinalPath(job.finalPath)) {
+    downloadTracker.updateQuality(linked.id, { ...quality, checkedAt });
   }
   return quality;
 }

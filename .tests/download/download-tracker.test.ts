@@ -1550,3 +1550,25 @@ test("Search all can retry a batch rolled back by SQLite", async () => {
   assert.equal(await worker.researchMissingTracks(["library"]), 2);
   assert.deepEqual(new Set(tracker.peekPending().map((job) => job.id)), new Set([first, last]));
 });
+
+test("an upgrade for a file blocks another upgrade from a job that shares the file under another name", () => {
+  const tracker = new DownloadTracker();
+  const original = createTrackedJob(
+    tracker,
+    { artistName: "Artist", trackName: "Song" },
+    "library",
+  );
+  const imported = createTrackedJob(
+    tracker,
+    { artistName: "Artist", trackName: "Song (Remastered)" },
+    "library",
+  );
+  assert.ok(original != null && imported != null);
+  tracker.setDone(original, "/library/song.flac", "Album");
+  tracker.setDone(imported, "/library/song.flac", "Album");
+
+  const upgrade = tracker.addUpgradeJob(tracker.getJob(original));
+  assert.equal(tracker.findActiveUpgradeJob(tracker.getJob(imported))?.id, upgrade);
+  tracker.reconcileCommittedJobs();
+  assert.equal(tracker.findActiveUpgradeJob(tracker.getJob(imported))?.id, upgrade);
+});

@@ -282,7 +282,7 @@ test("an import queues its downloads only once its playlist is saved, and a retr
     tracks.map((track) => requireFixture(normalizePlaylistTrack(track))),
     { startedByPlaylist: "retried-import" },
   );
-  const staged = downloadTracker.getAll().map((job) => job.id);
+  const staged = new Map(downloadTracker.getAll().map((job) => [job.trackName, job.id]));
   const save = config.flowPlaylistConfig.createStaticPlaylist.bind(config.flowPlaylistConfig);
   let queuedBeforeSave: number | null = null;
   vi.spyOn(config.flowPlaylistConfig, "createStaticPlaylist").mockImplementation((input) => {
@@ -295,32 +295,28 @@ test("an import queues its downloads only once its playlist is saved, and a retr
   assert.equal(queuedBeforeSave, 0);
   assert.deepEqual(
     tracks.map((track) => [jobFor(track).id, jobFor(track).status]),
-    staged.map((id) => [id, "pending"]),
+    tracks.map((track) => [staged.get(track.trackName), "pending"]),
   );
 });
 
-test("a retry of an import that died after saving its playlist queues the downloads it staged", async () => {
-  const tracks = ["One", "Two"].map((trackName) => ({
-    artistName: "Band",
-    albumName: "Record",
-    trackName,
-  }));
-  const linked = await linkTracksToLibrary(
-    tracks.map((track) => requireFixture(normalizePlaylistTrack(track))),
-    { startedByPlaylist: "saved-import" },
-  );
-  config.flowPlaylistConfig.createStaticPlaylist({
-    id: "saved-import",
-    name: "From the Library",
-    tracks: linked.tracks,
-  });
+test("an import that dies while queueing its downloads does not save its playlist", async () => {
+  const setPending = downloadTracker.setPending.bind(downloadTracker);
+  vi.spyOn(downloadTracker, "setPending")
+    .mockImplementationOnce(setPending)
+    .mockImplementationOnce(() => {
+      throw new Error("database is locked");
+    });
 
-  const { jobFor } = await createPlaylist(tracks, { playlistId: "saved-import" });
-
-  assert.deepEqual(
-    tracks.map((track) => jobFor(track).status),
-    ["pending", "pending"],
+  await assert.rejects(
+    createPlaylist(
+      ["One", "Two"].map((trackName) => ({ artistName: "Band", albumName: "Record", trackName })),
+      { playlistId: "half-queued" },
+    ),
+    /database is locked/,
   );
+
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist("half-queued"), null);
+  assert.deepEqual(downloadTracker.getAll(), []);
 });
 
 test("an import that fails while linking its tracks leaves no new downloads behind", async () => {

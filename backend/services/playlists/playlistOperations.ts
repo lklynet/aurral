@@ -52,12 +52,7 @@ import type {
   LibraryMediaFilesRow,
   LibraryTracksRow,
 } from "../../db/rows.ts";
-import {
-  discardLibraryJobs,
-  linkTracksToLibrary,
-  queueStagedPlaylistJobs,
-  releaseLibraryJobs,
-} from "./playlistLibrary.ts";
+import { discardLibraryJobs, linkTracksToLibrary, releaseLibraryJobs } from "./playlistLibrary.ts";
 import { unknownList } from "../../../lib/unknownList.ts";
 import { isRecord } from "../../../lib/isRecord.ts";
 import { reorderInPlace } from "../../../lib/reorderInPlace.ts";
@@ -484,7 +479,6 @@ async function createStaticPlaylist({
   const safePlaylistId = String(playlistId || "").trim() || randomUUID();
   const existing = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
   if (existing) {
-    if (downloadMissing !== false) queueStagedPlaylistJobs(existing);
     return { success: true, playlist: existing, tracksQueued: 0, tracksReused: 0, jobIds: [] };
   }
   const allowedTracks = filterBlockedPlaylistTracks(
