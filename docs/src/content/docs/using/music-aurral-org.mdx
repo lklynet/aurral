@@ -9,7 +9,7 @@ music.aurral.org is the Aurral app, hosted once, that connects to your own serve
 
 On your server, open **Settings > Profile** and choose **Open** next to music.aurral.org. It opens music.aurral.org, asks you to confirm your server's address, and signs you in.
 
-On another device, open music.aurral.org, enter your server's address, and sign in with your username and password. If you sign in with SSO or a sign-in proxy, choose **Use a code from Settings** and enter a code from **Settings > Profile > Pair a device** on a device where you're already signed in.
+On another device, open music.aurral.org and choose **Sign in with aurral.org** if your server uses [Aurral Connect](/using/connect/), or enter your server's address and sign in with your username and password. If you sign in with SSO or a sign-in proxy, choose **Use a code from Settings** and enter a code from **Settings > Profile > Pair a device** on a device where you're already signed in.
 
 Add more servers from the user menu. Switching between them reloads the app.
 
@@ -17,6 +17,7 @@ Add more servers from the user menu. Switching between them reloads the app.
 
 A page on HTTPS can't reach a plain `http://` address, so music.aurral.org needs your server on HTTPS:
 
+- **[Aurral Connect](/using/connect/).** Gives your server an automatic `https://<slug>.aurral.dev` address with no port forwarding or reverse proxy.
 - **Tailscale.** Run `tailscale serve --bg 3001` on the server, then use the `https://<machine>.<tailnet>.ts.net` address it prints. Every device you use needs Tailscale.
 - **Your own domain** behind a reverse proxy with a certificate.
 

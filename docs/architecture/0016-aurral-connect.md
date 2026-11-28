@@ -1,6 +1,6 @@
 # Aurral Connect
 
-Status: Proposed
+Status: Accepted
 
 ## Problem
 

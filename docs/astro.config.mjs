@@ -62,6 +62,7 @@ export default defineConfig({
             { slug: "using/activity" },
             { slug: "using/friends" },
             { slug: "using/sharing" },
+            { slug: "using/connect" },
             { slug: "using/music-aurral-org" },
           ],
         },

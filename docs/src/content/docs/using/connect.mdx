@@ -1,0 +1,28 @@
+---
+title: Aurral Connect
+description: Reach your Aurral server anywhere at a stable *.aurral.dev address without port forwarding or a reverse proxy.
+---
+
+Aurral Connect is an optional paid relay ($5/month or $50/year after a 14-day free trial) that gives your server a stable `https://<slug>.aurral.dev` address. Every Aurral feature stays free if you use your own domain, reverse proxy, or VPN.
+
+One subscription covers up to 3 servers under your `aurral.org` account for personal and household listening (up to 10 linked users per server).
+
+## Start
+
+1. Open **Settings > Profile** on your server and link your admin account to `aurral.org` (sign in with email, GitHub, or Discord).
+2. Open **Settings > Connect**, pick a `<slug>.aurral.dev` address, and start your 14-day free trial (or subscribe from [aurral.org/account](https://aurral.org/account)).
+3. Turn Connect on. Your server opens an outbound connection to the relay automatically; no router port forwarding or extra binary is required.
+
+## Using your Connect address
+
+- **Web (`music.aurral.org`).** Open [music.aurral.org](https://music.aurral.org) and choose **Sign in with aurral.org**. It finds your linked Connect servers automatically and signs you in when **Sign in with Aurral** is enabled on the server. Navigating directly to `https://<slug>.aurral.dev` in a browser redirects to `music.aurral.org`.
+- **Subsonic clients.** Point any Subsonic or OpenSubsonic client at `https://<slug>.aurral.dev` with your local Aurral username and password (or API key).
+- **Listen links.** When Connect is online, file shares use your `https://<slug>.aurral.dev` address instead of starting a temporary `cloudflared` tunnel.
+
+## Security and turning it off
+
+Traffic arriving through Connect never counts as local: onboarding, auth-disabled mode, local-network bypass, and proxy-auth headers are all blocked on Connect requests.
+
+You can turn off **Sign in with Aurral**, disable Connect, or unlink your server anytime from **Settings > Connect** or [aurral.org/account](https://aurral.org/account). Local accounts, LAN access, and your own reverse proxy keep working either way.
+
+Billing and cancellation are managed from [aurral.org/account](https://aurral.org/account). When you release a `*.aurral.dev` address or delete your account, that address stays reserved for 90 days so nobody else can claim it.
