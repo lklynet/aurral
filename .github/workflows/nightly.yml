@@ -64,7 +64,7 @@ jobs:
           push: true
           provenance: mode=max
           sbom: true
-          tags: ghcr.io/${{ github.repository }}:nightly
+          tags: ghcr.io/eckigerelias/aurral:nightly
           platforms: linux/amd64
           build-args: |
             APP_VERSION=${{ steps.version.outputs.value }}
