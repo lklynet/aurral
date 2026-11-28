@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import * as v from "valibot";
@@ -124,6 +125,114 @@ async function handOver(item: HistoryItem, clientKey: string, directory: string)
   return files.length;
 }
 
+// A release several jobs want is downloaded once. Jobs that want it while it
+// downloads share that download; jobs that want it soon after it finished take
+// its files from a copy Aurral keeps for a while (hard links next to the
+// staging folders), so the download client never holds the same release twice.
+const KEPT_RELEASE_MS = 2 * 60 * 60 * 1000;
+const KEPT_MAX_BYTES = 10 * 1024 ** 3;
+const KEPT = "aurral-kept:";
+const KEPT_MARK = ".aurral-kept.json";
+const keptName = (identity: string) =>
+  createHash("sha256").update(identity).digest("hex").slice(0, 32);
+const keptRoot = (directory: string) => path.join(path.dirname(directory), "kept-releases");
+
+// The download each release was sent as while it downloads, and the release
+// each download was sent for, so a job sharing a download can still find the
+// kept copy after another job let the client remove it. A send is forgotten
+// two days after its kept copy would be gone, when the next release is sent.
+const SEND_MEMORY_MS = 2 * 24 * 60 * 60 * 1000 + KEPT_RELEASE_MS;
+const downloading = new Map<string, string>();
+const sentFor = new Map<string, { identity: string; at: number }>();
+
+function rememberSend(identity: string, pendingId: string) {
+  const now = Date.now();
+  for (const [id, sent] of sentFor) if (now - sent.at > SEND_MEMORY_MS) sentFor.delete(id);
+  downloading.set(identity, pendingId);
+  sentFor.set(pendingId, { identity, at: now });
+}
+
+function sendFinished(pendingId: string) {
+  const identity = sentFor.get(pendingId)?.identity;
+  if (identity && downloading.get(identity) === pendingId) downloading.delete(identity);
+  return identity ?? null;
+}
+
+async function keptRelease(directory: string, name: string) {
+  const folder = path.join(keptRoot(directory), name);
+  const mark = await fs
+    .readFile(path.join(folder, KEPT_MARK), "utf8")
+    .then((text) => JSON.parse(text) as { at?: number })
+    .catch(() => null);
+  if (!mark || !Number.isFinite(mark.at) || Date.now() - Number(mark.at) > KEPT_RELEASE_MS)
+    return null;
+  return folder;
+}
+
+async function linkAudio(from: string, to: string) {
+  let count = 0;
+  for (const file of await audioFilesUnder(from)) {
+    const target = path.join(to, path.relative(from, file));
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.link(file, target).catch(async (error: unknown) => {
+      if (asAppError(error)?.code !== "EEXIST") await fs.copyFile(file, target);
+    });
+    count += 1;
+  }
+  return count;
+}
+
+// Keeps a finished release for other jobs: links only, so it costs no space
+// while a job still holds the files. Copies older than two hours go when a new
+// one is kept, and the oldest go while all of them pass 10 GB.
+async function keepRelease(identity: string, directory: string) {
+  const root = keptRoot(directory);
+  const folder = path.join(root, keptName(identity));
+  await fs.rm(folder, { recursive: true, force: true });
+  for (const file of await audioFilesUnder(directory)) {
+    const target = path.join(folder, path.relative(directory, file));
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.link(file, target);
+  }
+  await fs.writeFile(path.join(folder, KEPT_MARK), JSON.stringify({ identity, at: Date.now() }));
+  const kept: { folder: string; at: number; bytes: number }[] = [];
+  for (const entry of await fs.readdir(root).catch(() => [])) {
+    const other = path.join(root, entry);
+    if (!(await keptRelease(directory, entry))) {
+      await fs.rm(other, { recursive: true, force: true });
+      continue;
+    }
+    const at = (await fs.stat(path.join(other, KEPT_MARK)).catch(() => null))?.mtimeMs ?? 0;
+    let bytes = 0;
+    for (const file of await audioFilesUnder(other))
+      bytes += (await fs.stat(file).catch(() => null))?.size ?? 0;
+    kept.push({ folder: other, at, bytes });
+  }
+  let total = kept.reduce((sum, entry) => sum + entry.bytes, 0);
+  for (const entry of kept.sort((a, b) => a.at - b.at)) {
+    if (total <= KEPT_MAX_BYTES || entry.folder === folder) continue;
+    await fs.rm(entry.folder, { recursive: true, force: true });
+    total -= entry.bytes;
+  }
+}
+
+// One release is sent by one job at a time, so jobs that want it together
+// find the first job's download instead of sending another.
+const sending = new Map<string, Promise<unknown>>();
+function oneSendAtATime<T>(key: string, work: () => Promise<T>): Promise<T> {
+  if (!key) return work();
+  const run = (sending.get(key) ?? Promise.resolve()).then(work, work);
+  const settled = run.then(
+    () => {},
+    () => {},
+  );
+  sending.set(key, settled);
+  void settled.then(() => {
+    if (sending.get(key) === settled) sending.delete(key);
+  });
+  return run;
+}
+
 function pendingDownload(id: string) {
   const at = id.indexOf(":");
   const key = id.slice(0, at);
@@ -223,6 +332,15 @@ function nzbSource(id: NzbSourceId) {
     );
   }
 
+  // A download another job sent is worth sharing while the client still has it
+  // and it hasn't failed.
+  async function stillDownloading(pendingId: string) {
+    const { client, nzbId } = pendingDownload(pendingId);
+    if (await client.getQueueItem(nzbId).catch(() => null)) return true;
+    const item = await client.getHistoryItem(nzbId).catch(() => null);
+    return Boolean(item && historyState(item) !== "failed");
+  }
+
   return {
     id,
     staging: id,
@@ -249,25 +367,43 @@ function nzbSource(id: NzbSourceId) {
         const client = tidarr ? getDownloadClient("tidarr") : getUsenetClient(indexerClient);
         if (indexerClient && !client.isConfigured())
           throw new DownloadSourceError(`${client.name} is not set up`);
-        try {
-          const nzb = tidarr
-            ? await getDownloadClient("tidarr").fetchNzb(release.guid)
-            : await prowlarrClient.downloadNzb(release.downloadUrl, release);
-          const { nzbId } = await client.appendNzb({
-            name: release.title,
-            content: nzb,
-            dupeKey: `aurral-${path.basename(directory)}`,
-            dupeScore: release.score ?? 0,
-          });
-          return { pending: `${client.key}:${nzbId}` };
-        } catch (error) {
-          logger.warn("usenet", "Usenet release could not be sent to the download client", {
-            client: client.key,
-            releaseTitle: release.title,
-            error: failure(error),
-          });
-          throw new DownloadSourceError(failure(error));
-        }
+        const identity = releaseIdentity(release.guid) || release.downloadUrl;
+        const send = async () => {
+          try {
+            const nzb = tidarr
+              ? await getDownloadClient("tidarr").fetchNzb(release.guid)
+              : await prowlarrClient.downloadNzb(release.downloadUrl, release);
+            const { nzbId } = await client.appendNzb({
+              name: release.title,
+              content: nzb,
+              dupeKey: `aurral-${path.basename(directory)}`,
+              dupeScore: release.score ?? 0,
+            });
+            const pending = `${client.key}:${nzbId}`;
+            rememberSend(identity, pending);
+            return { pending };
+          } catch (error) {
+            logger.warn("usenet", "Usenet release could not be sent to the download client", {
+              client: client.key,
+              releaseTitle: release.title,
+              error: failure(error),
+            });
+            throw new DownloadSourceError(failure(error));
+          }
+        };
+        return oneSendAtATime(identity, async () => {
+          if (await keptRelease(directory, keptName(identity)))
+            return { pending: `${client.key}:${KEPT}${keptName(identity)}` };
+          const running = downloading.get(identity);
+          if (running?.startsWith(`${client.key}:`) && (await stillDownloading(running))) {
+            logger.info("usenet", "Another job is already downloading this release; sharing it", {
+              client: client.key,
+              releaseTitle: release.title,
+            });
+            return { pending: running };
+          }
+          return send();
+        });
       },
     },
     // A queued, paused, slow, or post-processing download keeps waiting like
@@ -275,17 +411,35 @@ function nzbSource(id: NzbSourceId) {
     // gone, read twice because a download moves from one to the other.
     async status({ id: pendingId, directory }) {
       const { client, nzbId } = pendingDownload(pendingId);
+      if (nzbId.startsWith(KEPT)) {
+        const kept = await keptRelease(directory, nzbId.slice(KEPT.length));
+        if (kept && (await linkAudio(kept, directory)) > 0) return { done: true };
+        throw new DownloadSourceError(`The ${label} release Aurral kept for reuse is gone`);
+      }
       let item: HistoryItem | null = await client.getHistoryItem(nzbId);
       if (!item) {
         if (await client.getQueueItem(nzbId)) return { done: false };
         item = await client.getHistoryItem(nzbId);
-        if (!item) throw new DownloadSourceError(`The ${label} download left the download client`);
+        if (!item) {
+          // a job sharing this download finished it and let the client remove it
+          const identity = sendFinished(pendingId);
+          const kept = identity ? await keptRelease(directory, keptName(identity)) : null;
+          if (kept && (await linkAudio(kept, directory)) > 0) return { done: true };
+          throw new DownloadSourceError(`The ${label} download left the download client`);
+        }
       }
       const state = historyState(item);
       if (state === "pending") return { done: false };
+      const identity = sendFinished(pendingId);
       if (state === "failed")
         throw new Failed(`${label} download failed: ${item.Status || item.status || "failed"}`);
       const files = await handOver(item, client.key, directory);
+      if (files > 0 && identity)
+        await keepRelease(identity, directory).catch((error: unknown) =>
+          logger.warn("usenet", "Could not keep a finished release for other jobs", {
+            reason: failure(error),
+          }),
+        );
       await client
         .deleteHistoryItem(nzbId, { deleteFiles: true, historyItem: item })
         .catch((error: unknown) =>
@@ -302,6 +456,7 @@ function nzbSource(id: NzbSourceId) {
     // Removal counts only once the client confirms it or no longer lists it.
     async discard(pendingId) {
       const { client, nzbId } = pendingDownload(pendingId);
+      if (nzbId.startsWith(KEPT)) return;
       if (!client.isConfigured()) throw new Error(`${client.name} is not configured`);
       for (const [remove, lookup] of [
         [() => client.deleteQueueItem(nzbId), () => client.getQueueItem(nzbId)],

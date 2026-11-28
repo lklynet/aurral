@@ -529,8 +529,10 @@ test("an upgrade never joins a Usenet download that is being removed", async (t)
   finishRemoval();
   await rejecting;
 
-  assert.equal(append.mock.calls.length, 2);
-  assert.deepEqual(pendingIds([next]), ["nzbget:102"]);
+  // it takes the copy of the release Aurral kept, which nobody removes,
+  // instead of the download that is being removed or a second download
+  assert.equal(append.mock.calls.length, 1);
+  assert.match(pendingIds([next])[0] ?? "", /^nzbget:aurral-kept:/);
 });
 
 test("upgrades for two copies of one track share the release without moving its file early", async (t) => {
@@ -992,7 +994,7 @@ async function stepUntil(
   return payload;
 }
 
-test("an upgrade started while another upgrade downloads the same release waits for it on NZBGet, then downloads the release whole, and both land", async (t) => {
+test("an upgrade started while another upgrade downloads the same release waits for it on NZBGet, then takes the kept release whole, and both land", async (t) => {
   const upgrades = await releaseUpgrades(t, "upgrade-each-release");
   const append = await oneFolderNzbget(t, "upgrade-each-release", upgrades);
 
@@ -1018,7 +1020,7 @@ test("an upgrade started while another upgrade downloads the same release waits 
   await stepUntil(first, () => false);
   assert.deepEqual(upgrades.landed()[0], ["done", "01 - First.flac", "flac-standard"]);
   await stepUntil(second, () => false);
-  assert.equal(append.mock.calls.length, 2);
+  assert.equal(append.mock.calls.length, 1);
   assert.deepEqual(upgrades.landed(), [
     ["done", "01 - First.flac", "flac-standard"],
     ["done", "02 - Second.flac", "flac-standard"],
@@ -1056,7 +1058,7 @@ test("an upgrade pinned to another pressing of the album waits for the upgrade d
 
   await stepUntil(first, () => false);
   await stepUntil(second, () => false);
-  assert.equal(append.mock.calls.length, 2);
+  assert.equal(append.mock.calls.length, 1);
   assert.deepEqual(upgrades.landed(), [
     ["done", "01 - First.flac", "flac-standard"],
     ["done", "02 - Second.flac", "flac-standard"],
