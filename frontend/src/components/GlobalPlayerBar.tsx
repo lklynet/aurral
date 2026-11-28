@@ -949,6 +949,20 @@ function GlobalPlayerBar({ minimized, onMinimizedChange, rail }: GlobalPlayerBar
         </div>
 
         <div className="global-player__side">
+          <TooltipButton
+            tooltipPlacement="top"
+            title="Queue"
+            aria-label="Queue"
+            aria-pressed={rail.open && rail.view === "queue"}
+            onClick={
+              rail.open && rail.view === "queue"
+                ? () => rail.setOpen(false)
+                : () => rail.show("queue")
+            }
+            className="btn btn-ghost btn-icon btn-xs"
+          >
+            <ListMusic className="artist-icon-sm" />
+          </TooltipButton>
           <PlayerDevicesButton className="btn btn-ghost btn-icon btn-xs" />
           <LibraryItemMenu
             label={currentTrack.title || "Track"}

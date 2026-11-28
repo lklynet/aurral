@@ -13,7 +13,7 @@ import { flushSync } from "react-dom";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { SortableList } from "./SortableList";
-import { ChevronLeft, GripVertical, ListMusic, Music, Plus, X } from "./icons";
+import { GripVertical, ListMusic, Music, Plus, X } from "./icons";
 import { useAudioQueue, type AudioQueueValue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import TooltipButton from "./TooltipButton";
@@ -400,19 +400,6 @@ export function usePlayerRail() {
 
 export type PlayerRailState = ReturnType<typeof usePlayerRail>;
 
-function PlayerRailEdge({ rail, hidden }: { rail: PlayerRailState; hidden: boolean }) {
-  return (
-    <TooltipButton
-      ref={rail.edgeRef}
-      label="Show panel"
-      className={`btn btn-ghost player-rail-edge${hidden ? " is-open" : ""}`}
-      onClick={() => rail.setOpen(true)}
-    >
-      <ChevronLeft />
-    </TooltipButton>
-  );
-}
-
 export function PlayerRail({ rail }: { rail: PlayerRailState }) {
   const [mounted, setMounted] = useState(rail.open);
   const [expanded, setExpanded] = useState(rail.open);
@@ -440,7 +427,6 @@ export function PlayerRail({ rail }: { rail: PlayerRailState }) {
 
   return (
     <>
-      <PlayerRailEdge rail={rail} hidden={expanded} />
       {expanded ? (
         <div
           className={`player-rail-resize-handle${resizing ? " is-active" : ""}`}
