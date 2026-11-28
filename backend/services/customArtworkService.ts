@@ -14,6 +14,13 @@ const targetOperations = new Map<string, Promise<unknown>>();
 const getArtworkStmt = db.prepare<[string, string], CustomArtworkRow>(
   "SELECT entity_kind, entity_id, content_type, source_url, updated_at FROM custom_artwork WHERE entity_kind = ? AND entity_id = ?",
 );
+const listArtworkStmt = db.prepare<
+  [string, string],
+  Pick<CustomArtworkRow, "entity_id" | "updated_at">
+>(`
+  SELECT entity_id, updated_at FROM custom_artwork
+  WHERE entity_kind = ? AND entity_id IN (SELECT value FROM json_each(?))
+`);
 const saveArtworkStmt = db.prepare<[string, string, string, string | null, number]>(`
   INSERT INTO custom_artwork (entity_kind, entity_id, content_type, source_url, updated_at)
   VALUES (?, ?, ?, ?, ?)
@@ -154,12 +161,7 @@ export function getCustomArtworkMap(kind: string, ids: (string | number)[]) {
   const entityKind = normalizeTarget(kind, "placeholder").entityKind;
   const entityIds = [...new Set((ids || []).map((id) => String(id || "").trim()).filter(Boolean))];
   if (!entityIds.length) return new Map<string, number>();
-  const placeholders = entityIds.map(() => "?").join(", ");
-  const rows = db
-    .prepare<(string | number)[], Pick<CustomArtworkRow, "entity_id" | "updated_at">>(
-      `SELECT entity_id, updated_at FROM custom_artwork WHERE entity_kind = ? AND entity_id IN (${placeholders})`,
-    )
-    .all(entityKind, ...entityIds);
+  const rows = listArtworkStmt.all(entityKind, JSON.stringify(entityIds));
   return new Map(rows.map((row) => [String(row.entity_id), Number(row.updated_at)]));
 }
 

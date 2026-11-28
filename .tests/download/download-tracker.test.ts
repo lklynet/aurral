@@ -1490,3 +1490,85 @@ test("clearing a playlist removes all of its jobs or none of them", () => {
     2,
   );
 });
+
+test("file reuse finds matching jobs across status changes, reloads, and removals", () => {
+  const tracker = new DownloadTracker();
+  const track = { artistName: "Artist", trackName: "Écoute" };
+  const libraryId = createTrackedJob(tracker, track, "library");
+  const flowId = createTrackedJob(tracker, track, "discover");
+  assert.ok(libraryId != null && flowId != null);
+
+  assert.deepEqual(
+    tracker.getActiveReuseJobsByTrackName("  ÉCOUTE ").map((job) => job.id),
+    [flowId],
+  );
+  tracker.setDownloading(flowId);
+  tracker.reconcileCommittedJobs();
+  assert.deepEqual(
+    tracker.getActiveReuseJobsByTrackName(track.trackName).map((job) => job.id),
+    [flowId],
+  );
+
+  tracker.setDone(flowId, "/library/ecoute.flac", "Album");
+  assert.deepEqual(tracker.getActiveReuseJobsByTrackName(track.trackName), []);
+  assert.deepEqual(
+    tracker.getDoneByTrackName(track.trackName).map((job) => job.id),
+    [flowId],
+  );
+
+  tracker.removeJob(flowId);
+  assert.deepEqual(tracker.getDoneByTrackName(track.trackName), []);
+});
+
+test("Search all can retry a batch rolled back by SQLite", async () => {
+  const tracker = trackerModule.downloadTracker;
+  const worker = workerModule.downloadWorker;
+  const [first, last] = tracker.addJobs(
+    [
+      { artistName: "Artist", trackName: "First" },
+      { artistName: "Artist", trackName: "Last" },
+    ],
+    "library",
+    { saved: true },
+  );
+  assert.ok(first && last);
+  tracker.setFailed(first, "No match");
+  tracker.setFailed(last, "No match");
+  db.exec(`
+    CREATE TEMP TRIGGER abort_research_batch BEFORE UPDATE ON download_jobs
+    WHEN NEW.track_name = 'Last' AND NEW.status = 'pending'
+    BEGIN SELECT RAISE(ABORT, 'Could not queue a track'); END
+  `);
+  try {
+    await assert.rejects(worker.researchMissingTracks(["library"]), /Could not queue a track/);
+    assert.equal(tracker.getJob(first)?.status, "failed");
+    assert.equal(tracker.getJob(last)?.status, "failed");
+  } finally {
+    db.exec("DROP TRIGGER abort_research_batch");
+  }
+
+  assert.equal(await worker.researchMissingTracks(["library"]), 2);
+  assert.deepEqual(new Set(tracker.peekPending().map((job) => job.id)), new Set([first, last]));
+});
+
+test("an upgrade for a file blocks another upgrade from a job that shares the file under another name", () => {
+  const tracker = new DownloadTracker();
+  const original = createTrackedJob(
+    tracker,
+    { artistName: "Artist", trackName: "Song" },
+    "library",
+  );
+  const imported = createTrackedJob(
+    tracker,
+    { artistName: "Artist", trackName: "Song (Remastered)" },
+    "library",
+  );
+  assert.ok(original != null && imported != null);
+  tracker.setDone(original, "/library/song.flac", "Album");
+  tracker.setDone(imported, "/library/song.flac", "Album");
+
+  const upgrade = tracker.addUpgradeJob(tracker.getJob(original));
+  assert.equal(tracker.findActiveUpgradeJob(tracker.getJob(imported))?.id, upgrade);
+  tracker.reconcileCommittedJobs();
+  assert.equal(tracker.findActiveUpgradeJob(tracker.getJob(imported))?.id, upgrade);
+});

@@ -25,9 +25,10 @@ const [
   { downloadWorker },
   { scanMusicRoot },
   { getLibrary },
-  { keepInLibrary, releaseLibraryJobs },
+  { keepInLibrary, linkTracksToLibrary, releaseLibraryJobs },
   subsonic,
   { requestLibraryTrack },
+  { normalizePlaylistTrack },
 ] = await setupIsolatedBackend(
   "playlist-library",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -42,6 +43,7 @@ const [
   () => import("../../backend/services/playlists/playlistLibrary.ts"),
   () => import("../../backend/services/subsonicLibraryService.ts"),
   () => import("../../backend/services/libraryTrackRequests.ts"),
+  () => import("../../backend/services/playlists/playlistTracks.ts"),
 );
 beforeEach(() => {
   resetDatabase(db);
@@ -123,7 +125,12 @@ async function assertStillInLibrary(file: string) {
 
 async function createPlaylist(
   tracks: (Track | (Omit<Track, "albumName"> & { path: string }))[],
-  extra: { name?: string; importSource?: typeof synced; downloadMissing?: boolean } = {},
+  extra: {
+    name?: string;
+    playlistId?: string;
+    importSource?: typeof synced;
+    downloadMissing?: boolean;
+  } = {},
 ) {
   const result = await operations.processPlaylistOperation({
     kind: "static-playlist-create",
@@ -263,6 +270,85 @@ test("a playlist edit that cannot be saved leaves no new downloads behind", asyn
   );
 
   assert.equal(downloadTracker.getAll().length, before);
+});
+
+test("an import queues its downloads only once its playlist is saved, and a retry reuses what a dead attempt left", async () => {
+  const tracks = ["One", "Two"].map((trackName) => ({
+    artistName: "Band",
+    albumName: "Record",
+    trackName,
+  }));
+  await linkTracksToLibrary(
+    tracks.map((track) => requireFixture(normalizePlaylistTrack(track))),
+    { startedByPlaylist: "retried-import" },
+  );
+  const staged = new Map(downloadTracker.getAll().map((job) => [job.trackName, job.id]));
+  const save = config.flowPlaylistConfig.createStaticPlaylist.bind(config.flowPlaylistConfig);
+  let queuedBeforeSave: number | null = null;
+  vi.spyOn(config.flowPlaylistConfig, "createStaticPlaylist").mockImplementation((input) => {
+    queuedBeforeSave = downloadTracker.getByStatus("pending").length;
+    return save(input);
+  });
+
+  const { jobFor } = await createPlaylist(tracks, { playlistId: "retried-import" });
+
+  assert.equal(queuedBeforeSave, 0);
+  assert.deepEqual(
+    tracks.map((track) => [jobFor(track).id, jobFor(track).status]),
+    tracks.map((track) => [staged.get(track.trackName), "pending"]),
+  );
+});
+
+test("a playlist save that dies while queueing its downloads keeps neither the save nor new jobs", async () => {
+  const failNextQueue = () =>
+    vi.spyOn(downloadTracker, "setPending").mockImplementationOnce(() => {
+      throw new Error("database is locked");
+    });
+  const track = (trackName: string) => ({ artistName: "Band", albumName: "Record", trackName });
+
+  const setPending = downloadTracker.setPending.bind(downloadTracker);
+  vi.spyOn(downloadTracker, "setPending")
+    .mockImplementationOnce(setPending)
+    .mockImplementationOnce(() => {
+      throw new Error("database is locked");
+    });
+  await assert.rejects(
+    createPlaylist([track("One"), track("Two")], { playlistId: "half-queued" }),
+    /locked/,
+  );
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist("half-queued"), null);
+  assert.deepEqual(downloadTracker.getAll(), []);
+
+  const { playlist } = await createPlaylist([track("One")]);
+  failNextQueue();
+  await assert.rejects(
+    operations.processPlaylistOperation({
+      kind: "static-playlist-append-tracks",
+      playlistId: playlist.id,
+      tracks: [track("Two")],
+    }),
+    /locked/,
+  );
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks.length, 1);
+  assert.equal(downloadTracker.getAll().length, 1);
+});
+
+test("an import that fails while linking its tracks leaves no new downloads behind", async () => {
+  const addJob = downloadTracker.addJob.bind(downloadTracker);
+  vi.spyOn(downloadTracker, "addJob")
+    .mockImplementationOnce(addJob)
+    .mockImplementationOnce(() => {
+      throw new Error("database is locked");
+    });
+
+  await assert.rejects(
+    createPlaylist(
+      ["One", "Two"].map((trackName) => ({ artistName: "Band", albumName: "Record", trackName })),
+    ),
+    /database is locked/,
+  );
+
+  assert.deepEqual(downloadTracker.getAll(), []);
 });
 
 test("an imported track links the Library file at its path even when its names differ", async () => {

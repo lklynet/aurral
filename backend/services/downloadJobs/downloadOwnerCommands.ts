@@ -1,7 +1,7 @@
 import { asAppError } from "../../../lib/errors.ts";
 import { cancelTrackDownload, cancelTrackDownloads, retryTrackDownload } from "../albumJobs.ts";
 import { syncStaticPlaylistImportHere } from "../importLists/importListSync.ts";
-import { queueQualityUpgrade, runQualityUpgradeCheck } from "../qualityProfileService.ts";
+import { queueQualityUpgrade } from "../qualityProfileService.ts";
 import { approveBlockedJob, denyBlockedJob } from "./blockedJobReview.ts";
 import { downloadTracker } from "./downloadTracker.ts";
 import { followChangedLibraryFiles } from "./fileReuse.ts";
@@ -45,8 +45,6 @@ export const downloadOwnerCommands = {
   pruneOrphanedJobState: () => owner().pruneOrphanedJobState(),
   scheduleReuseLinkRepair: (...args: Parameters<Worker["scheduleReuseLinkRepair"]>) =>
     owner().scheduleReuseLinkRepair(...args),
-  runQualityUpgradeChecks: (playlistIds: string[], limit = 500) =>
-    runQualityUpgradeCheck({ force: true, playlistIds, limit }),
   queueQualityUpgradeForJob: (jobId: string) => queueQualityUpgrade(downloadTracker.getJob(jobId)),
   clearPendingByPlaylist: (playlistType: string) =>
     downloadTracker.clearPendingByPlaylistType(playlistType),

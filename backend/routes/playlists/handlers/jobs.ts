@@ -42,10 +42,7 @@ import {
 } from "../../../services/downloadJobs/blockedJobReview.ts";
 import { invalidateRequestsCache } from "../../requests.ts";
 import { getLibraryMediaFile } from "../../../services/libraryMediaStore.ts";
-import {
-  queueQualityUpgrade,
-  runQualityUpgradeCheck,
-} from "../../../services/qualityProfileService.ts";
+import { queueQualityUpgrade } from "../../../services/qualityProfileService.ts";
 import {
   decorateJobQuality,
   getQualityProfile,
@@ -71,6 +68,7 @@ import {
 } from "../../../services/customArtworkService.ts";
 import { releaseGroupCoverImageUrl } from "../../../services/releaseGroupCoverService.ts";
 import { asAppError } from "../../../../lib/errors.ts";
+import { enqueueSystemTask } from "../../../services/jobs/systemTasks.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { isErrorStatus } from "../../shared/errorStatus.ts";
 import type { Context } from "hono";
@@ -438,15 +436,16 @@ export default new Hono<AppEnv>()
     }
   })
   .post("/quality-upgrades", requirePlaylistAccess, async (c) => {
-    const playlistIds = getAccessiblePlaylistIds(c.var.user);
-    const checkedIds = [LIBRARY_JOB_TYPE, ...playlistIds];
-    const queued = isDownloadOwnerProcess()
-      ? await runQualityUpgradeCheck({ force: true, playlistIds: checkedIds, limit: 500 })
-      : await requestDownloadOwner("runQualityUpgradeChecks", [checkedIds, 500], {
-          timeoutMs: 30 * 60 * 1000,
-        });
-    if (queued > 0) invalidateRequestsCache();
-    return c.json({ success: true, queued, playlistCount: playlistIds.length }, 200);
+    const operationId = enqueueSystemTask(
+      {
+        kind: "quality-upgrade-check",
+        force: true,
+        playlistIds: [LIBRARY_JOB_TYPE, ...getAccessiblePlaylistIds(c.var.user)],
+        limit: null,
+      },
+      { dedupeKey: `quality-upgrades:${getActorId(c.var.user)}` },
+    );
+    return c.json({ success: true, operationId }, 202);
   })
   .post("/quality-upgrades/:playlistId/:jobId", requirePlaylistAccess, async (c) => {
     const playlistId = c.req.param("playlistId");

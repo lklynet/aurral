@@ -158,27 +158,48 @@ export const pairJobsWithPlaylistTracks = <T extends PlaylistJob>(
   jobs: T[] | null | undefined,
   tracks: PlaylistTrackInput[] | null | undefined,
 ) => {
-  const unmatchedJobs = sortJobsByCreatedAt(jobs);
+  const unmatchedJobs = new Map(sortJobsByCreatedAt(jobs).map((job) => [job.id, job]));
   const trackList = Array.isArray(tracks) ? tracks : [];
-  const takeJob = (predicate: (job: T) => boolean) => {
-    const index = unmatchedJobs.findIndex(predicate);
-    return index < 0 ? null : unmatchedJobs.splice(index, 1)[0];
-  };
-  const pairedJobs = trackList.map((track) =>
-    track?.canonicalJobId
-      ? takeJob((job) => job.id === track.canonicalJobId && !recordingsConflict(job, track))
-      : null,
-  );
-  trackList.forEach((track, trackIndex) => {
-    if (pairedJobs[trackIndex]) return;
-    const identity = buildPlaylistTrackIdentity(track);
-    pairedJobs[trackIndex] =
-      takeJob((job) => buildPlaylistTrackIdentity(job) === identity) ||
-      takeJob((job) => tracksShareMembership(job, track));
+  const pairedJobs = trackList.map((track) => {
+    const job = unmatchedJobs.get(String(track?.canonicalJobId || ""));
+    if (!job || recordingsConflict(job, track)) return null;
+    unmatchedJobs.delete(job.id);
+    return job;
   });
+
+  if (unmatchedJobs.size && pairedJobs.includes(null)) {
+    const byIdentity = new Map<string, Set<T>>();
+    const byCore = new Map<string, Set<T>>();
+    const index = (map: Map<string, Set<T>>, key: string, job: T) => {
+      const entries = map.get(key);
+      if (entries) entries.add(job);
+      else map.set(key, new Set([job]));
+    };
+    for (const job of unmatchedJobs.values()) {
+      index(byIdentity, buildPlaylistTrackIdentity(job), job);
+      index(byCore, buildCoreTrackIdentity(job), job);
+    }
+    trackList.forEach((track, trackIndex) => {
+      if (pairedJobs[trackIndex]) return;
+      const exact = byIdentity.get(buildPlaylistTrackIdentity(track))?.values().next().value;
+      let matched = exact;
+      if (!matched) {
+        for (const job of byCore.get(buildCoreTrackIdentity(track)) ?? []) {
+          if (!tracksShareMembership(job, track)) continue;
+          matched = job;
+          break;
+        }
+      }
+      if (!matched) return;
+      pairedJobs[trackIndex] = matched;
+      unmatchedJobs.delete(matched.id);
+      byIdentity.get(buildPlaylistTrackIdentity(matched))?.delete(matched);
+      byCore.get(buildCoreTrackIdentity(matched))?.delete(matched);
+    });
+  }
   return [
     ...pairedJobs.flatMap((job, trackIndex) => (job ? [{ job, trackIndex }] : [])),
-    ...unmatchedJobs.map((job) => ({ job, trackIndex: -1 })),
+    ...Array.from(unmatchedJobs.values(), (job) => ({ job, trackIndex: -1 })),
   ];
 };
 

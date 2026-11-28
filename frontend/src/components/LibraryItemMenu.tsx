@@ -306,6 +306,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     const cancelPress = () => {
       if (pressTimer) window.clearTimeout(pressTimer);
       pressTimer = null;
+      if (press) window.removeEventListener("scroll", cancelPress, true);
       press = null;
     };
     const handleContextMenu = (event: MouseEvent) => {
@@ -321,6 +322,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
       cancelPress();
       if (event.pointerType === "mouse" || !event.isPrimary) return;
       press = { id: event.pointerId, x: event.clientX, y: event.clientY };
+      window.addEventListener("scroll", cancelPress, true);
       pressTimer = window.setTimeout(() => {
         const { x, y } = press!;
         cancelPress();
@@ -347,7 +349,6 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     target.addEventListener("pointerup", cancelPress);
     target.addEventListener("pointercancel", cancelPress);
     target.addEventListener("click", handleClick, true);
-    window.addEventListener("scroll", cancelPress, true);
     return () => {
       cancelPress();
       target.removeEventListener("contextmenu", handleContextMenu);
@@ -356,7 +357,6 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
       target.removeEventListener("pointerup", cancelPress);
       target.removeEventListener("pointercancel", cancelPress);
       target.removeEventListener("click", handleClick, true);
-      window.removeEventListener("scroll", cancelPress, true);
     };
   }, [contextMenu, openAt]);
 

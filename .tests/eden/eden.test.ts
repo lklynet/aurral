@@ -7,7 +7,11 @@ import tls from "node:tls";
 import { parseBuffer, parseFile } from "music-metadata";
 import * as v from "valibot";
 import { afterAll, test, vi } from "vite-plus/test";
-import { deezerArtistSchema, deezerTrackSchema } from "../../backend/services/apiClients/deezer.ts";
+import {
+  deezerArtistSchema,
+  deezerPageSchema,
+  deezerTrackSchema,
+} from "../../backend/services/apiClients/deezer.ts";
 import { listenbrainzTopArtistsSchema } from "../../backend/services/apiClients/listenbrainz.ts";
 import { youtubeFindTopSongVideo } from "../../backend/services/apiClients/youtube.ts";
 import { implausibleBitrateKbps } from "../../backend/services/trackMatching/candidateNormalizer.ts";
@@ -15,7 +19,11 @@ import { loadCatalogue } from "../../eden/catalogue/catalogue.ts";
 import { writeSilentFlac } from "../../eden/library/flac.ts";
 import { planLibrary, planWorld } from "../../eden/library/generate.ts";
 import { createAuthority, hostIssuer } from "../../eden/outside/certificates.ts";
-import { previewClip } from "../../eden/outside/deezer.ts";
+import {
+  LARGE_PLAYLIST_ID,
+  LARGE_PLAYLIST_TRACKS,
+  previewClip,
+} from "../../eden/outside/deezer.ts";
 import { outsideByHost } from "../../eden/outside/index.ts";
 import { indexMusic } from "../../eden/outside/music.ts";
 
@@ -133,4 +141,16 @@ test("Aurral's video lookup finds the artist's own video in the YouTube stand-in
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+test("Eden serves a paginated Deezer playlist larger than 5,000 tracks", () => {
+  const start = `https://api.deezer.com/playlist/${LARGE_PLAYLIST_ID}/tracks?limit=500`;
+  const first = v.parse(deezerPageSchema, ask(start));
+  assert.equal(first.data.length, 500);
+  assert.equal(first.total, LARGE_PLAYLIST_TRACKS);
+  assert.equal(first.next, `${start}&index=500`);
+
+  const last = v.parse(deezerPageSchema, ask(`${start}&index=5000`));
+  assert.equal(last.data.length, 1);
+  assert.equal(last.next, undefined);
 });

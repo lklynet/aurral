@@ -18,6 +18,7 @@ export const deezerErrorSchema = v.looseObject({
 
 export const deezerPageSchema = v.looseObject({
   data: v.array(v.unknown()),
+  total: v.optional(v.number()),
   next: v.optional(v.string()),
 });
 

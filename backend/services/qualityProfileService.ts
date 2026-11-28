@@ -5,7 +5,6 @@ import { db } from "../config/db-sqlite.ts";
 import type { LibraryMediaFilesRow } from "../db/rows.ts";
 import { indexUnmonitoredJobs } from "./unmonitoredJobs.ts";
 import { getEnabledDownloadSources, upgradeSourceIds } from "./downloadSourceService.ts";
-import { logger, safeLogDiagnostic } from "./logger.ts";
 import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
 import { isPlaylistOwnerActive } from "./downloadJobs/playlistOwnerStatus.ts";
 import { isPipelinePayloadActive } from "./downloadJobs/downloadCancellation.ts";
@@ -19,7 +18,6 @@ import {
 import { readOnlyFolderPaths } from "./libraryFolders.ts";
 import { classifyAudioQuality, getQualityState, getQualityTier } from "./qualityProfileModel.ts";
 import { recordTrackJobQueued } from "./aurralHistoryService.ts";
-import { resolveTrackSearchContext } from "./downloadJobs/trackSearchContext.ts";
 import { resolveAurralOwnedTrackJob } from "./libraryTrackResearchService.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -27,7 +25,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 interface UpgradePlan {
   status?: string;
   sourceJobId?: string;
-  context?: object;
 }
 
 interface UpgradeCandidate {
@@ -51,9 +48,10 @@ export async function classifyQualityJob(job: QualityJob | null | undefined) {
   if (job?.status !== "done" || job.upgradeForJobId) {
     return null;
   }
+  const filePath = job.finalPath;
   let quality;
   try {
-    quality = await readQuality(job.finalPath);
+    quality = await readQuality(filePath);
   } catch {
     quality = {
       tier: null,
@@ -64,10 +62,8 @@ export async function classifyQualityJob(job: QualityJob | null | undefined) {
     };
   }
   const checkedAt = Date.now();
-  for (const linked of downloadTracker.getAll()) {
-    if (linked.status === "done" && linked.finalPath === job.finalPath) {
-      downloadTracker.updateQuality(linked.id, { ...quality, checkedAt });
-    }
+  for (const linked of downloadTracker.getDoneByFinalPath(filePath)) {
+    downloadTracker.updateQuality(linked.id, { ...quality, checkedAt });
   }
   return quality;
 }
@@ -92,18 +88,6 @@ export async function reclassifyQualityJobs({ enqueue = false }: { enqueue?: boo
 function hasUpgradeSource() {
   const ids = upgradeSourceIds();
   return getEnabledDownloadSources().some((source) => ids.includes(source.id));
-}
-
-async function readUpgradeSearchContext(job: QualityJob) {
-  try {
-    return await resolveTrackSearchContext(job);
-  } catch (error) {
-    logger.warn("downloads", "Could not read release details for a quality upgrade", {
-      jobId: job.id,
-      reason: safeLogDiagnostic(error),
-    });
-    return {};
-  }
 }
 
 function upgradeBlocker(
@@ -134,7 +118,7 @@ async function prepareQualityUpgrade(
   const current = downloadTracker.getJob(job.id);
   const blocker = upgradeBlocker(current, isUnmonitored);
   if (blocker) return { status: blocker };
-  return { sourceJobId: current!.id, context: await readUpgradeSearchContext(current!) };
+  return { sourceJobId: current!.id };
 }
 
 async function addUpgradesAtOnce(
@@ -143,13 +127,12 @@ async function addUpgradesAtOnce(
 ) {
   const queuedIds: string[] = [];
   const isUnmonitored = indexUnmonitoredJobs();
-  const statuses = prepared.map(({ sourceJobId, context }) => {
+  const statuses = prepared.map(({ sourceJobId }) => {
     const source = downloadTracker.getJob(sourceJobId);
     const blocker = upgradeBlocker(source, isUnmonitored);
     if (blocker) return blocker;
     const upgradeJobId = downloadTracker.addUpgradeJob(source);
     if (!upgradeJobId) return "ineligible";
-    downloadTracker.updateMetadata(upgradeJobId, context);
     downloadTracker.markQualityUpgradeChecked(sourceJobId!);
     recordTrackJobQueued(downloadTracker.getJob(upgradeJobId), null, {
       fromQuality: getQualityTier(source?.qualityTier)?.label ?? null,
@@ -266,7 +249,7 @@ export async function runQualityUpgradeCheck({
   force = false,
   playlistIds = null,
   limit = 25,
-}: { force?: boolean; playlistIds?: string[] | null; limit?: number } = {}) {
+}: { force?: boolean; playlistIds?: string[] | null; limit?: number | null } = {}) {
   const profile = getQualityProfile();
   if (!force && !profile.automaticUpgrades) return 0;
   const owners = playlistIds ? new Set(playlistIds) : null;
@@ -283,7 +266,7 @@ export async function runQualityUpgradeCheck({
     const prepared: UpgradePlan[] = [];
     for (const { owner, add } of candidates) {
       const counted = owners ? owner : null;
-      if ((addedByOwner.get(counted) || 0) >= limit) continue;
+      if (limit !== null && (addedByOwner.get(counted) || 0) >= limit) continue;
       const upgrade = await add();
       if (!upgrade.sourceJobId) continue;
       prepared.push(upgrade);

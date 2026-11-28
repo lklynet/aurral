@@ -13,6 +13,8 @@ const NO_DATA = { error: { type: "DataException", message: "no data", code: 800 
 const PLAYLIST_BASE = 9000;
 const PLAYLIST_TRACKS = 40;
 const PLAYLISTS = 12;
+export const LARGE_PLAYLIST_ID = 9999;
+export const LARGE_PLAYLIST_TRACKS = 5_001;
 // Aurral finds the country chart by its title and by Deezer's own charts account.
 const CHARTS_USER = { id: 637006841, name: "Deezer Charts" };
 const CHART_TITLES = ["Top USA", "Top Worldwide"];
@@ -172,10 +174,35 @@ export const deezer: Outside = {
       return list([...music.hits.slice(start), ...music.hits.slice(0, start)].map(track));
     }
     if (kind === "playlist") {
-      const found = playlists(music).find((entry) => entry.playlist.id === number);
+      const found =
+        number === LARGE_PLAYLIST_ID
+          ? {
+              playlist: {
+                id: number,
+                title: "Eden's large playlist",
+                nb_tracks: LARGE_PLAYLIST_TRACKS,
+              },
+              tracks: Array.from(music.trackByNumber.values()).slice(0, LARGE_PLAYLIST_TRACKS),
+            }
+          : playlists(music).find((entry) => entry.playlist.id === number);
       if (!found) return NO_DATA;
-      if (!part) return { ...found.playlist, tracks: { data: found.tracks.map(track) } };
-      if (part === "tracks") return list(found.tracks.map(track));
+      if (!part)
+        return {
+          ...found.playlist,
+          tracks: {
+            data: (number === LARGE_PLAYLIST_ID ? found.tracks.slice(0, 25) : found.tracks).map(
+              track,
+            ),
+          },
+        };
+      if (part === "tracks") {
+        const data = pageOf(found.tracks, url, "limit", "index").map(track);
+        const total = found.tracks.length;
+        const nextIndex = (Number(url.searchParams.get("index")) || 0) + data.length;
+        const next = new URL(url);
+        next.searchParams.set("index", String(nextIndex));
+        return { data, total, ...(nextIndex < total && { next: next.href }) };
+      }
     }
     return NO_DATA;
   },

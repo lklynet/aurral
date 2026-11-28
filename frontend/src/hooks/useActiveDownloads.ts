@@ -35,6 +35,17 @@ const fetchActiveDownloads = async ({ signal }: { signal: AbortSignal }) => {
   return next;
 };
 
+const indexes = new WeakMap<object, ReturnType<typeof indexActiveDownloads>>();
+
+const sharedIndex = (data: Parameters<typeof indexActiveDownloads>[0]) => {
+  if (!data) return indexActiveDownloads(data);
+  const cached = indexes.get(data);
+  if (cached) return cached;
+  const index = indexActiveDownloads(data);
+  indexes.set(data, index);
+  return index;
+};
+
 export function useActiveDownloads() {
   const { data } = useQuery({
     queryKey: queryKeys.activeDownloads,
@@ -43,7 +54,7 @@ export function useActiveDownloads() {
     refetchInterval: (query) => (hasActiveDownloads(query.state.data) ? ACTIVE_POLL_MS : false),
   });
   return useMemo(() => {
-    const index = indexActiveDownloads(data);
+    const index = sharedIndex(data);
     return {
       isAlbumDownloading: (albumMbid: string | null | undefined) =>
         isAlbumDownloading(index, albumMbid),

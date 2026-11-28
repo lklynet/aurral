@@ -137,7 +137,7 @@ test("playlist fetch follows every current Spotify page without a client-side si
   globalThis.fetch = async (url) => {
     urls.push(String(url));
     const offset = Number(new URL(String(url)).searchParams.get("offset") || 0);
-    const total = 1001;
+    const total = 10_001;
     const pageSize = Math.min(50, total - offset);
     return new Response(
       JSON.stringify({
@@ -159,9 +159,9 @@ test("playlist fetch follows every current Spotify page without a client-side si
   };
 
   const items = await spotifyClient.listPlaylistTracks(7, "playlist", { forceRefresh: true });
-  assert.equal(items.length, 1001);
-  assert.equal(requireFixture(items.at(-1)!.item).name, "Song 1000");
-  assert.equal(urls.length, 21);
+  assert.equal(items.length, 10_001);
+  assert.equal(requireFixture(items.at(-1)!.item).name, "Song 10000");
+  assert.equal(urls.length, 201);
   assert.equal(new URL(requireFixture(urls[0])).pathname, "/v1/playlists/playlist/items");
   assert.equal(new URL(requireFixture(urls[0])).searchParams.get("limit"), "50");
   assert.match(new URL(requireFixture(urls[0])).searchParams.get("fields")!, /items\(item\(/);
@@ -369,4 +369,28 @@ test("Spotify asking for a short pause is waited out once, and a long one fails 
     (error) => asAppError(error)?.statusCode === 429,
   );
   assert.equal(requests, 1);
+});
+
+test("Spotify rejects a repeated continuation before accepting duplicate pages", async () => {
+  saveConnection("playlist-read-private");
+  const next = "https://api.spotify.com/v1/playlists/playlist/items?offset=1";
+  const fetch = vi
+    .spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(
+      jsonResponse(200, { items: [{ item: { name: "First" } }], offset: 0, total: 3, next }),
+    )
+    .mockResolvedValueOnce(
+      jsonResponse(200, { items: [{ item: { name: "Second" } }], offset: 1, total: 3, next }),
+    )
+    .mockResolvedValueOnce(
+      jsonResponse(200, { items: [{ item: { name: "Second" } }], offset: 1, total: 3 }),
+    );
+  try {
+    await assert.rejects(spotifyClient.listPlaylistTracks(7, "playlist"), {
+      code: "SPOTIFY_INCOMPLETE_PLAYLIST",
+    });
+    assert.equal(fetch.mock.calls.length, 2);
+  } finally {
+    fetch.mockRestore();
+  }
 });

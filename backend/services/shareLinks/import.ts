@@ -152,7 +152,7 @@ export async function importShare(payload: Record<string, unknown>) {
     }
     return { to: `/library/playlists/${playlist.id}` };
   }
-  const savedTracks = db.transaction(() => {
+  const saveTracks = () => {
     if (manifest.kind === "artist") {
       const artist = saveArtist(manifest.artistName, manifest.artistMbid);
       to = `/library/artist/${artist.id}`;
@@ -211,8 +211,10 @@ export async function importShare(payload: Record<string, unknown>) {
       } else downloadTracker.setSaved(jobId);
       return { ...input, canonicalJobId: jobId, membershipId: randomUUID() };
     });
-  })();
-  if (manifest.kind === "playlist") {
+  };
+  db.transaction(() => {
+    const savedTracks = saveTracks();
+    if (manifest.kind !== "playlist") return;
     const names = new Set(
       [
         ...flowPlaylistConfig.getStaticPlaylistsForUser(owner),
@@ -231,7 +233,7 @@ export async function importShare(payload: Record<string, unknown>) {
       tracks: savedTracks,
     });
     to = `/library/playlists/${playlist.id}`;
-  }
+  })();
   for (const jobId of jobIds) {
     recordTrackJobQueued(downloadTracker.getJob(jobId), owner);
     downloadTracker.enqueueDownloadPipeline(jobId);
