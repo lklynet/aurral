@@ -985,10 +985,11 @@ export class SlskdClient {
       await waitSearchDelay(Math.min(500, hydrationDeadline - Date.now()), signal);
     }
     if (signal?.aborted || shouldCancel?.()) return data;
-    logger.warn("slskd", "slskd search completed with counts but no file payloads", {
+    logger.info("slskd", "Stopped waiting for the rest of an slskd search's files", {
       searchId,
       responseCount,
       fileCount,
+      receivedFileCount: collected.size,
     });
     return data;
   }
