@@ -8,9 +8,10 @@ const [
   { dbOps },
   { flowPlaylistConfig },
   { downloadTracker },
-  { processPipelineJob },
+  { processPipelineJob, startDownloadPipelineWorker, stopDownloadPipelineWorker },
   guards,
   cancellation,
+  { downloadPipelineQueue },
 ] = await setupIsolatedBackend(
   "download-mutation-lock",
   () => import("../../backend/db/helpers/index.ts"),
@@ -19,6 +20,7 @@ const [
   () => import("../../backend/services/downloadPipelineWorker.ts"),
   () => import("../../backend/services/downloadJobs/downloadLocks.ts"),
   () => import("../../backend/services/downloadJobs/downloadCancellation.ts"),
+  () => import("../../backend/services/jobs/queues.ts"),
 );
 afterAll(() => cleanupIsolatedState(state));
 const deferred = () => Promise.withResolvers<void>();
@@ -161,3 +163,24 @@ test(
     assert.equal(runs, 1);
   },
 );
+
+test("a pipeline worker started under a playlist lock runs its jobs outside that lock", async () => {
+  dbOps.updateSettings({
+    integrations: { slskd: { enabled: true, url: "http://127.0.0.1:9" } },
+    flows: [],
+    staticPlaylists: [],
+  });
+  const id = downloadPipelineQueue.enqueue({
+    jobId: "untracked",
+    playlistId: "other-playlist",
+    playlistGeneration: 0,
+    phase: "search",
+  });
+  await guards.withPlaylistMutationLock("syncing-playlist", async () => {
+    void startDownloadPipelineWorker();
+    await stopDownloadPipelineWorker();
+  });
+  const job = downloadPipelineQueue.getJob(id);
+  assert.equal(job?.last_error, null);
+  assert.equal(job?.state, "done");
+});
