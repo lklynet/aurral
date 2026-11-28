@@ -108,6 +108,47 @@ test("enrichStaticPlaylistMbids fills missing playlist and job MBIDs", async () 
   assert.equal(storedJob.albumTrackCount, 12);
 });
 
+test("enrichStaticPlaylistMbids resolves a track that names no album on its job's album", async () => {
+  const song = { artistName: "Refused", trackName: "New Noise" };
+  const liveJobId = downloadTracker.addJob({ ...song, albumName: "Live at the Ritz" }, "library");
+  const jobId = downloadTracker.addJob(
+    { ...song, albumName: "The Shape of Punk to Come" },
+    "library",
+  );
+  assert.ok(liveJobId != null && jobId != null);
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Imported",
+    tracks: [
+      {
+        ...song,
+        albumName: "Greatest Hits",
+        artistMbid: "artist-refused",
+        albumMbid: "album-hits",
+        trackMbid: "track-hits",
+      },
+      { ...song, albumName: "Live at the Ritz", canonicalJobId: liveJobId },
+      { ...song, canonicalJobId: jobId },
+    ],
+  });
+
+  await enrichStaticPlaylistMbids(playlist.id, {
+    resolveTrackContext: async (track) =>
+      resolved(track, {
+        albumMbid: {
+          "The Shape of Punk to Come": "album-shape",
+          "Live at the Ritz": "album-live",
+        }[String(track.albumName)],
+        trackMbid: "track-new-noise",
+      }),
+  });
+
+  assert.equal(downloadTracker.getJob(jobId)?.albumMbid, "album-shape");
+  assert.equal(downloadTracker.getJob(liveJobId)?.albumMbid, "album-live");
+  const [, , stored] = flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks ?? [];
+  assert.equal(stored?.albumName, "The Shape of Punk to Come");
+  assert.equal(stored?.albumMbid, "album-shape");
+});
+
 test("enrichStaticPlaylistMbids rescans the library after updating a downloaded job", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Downloaded",

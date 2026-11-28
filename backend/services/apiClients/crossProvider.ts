@@ -68,7 +68,7 @@ export async function resolveDeezerAlbumToMbid(
 // album is not one of the artist's own, such as a soundtrack credited to the
 // game. The album the song came with wins. MusicBrainz answers for a song the
 // search index leaves out.
-async function findTrackReleaseGroup(lookup: {
+export async function findTrackReleaseGroup(lookup: {
   artistMbid: string;
   artistName: string;
   trackName: string;
@@ -78,14 +78,17 @@ async function findTrackReleaseGroup(lookup: {
     () => [],
   );
   const onAlbum = (title: string | null) => Number(scoreTextMatch(title, lookup.albumName) >= 85);
+  const titleScore = (title: string) => scoreTextMatch(title, lookup.trackName);
   const [best] = tracks
     .filter(
       (track) =>
-        track.albumId &&
-        track.artistId === lookup.artistMbid &&
-        scoreTextMatch(track.title, lookup.trackName) >= 85,
+        track.albumId && track.artistId === lookup.artistMbid && titleScore(track.title) >= 85,
     )
-    .toSorted((left, right) => onAlbum(right.albumTitle) - onAlbum(left.albumTitle));
+    .toSorted(
+      (left, right) =>
+        onAlbum(right.albumTitle) - onAlbum(left.albumTitle) ||
+        titleScore(right.title) - titleScore(left.title),
+    );
   return best?.albumId ?? musicbrainzFindTrackReleaseGroup(lookup).catch(() => null);
 }
 

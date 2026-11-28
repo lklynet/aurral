@@ -1,4 +1,5 @@
 import { guessArtistMbid } from "../artistMatch.ts";
+import { findTrackReleaseGroup } from "../apiClients/crossProvider.ts";
 import {
   getArtistByMbid,
   getAlbumByMbid,
@@ -158,11 +159,13 @@ const UNREACHABLE = Symbol("metadata unreachable");
 // A guessed release group must list the track, so a search that finds an
 // album of the same name, such as another of an artist's self-titled albums,
 // is not the track's. A search metadata could not answer is not remembered.
+// A track that names no album, as Last.fm stations often send, takes the
+// album its song is on, and a song search that fails finds no album.
 async function resolveReleaseGroup(track: DownloadTrackFields): Promise<ReleaseGroupSearch> {
   const safeAlbum = String(track.albumName || "").trim();
-  if (!safeAlbum) return null;
   const safeArtist = String(track.artistName || "").trim();
   const safeMbid = String(track.artistMbid || "").trim();
+  if (!safeAlbum && !safeMbid) return null;
   const cacheKey = JSON.stringify([safeArtist, safeMbid, safeAlbum, track.trackName]);
   const cachedReleaseGroup = releaseGroupSearchCache.get(cacheKey);
   if (cachedReleaseGroup !== undefined) return cachedReleaseGroup;
@@ -175,7 +178,19 @@ async function resolveReleaseGroup(track: DownloadTrackFields): Promise<ReleaseG
   const noteFailure = (error: unknown) => {
     if (!isMetadataNotFoundError(error)) unreachable = true;
   };
+  const songReleaseGroup = async () => {
+    const id = await findTrackReleaseGroup({
+      artistMbid: safeMbid,
+      artistName: safeArtist,
+      trackName: String(track.trackName || "").trim(),
+      albumName: "",
+    });
+    if (!id || !(await holds(id))) return unreachable ? UNREACHABLE : null;
+    const album = await fetchReleaseContext(id);
+    return { id, title: album?.albumName ?? "", releaseYear: album?.releaseYear ?? null };
+  };
   const promise = (async () => {
+    if (!safeAlbum) return songReleaseGroup();
     try {
       const resolvedId = await resolveAlbumByArtistAndTitle({
         artistName: safeArtist,
@@ -603,11 +618,12 @@ export async function resolveTrackSearchContext(
     base.artistMbid = await guessArtistMbid(base.artistName, { album: base.albumName });
   }
 
-  if (!base.albumMbid && base.albumName) {
+  if (!base.albumMbid) {
     const releaseGroup = await resolveReleaseGroup(base);
     unreachable ||= releaseGroup === UNREACHABLE;
     if (releaseGroup && releaseGroup !== UNREACHABLE) {
       base.albumMbid = releaseGroup.id;
+      base.albumName ||= releaseGroup.title || null;
       base.releaseYear ||= releaseGroup.releaseYear;
     }
   }

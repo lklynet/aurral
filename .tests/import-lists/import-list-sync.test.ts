@@ -425,4 +425,26 @@ test("a sync keeps the IDs Aurral already found for tracks still in the playlist
   const [live] = flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks ?? [];
   assert.equal(live?.albumName, "New Album (Live)");
   assert.deepEqual([live?.albumMbid, live?.trackMbid, live?.releaseYear], [null, null, null]);
+
+  albumName = "";
+  spotifyClient.clearPlaylistTrackCache();
+  flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
+    tracks: [{ ...requireFixture(live), albumName: "Found Album", ...found }],
+  });
+  info.mockClear();
+  await syncStaticPlaylistImport({ playlistId: playlist.id, user: { id: 7 }, force: true });
+
+  const [albumless] = flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks ?? [];
+  assert.deepEqual(
+    [albumless?.albumName, albumless?.albumMbid, albumless?.trackMbid],
+    ["Found Album", found.albumMbid, found.trackMbid],
+  );
+  const albumlessSync = info.mock.calls.find(
+    (call) => call[1] === "Playlist import sync completed",
+  );
+  assert.partialDeepStrictEqual(albumlessSync?.[2], {
+    tracksAdded: 0,
+    tracksRemoved: 0,
+    acceptedNotStoredCount: 0,
+  });
 });

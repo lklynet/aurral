@@ -42,12 +42,6 @@ function isMissingMbid(track: TrackMetadata | null | undefined) {
   return !hasValue(track?.artistMbid) || !hasValue(track?.albumMbid) || !hasValue(track?.trackMbid);
 }
 
-function hasMissingJobMbid(track: TrackMetadata, jobs: DownloadJob[]) {
-  return (Array.isArray(jobs) ? jobs : [])
-    .filter((job) => tracksShareMembership(job, track))
-    .some((job) => isMissingMbid(job));
-}
-
 function mergeMissingString(
   target: TrackMetadata,
   source: TrackMetadata,
@@ -134,15 +128,18 @@ function applyPlaylistTrackPatch(track: PlaylistTrack, source: TrackMetadata) {
 }
 
 function findResolutionForTrack(
-  track: TrackMetadata,
+  track: PlaylistTrack,
   resolutions: TrackResolution[],
   usedResolutionIndexes: Set<number>,
 ) {
   for (const [index, resolution] of resolutions.entries()) {
     if (usedResolutionIndexes.has(index)) continue;
+    const owner = resolution.originalTrack.membershipId;
     if (
-      tracksShareMembership(track, resolution.originalTrack) ||
-      tracksShareMembership(track, resolution.resolvedTrack)
+      owner
+        ? owner === track.membershipId
+        : tracksShareMembership(track, resolution.originalTrack) ||
+          tracksShareMembership(track, resolution.resolvedTrack)
     ) {
       usedResolutionIndexes.add(index);
       return resolution;
@@ -151,8 +148,8 @@ function findResolutionForTrack(
   return null;
 }
 
-function matchingJobsForTrack(track: TrackMetadata, jobs: DownloadJob[]) {
-  return (Array.isArray(jobs) ? jobs : []).filter((job) => tracksShareMembership(job, track));
+function ownJobs(track: PlaylistTrack, jobs: DownloadJob[]) {
+  return jobs.filter((job) => job.id === track.canonicalJobId && tracksShareMembership(job, track));
 }
 
 async function buildResolution(
@@ -161,14 +158,18 @@ async function buildResolution(
   resolveTrackContext: typeof resolveTrackSearchContext,
   groupState: { unavailable: boolean } | null = null,
 ) {
-  if (!isMissingMbid(track) && !hasMissingJobMbid(track, jobs)) return null;
+  if (!isMissingMbid(track) && !ownJobs(track, jobs).some(isMissingMbid)) return null;
 
   const originalTrack = normalizePlaylistTrack(track);
   if (!originalTrack) return null;
+  const [linkedJob] = ownJobs(originalTrack, jobs);
+  const jobAlbumName =
+    originalTrack.albumName || originalTrack.albumMbid ? null : linkedJob?.albumName;
+  const lookup = jobAlbumName ? { ...originalTrack, albumName: jobAlbumName } : originalTrack;
 
   let resolvedTrack;
   try {
-    resolvedTrack = await Promise.resolve().then(() => resolveTrackContext(originalTrack));
+    resolvedTrack = await Promise.resolve().then(() => resolveTrackContext(lookup));
   } catch {
     if (groupState) groupState.unavailable = true;
     return null;
@@ -183,7 +184,7 @@ async function buildResolution(
     ...enrichedTrack,
   };
   const trackPatch = mergeMissingMetadata(originalTrack, enrichedTrack);
-  const jobNeedsPatch = matchingJobsForTrack(originalTrack, jobs).some((job) =>
+  const jobNeedsPatch = ownJobs(originalTrack, jobs).some((job) =>
     hasPatch(mergeMissingMetadata(job, jobMetadata, { includeJobFields: true })),
   );
 
@@ -305,9 +306,12 @@ export async function enrichStaticPlaylistMbids(
 
     const currentTracks = Array.isArray(currentPlaylist.tracks) ? currentPlaylist.tracks : [];
     const usedResolutionIndexes = new Set<number>();
+    const trackResolutions = currentTracks.map((track) =>
+      findResolutionForTrack(track, resolutions, usedResolutionIndexes),
+    );
     let playlistTracksUpdated = 0;
-    const nextTracks = currentTracks.map((track) => {
-      const resolution = findResolutionForTrack(track, resolutions, usedResolutionIndexes);
+    const nextTracks = currentTracks.map((track, index) => {
+      const resolution = trackResolutions[index];
       if (!resolution) return track;
       const nextTrack = applyPlaylistTrackPatch(track, resolution.resolvedTrack);
       if (nextTrack !== track) playlistTracksUpdated += 1;
@@ -324,14 +328,10 @@ export async function enrichStaticPlaylistMbids(
     const jobs = staticPlaylistJobs(currentPlaylist);
     let jobsUpdated = 0;
     const updatedJobIds = new Set<string>();
-    for (const track of nextTracks) {
-      const resolution = resolutions.find(
-        (entry) =>
-          tracksShareMembership(track, entry.originalTrack) ||
-          tracksShareMembership(track, entry.resolvedTrack),
-      );
+    for (const [index, track] of nextTracks.entries()) {
+      const resolution = trackResolutions[index];
       const source = resolution?.jobMetadata || resolution?.resolvedTrack || track;
-      for (const job of matchingJobsForTrack(track, jobs)) {
+      for (const job of ownJobs(track, jobs)) {
         if (updatedJobIds.has(job.id)) continue;
         const patch = mergeMissingMetadata(job, source, {
           includeJobFields: true,
