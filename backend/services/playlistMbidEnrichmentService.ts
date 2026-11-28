@@ -168,7 +168,8 @@ async function buildResolution(
   const matchingJobs = matchingJobsForTrack(originalTrack, jobs);
   const linkedJob =
     matchingJobs.find((job) => job.id === originalTrack.canonicalJobId) ?? matchingJobs[0];
-  const jobAlbumName = originalTrack.albumName ? null : linkedJob?.albumName;
+  const jobAlbumName =
+    originalTrack.albumName || originalTrack.albumMbid ? null : linkedJob?.albumName;
   const lookup = jobAlbumName ? { ...originalTrack, albumName: jobAlbumName } : originalTrack;
 
   let resolvedTrack;
