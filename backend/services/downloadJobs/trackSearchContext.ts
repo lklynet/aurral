@@ -1,5 +1,7 @@
 import { guessArtistMbid } from "../artistMatch.ts";
 import { findTrackReleaseGroup } from "../apiClients/crossProvider.ts";
+import { searchDeezerTracks } from "../apiClients/deezer.ts";
+import { titleKey, titleSimilarity } from "../trackMatching/nativeMatcher.ts";
 import {
   getArtistByMbid,
   getAlbumByMbid,
@@ -534,6 +536,39 @@ function hasReleaseIdentity(track: ResolvedTrack) {
   );
 }
 
+type DeezerTrack = Awaited<ReturnType<typeof searchDeezerTracks>>[number];
+
+const titleNumbers = (title: string) =>
+  (titleKey(title).match(/\p{N}+|\b(?:ii|iii|iv|v|vi|vii|viii|ix|x)\b/gu) || []).join(" ");
+
+// A wrong length rejects the right file, so a Deezer length counts only when
+// artist, title, numbers, and version all agree.
+export function pickDeezerTrackLength(
+  candidates: DeezerTrack[],
+  track: { artistName: string; trackName: string; artistAliases?: string[] },
+): number | null {
+  const names = [track.artistName, ...(track.artistAliases || [])];
+  const match = candidates.find(
+    (candidate) =>
+      Number.isFinite(candidate.duration) &&
+      Number(candidate.duration) > 0 &&
+      names.some((name) => isCreditedArtist(name, { name: candidate.artist?.name })) &&
+      sameVersion(candidate.title, track.trackName) &&
+      titleSimilarity(track.trackName, candidate.title) >= 0.9 &&
+      titleNumbers(candidate.title) === titleNumbers(track.trackName),
+  );
+  return match ? Math.round(Number(match.duration) * 1000) : null;
+}
+
+async function deezerTrackLength(track: ResolvedTrack) {
+  try {
+    const candidates = await searchDeezerTracks(`${track.artistName} ${track.trackName}`);
+    return pickDeezerTrackLength(candidates, track);
+  } catch {
+    return null;
+  }
+}
+
 // `metadataUnreachable` says the album named by the track could not be read
 // because metadata was unreachable, so the result is not the album's.
 export async function resolveTrackSearchContext(
@@ -663,6 +698,8 @@ export async function resolveTrackSearchContext(
   if ((base.artistAliases?.length || 0) === 0 && base.artistMbid) {
     base.artistAliases = await fetchArtistAliases(base.artistMbid);
   }
+
+  if (!base.durationMs) base.durationMs = await deezerTrackLength(base);
 
   return namesAlbum && unreachable ? { ...base, metadataUnreachable: true } : base;
 }
