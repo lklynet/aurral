@@ -12,7 +12,7 @@
     <main>
       <a class="top" href="/"><img src="favicon.svg" width="27" height="20" alt="" />Aurral</a>
       <h1>Privacy</h1>
-      <p class="muted">Updated November 27, 2026</p>
+      <p class="muted">Updated November 28, 2026</p>
 
       <p>
         Aurral runs on your own server, and your Library, listening history, and settings stay
@@ -54,6 +54,25 @@
         the server, and show the name on your account page. Linking gives aurral.org no access to
         your server. Whoever runs that server can act as you through the link, so only link servers
         you trust. Unlink anytime from <a href="/account">your account page</a> or from Aurral.
+      </p>
+
+      <h2>Aurral Connect</h2>
+      <p>
+        If you enable Aurral Connect, aurral.org stores your chosen <code>*.aurral.dev</code>
+        address, server name, local network hints (if published), online status, and your Connect
+        subscription state.
+      </p>
+      <p>
+        Payments, taxes, and invoices are handled by <a href="https://polar.sh">Polar</a> as our
+        Merchant of Record. aurral.org only stores your Polar customer and subscription IDs and
+        billing status, never your payment card details.
+      </p>
+      <p>
+        Traffic for <code>*.aurral.dev</code> passes through our stateless relay hosted on OVHcloud
+        to connect your clients to your server. The relay holds no database and does not log request
+        payloads, sign-in tokens, or audio streams. Disabling Connect or deleting your account stops
+        new tunnel connections right away. Released <code>*.aurral.dev</code> addresses stay
+        reserved for 90 days so nobody can claim your old address.
       </p>
 
       <h2>Share links</h2>
